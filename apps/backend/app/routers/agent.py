@@ -1,34 +1,27 @@
-import json, urllib.request
 from fastapi import APIRouter
+import json, urllib.request
 from ..models import ChatRequest
 from ..services.llm import LLMClient
 from ..services.agent_tools import tool_specs, call_tool
 
-router = APIRouter()
+router = APIRouter()  # <-- no prefix here (main.py supplies /agent)
 
-# --- Ollama agent status endpoint ---
 @router.get("/status")
-def agent_status():
-    """Ping Ollama with a trivial prompt to check end-to-end agent availability."""
+def agent_status(model: str = "gpt-oss:20b"):
+    """Ping Ollama with a tiny prompt to verify agent connectivity."""
     try:
-        body = json.dumps({"model": "gpt-oss:20b", "prompt": "ping"})
+        body = json.dumps({"model": model, "prompt": "pong!", "stream": False})
         req = urllib.request.Request(
             "http://127.0.0.1:11434/api/generate",
             data=body.encode("utf-8"),
             headers={"Content-Type": "application/json"},
             method="POST",
         )
-        with urllib.request.urlopen(req, timeout=2.0) as resp:
+        with urllib.request.urlopen(req, timeout=5.0) as resp:
             data = json.loads(resp.read().decode("utf-8", errors="ignore"))
             return {"ok": True, "reply": data.get("response", "")}
     except Exception as e:
         return {"ok": False, "error": str(e)}
-from fastapi import APIRouter
-from ..models import ChatRequest
-from ..services.llm import LLMClient
-from ..services.agent_tools import tool_specs, call_tool
-
-router = APIRouter()
 
 SYSTEM = "You are a helpful finance agent. Prefer using tools to act. Be concise."
 

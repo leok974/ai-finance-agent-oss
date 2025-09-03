@@ -1,3 +1,4 @@
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from .routers import ingest, txns, rules, ml, report, budget, alerts, insights, agent, explain
@@ -32,6 +33,8 @@ app.include_router(agent.router, prefix="/agent", tags=["agent"])
 app.include_router(explain.router, prefix="/txns", tags=["explain"])
 app.include_router(charts.router)  # NEW
 app.include_router(health_router.router, prefix="/health", tags=["health"])  # NEW
+
+
 
 @app.get("/health")
 def health():
