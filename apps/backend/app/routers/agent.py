@@ -1,10 +1,21 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
+from typing import List, Optional, Literal, Dict
 import json, urllib.request
-from ..models import ChatRequest
 from ..services.llm import LLMClient
 from ..services.agent_tools import tool_specs, call_tool
 
 router = APIRouter()  # <-- no prefix here (main.py supplies /agent)
+
+# Optional compatibility models: accept either a simple prompt or messages[]
+class Msg(BaseModel):
+    role: Literal["system", "user", "assistant"]
+    content: str
+
+class ChatReq(BaseModel):
+    prompt: Optional[str] = None
+    messages: Optional[List[Msg]] = None
+    context: Optional[Dict] = None
 
 @router.get("/status")
 def agent_status(model: str = "gpt-oss:20b"):
@@ -19,15 +30,24 @@ def agent_status(model: str = "gpt-oss:20b"):
         )
         with urllib.request.urlopen(req, timeout=5.0) as resp:
             data = json.loads(resp.read().decode("utf-8", errors="ignore"))
-            return {"ok": True, "reply": data.get("response", "")}
+            # Include broader compatibility flags
+            return {"ok": True, "status": "ok", "pong": True, "reply": data.get("response", "")}
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
 SYSTEM = "You are a helpful finance agent. Prefer using tools to act. Be concise."
 
 @router.post("/chat")
-async def chat(req: ChatRequest):
-    messages = [{"role":"system","content": SYSTEM}] + [m.model_dump() for m in req.messages]
+async def chat(req: ChatReq):
+    # Normalize to messages[]
+    if not (req.messages or req.prompt):
+        raise HTTPException(status_code=422, detail="Provide 'messages' or 'prompt'")
+    base_msgs: List[dict]
+    if req.messages:
+        base_msgs = [m.model_dump() for m in req.messages]
+    else:
+        base_msgs = [{"role": "user", "content": req.prompt or ""}]
+    messages = [{"role": "system", "content": SYSTEM}] + base_msgs
     # Auto-context enrichment
     ctx = req.context or {}
     if "month" not in ctx:
