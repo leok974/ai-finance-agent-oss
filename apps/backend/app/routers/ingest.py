@@ -1,6 +1,6 @@
 from fastapi import APIRouter, UploadFile, File, Query, Depends
 from sqlalchemy.orm import Session
-from sqlalchemy import select
+from sqlalchemy import select, update
 from io import TextIOWrapper
 import csv, datetime as dt
 from ..db import get_db
@@ -35,13 +35,14 @@ async def ingest_csv(
     next_id = (len(mem_list) + 1) if isinstance(mem_list, list) else 1
     for row in reader:
         # map/parse your CSV columns here
-        date = dt.date.fromisoformat(row["date"])
+        # robust parse and ensure month string
+        date = dt.datetime.strptime(row["date"], "%Y-%m-%d").date()
         amount = float(row["amount"])
         desc = row.get("description") or row.get("memo") or ""
         merch = row.get("merchant") or None
         acct = row.get("account") or None
         raw_cat = row.get("category") or None
-        month = f"{date.year:04d}-{date.month:02d}"
+        month = date.strftime("%Y-%m")
 
         exists = db.execute(
             select(Transaction.id).where(
@@ -61,7 +62,7 @@ async def ingest_csv(
                 merchant=merch,
                 account=acct,
                 raw_category=raw_cat,
-                month=month,
+                month=month,  # ensure month is set on insert
                 category=None,
             )
         )
@@ -84,5 +85,13 @@ async def ingest_csv(
                 pass
 
     db.commit()
+
+    # Optional: backfill month for any existing rows with NULL month (one-time maintenance)
+    if not replace:
+        null_rows = db.execute(select(Transaction.id, Transaction.date).where(Transaction.month.is_(None))).all()
+        if null_rows:
+            for rid, d in null_rows:
+                db.execute(update(Transaction).where(Transaction.id == rid).values(month=d.strftime("%Y-%m")))
+            db.commit()
     # include both keys for compatibility
     return {"ok": True, "added": added, "count": added}
