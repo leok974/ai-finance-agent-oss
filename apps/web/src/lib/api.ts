@@ -1,4 +1,10 @@
-const API_BASE: string = (globalThis as any).__API_BASE__ ?? 'http://127.0.0.1:8000'
+// Resolve API base from env, with a dev fallback when running Vite on port 5173
+const envBase = (import.meta as any)?.env?.VITE_API_BASE as string | undefined;
+const devDefault =
+  typeof window !== "undefined" && window.location?.port === "5173"
+    ? "http://127.0.0.1:8000"
+    : "";
+export const API_BASE: string = (envBase && envBase.trim()) || devDefault;
 
 function q(params: Record<string, any>) {
   const usp = new URLSearchParams()
@@ -11,7 +17,8 @@ function q(params: Record<string, any>) {
 }
 
 async function http<T=any>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, {
+  const url = API_BASE ? `${API_BASE}${path}` : path
+  const res = await fetch(url, {
     headers: { 'Content-Type': 'application/json' },
     ...init,
   })
@@ -24,12 +31,38 @@ async function http<T=any>(path: string, init?: RequestInit): Promise<T> {
 export const getReport = (month?: string) => http(`/report${q({ month })}`)
 export const getInsights = (month?: string) => http(`/insights${q({ month })}`)
 export const getAlerts = (month?: string) => http(`/alerts${q({ month })}`)
-export const downloadReportCsv = (month: string) => window.open(`${API_BASE}/report_csv${q({ month })}`,'_blank')
+export const downloadReportCsv = (month: string) => window.open(`${API_BASE || ""}/report_csv${q({ month })}`,'_blank')
 
 // ---------- Charts ----------
-export const getMonthSummary = (month: string) => http(`/month_summary${q({ month })}`)
-export const getMonthMerchants = (month: string) => http(`/month_merchants${q({ month })}`)
-export const getMonthFlows = (month: string) => http(`/month_flows${q({ month })}`)
+async function fetchJson(path: string, init?: RequestInit) {
+  const url = API_BASE ? `${API_BASE}${path}` : path;
+  const res = await fetch(url, init);
+  const text = await res.text();
+  const ctype = res.headers.get("content-type") || "";
+  if (!res.ok) throw new Error(text || `${url} failed: ${res.status}`);
+  if (!ctype.includes("application/json")) {
+    throw new Error(`Expected JSON, got: ${ctype.substring(0, 64)}`);
+  }
+  try { return JSON.parse(text); } catch {
+    throw new Error(`Invalid JSON from ${url}: ${text.slice(0, 120)}`);
+  }
+}
+
+export async function getMonthSummary(month: string) {
+  return fetchJson(`/charts/month_summary?month=${encodeURIComponent(month)}`);
+}
+
+export async function getMonthMerchants(month: string) {
+  return fetchJson(`/charts/month_merchants?month=${encodeURIComponent(month)}`);
+}
+
+export async function getMonthFlows(month: string) {
+  return fetchJson(`/charts/month_flows?month=${encodeURIComponent(month)}`);
+}
+
+export async function getSpendingTrends(months = 6) {
+  return fetchJson(`/charts/spending_trends?months=${months}`);
+}
 
 // ---------- Budgets ----------
 export const budgetCheck = (month: string) => http(`/budget/check${q({ month })}`)
@@ -39,9 +72,11 @@ export const getUnknowns = (month: string, limit=200) => http(`/txns/unknown${q(
 export const categorizeTxn = (id: number, category: string) => http(`/txns/${id}/categorize`, { method: 'POST', body: JSON.stringify({ category }) })
 
 // ---------- Rules ----------
+export const getRules = () => http(`/rules`)
 export const listRules = () => http(`/rules`)
 export const addRule = (rule: any) => http(`/rules`, { method: 'POST', body: JSON.stringify(rule) })
 export const deleteRule = (id: number) => http(`/rules/${id}`, { method: 'DELETE' })
+export const clearRules = () => http(`/rules`, { method: 'DELETE' })
 export const testRule = (seed: any) => http(`/rules/test`, { method: 'POST', body: JSON.stringify(seed) })
 
 // ---------- ML ----------
@@ -50,13 +85,26 @@ export const mlTrain = (month?: string, passes=2) => http(`/ml/train${q({ month,
 
 // ---------- Explain & Agent ----------
 export const getExplain = (txnId: number) => http(`/txns/${txnId}/explain`)
-export const agentChat = (message: string, context?: any) => http(`/agent/chat`, { method: 'POST', body: JSON.stringify({ message, context }) })
+
+export async function agentStatus() {
+  return fetchJson(`/agent/status`).catch(() => ({}));
+}
+
+export async function agentChat(prompt: string) {
+  return fetchJson(`/agent/chat`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ prompt }),
+  }).catch(() => ({}));
+}
 
 // ---------- CSV ingest ----------
-export async function uploadCsv(file: File, replace=true) {
-  const form = new FormData()
-  form.set('file', file)
-  const res = await fetch(`${API_BASE}/ingest${q({ replace })}`, { method: 'POST', body: form })
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
-  return res.json()
+// web/src/lib/api.ts
+export async function uploadCsv(file: File, replace = true) {
+  const form = new FormData();
+  form.append("file", file, file.name);
+  return fetchJson(`/ingest?replace=${replace ? "true" : "false"}`, {
+    method: "POST",
+    body: form,
+  });
 }

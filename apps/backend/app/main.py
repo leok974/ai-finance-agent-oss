@@ -31,7 +31,7 @@ app.include_router(alerts.router, prefix="/alerts", tags=["alerts"])
 app.include_router(insights.router, prefix="/insights", tags=["insights"])
 app.include_router(agent.router, prefix="/agent", tags=["agent"])
 app.include_router(explain.router, prefix="/txns", tags=["explain"])
-app.include_router(charts.router)  # NEW
+app.include_router(charts.router, prefix="/charts", tags=["charts"])  # NEW
 app.include_router(health_router.router, prefix="/health", tags=["health"])  # NEW
 
 
