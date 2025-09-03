@@ -5,10 +5,16 @@ from datetime import datetime, timedelta
 
 router = APIRouter()
 
+from ..utils.dates import latest_month_from_txns
+
 @router.get("/month_summary")
-def month_summary(month: str = Query(..., pattern=r"^\d{4}-\d{2}$")):
+def month_summary(month: str = Query(None, pattern=r"^\d{4}-\d{2}$")):
     """Get spending summary for a month"""
     from ..main import app
+    if not month:
+        month = latest_month_from_txns(app.state.txns)
+        if not month:
+            raise HTTPException(status_code=400, detail="No transactions loaded")
     
     # Filter transactions for the specified month
     month_txns = [t for t in app.state.txns if t["date"].startswith(month)]
@@ -39,9 +45,13 @@ def month_summary(month: str = Query(..., pattern=r"^\d{4}-\d{2}$")):
     }
 
 @router.get("/month_merchants")
-def month_merchants(month: str = Query(..., pattern=r"^\d{4}-\d{2}$")):
+def month_merchants(month: str = Query(None, pattern=r"^\d{4}-\d{2}$")):
     """Get top merchants for a month"""
     from ..main import app
+    if not month:
+        month = latest_month_from_txns(app.state.txns)
+        if not month:
+            raise HTTPException(status_code=400, detail="No transactions loaded")
     
     month_txns = [t for t in app.state.txns if t["date"].startswith(month)]
     
@@ -64,9 +74,13 @@ def month_merchants(month: str = Query(..., pattern=r"^\d{4}-\d{2}$")):
     }
 
 @router.get("/month_flows")
-def month_flows(month: str = Query(..., pattern=r"^\d{4}-\d{2}$")):
+def month_flows(month: str = Query(None, pattern=r"^\d{4}-\d{2}$")):
     """Get daily cash flows for a month"""
     from ..main import app
+    if not month:
+        month = latest_month_from_txns(app.state.txns)
+        if not month:
+            raise HTTPException(status_code=400, detail="No transactions loaded")
     
     month_txns = [t for t in app.state.txns if t["date"].startswith(month)]
     

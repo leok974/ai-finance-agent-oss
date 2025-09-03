@@ -1,32 +1,32 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { agentStatus, agentChat } from "../lib/api";
+import {
+  agentStatusOk,
+  agentChat,
+  getBudgetCheck,
+  getInsights,
+  getAlerts,
+  getMonthSummary,
+  getMonthMerchants,
+} from "../lib/api";
 
 type Msg = { role: "user" | "assistant" | "system"; content: string };
 
-const ChatDock: React.FC = () => {
-  const [open, setOpen] = useState<boolean>(() => {
-    const v = localStorage.getItem("chatdock_open");
-    return v ? v === "1" : true;
-  });
+interface ChatDockProps { month?: string }
+
+const ChatDock: React.FC<ChatDockProps> = ({ month }) => {
+  const [open, setOpen] = useState<boolean>(() => (localStorage.getItem("chatdock_open") ?? "1") === "1");
   const [ready, setReady] = useState(false);
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
+  const [toolBusy, setToolBusy] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     localStorage.setItem("chatdock_open", open ? "1" : "0");
   }, [open]);
 
-  useEffect(() => {
-    async function ping() {
-      try {
-        const r = await agentStatus();
-        if (r?.pong || r?.status === "ok") setReady(true);
-      } catch { /* leave ready=false */ }
-    }
-    ping();
-  }, []);
+  useEffect(() => { (async () => setReady(await agentStatusOk()))(); }, []);
 
   useEffect(() => {
     // autoscroll
@@ -35,32 +35,47 @@ const ChatDock: React.FC = () => {
     }
   }, [msgs, open]);
 
-  const send = useCallback(async () => {
-    if (!input.trim() || busy) return;
-    const q = input.trim();
-    setInput("");
-    const nextMsgs = [...msgs, { role: "user" as const, content: q }];
+  const send = useCallback(async (finalInput?: string) => {
+    const text = (finalInput ?? input).trim();
+    if (!text || busy) return;
+    if (!finalInput) setInput("");
+    const nextMsgs = [...msgs, { role: "user" as const, content: text }];
     setMsgs(nextMsgs);
     setBusy(true);
     try {
       const apiMsgs = nextMsgs.map((m) => ({ role: m.role, content: m.content }));
-      const r = await agentChat(apiMsgs, {
-        system: "You are Finance Agent OSS. Be concise and helpful.",
-      });
-      const text =
-        r?.reply ??
-        r?.content ??
-        (typeof r === "string" ? r : JSON.stringify(r));
-      setMsgs((xs) => [...xs, { role: "assistant", content: text }]);
+      const r = await agentChat(apiMsgs, { system: "You are Finance Agent OSS. Be concise and helpful." });
+      const reply = r?.reply ?? r?.content ?? (typeof r === "string" ? r : JSON.stringify(r));
+      setMsgs((xs) => [...xs, { role: "assistant", content: reply }]);
     } catch (e: any) {
-      setMsgs((xs) => [
-        ...xs,
-        { role: "system", content: `⚠️ Chat failed: ${e?.message ?? e}` },
-      ]);
+      setMsgs((xs) => [...xs, { role: "system", content: `⚠️ Chat failed: ${e?.message ?? e}` }]);
     } finally {
       setBusy(false);
     }
   }, [input, busy, msgs]);
+
+  // ---- Quick Tools: fetch data, add as system context, then ask model ----
+  const runToolAndAsk = useCallback(
+    async (label: string, fetcher: () => Promise<any>, userQuestion: string) => {
+      if (toolBusy) return;
+      setToolBusy(label);
+      try {
+        const data = await fetcher();
+        const payload = JSON.stringify(data).slice(0, 4000);
+        const toolContext = { role: "system" as const, content: `[tool:${label}] ${payload}` };
+        const nextMsgs = [...msgs, toolContext, { role: "user" as const, content: userQuestion }];
+        setMsgs(nextMsgs);
+        const r = await agentChat(nextMsgs, { system: "You are Finance Agent OSS. Use provided tool context if relevant." });
+        const reply = r?.reply ?? r?.content ?? (typeof r === "string" ? r : JSON.stringify(r));
+        setMsgs((xs) => [...xs, { role: "assistant", content: reply }]);
+      } catch (e: any) {
+        setMsgs((xs) => [...xs, { role: "system", content: `⚠️ ${label} failed: ${e?.message ?? e}` }]);
+      } finally {
+        setToolBusy(null);
+      }
+    },
+    [msgs, toolBusy]
+  );
 
   return (
     <>
@@ -81,13 +96,104 @@ const ChatDock: React.FC = () => {
               {ready ? "online" : "offline"}
             </div>
           </div>
-          <div
-            ref={scrollRef}
-            className="mx-3 h-64 overflow-auto rounded-xl bg-black/20 p-2 text-sm"
-          >
+          {/* Quick Tools */}
+          <div className="flex flex-wrap gap-2 px-3 pb-2">
+            <button
+              onClick={() =>
+                runToolAndAsk(
+                  "month_summary",
+                  () => getMonthSummary(month),
+                  month ? `Summarize my finances for ${month} (spend, income, net, notable categories).` : `Summarize my latest month finances (spend, income, net, notable categories).`
+                )
+              }
+              className="rounded-full border border-gray-700 px-2 py-1 text-xs text-gray-200 hover:bg-gray-800 disabled:opacity-50"
+              disabled={!!toolBusy || !ready}
+              title="Fetch totals + categories"
+            >
+              {toolBusy === "month_summary" ? "…" : "Summary"}
+            </button>
+
+            <button
+              onClick={() =>
+                runToolAndAsk(
+                  "top_merchants",
+                  () => getMonthMerchants(month),
+                  month ? `Which merchants dominated spending in ${month}? Any outliers?` : `Which merchants dominated spending in the latest month? Any outliers?`
+                )
+              }
+              className="rounded-full border border-gray-700 px-2 py-1 text-xs text-gray-200 hover:bg-gray-800 disabled:opacity-50"
+              disabled={!!toolBusy || !ready}
+              title="Fetch top merchants"
+            >
+              {toolBusy === "top_merchants" ? "…" : "Top merchants"}
+            </button>
+
+            <button
+              onClick={() =>
+                runToolAndAsk(
+                  "budget_check",
+                  () => getBudgetCheck(month),
+                  month ? `Where am I over/under budget in ${month}? Give brief guidance.` : `Where am I over/under budget for the latest month? Give brief guidance.`
+                )
+              }
+              className="rounded-full border border-gray-700 px-2 py-1 text-xs text-gray-200 hover:bg-gray-800 disabled:opacity-50"
+              disabled={!!toolBusy || !ready}
+              title="Fetch budget status"
+            >
+              {toolBusy === "budget_check" ? "…" : "Budgets"}
+            </button>
+
+            <button
+              onClick={() =>
+                runToolAndAsk(
+                  "alerts",
+                  () => getAlerts(),
+                  `Review current alerts and tell me what I should act on first.`
+                )
+              }
+              className="rounded-full border border-gray-700 px-2 py-1 text-xs text-gray-200 hover:bg-gray-800 disabled:opacity-50"
+              disabled={!!toolBusy || !ready}
+              title="Fetch alerts"
+            >
+              {toolBusy === "alerts" ? "…" : "Alerts"}
+            </button>
+
+            <button
+              onClick={() =>
+                runToolAndAsk(
+                  "insights",
+                  () => getInsights(),
+                  `Turn these insights into 2–3 bullet takeaways and one suggestion.`
+                )
+              }
+              className="rounded-full border border-gray-700 px-2 py-1 text-xs text-gray-200 hover:bg-gray-800 disabled:opacity-50"
+              disabled={!!toolBusy || !ready}
+              title="Fetch insights"
+            >
+              {toolBusy === "insights" ? "…" : "Insights"}
+            </button>
+
+            <button
+              onClick={() =>
+                runToolAndAsk(
+                  "context_month_hint",
+                  async () => (month ? { month } : {}), // light-weight context when available
+                  month ? `Find large transactions in ${month} over $500. Return a short list with date, merchant, and amount.` : `Find large transactions over $500 in the latest month. Return a short list with date, merchant, and amount.`
+                )
+              }
+              className="rounded-full border border-gray-700 px-2 py-1 text-xs text-gray-200 hover:bg-gray-800 disabled:opacity-50"
+              disabled={!!toolBusy || !ready}
+              title="Find > $500 txns this month"
+            >
+              {toolBusy === "context_month_hint" ? "…" : "Large txns > $500"}
+            </button>
+          </div>
+
+          {/* Transcript */}
+          <div ref={scrollRef} className="mx-3 h-64 overflow-auto rounded-xl bg-black/20 p-2 text-sm">
             {msgs.length === 0 && (
               <div className="text-gray-400">
-                Ask about months, categories, anomalies… e.g. “What changed from Oct to Dec?”
+                Ask about months, categories, anomalies… or tap a quick tool above.
               </div>
             )}
             {msgs.map((m, i) => (
@@ -117,7 +223,7 @@ const ChatDock: React.FC = () => {
               className="flex-1 rounded-xl border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-indigo-500"
             />
             <button
-              onClick={send}
+              onClick={() => send()}
               disabled={!ready || busy || !input.trim()}
               className={`rounded-xl px-3 py-2 text-sm font-medium ${
                 !ready || busy || !input.trim()
