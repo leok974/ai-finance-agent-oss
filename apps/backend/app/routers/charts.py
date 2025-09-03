@@ -1,152 +1,101 @@
-# apps/backend/app/routers/charts.py
-from fastapi import APIRouter, Query, HTTPException
+from fastapi import APIRouter, Query, Depends
 from collections import defaultdict
-from datetime import datetime, timedelta
+from sqlalchemy import select, func, case
+from sqlalchemy.orm import Session
+from app.db import get_db
+from app.orm_models import Transaction
 
 router = APIRouter()
 
-from ..utils.dates import latest_month_from_txns
+
+def _latest_month_db(db: Session) -> str | None:
+    return db.execute(select(func.max(Transaction.month))).scalar()
+
 
 @router.get("/month_summary")
-def month_summary(month: str = Query(None, pattern=r"^\d{4}-\d{2}$")):
-    """Get spending summary for a month"""
-    from ..main import app
+def month_summary(month: str = Query(None, pattern=r"^\d{4}-\d{2}$"), db: Session = Depends(get_db)):
+    """Get spending summary for a month (DB-backed)."""
     if not month:
-        txns = getattr(app.state, "txns", [])
-        month = latest_month_from_txns(txns)
+        month = _latest_month_db(db)
         if not month:
-            # Return empty summary instead of 400 when no data available
             return {"month": None, "total_spend": 0, "total_income": 0, "net": 0, "categories": []}
-    
-    # Filter transactions for the specified month
-    month_txns = [t for t in app.state.txns if t["date"].startswith(month)]
-    
-    # Calculate totals
-    total_spend = sum(abs(float(t["amount"])) for t in month_txns if float(t["amount"]) < 0)
-    total_income = sum(float(t["amount"]) for t in month_txns if float(t["amount"]) > 0)
-    
-    # Group by category
-    categories = defaultdict(float)
-    for t in month_txns:
-        if float(t["amount"]) < 0:  # Only expenses
-            cat = t.get("category", "Unknown")
-            categories[cat] += abs(float(t["amount"]))
-    
-    # Format categories for chart
-    category_data = [
-        {"name": cat, "amount": round(amount, 2)}
-        for cat, amount in sorted(categories.items(), key=lambda x: -x[1])
-    ]
-    
+
+    totals = db.execute(
+        select(
+            func.sum(case((Transaction.amount > 0, Transaction.amount), else_=0)).label("income"),
+            func.sum(case((Transaction.amount < 0, func.abs(Transaction.amount)), else_=0)).label("spend"),
+        ).where(Transaction.month == month)
+    ).one()
+    total_income = float(totals.income or 0)
+    total_spend = float(totals.spend or 0)
+
+    cat_rows = db.execute(
+        select(
+            func.coalesce(Transaction.category, "Unknown").label("cat"),
+            func.sum(func.abs(Transaction.amount)).label("amt"),
+        )
+        .where(Transaction.month == month, Transaction.amount < 0)
+        .group_by("cat")
+        .order_by(func.sum(func.abs(Transaction.amount)).desc())
+    ).all()
+    category_data = [{"name": c, "amount": round(float(a or 0), 2)} for (c, a) in cat_rows]
+
     return {
         "month": month,
         "total_spend": round(total_spend, 2),
         "total_income": round(total_income, 2),
         "net": round(total_income - total_spend, 2),
-        "categories": category_data
+        "categories": category_data,
     }
+
 
 @router.get("/month_merchants")
-def month_merchants(month: str = Query(None, pattern=r"^\d{4}-\d{2}$")):
-    """Get top merchants for a month"""
-    from ..main import app
+def month_merchants(month: str = Query(None, pattern=r"^\d{4}-\d{2}$"), db: Session = Depends(get_db)):
+    """Get top merchants for a month (DB-backed)."""
     if not month:
-        txns = getattr(app.state, "txns", [])
-        month = latest_month_from_txns(txns)
+        month = _latest_month_db(db)
         if not month:
             return {"month": None, "merchants": []}
-    
-    month_txns = [t for t in app.state.txns if t["date"].startswith(month)]
-    
-    # Group by merchant
-    merchants = defaultdict(float)
-    for t in month_txns:
-        if float(t["amount"]) < 0:  # Only expenses
-            merchant = t.get("merchant", "Unknown")
-            merchants[merchant] += abs(float(t["amount"]))
-    
-    # Sort by amount and take top 10
-    merchant_data = [
-        {"merchant": merchant, "amount": round(amount, 2)}
-        for merchant, amount in sorted(merchants.items(), key=lambda x: -x[1])[:10]
-    ]
-    
-    return {
-        "month": month,
-        "merchants": merchant_data
-    }
+
+    rows = db.execute(
+        select(
+            func.coalesce(Transaction.merchant, "Unknown").label("merchant"),
+            func.sum(func.abs(Transaction.amount)).label("amt"),
+        )
+        .where(Transaction.month == month, Transaction.amount < 0)
+        .group_by("merchant")
+        .order_by(func.sum(func.abs(Transaction.amount)).desc())
+        .limit(10)
+    ).all()
+    merchant_data = [{"merchant": m, "amount": round(float(a or 0), 2)} for (m, a) in rows]
+    return {"month": month, "merchants": merchant_data}
+
 
 @router.get("/month_flows")
-def month_flows(month: str = Query(None, pattern=r"^\d{4}-\d{2}$")):
-    """Get daily cash flows for a month"""
-    from ..main import app
+def month_flows(month: str = Query(None, pattern=r"^\d{4}-\d{2}$"), db: Session = Depends(get_db)):
+    """Get daily cash flows for a month (DB-backed)."""
     if not month:
-        txns = getattr(app.state, "txns", [])
-        month = latest_month_from_txns(txns)
+        month = _latest_month_db(db)
         if not month:
             return {"month": None, "series": []}
-    
-    month_txns = [t for t in app.state.txns if t["date"].startswith(month)]
-    
-    # Group by date
-    daily_flows = defaultdict(lambda: {"in": 0.0, "out": 0.0})
-    
-    for t in month_txns:
-        date = t["date"]
-        amount = float(t["amount"])
-        
-        if amount > 0:
-            daily_flows[date]["in"] += amount
-        else:
-            daily_flows[date]["out"] += abs(amount)
-    
-    # Convert to list and sort by date
-    flows_data = []
-    for date in sorted(daily_flows.keys()):
-        flows_data.append({
-            "date": date,
-            "in": round(daily_flows[date]["in"], 2),
-            "out": round(daily_flows[date]["out"], 2),
-            "net": round(daily_flows[date]["in"] - daily_flows[date]["out"], 2)
-        })
-    
-    return {
-        "month": month,
-        "series": flows_data
-    }
 
-@router.get("/spending_trends")
-def spending_trends(months: int = Query(6, ge=1, le=24)):
-    """Get spending trends over multiple months"""
-    from ..main import app
-    
-    # Get all available months from transactions
-    all_months = sorted(set(t["date"][:7] for t in app.state.txns))
-    recent_months = all_months[-months:] if len(all_months) > months else all_months
-    
-    trends = []
-    for month in recent_months:
-        month_txns = [t for t in app.state.txns if t["date"].startswith(month)]
-        
-        total_spend = sum(abs(float(t["amount"])) for t in month_txns if float(t["amount"]) < 0)
-        total_income = sum(float(t["amount"]) for t in month_txns if float(t["amount"]) > 0)
-        
-        # Category breakdown
-        categories = defaultdict(float)
-        for t in month_txns:
-            if float(t["amount"]) < 0:
-                cat = t.get("category", "Unknown")
-                categories[cat] += abs(float(t["amount"]))
-        
-        trends.append({
-            "month": month,
-            "spending": round(total_spend, 2),
-            "income": round(total_income, 2),
-            "net": round(total_income - total_spend, 2),
-            "categories": dict(categories)
-        })
-    
-    return {
-        "months": months,
-        "trends": trends
-    }
+    rows = db.execute(
+        select(
+            Transaction.date,
+            func.sum(case((Transaction.amount > 0, Transaction.amount), else_=0)).label("inc"),
+            func.sum(case((Transaction.amount < 0, func.abs(Transaction.amount)), else_=0)).label("out"),
+        )
+        .where(Transaction.month == month)
+        .group_by(Transaction.date)
+        .order_by(Transaction.date)
+    ).all()
+    series = [
+        {
+            "date": d.isoformat(),
+            "in": round(float(inc or 0), 2),
+            "out": round(float(out or 0), 2),
+            "net": round(float((inc or 0) - (out or 0)), 2),
+        }
+        for (d, inc, out) in rows
+    ]
+    return {"month": month, "series": series}

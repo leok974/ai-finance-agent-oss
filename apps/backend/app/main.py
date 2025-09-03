@@ -1,5 +1,7 @@
 
 from fastapi import FastAPI
+from .db import Base, engine
+from sqlalchemy import inspect
 from fastapi.middleware.cors import CORSMiddleware
 from .routers import ingest, txns, rules, ml, report, budget, alerts, insights, agent, explain
 from .routers import charts  # NEW
@@ -7,6 +9,18 @@ from .routers import health as health_router  # NEW
 from .utils.state import load_state, save_state
 
 app = FastAPI(title="AI Finance Agent", version="0.1.0")
+
+@app.on_event("startup")
+def _create_tables_dev():
+    # Dev convenience for SQLite; guard to avoid conflicts with Alembic
+    try:
+        if engine.url.get_backend_name().startswith("sqlite"):
+            insp = inspect(engine)
+            if "alembic_version" not in insp.get_table_names():
+                Base.metadata.create_all(bind=engine)
+    except Exception:
+        # If SQLAlchemy is not installed or engine misconfigured, ignore silently in hackathon mode
+        pass
 
 app.add_middleware(
     CORSMiddleware,
