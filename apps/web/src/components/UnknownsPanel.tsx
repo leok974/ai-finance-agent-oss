@@ -1,46 +1,55 @@
 import React, { useEffect, useState } from 'react'
-import { getUnknowns, categorize, explain } from '../lib/api'
+import Card from './Card'
+import { getUnknowns, categorizeTxn } from '../lib/api'
 
-export default function UnknownsPanel({ month, onChanged }:{ month: string, onChanged: ()=>void }){
-  const [rows, setRows] = useState<any[]>([])
+export default function UnknownsPanel({ month, onSeedRule, onChanged, refreshKey }: {
+  month: string
+  onSeedRule?: (seed: { id: number; merchant?: string; description?: string }) => void
+  onChanged?: () => void
+  refreshKey?: number
+}) {
+  const [items, setItems] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
 
-  async function refresh(){
+  async function load() {
     setLoading(true)
-    try {
-      const data = await getUnknowns(month)
-      setRows(data)
-    } finally { setLoading(false) }
+    try { setItems(await getUnknowns(month)) } finally { setLoading(false) }
   }
-  useEffect(()=>{ refresh() }, [month])
+  useEffect(()=>{ load() }, [month, refreshKey])
 
-  async function apply(txnId: number, cat: string){
-    await categorize(txnId, cat)
-    await refresh()
-    onChanged()
+  async function quickApply(id: number, category: string) {
+    await categorizeTxn(id, category)
+    setItems(s => s.filter(x => x.id !== id))
+    onChanged?.()
   }
 
   return (
-    <div className="card">
-      <div className="h"><h3>Unknowns</h3><span className="small">{rows.length} txns</span></div>
-      <hr/>
-      <div className="small code" style={{maxHeight: 360, overflow: 'auto'}}>
-        {rows.map((t:any)=>(
-          <div key={t.id} style={{display:'grid', gridTemplateColumns:'1fr auto', gap:8, alignItems:'center', padding:'6px 0'}}>
-            <div>
-              <div><b>{t.merchant}</b> — {t.description}</div>
-              <div>${"{:.2f}".format(0) if False else ""}</div>
-              <div className="small">{t.date} • ${t.amount.toFixed ? t.amount.toFixed(2) : t.amount}</div>
+    <Card title={`Unknowns — ${month}`} right={<span className="text-sm opacity-70">{items.length}</span>}>
+      {loading && <div className="opacity-70">Loading…</div>}
+      <ul className="space-y-2">
+        {items.map(tx => (
+          <li key={tx.id} className="rounded-lg border border-neutral-800 p-3 bg-neutral-900">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="font-medium">{tx.merchant ?? '—'}</div>
+                <div className="text-sm opacity-70">{tx.description ?? ''}</div>
+              </div>
+              <div className="text-right">
+                <div className="text-sm opacity-70">{new Date(tx.date).toLocaleDateString()}</div>
+                <div className="font-mono">{typeof tx.amount === 'number' ? `$${tx.amount.toFixed(2)}` : tx.amount}</div>
+              </div>
             </div>
-            <div style={{display:'flex', gap:6}}>
-              <button className="btn" onClick={async()=>{
-                const res = await explain(t.id)
-                alert(res.explain)
-              }}>Explain</button>
+            <div className="mt-2 flex gap-2">
+              <button className="px-2 py-1 rounded bg-neutral-800" onClick={()=> onSeedRule?.({ id: tx.id, merchant: tx.merchant, description: tx.description })}>Seed rule</button>
+              {['Groceries','Dining','Shopping'].map(c => (
+                <button key={c} className="px-2 py-1 rounded bg-blue-700 hover:bg-blue-600" onClick={()=>quickApply(tx.id, c)}>
+                  Apply {c}
+                </button>
+              ))}
             </div>
-          </div>
+          </li>
         ))}
-      </div>
-    </div>
+      </ul>
+    </Card>
   )
 }
