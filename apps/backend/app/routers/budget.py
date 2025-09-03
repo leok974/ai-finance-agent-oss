@@ -1,5 +1,6 @@
-from fastapi import APIRouter
-from typing import Dict, List
+from fastapi import APIRouter, HTTPException
+from typing import Dict, List, Optional
+from ..utils.dates import latest_month_from_txns
 
 router = APIRouter()
 
@@ -15,8 +16,12 @@ def list_budgets() -> Dict[str, float]:
     return BUDGETS
 
 @router.get("/check")
-def budget_check(month: str) -> List[Dict]:
+def budget_check(month: Optional[str] = None) -> List[Dict]:
     from ..main import app
+    if not month:
+        month = latest_month_from_txns(app.state.txns)
+        if not month:
+            raise HTTPException(status_code=400, detail="No transactions loaded")
     spent = {}
     for t in app.state.txns:
         if t["date"].startswith(month):

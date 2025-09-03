@@ -1,10 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import Card from './Card'
-import { mlSuggest, categorizeTxn, getExplain } from '../lib/api'
+import { getSuggestions, categorizeTxn, getExplain } from '../lib/api'
 
 type Suggestion = { txn_id: number; merchant?: string; description?: string; topk: Array<{ category: string; confidence: number }> }
 
-export default function SuggestionsPanel({ month, refreshKey }: { month: string; refreshKey?: number }) {
+export default function SuggestionsPanel({ month, refreshKey }: { month?: string; refreshKey?: number }) {
   const [items, setItems] = useState<Suggestion[]>([])
   const [selected, setSelected] = useState<Record<number, string>>({})
   const [loading, setLoading] = useState(false)
@@ -12,18 +12,36 @@ export default function SuggestionsPanel({ month, refreshKey }: { month: string;
   useEffect(()=>{ (async()=>{
     setLoading(true)
     try {
-      const res = await mlSuggest(month, 200, 3)
-      // ensure dedup per txn and per category
-      const src = Array.isArray(res?.items) ? res.items : Array.isArray(res) ? res : [];
-      const clean: Suggestion[] = src.map((s: any) => ({
-        txn_id: s.txn_id ?? s.id,
-        merchant: s.merchant,
-        description: s.description,
-        topk: Array.from(new Map((s.topk ?? []).map((x:any)=>[x.category,x]))).map(([,v])=>v).slice(0,3)
-      }))
+      const res = await getSuggestions(month)
+      // normalize various server shapes -> list of { txn_id, merchant, description, topk[] }
+      const arr: any[] = Array.isArray(res?.results)
+        ? res.results
+        : Array.isArray(res?.items)
+        ? res.items
+        : Array.isArray(res?.suggestions)
+        ? res.suggestions
+        : Array.isArray(res)
+        ? res
+        : []
+      // map to Suggestion shape
+      const mapped: Suggestion[] = arr.map((s: any) => {
+        const txn = s.txn || s.txn_obj || s
+        const suggs = s.suggestions || s.topk || []
+        const dedup = new Map<string, any>((suggs ?? []).map((x: any) => [String(x.category), x]))
+        const topk = Array.from(dedup.values()).slice(0, 3).map((v: any) => ({
+          category: String(v.category),
+          confidence: Number(v.confidence ?? v.score ?? 0)
+        }))
+        return {
+          txn_id: txn?.txn_id ?? txn?.id ?? s.txn_id ?? s.id,
+          merchant: txn?.merchant ?? s.merchant,
+          description: txn?.description ?? s.description,
+          topk
+        }
+      })
       // coalesce by txn (one card per txn)
       const byTxn = new Map<number, Suggestion>()
-      for (const s of clean) {
+      for (const s of mapped) {
         const prev = byTxn.get(s.txn_id)
         if (!prev) { byTxn.set(s.txn_id, s); continue }
         const cats = new Map(prev.topk.map(x=>[x.category,x]))
@@ -56,7 +74,7 @@ export default function SuggestionsPanel({ month, refreshKey }: { month: string;
   }
 
   return (
-    <Card title={`ML Suggestions — ${month}`} right={
+  <Card title={`ML Suggestions — ${month ?? '(latest)'}`} right={
       <div className="flex gap-2">
         <button className="px-2 py-1 rounded bg-blue-700 disabled:opacity-40" disabled={!canApply} onClick={applySelected}>Apply selected</button>
         <button className="px-2 py-1 rounded bg-emerald-700" onClick={()=>autoApplyBest(0.85)}>Auto‑apply best ≥ 0.85</button>
