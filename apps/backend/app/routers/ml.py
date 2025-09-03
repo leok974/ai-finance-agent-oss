@@ -22,9 +22,10 @@ def ml_status():
         return {"ok": False, "error": str(e)}
 
 from fastapi import HTTPException, Query
-from typing import List, Dict
+from typing import List, Dict, Optional
 from ..services.llm import LLMClient
 from ..services.rules_engine import apply_rules
+from ..utils.dates import latest_month_from_txns
 
 def dedup_and_topk(items: List[Dict], k: int = 3) -> List[Dict]:
     seen = set()
@@ -43,8 +44,17 @@ def dedup_and_topk(items: List[Dict], k: int = 3) -> List[Dict]:
     return out
 
 @router.get("/suggest")
-async def suggest(month: str, limit: int = 50, topk: int = 3):
+async def suggest(month: Optional[str] = Query(None, pattern=r"^\d{4}-\d{2}$"), limit: int = 50, topk: int = 3):
+    """
+    Return ML/rule-based suggestions for transactions in a month. If `month` is omitted,
+    default to the latest month available. Response includes both legacy fields and
+    a top-level `month` and `suggestions` for forward compatibility.
+    """
     from ..main import app
+    if not month:
+        month = latest_month_from_txns(app.state.txns)
+        if not month:
+            raise HTTPException(status_code=400, detail="No transactions loaded")
     items = [t for t in app.state.txns if t["date"].startswith(month) and (t.get("category") or "Unknown") == "Unknown"]
     items = items[:limit]
     llm = LLMClient()
@@ -61,4 +71,10 @@ async def suggest(month: str, limit: int = 50, topk: int = 3):
         suggestions = sorted(suggestions, key=lambda x: -float(x.get("confidence", 0.0)))
         suggestions = dedup_and_topk(suggestions, k=topk)
         out.append({"txn": t, "suggestions": suggestions})
-    return {"count": len(out), "results": out}
+    # Backward + forward compatible shape
+    return {
+        "month": month,
+        "count": len(out),
+        "results": out,
+        "suggestions": out,
+    }
