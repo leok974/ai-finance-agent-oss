@@ -47,8 +47,10 @@ def dedup_and_topk(items: List[Dict], k: int = 3) -> List[Dict]:
             break
     return out
 
-def _latest_month_db(db: Session) -> Optional[str]:
-    return db.execute(select(func.max(Transaction.month))).scalar()
+def _latest_month_str(db: Session) -> Optional[str]:
+    """Return YYYY-MM for the latest transaction date, or None."""
+    max_d = db.execute(select(func.max(Transaction.date))).scalar()
+    return max_d.strftime("%Y-%m") if max_d else None
 
 
 def to_txn_dict(t: Transaction) -> dict:
@@ -78,7 +80,10 @@ async def suggest(
     """
     from ..main import app
     if not month:
-        month = _latest_month_db(db)
+        # Prefer DB if available; fall back to in-memory test data
+        month = _latest_month_str(db)
+        if not month:
+            month = latest_month_from_txns(getattr(app.state, "txns", []))
         if not month:
             return {"month": None, "count": 0, "results": [], "suggestions": []}
 
@@ -113,7 +118,7 @@ async def suggest(
         suggestions.extend(llm_sug or [])
         suggestions = sorted(suggestions, key=lambda x: -float(x.get("confidence", 0.0)))
         suggestions = dedup_and_topk(suggestions, k=topk)
-    out.append({"txn": t, "suggestions": suggestions})
+        out.append({"txn": t, "suggestions": suggestions})
     # Backward + forward compatible shape
     return {
         "month": month,

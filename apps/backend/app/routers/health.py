@@ -1,8 +1,43 @@
-# apps/backend/app/routers/health.py
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
+from sqlalchemy import text, select
+from sqlalchemy.orm import Session
+from alembic.script import ScriptDirectory
+from alembic.config import Config as AlembicConfig
+import os
 import json, urllib.request
 
-router = APIRouter()
+from app.db import get_db
+from app.orm_models import Transaction
+
+router = APIRouter(tags=["health"])
+
+def _db_ping(db: Session) -> bool:
+    try:
+        db.execute(text("SELECT 1"))
+        return True
+    except Exception:
+        return False
+
+def _alembic_status(db: Session):
+    # DB revision (from alembic_version)
+    try:
+        row = db.execute(text("SELECT version_num FROM alembic_version")).first()
+        db_rev = row[0] if row else None
+    except Exception:
+        db_rev = None
+
+    # Codebase head (from alembic script)
+    try:
+        # finds alembic.ini next to your alembic/ folder
+        alembic_ini = os.path.join(os.getcwd(), "alembic.ini")
+        cfg = AlembicConfig(alembic_ini) if os.path.exists(alembic_ini) else AlembicConfig()
+        script = ScriptDirectory.from_config(cfg)
+        heads = script.get_heads()
+        code_head = heads[0] if heads else None
+    except Exception:
+        code_head = None
+
+    return {"db_revision": db_rev, "code_head": code_head, "in_sync": (db_rev == code_head and db_rev is not None)}
 
 def _ollama_tags():
     try:
@@ -44,4 +79,22 @@ def full_health():
         "api": {"ok": api_ok},
         "ml": {"ok": ml_ok, **ml_info},
         "agent": {"ok": agent_ok, **agent_info},
+    }
+
+@router.get("/healthz")
+def healthz(db: Session = Depends(get_db)):
+    ok = _db_ping(db)
+    # Quick entity check (optional): ensure table exists/readable
+    try:
+        db.execute(select(Transaction).limit(1))
+        models_ok = True
+    except Exception:
+        models_ok = False
+
+    alembic = _alembic_status(db)
+    status = "ok" if ok and models_ok and alembic["in_sync"] else "degraded"
+    return {
+        "status": status,
+        "db": {"reachable": ok, "models_ok": models_ok},
+        "alembic": alembic,
     }
