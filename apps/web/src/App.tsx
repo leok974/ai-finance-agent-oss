@@ -10,6 +10,7 @@ import { getReport, getInsights, getAlerts, getMonthSummary, getMonthMerchants, 
 import RulesPanel from "./components/RulesPanel";
 import ChatDock from "./components/ChatDock";
 import ChartsPanel from "./components/ChartsPanel";
+import TopEmptyBanner from "./components/TopEmptyBanner";
 
 
 const App: React.FC = () => {
@@ -19,6 +20,8 @@ const App: React.FC = () => {
   const [report, setReport] = useState<any>(null)
   const [insights, setInsights] = useState<any>(null)
   const [alerts, setAlerts] = useState<any>(null)
+  const [empty, setEmpty] = useState<boolean>(false)
+  const [bannerDismissed, setBannerDismissed] = useState<boolean>(false)
 
   useEffect(()=>{ (async()=>{
     try {
@@ -28,6 +31,16 @@ const App: React.FC = () => {
       await Promise.all([getMonthSummary(month), getMonthMerchants(month), getMonthFlows(month)])
     } catch {}
   })() }, [month, refreshKey])
+
+  // Probe backend emptiness (latest by default). If charts summary returns null or month:null, show banner.
+  useEffect(() => { (async () => {
+    try {
+      const s = await getMonthSummary();
+      setEmpty(!s || s?.month == null);
+    } catch {
+      setEmpty(true);
+    }
+  })() }, [refreshKey])
 
   const onCsvUploaded = useCallback(() => {
     setRefreshKey((k) => k + 1);
@@ -45,8 +58,12 @@ const App: React.FC = () => {
           </div>
         </header>
 
+        {!bannerDismissed && empty && (
+          <TopEmptyBanner onDismiss={() => setBannerDismissed(true)} />
+        )}
+
         {/* Upload CSV */}
-        <UploadCsv defaultReplace={true} onUploaded={onCsvUploaded} />
+  <UploadCsv defaultReplace={true} onUploaded={onCsvUploaded} />
 
         {/* Insights */}
   <InsightsCard insights={insights} />

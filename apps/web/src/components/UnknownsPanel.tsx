@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import Card from './Card'
 import { getUnknowns, explainTxn, categorizeTxn } from '../lib/api'
+import EmptyState from './EmptyState'
 
 export default function UnknownsPanel({ month, onSeedRule, onChanged, refreshKey }: {
   month?: string
@@ -11,14 +12,25 @@ export default function UnknownsPanel({ month, onSeedRule, onChanged, refreshKey
   const [items, setItems] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [empty, setEmpty] = useState(false)
+  const [resolvedMonth, setResolvedMonth] = useState<string | null>(null)
 
   async function load() {
     setLoading(true)
     setError(null)
+    setEmpty(false)
     try {
       const data = await getUnknowns(month)
-      const rows = Array.isArray(data) ? data : (data as any)?.unknowns ?? data ?? []
-      setItems(rows)
+      if (!data) {
+        setEmpty(true)
+        setItems([])
+        setResolvedMonth(null)
+      } else {
+        const rows = Array.isArray(data) ? data : (data as any)?.unknowns ?? data ?? []
+        setItems(rows)
+        const m = (data as any)?.month
+        setResolvedMonth(typeof m === 'string' ? m : (month ?? null))
+      }
     } catch (e: any) {
       setError(e?.message ?? String(e))
     } finally { setLoading(false) }
@@ -31,11 +43,14 @@ export default function UnknownsPanel({ month, onSeedRule, onChanged, refreshKey
     onChanged?.()
   }
 
-  const titleMonth = month ? `— ${month}` : '— (latest)'
+  const titleMonth = (resolvedMonth ?? month) ? `— ${resolvedMonth ?? month}` : '— (latest)'
   return (
     <Card title={`Unknowns ${titleMonth}`} right={<span className="text-sm opacity-70">{items.length}</span>}>
       {loading && <div className="opacity-70">Loading…</div>}
-      {error && <div className="text-sm text-rose-300">{error}</div>}
+      {error && !empty && <div className="text-sm text-rose-300">{error}</div>}
+      {empty && !error && (
+        <EmptyState title="No transactions yet" note="Upload a CSV to view and categorize unknowns." />
+      )}
       <ul className="space-y-2">
         {items.map(tx => (
           <li key={tx.id} className="rounded-lg border border-neutral-800 p-3 bg-neutral-900">
