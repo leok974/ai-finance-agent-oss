@@ -151,3 +151,24 @@ date,amount,merchant,description,account,category
     assert latest["month"] == "2025-08"
     assert _almost(latest["income"], 169.99)
     assert _almost(latest["spending"], 15.00)
+
+
+def test_transfers_not_counted_as_spend(client: TestClient):
+    # Two transfers (in/out) and one real expense; spending should only reflect the expense.
+    csv = """\
+date,amount,merchant,description,account,category
+2025-08-20,500.00,Checking,Transfer from savings,Checking,Transfer In
+2025-08-21,500.00,Savings,Transfer to checking,Savings,Transfer Out
+2025-08-22,42.00,Groceries,Weekly shop,Visa,
+"""
+    _ingest_csv(client, csv)
+
+    r = client.get("/charts/month_summary")
+    assert r.status_code == 200, r.text
+    ms = r.json()
+    # Key assertion: transfers are NOT spend; only the groceries row is spend.
+    assert ms["month"] == "2025-08"
+    assert _almost(ms["total_spend"], 42.00)
+
+    # (We don't assert on income here to keep the test compatible
+    #  whether you choose to exclude transfers from income or count Transfer In as income.)
