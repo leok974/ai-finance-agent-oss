@@ -1,9 +1,30 @@
-from fastapi import APIRouter, HTTPException, Query
+
+from fastapi import APIRouter
+import json, urllib.request
+
+# ensure we have a router to attach endpoints to
+router = APIRouter()
+
+@router.get("/status")
+def ml_status():
+    """Check if Ollama is running and which models are available."""
+    try:
+        with urllib.request.urlopen("http://127.0.0.1:11434/api/tags", timeout=1.0) as resp:
+            data = json.loads(resp.read().decode("utf-8", errors="ignore"))
+            models = []
+            if isinstance(data, dict) and isinstance(data.get("models"), list):
+                for m in data["models"]:
+                    name = (m or {}).get("name")
+                    if name:
+                        models.append(name)
+            return {"ok": True, "models": models}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+from fastapi import HTTPException, Query
 from typing import List, Dict
 from ..services.llm import LLMClient
 from ..services.rules_engine import apply_rules
-
-router = APIRouter()
 
 def dedup_and_topk(items: List[Dict], k: int = 3) -> List[Dict]:
     seen = set()
