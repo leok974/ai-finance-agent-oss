@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException
 from typing import List, Optional, Dict, Any
 from ..models import Txn, CategorizeRequest
 from ..utils.dates import latest_month_from_txns
+from ..utils.state import save_state
 
 router = APIRouter()
 
@@ -18,12 +19,12 @@ def get_unknowns(month: Optional[str] = None) -> Dict[str, Any]:
     from ..main import app
     items = getattr(app.state, "txns", [])
     if not items:
-        raise HTTPException(status_code=400, detail="No transactions loaded")
+        return {"month": None, "unknowns": []}
 
     if not month:
         month = latest_month_from_txns(items)
         if not month:
-            raise HTTPException(status_code=400, detail="No transactions loaded")
+            return {"month": None, "unknowns": []}
 
     month_items = [t for t in items if month_of(t.get("date", "")) == month]
     unknowns = [Txn(**t) for t in month_items if (t.get("category") or "Unknown") == "Unknown"]
@@ -37,6 +38,7 @@ def categorize(txn_id: int, req: CategorizeRequest):
             t["category"] = req.category
             # Track supervision for future training
             app.state.user_labels.append({"txn_id": txn_id, "category": req.category})
+            save_state(app)
             return {"ok": True, "txn": t}
     raise HTTPException(status_code=404, detail="Transaction not found")
 
