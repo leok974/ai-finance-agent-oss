@@ -49,13 +49,14 @@ const App: React.FC = () => {
         <UploadCsv defaultReplace={true} onUploaded={onCsvUploaded} />
 
         {/* Insights */}
-        <InsightsCard insights={insights} />
-        <ChartsPanel month={month} refreshKey={refreshKey} />
+  <InsightsCard insights={insights} />
+  {/* ChartsPanel can omit month to use latest by default */}
+  <ChartsPanel refreshKey={refreshKey} />
 
         {/* Main grid */}
         <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-          <UnknownsPanel month={month} refreshKey={refreshKey} />
-          <SuggestionsPanel month={month} refreshKey={refreshKey} />
+          <UnknownsPanel refreshKey={refreshKey} />
+          <SuggestionsPanel refreshKey={refreshKey} />
         </div>
 
         {/* Rules + Tester */}
@@ -64,7 +65,7 @@ const App: React.FC = () => {
           <RuleTesterPanel onChanged={() => setRefreshKey((k) => k + 1)} />
         </div>
       </div>
-      <ChatDock />
+  <ChatDock />
     </div>
   );
 };

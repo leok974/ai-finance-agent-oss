@@ -29,8 +29,11 @@ async function http<T=any>(path: string, init?: RequestInit): Promise<T> {
 
 // ---------- Reports / Insights / Alerts ----------
 export const getReport = (month?: string) => http(`/report${q({ month })}`)
-export const getInsights = (month?: string) => http(`/insights${q({ month })}`)
-export const getAlerts = (month?: string) => http(`/alerts${q({ month })}`)
+// Use robust fetchJson; keep optional month for backward-compat callers
+export const getInsights = (month?: string) =>
+  fetchJson(`/insights${month ? `?month=${encodeURIComponent(month)}` : ""}`)
+export const getAlerts = (month?: string) =>
+  fetchJson(`/alerts${month ? `?month=${encodeURIComponent(month)}` : ""}`)
 export const downloadReportCsv = (month: string) => window.open(`${API_BASE || ""}/report_csv${q({ month })}`,'_blank')
 
 // ---------- Charts ----------
@@ -48,16 +51,19 @@ async function fetchJson(path: string, init?: RequestInit) {
   }
 }
 
-export async function getMonthSummary(month: string) {
-  return fetchJson(`/charts/month_summary?month=${encodeURIComponent(month)}`);
+export async function getMonthSummary(month?: string) {
+  const qs = month ? `?month=${encodeURIComponent(month)}` : "";
+  return fetchJson(`/charts/month_summary${qs}`);
 }
 
-export async function getMonthMerchants(month: string) {
-  return fetchJson(`/charts/month_merchants?month=${encodeURIComponent(month)}`);
+export async function getMonthMerchants(month?: string) {
+  const qs = month ? `?month=${encodeURIComponent(month)}` : "";
+  return fetchJson(`/charts/month_merchants${qs}`);
 }
 
-export async function getMonthFlows(month: string) {
-  return fetchJson(`/charts/month_flows?month=${encodeURIComponent(month)}`);
+export async function getMonthFlows(month?: string) {
+  const qs = month ? `?month=${encodeURIComponent(month)}` : "";
+  return fetchJson(`/charts/month_flows${qs}`);
 }
 
 export async function getSpendingTrends(months = 6) {
@@ -65,10 +71,27 @@ export async function getSpendingTrends(months = 6) {
 }
 
 // ---------- Budgets ----------
-export const budgetCheck = (month: string) => http(`/budget/check${q({ month })}`)
+export const budgetCheck = (month?: string) => {
+  const qs = month ? `?month=${encodeURIComponent(month)}` : "";
+  return fetchJson(`/budget/check${qs}`);
+}
+export const getBudgetCheck = (month?: string) => {
+  const qs = month ? `?month=${encodeURIComponent(month)}` : "";
+  return fetchJson(`/budget/check${qs}`);
+}
 
-// ---------- Unknowns / Txns ----------
-export const getUnknowns = (month: string, limit=200) => http(`/txns/unknown${q({ month, limit })}`)
+// ---------- Unknowns / Suggestions ----------
+export async function getUnknowns(month?: string) {
+  const qs = month ? `?month=${encodeURIComponent(month)}` : "";
+  return fetchJson(`/txns/unknowns${qs}`);
+}
+
+export async function getSuggestions(month?: string) {
+  const qs = month ? `?month=${encodeURIComponent(month)}` : "";
+  return fetchJson(`/ml/suggest${qs}`);
+}
+
+// If you have explain/categorize helpers, keep them as-is
 export const categorizeTxn = (id: number, category: string) => http(`/txns/${id}/categorize`, { method: 'POST', body: JSON.stringify({ category }) })
 
 // ---------- Rules ----------
@@ -85,6 +108,9 @@ export const mlTrain = (month?: string, passes=2) => http(`/ml/train${q({ month,
 
 // ---------- Explain & Agent ----------
 export const getExplain = (txnId: number) => http(`/txns/${txnId}/explain`)
+export async function explainTxn(id: number) {
+  return fetchJson(`/txns/explain?id=${id}`);
+}
 
 export async function agentStatus() {
   return fetchJson(`/agent/status`).catch(() => ({}));

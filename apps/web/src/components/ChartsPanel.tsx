@@ -21,7 +21,8 @@ const LineChart = RC.LineChart as unknown as React.FC<any>;
 const Line = RC.Line as unknown as React.FC<any>;
 
 interface Props {
-  month: string;
+  /** Optional. If omitted, backend uses latest month in txns. */
+  month?: string;
   refreshKey?: number;
 }
 
@@ -36,6 +37,9 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
   const [trends, setTrends] = useState<any | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // resolvedMonth prefers server-returned month, falls back to prop
+  const resolvedMonth = summary?.month ?? month ?? "(latest)";
+
   useEffect(() => {
     let alive = true;
     async function run() {
@@ -43,7 +47,7 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
       setError(null);
       try {
         const [s, m, f, t] = await Promise.all([
-          getMonthSummary(month),
+          getMonthSummary(month),    // month is optional now
           getMonthMerchants(month),
           getMonthFlows(month),
           getSpendingTrends(6),
@@ -76,7 +80,7 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
 
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-      <Card title={`Overview — ${month}`}>
+  <Card title={`Overview — ${resolvedMonth}`}>
         {loading && <p className="text-sm text-gray-400">Loading charts…</p>}
         {error && <p className="text-sm text-rose-300">Error: {error}</p>}
         {!loading && !error && summary && (
@@ -106,17 +110,14 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
       <Card title="Top Categories (expenses)">
         {loading && <p className="text-sm text-gray-400">Loading…</p>}
         {!loading && categoriesData.length === 0 && (
-          <p className="text-sm text-gray-400">No category data for this month.</p>
+          <p className="text-sm text-gray-400">No category data.</p>
         )}
         {!loading && categoriesData.length > 0 && (
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={categoriesData}>
                 <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="name" />
-                <YAxis />
-                <Tooltip />
-                <Legend />
+                <XAxis dataKey="name" /><YAxis /><Tooltip /><Legend />
                 <Bar dataKey="amount" name="Spend" />
               </BarChart>
             </ResponsiveContainer>
@@ -127,17 +128,14 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
       <Card title="Top Merchants (expenses)">
         {loading && <p className="text-sm text-gray-400">Loading…</p>}
         {!loading && merchantsData.length === 0 && (
-          <p className="text-sm text-gray-400">No merchant data for this month.</p>
+          <p className="text-sm text-gray-400">No merchant data.</p>
         )}
         {!loading && merchantsData.length > 0 && (
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={merchantsData}>
                 <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="merchant" />
-                <YAxis />
-                <Tooltip />
-                <Legend />
+                <XAxis dataKey="merchant" /><YAxis /><Tooltip /><Legend />
                 <Bar dataKey="amount" name="Spend" />
               </BarChart>
             </ResponsiveContainer>
@@ -148,17 +146,14 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
       <Card title="Daily Flows">
         {loading && <p className="text-sm text-gray-400">Loading…</p>}
         {!loading && flowsData.length === 0 && (
-          <p className="text-sm text-gray-400">No flow data for this month.</p>
+          <p className="text-sm text-gray-400">No flow data.</p>
         )}
         {!loading && flowsData.length > 0 && (
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={flowsData}>
                 <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="date" />
-                <YAxis />
-                <Tooltip />
-                <Legend />
+                <XAxis dataKey="date" /><YAxis /><Tooltip /><Legend />
                 <Line type="monotone" dataKey="in" name="In" />
                 <Line type="monotone" dataKey="out" name="Out" />
                 <Line type="monotone" dataKey="net" name="Net" />
