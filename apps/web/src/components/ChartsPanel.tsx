@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import Card from "./Card";
+import EmptyState from "./EmptyState";
 import * as RC from "recharts";
 import {
   getMonthSummary,
@@ -35,6 +36,7 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
   const [merchants, setMerchants] = useState<any | null>(null);
   const [flows, setFlows] = useState<any | null>(null);
   const [trends, setTrends] = useState<any | null>(null);
+  const [empty, setEmpty] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // resolvedMonth prefers server-returned month, falls back to prop
@@ -45,6 +47,7 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
     async function run() {
       setLoading(true);
       setError(null);
+      setEmpty(false);
       try {
         const [s, m, f, t] = await Promise.all([
           getMonthSummary(month),    // month is optional now
@@ -53,10 +56,20 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
           getSpendingTrends(6),
         ]);
         if (!alive) return;
-        setSummary(s);
-        setMerchants(m);
-        setFlows(f);
-        setTrends(t);
+        // consider backend-empty cases: nulls from 400 handler, or objects with month: null
+        const isEmpty = (!s && !m && !f) || ((s?.month ?? null) === null && (m?.month ?? null) === null && (f?.month ?? null) === null);
+        if (isEmpty) {
+          setEmpty(true);
+          setSummary(null);
+          setMerchants(null);
+          setFlows(null);
+          setTrends(t ?? null);
+        } else {
+          setSummary(s);
+          setMerchants(m);
+          setFlows(f);
+          setTrends(t);
+        }
       } catch (e: any) {
         if (!alive) return;
         setError(e?.message ?? String(e));
@@ -80,9 +93,14 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
 
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+      {empty && !error && (
+        <div className="lg:col-span-2">
+          <EmptyState title="No transactions yet" note="Once you upload, charts will populate automatically." />
+        </div>
+      )}
   <Card title={`Overview — ${resolvedMonth}`}>
         {loading && <p className="text-sm text-gray-400">Loading charts…</p>}
-        {error && <p className="text-sm text-rose-300">Error: {error}</p>}
+        {error && !empty && <p className="text-sm text-rose-300">Error: {error}</p>}
         {!loading && !error && summary && (
           <div className="grid grid-cols-3 gap-4 text-sm">
             <div className="rounded-xl bg-gray-800/50 p-3">

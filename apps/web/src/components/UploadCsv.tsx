@@ -10,7 +10,7 @@ type UploadResult = {
 
 interface UploadCsvProps {
   /** Called after a successful upload. Useful to refresh Unknowns/Suggestions. */
-  onUploaded?: (result: UploadResult) => void;
+  onUploaded?: (result?: UploadResult) => void;
   /** Default for the "Replace existing data" toggle. */
   defaultReplace?: boolean;
   /** Optional className passthrough. */
@@ -73,7 +73,7 @@ const UploadCsv: React.FC<UploadCsvProps> = ({ onUploaded, defaultReplace = true
       const data = await uploadCsv(file, replace);
       const r: UploadResult = { ok: true, data, message: "CSV ingested successfully." };
       setResult(r);
-      onUploaded?.(r);
+  onUploaded?.(r);
       // optional: reset file after success
       // reset();
     } catch (err: any) {

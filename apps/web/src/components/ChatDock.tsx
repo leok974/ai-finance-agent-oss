@@ -9,7 +9,7 @@ import {
   getMonthMerchants,
 } from "../lib/api";
 
-type Msg = { role: "user" | "assistant" | "system"; content: string };
+type Msg = { role: "user" | "assistant" | "system"; content: string; onboarding?: boolean };
 
 interface ChatDockProps { month?: string }
 
@@ -28,6 +28,27 @@ const ChatDock: React.FC<ChatDockProps> = ({ month }) => {
 
   useEffect(() => { (async () => setReady(await agentStatusOk()))(); }, []);
 
+  // --- Onboarding helper: if backend has no txns, show message and bail ---
+  const ensureDataOrOnboard = useCallback(async (): Promise<boolean> => {
+    try {
+      const s = await getMonthSummary(); // returns null when backend is empty
+      if (!s) {
+        setMsgs((prev) => [
+          ...prev,
+          { role: "assistant", content: "No data yet — upload a CSV to begin.", onboarding: true },
+        ]);
+        return false;
+      }
+      return true;
+    } catch {
+      setMsgs((prev) => [
+        ...prev,
+        { role: "assistant", content: "No data yet — upload a CSV to begin.", onboarding: true },
+      ]);
+      return false;
+    }
+  }, []);
+
   useEffect(() => {
     // autoscroll
     if (scrollRef.current) {
@@ -45,8 +66,15 @@ const ChatDock: React.FC<ChatDockProps> = ({ month }) => {
     try {
       const apiMsgs = nextMsgs.map((m) => ({ role: m.role, content: m.content }));
       const r = await agentChat(apiMsgs, { system: "You are Finance Agent OSS. Be concise and helpful." });
-      const reply = r?.reply ?? r?.content ?? (typeof r === "string" ? r : JSON.stringify(r));
-      setMsgs((xs) => [...xs, { role: "assistant", content: reply }]);
+      if (!r) {
+        setMsgs((xs) => [
+          ...xs,
+          { role: "assistant", content: "No data yet — upload a CSV to begin.", onboarding: true },
+        ]);
+      } else {
+        const reply = r?.reply ?? r?.content ?? (typeof r === "string" ? r : JSON.stringify(r));
+        setMsgs((xs) => [...xs, { role: "assistant", content: reply }]);
+      }
     } catch (e: any) {
       setMsgs((xs) => [...xs, { role: "system", content: `⚠️ Chat failed: ${e?.message ?? e}` }]);
     } finally {
@@ -66,8 +94,15 @@ const ChatDock: React.FC<ChatDockProps> = ({ month }) => {
         const nextMsgs = [...msgs, toolContext, { role: "user" as const, content: userQuestion }];
         setMsgs(nextMsgs);
         const r = await agentChat(nextMsgs, { system: "You are Finance Agent OSS. Use provided tool context if relevant." });
-        const reply = r?.reply ?? r?.content ?? (typeof r === "string" ? r : JSON.stringify(r));
-        setMsgs((xs) => [...xs, { role: "assistant", content: reply }]);
+        if (!r) {
+          setMsgs((xs) => [
+            ...xs,
+            { role: "assistant", content: "No data yet — upload a CSV to begin.", onboarding: true },
+          ]);
+        } else {
+          const reply = r?.reply ?? r?.content ?? (typeof r === "string" ? r : JSON.stringify(r));
+          setMsgs((xs) => [...xs, { role: "assistant", content: reply }]);
+        }
       } catch (e: any) {
         setMsgs((xs) => [...xs, { role: "system", content: `⚠️ ${label} failed: ${e?.message ?? e}` }]);
       } finally {
@@ -99,13 +134,14 @@ const ChatDock: React.FC<ChatDockProps> = ({ month }) => {
           {/* Quick Tools */}
           <div className="flex flex-wrap gap-2 px-3 pb-2">
             <button
-              onClick={() =>
+              onClick={async () => {
+                if (!(await ensureDataOrOnboard())) return;
                 runToolAndAsk(
                   "month_summary",
                   () => getMonthSummary(month),
                   month ? `Summarize my finances for ${month} (spend, income, net, notable categories).` : `Summarize my latest month finances (spend, income, net, notable categories).`
-                )
-              }
+                );
+              }}
               className="rounded-full border border-gray-700 px-2 py-1 text-xs text-gray-200 hover:bg-gray-800 disabled:opacity-50"
               disabled={!!toolBusy || !ready}
               title="Fetch totals + categories"
@@ -114,13 +150,14 @@ const ChatDock: React.FC<ChatDockProps> = ({ month }) => {
             </button>
 
             <button
-              onClick={() =>
+              onClick={async () => {
+                if (!(await ensureDataOrOnboard())) return;
                 runToolAndAsk(
                   "top_merchants",
                   () => getMonthMerchants(month),
                   month ? `Which merchants dominated spending in ${month}? Any outliers?` : `Which merchants dominated spending in the latest month? Any outliers?`
-                )
-              }
+                );
+              }}
               className="rounded-full border border-gray-700 px-2 py-1 text-xs text-gray-200 hover:bg-gray-800 disabled:opacity-50"
               disabled={!!toolBusy || !ready}
               title="Fetch top merchants"
@@ -129,13 +166,14 @@ const ChatDock: React.FC<ChatDockProps> = ({ month }) => {
             </button>
 
             <button
-              onClick={() =>
+              onClick={async () => {
+                if (!(await ensureDataOrOnboard())) return;
                 runToolAndAsk(
                   "budget_check",
                   () => getBudgetCheck(month),
                   month ? `Where am I over/under budget in ${month}? Give brief guidance.` : `Where am I over/under budget for the latest month? Give brief guidance.`
-                )
-              }
+                );
+              }}
               className="rounded-full border border-gray-700 px-2 py-1 text-xs text-gray-200 hover:bg-gray-800 disabled:opacity-50"
               disabled={!!toolBusy || !ready}
               title="Fetch budget status"
@@ -174,13 +212,14 @@ const ChatDock: React.FC<ChatDockProps> = ({ month }) => {
             </button>
 
             <button
-              onClick={() =>
+              onClick={async () => {
+                if (!(await ensureDataOrOnboard())) return;
                 runToolAndAsk(
                   "context_month_hint",
                   async () => (month ? { month } : {}), // light-weight context when available
                   month ? `Find large transactions in ${month} over $500. Return a short list with date, merchant, and amount.` : `Find large transactions over $500 in the latest month. Return a short list with date, merchant, and amount.`
-                )
-              }
+                );
+              }}
               className="rounded-full border border-gray-700 px-2 py-1 text-xs text-gray-200 hover:bg-gray-800 disabled:opacity-50"
               disabled={!!toolBusy || !ready}
               title="Find > $500 txns this month"
@@ -200,7 +239,9 @@ const ChatDock: React.FC<ChatDockProps> = ({ month }) => {
               <div key={i} className="mb-2">
                 <span
                   className={`mr-2 rounded px-1.5 py-0.5 text-[11px] ${
-                    m.role === "user"
+                    m.onboarding
+                      ? "bg-amber-700/70 text-amber-100"
+                      : m.role === "user"
                       ? "bg-indigo-600/70 text-white"
                       : m.role === "assistant"
                       ? "bg-emerald-600/70 text-white"
@@ -209,7 +250,7 @@ const ChatDock: React.FC<ChatDockProps> = ({ month }) => {
                 >
                   {m.role}
                 </span>
-                <span className="whitespace-pre-wrap text-gray-100">{m.content}</span>
+                <span className={`whitespace-pre-wrap ${m.onboarding ? "text-amber-200" : "text-gray-100"}`}>{m.content}</span>
               </div>
             ))}
           </div>

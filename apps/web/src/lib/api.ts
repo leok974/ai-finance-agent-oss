@@ -1,10 +1,6 @@
 // Resolve API base from env, with a dev fallback when running Vite on port 5173
-const envBase = (import.meta as any)?.env?.VITE_API_BASE as string | undefined;
-const devDefault =
-  typeof window !== "undefined" && window.location?.port === "5173"
-    ? "http://127.0.0.1:8000"
-    : "";
-export const API_BASE: string = (envBase && envBase.trim()) || devDefault;
+export const API_BASE = (import.meta as any)?.env?.VITE_API_BASE
+  || (typeof window !== "undefined" && window.location?.port === "5173" ? "http://127.0.0.1:8000" : "");
 
 function q(params: Record<string, any>) {
   const usp = new URLSearchParams()
@@ -42,11 +38,17 @@ async function fetchJson(path: string, init?: RequestInit) {
   const res = await fetch(url, init);
   const text = await res.text();
   const ctype = res.headers.get("content-type") || "";
-  if (!res.ok) throw new Error(text || `${url} failed: ${res.status}`);
-  if (!ctype.includes("application/json")) {
-    throw new Error(`Expected JSON, got: ${ctype.substring(0, 64)}`);
+  if (!res.ok) {
+    if (res.status === 400 && /No transactions loaded/i.test(text)) {
+      // allow panels to render gracefully when backend has no data yet
+      return null;
+    }
+    throw new Error(text || `${url} failed: ${res.status}`);
   }
-  try { return JSON.parse(text); } catch {
+  if (!ctype.includes("application/json")) {
+    throw new Error(`Expected JSON, got: ${ctype}`);
+  }
+  try { return JSON.parse(text || "null"); } catch {
     throw new Error(`Invalid JSON from ${url}: ${text.slice(0, 120)}`);
   }
 }
