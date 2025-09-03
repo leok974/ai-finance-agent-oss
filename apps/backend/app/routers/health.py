@@ -20,14 +20,14 @@ def _ollama_tags():
 
 def _ollama_generate_ping(model="gpt-oss:20b"):
     try:
-        body = json.dumps({"model": model, "prompt": "ping"})
+        body = json.dumps({"model": model, "prompt": "ping", "stream": False})
         req = urllib.request.Request(
             "http://127.0.0.1:11434/api/generate",
             data=body.encode("utf-8"),
             headers={"Content-Type": "application/json"},
             method="POST",
         )
-        with urllib.request.urlopen(req, timeout=2.0) as resp:
+        with urllib.request.urlopen(req, timeout=5.0) as resp:
             data = json.loads(resp.read().decode("utf-8", errors="ignore"))
             return True, {"reply": data.get("response", "")}
     except Exception as e:
