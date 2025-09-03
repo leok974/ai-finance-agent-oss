@@ -16,7 +16,9 @@
     "noEmit": true,
     "types": [
       "vite/client"
-    ]
+    ],
+    "strict": true,
+    "esModuleInterop": true
   },
   "include": [
     "src"

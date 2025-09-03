@@ -1,0 +1,195 @@
+import React, { useEffect, useMemo, useState } from "react";
+import Card from "./Card";
+import * as RC from "recharts";
+import {
+  getMonthSummary,
+  getMonthMerchants,
+  getMonthFlows,
+  getSpendingTrends,
+} from "../lib/api";
+
+// Cast so TS treats them as FCs (safe for now)
+const ResponsiveContainer = RC.ResponsiveContainer as unknown as React.FC<any>;
+const CartesianGrid = RC.CartesianGrid as unknown as React.FC<any>;
+const XAxis = RC.XAxis as unknown as React.FC<any>;
+const YAxis = RC.YAxis as unknown as React.FC<any>;
+const Tooltip = RC.Tooltip as unknown as React.FC<any>;
+const Legend = RC.Legend as unknown as React.FC<any>;
+const BarChart = RC.BarChart as unknown as React.FC<any>;
+const Bar = RC.Bar as unknown as React.FC<any>;
+const LineChart = RC.LineChart as unknown as React.FC<any>;
+const Line = RC.Line as unknown as React.FC<any>;
+
+interface Props {
+  month: string;
+  refreshKey?: number;
+}
+
+const currency = (n: number) =>
+  n.toLocaleString(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 0 });
+
+const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
+  const [loading, setLoading] = useState(true);
+  const [summary, setSummary] = useState<any | null>(null);
+  const [merchants, setMerchants] = useState<any | null>(null);
+  const [flows, setFlows] = useState<any | null>(null);
+  const [trends, setTrends] = useState<any | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    async function run() {
+      setLoading(true);
+      setError(null);
+      try {
+        const [s, m, f, t] = await Promise.all([
+          getMonthSummary(month),
+          getMonthMerchants(month),
+          getMonthFlows(month),
+          getSpendingTrends(6),
+        ]);
+        if (!alive) return;
+        setSummary(s);
+        setMerchants(m);
+        setFlows(f);
+        setTrends(t);
+      } catch (e: any) {
+        if (!alive) return;
+        setError(e?.message ?? String(e));
+      } finally {
+        if (alive) setLoading(false);
+      }
+    }
+    run();
+    return () => {
+      alive = false;
+    };
+  }, [month, refreshKey]);
+
+  const categoriesData = useMemo(() => summary?.categories ?? [], [summary]);
+  const merchantsData = useMemo(() => merchants?.merchants ?? [], [merchants]);
+  const flowsData = useMemo(() => flows?.series ?? [], [flows]);
+  const trendsData = useMemo(
+    () => (trends?.trends ?? []).map((t: any) => ({ month: t.month, spent: t.spent ?? t.spending ?? 0 })),
+    [trends]
+  );
+
+  return (
+    <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+      <Card title={`Overview — ${month}`}>
+        {loading && <p className="text-sm text-gray-400">Loading charts…</p>}
+        {error && <p className="text-sm text-rose-300">Error: {error}</p>}
+        {!loading && !error && summary && (
+          <div className="grid grid-cols-3 gap-4 text-sm">
+            <div className="rounded-xl bg-gray-800/50 p-3">
+              <div className="text-gray-400">Total Spend</div>
+              <div className="mt-1 text-lg font-semibold text-rose-300">
+                {currency(summary.total_spend || 0)}
+              </div>
+            </div>
+            <div className="rounded-xl bg-gray-800/50 p-3">
+              <div className="text-gray-400">Total Income</div>
+              <div className="mt-1 text-lg font-semibold text-emerald-300">
+                {currency(summary.total_income || 0)}
+              </div>
+            </div>
+            <div className="rounded-xl bg-gray-800/50 p-3">
+              <div className="text-gray-400">Net</div>
+              <div className="mt-1 text-lg font-semibold text-indigo-300">
+                {currency(summary.net || 0)}
+              </div>
+            </div>
+          </div>
+        )}
+      </Card>
+
+      <Card title="Top Categories (expenses)">
+        {loading && <p className="text-sm text-gray-400">Loading…</p>}
+        {!loading && categoriesData.length === 0 && (
+          <p className="text-sm text-gray-400">No category data for this month.</p>
+        )}
+        {!loading && categoriesData.length > 0 && (
+          <div className="h-64">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={categoriesData}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="name" />
+                <YAxis />
+                <Tooltip />
+                <Legend />
+                <Bar dataKey="amount" name="Spend" />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+      </Card>
+
+      <Card title="Top Merchants (expenses)">
+        {loading && <p className="text-sm text-gray-400">Loading…</p>}
+        {!loading && merchantsData.length === 0 && (
+          <p className="text-sm text-gray-400">No merchant data for this month.</p>
+        )}
+        {!loading && merchantsData.length > 0 && (
+          <div className="h-64">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={merchantsData}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="merchant" />
+                <YAxis />
+                <Tooltip />
+                <Legend />
+                <Bar dataKey="amount" name="Spend" />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+      </Card>
+
+      <Card title="Daily Flows">
+        {loading && <p className="text-sm text-gray-400">Loading…</p>}
+        {!loading && flowsData.length === 0 && (
+          <p className="text-sm text-gray-400">No flow data for this month.</p>
+        )}
+        {!loading && flowsData.length > 0 && (
+          <div className="h-64">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={flowsData}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="date" />
+                <YAxis />
+                <Tooltip />
+                <Legend />
+                <Line type="monotone" dataKey="in" name="In" />
+                <Line type="monotone" dataKey="out" name="Out" />
+                <Line type="monotone" dataKey="net" name="Net" />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+      </Card>
+
+      <Card title="Spending Trends (last 6 months)">
+        {loading && <p className="text-sm text-gray-400">Loading…</p>}
+        {!loading && trendsData.length === 0 && (
+          <p className="text-sm text-gray-400">No historical data.</p>
+        )}
+        {!loading && trendsData.length > 0 && (
+          <div className="h-64">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={trendsData}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="month" />
+                <YAxis />
+                <Tooltip />
+                <Legend />
+                <Line type="monotone" dataKey="spent" name="Spent" />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+      </Card>
+    </div>
+  );
+};
+
+export default ChartsPanel;
