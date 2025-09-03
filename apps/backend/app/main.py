@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from .routers import ingest, txns, rules, ml, report, budget, alerts, insights, agent, explain
 from .routers import charts  # NEW
 from .routers import health as health_router  # NEW
+from .utils.state import load_state, save_state
 
 app = FastAPI(title="AI Finance Agent", version="0.1.0")
 
@@ -19,6 +20,15 @@ app.add_middleware(
 app.state.rules = []           # [{pattern, target, category}]
 app.state.txns = []            # [{id, date, merchant, description, amount, category}]
 app.state.user_labels = []     # [{txn_id, category}]
+
+# Persisted state lifecycle
+@app.on_event("startup")
+async def _startup_load_state():
+    load_state(app)
+
+@app.on_event("shutdown")
+async def _shutdown_save_state():
+    save_state(app)
 
 # Routers
 app.include_router(ingest.router, prefix="")

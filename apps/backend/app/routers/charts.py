@@ -12,9 +12,11 @@ def month_summary(month: str = Query(None, pattern=r"^\d{4}-\d{2}$")):
     """Get spending summary for a month"""
     from ..main import app
     if not month:
-        month = latest_month_from_txns(app.state.txns)
+        txns = getattr(app.state, "txns", [])
+        month = latest_month_from_txns(txns)
         if not month:
-            raise HTTPException(status_code=400, detail="No transactions loaded")
+            # Return empty summary instead of 400 when no data available
+            return {"month": None, "total_spend": 0, "total_income": 0, "net": 0, "categories": []}
     
     # Filter transactions for the specified month
     month_txns = [t for t in app.state.txns if t["date"].startswith(month)]
@@ -49,9 +51,10 @@ def month_merchants(month: str = Query(None, pattern=r"^\d{4}-\d{2}$")):
     """Get top merchants for a month"""
     from ..main import app
     if not month:
-        month = latest_month_from_txns(app.state.txns)
+        txns = getattr(app.state, "txns", [])
+        month = latest_month_from_txns(txns)
         if not month:
-            raise HTTPException(status_code=400, detail="No transactions loaded")
+            return {"month": None, "merchants": []}
     
     month_txns = [t for t in app.state.txns if t["date"].startswith(month)]
     
@@ -78,9 +81,10 @@ def month_flows(month: str = Query(None, pattern=r"^\d{4}-\d{2}$")):
     """Get daily cash flows for a month"""
     from ..main import app
     if not month:
-        month = latest_month_from_txns(app.state.txns)
+        txns = getattr(app.state, "txns", [])
+        month = latest_month_from_txns(txns)
         if not month:
-            raise HTTPException(status_code=400, detail="No transactions loaded")
+            return {"month": None, "series": []}
     
     month_txns = [t for t in app.state.txns if t["date"].startswith(month)]
     

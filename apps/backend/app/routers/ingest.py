@@ -2,6 +2,7 @@ from fastapi import APIRouter, UploadFile, File, HTTPException
 from typing import List
 import csv, io
 from ..models import Txn
+from ..utils.state import save_state
 
 router = APIRouter(tags=[ "ingest" ])
 
@@ -31,4 +32,5 @@ async def ingest_csv(file: UploadFile = File(...)):
             continue
     from ..main import app
     app.state.txns = txns
+    save_state(app)
     return {"count": len(txns)}

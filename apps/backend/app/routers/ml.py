@@ -52,9 +52,10 @@ async def suggest(month: Optional[str] = Query(None, pattern=r"^\d{4}-\d{2}$"), 
     """
     from ..main import app
     if not month:
-        month = latest_month_from_txns(app.state.txns)
+        txns = getattr(app.state, "txns", [])
+        month = latest_month_from_txns(txns)
         if not month:
-            raise HTTPException(status_code=400, detail="No transactions loaded")
+            return {"month": None, "count": 0, "results": [], "suggestions": []}
     items = [t for t in app.state.txns if t["date"].startswith(month) and (t.get("category") or "Unknown") == "Unknown"]
     items = items[:limit]
     llm = LLMClient()
