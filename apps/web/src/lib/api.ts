@@ -90,12 +90,35 @@ export async function agentStatus() {
   return fetchJson(`/agent/status`).catch(() => ({}));
 }
 
-export async function agentChat(prompt: string) {
+export type ChatMessage = { role: "system" | "user" | "assistant"; content: string };
+
+export async function agentChat(
+  input: string | ChatMessage[],
+  opts?: { system?: string }
+) {
+  let messages: ChatMessage[];
+  if (Array.isArray(input)) {
+    messages = input;
+  } else {
+    messages = [];
+    if (opts?.system) messages.push({ role: "system", content: opts.system });
+    messages.push({ role: "user", content: input });
+  }
+
   return fetchJson(`/agent/chat`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ prompt }),
-  }).catch(() => ({}));
+    body: JSON.stringify({ messages }),
+  });
+}
+
+export async function agentStatusOk(): Promise<boolean> {
+  try {
+    const r = await fetchJson(`/agent/status`);
+    return !!(r?.pong === true || r?.status === "ok" || r?.ok === true || /pong/i.test(JSON.stringify(r)));
+  } catch {
+    return false;
+  }
 }
 
 // ---------- CSV ingest ----------

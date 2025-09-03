@@ -39,14 +39,18 @@ const ChatDock: React.FC = () => {
     if (!input.trim() || busy) return;
     const q = input.trim();
     setInput("");
-    setMsgs((xs) => [...xs, { role: "user", content: q }]);
+    const nextMsgs = [...msgs, { role: "user" as const, content: q }];
+    setMsgs(nextMsgs);
     setBusy(true);
     try {
-      const r = await agentChat(q);
+      const apiMsgs = nextMsgs.map((m) => ({ role: m.role, content: m.content }));
+      const r = await agentChat(apiMsgs, {
+        system: "You are Finance Agent OSS. Be concise and helpful.",
+      });
       const text =
         r?.reply ??
         r?.content ??
-        (typeof r === "string" ? r : "No reply.");
+        (typeof r === "string" ? r : JSON.stringify(r));
       setMsgs((xs) => [...xs, { role: "assistant", content: text }]);
     } catch (e: any) {
       setMsgs((xs) => [
@@ -56,7 +60,7 @@ const ChatDock: React.FC = () => {
     } finally {
       setBusy(false);
     }
-  }, [input, busy]);
+  }, [input, busy, msgs]);
 
   return (
     <>
