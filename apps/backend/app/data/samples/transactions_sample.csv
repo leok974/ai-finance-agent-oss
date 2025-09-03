@@ -1,0 +1,11 @@
+date,merchant,description,amount,category
+2025-08-02,Whole Foods,Weekly grocery,82.45,Groceries
+2025-08-03,Netflix,Monthly subscription,15.99,Subscriptions
+2025-08-05,Uber,Ride home,23.10,Transport
+2025-08-07,Chipotle,Burrito bowl,12.50,Unknown
+2025-08-10,Amazon,USB-C cable,8.99,Shopping
+2025-08-15,Starbucks,Coffee,6.25,Unknown
+2025-08-18,Shell,Gas,47.60,Transport
+2025-08-20,Trader Joe's,Grocery run,54.30,Groceries
+2025-08-22,Uber,Ride to airport,36.85,Transport
+2025-08-24,Delta,Flight,320.00,Travel

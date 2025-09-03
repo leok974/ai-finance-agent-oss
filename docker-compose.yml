@@ -1,0 +1,20 @@
+version: "3.9"
+services:
+  backend:
+    build: ./apps/backend
+    environment:
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - MODEL=${MODEL}
+      - DEV_ALLOW_NO_LLM=${DEV_ALLOW_NO_LLM}
+    ports: ["8000:8000"]
+    volumes:
+      - ./apps/backend:/app
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  web:
+    build: ./apps/web
+    ports: ["5173:5173"]
+    volumes:
+      - ./apps/web:/app
+    command: ["pnpm","dev","--host"]
