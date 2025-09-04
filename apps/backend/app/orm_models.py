@@ -1,4 +1,4 @@
-from sqlalchemy import String, Integer, Float, Date, DateTime, Text, UniqueConstraint, func
+from sqlalchemy import String, Integer, Float, Date, DateTime, Text, UniqueConstraint, func, Numeric, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column
 from app.db import Base
 from datetime import datetime
@@ -31,4 +31,39 @@ class UserLabel(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     txn_id: Mapped[int] = mapped_column(Integer, index=True)
     category: Mapped[str] = mapped_column(String(128), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+# --- NEW: TransferLink --------------------------------------------------------
+class TransferLink(Base):
+    __tablename__ = "transfer_links"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    txn_out_id: Mapped[int] = mapped_column(Integer, ForeignKey("transactions.id"), nullable=False)
+    txn_in_id: Mapped[int] = mapped_column(Integer, ForeignKey("transactions.id"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("txn_out_id", "txn_in_id", name="uq_transfer_pair"),
+    )
+
+# --- NEW: TransactionSplit ----------------------------------------------------
+class TransactionSplit(Base):
+    __tablename__ = "transaction_splits"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    parent_txn_id: Mapped[int] = mapped_column(Integer, ForeignKey("transactions.id"), nullable=False, index=True)
+    category: Mapped[str] = mapped_column(String, nullable=False)
+    amount: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
+    note: Mapped[str | None] = mapped_column(String, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+# --- NEW: RecurringSeries -----------------------------------------------------
+class RecurringSeries(Base):
+    __tablename__ = "recurring_series"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    merchant: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    avg_amount: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
+    cadence: Mapped[str] = mapped_column(String, nullable=False)  # 'monthly'|'weekly'|'yearly'|'unknown'
+    first_seen: Mapped[datetime] = mapped_column(Date, nullable=False)
+    last_seen: Mapped[datetime] = mapped_column(Date, nullable=False)
+    next_due: Mapped[datetime | None] = mapped_column(Date, nullable=True)
+    sample_txn_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("transactions.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
