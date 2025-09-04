@@ -113,6 +113,8 @@ def suggest_for_unknowns(db: Session, month: Optional[str], limit: int = 50, top
 
         for i, r in enumerate(rows):
             pairs = sorted(zip(classes, probas[i].tolist()), key=lambda t: t[1], reverse=True)
+            # Filter out any 'Unknown' label if present to keep suggestions clean
+            pairs = [(c, s) for (c, s) in pairs if c != "Unknown"]
             pairs = _dedup_sorted(pairs, topk)
             suggestions = [{"category": c, "confidence": round(p, 6)} for c, p in pairs]
             results.append({

@@ -2,7 +2,7 @@
 from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from sqlalchemy.orm import Session
 from sqlalchemy import text as sql_text
 
@@ -45,13 +45,15 @@ def status() -> Dict[str, Any]:
     return latest_meta()
 
 @router.get("/suggest")
-def suggest(
-    month: Optional[str] = Query(default=None),
-    limit: int = Query(default=50, ge=1, le=500),
-    topk: int = Query(default=3, ge=1, le=10),
+def ml_suggest(
+    limit: int = 50,
+    topk: int = 3,
+    month: str | None = None,
     db: Session = Depends(get_db),
-):
-    return suggest_for_unknowns(db=db, month=month, limit=limit, topk=topk)
+) -> Dict[str, Any]:
+    results: List[Dict[str, Any]] = suggest_for_unknowns(db, month=month, limit=limit, topk=topk)
+    # Always return an object with 'month' and 'suggestions' to satisfy tests.
+    return {"month": month, "suggestions": results or []}
 
 
 @router.get("/diag")
