@@ -4,6 +4,11 @@ from .db import Base, engine
 from sqlalchemy import inspect
 from fastapi.middleware.cors import CORSMiddleware
 from .routers import ingest, txns, rules, ml, report, budget, alerts, insights, agent, explain
+from app.routers import agent_tools_transactions as agent_tools_txn
+from app.routers import agent_tools_budget as agent_tools_budget
+from app.routers import agent_tools_insights as agent_tools_insights
+from app.routers import agent_tools_charts as agent_tools_charts
+from app.routers import agent_tools_rules as agent_tools_rules
 from .routers import charts
 from .routers import health as health_router
 from .utils.state import load_state, save_state
@@ -56,6 +61,11 @@ app.include_router(insights.router, prefix="/insights", tags=["insights"])
 app.include_router(agent.router, prefix="/agent", tags=["agent"])
 app.include_router(explain.router, prefix="/txns", tags=["explain"])
 app.include_router(charts.router, prefix="/charts", tags=["charts"]) 
+app.include_router(agent_tools_txn.router)
+app.include_router(agent_tools_budget.router)
+app.include_router(agent_tools_insights.router)
+app.include_router(agent_tools_charts.router)
+app.include_router(agent_tools_rules.router)
 
 # Mount health router at root so /healthz is available at top-level
 app.include_router(health_router.router)  # exposes GET /healthz

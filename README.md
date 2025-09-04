@@ -60,3 +60,68 @@ packages/
 - **Design**: clean UX, resilient states, deduped suggestions, one-click “Auto-apply best” with threshold.
 - **Impact**: turns messy bank CSVs into actionable budgets & insights locally.
 - **Novelty**: “Explain” turns category predictions into transparent traces (rules + LLM rationale).
+
+## Agent Tools: Budget
+
+### 1) Summary
+POST `/agent/tools/budget/summary`
+
+Request:
+
+```json
+{ "month": "2025-08", "top_n": 5 }
+```
+
+Response (shape):
+
+```json
+{
+  "month": "2025-08",
+  "total_outflows": 263.08,
+  "total_inflows": 5000.0,
+  "net": 4736.92,
+  "unknown_count": 1,
+  "by_category": [{ "category": "Groceries", "spend": 185.25, "txns": 2 }, ...],
+  "top_merchants": [{ "merchant": "Costco", "spend": 120.0, "txns": 1 }, ...]
+}
+```
+
+### 2) Check
+POST `/agent/tools/budget/check`
+
+Request:
+
+```json
+{
+  "month": "2025-08",
+  "limits": { "Groceries": 200, "Transport": 50, "Shopping": 100, "Subscriptions": 20 },
+  "include_unknown": true
+}
+```
+
+Response (shape):
+
+```json
+{
+  "month": "2025-08",
+  "items": [
+    { "category": "Groceries", "limit": 200.0, "spend": 185.25, "remaining": 14.75, "utilization": 0.926 }
+  ],
+  "totals": { "spend": 263.08, "limit": 370.0, "remaining": 106.92, "utilization": 0.711 }
+}
+```
+
+Notes
+
+- Outflows are treated as positive spend (absolute value of negative amount).
+- Unknown categories include NULL, empty string, and "Unknown" case-insensitive.
+- `top_n` caps categories / merchants returned by the summary.
+
+---
+
+## 4) Run just these tests
+
+```bash
+cd apps/backend
+.\.venv\Scripts\python.exe -m pytest -q tests/test_agent_tools_budget.py --maxfail=1
+```
