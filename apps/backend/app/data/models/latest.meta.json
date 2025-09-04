@@ -1,0 +1,18 @@
+{
+  "model_path": "C:\\ai-finance-agent-oss\\apps\\backend\\app\\data\\models\\model_20250904T010347Z.joblib",
+  "latest_path": "C:\\ai-finance-agent-oss\\apps\\backend\\app\\data\\models\\latest.joblib",
+  "trained_at": "20250904T010347Z",
+  "month": null,
+  "labeled_count": 8,
+  "classes": [
+    "Groceries",
+    "Shopping",
+    "Subscriptions",
+    "Transport",
+    "Travel"
+  ],
+  "metrics": {
+    "accuracy": null,
+    "macro_f1": null
+  }
+}

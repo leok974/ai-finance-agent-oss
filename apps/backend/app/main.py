@@ -48,7 +48,7 @@ async def _shutdown_save_state():
 app.include_router(ingest.router, prefix="")
 app.include_router(txns.router, prefix="/txns", tags=["txns"])
 app.include_router(rules.router, prefix="/rules", tags=["rules"])
-app.include_router(ml.router, prefix="/ml", tags=["ml"])
+app.include_router(ml.router)
 app.include_router(report.router, prefix="", tags=["report"])
 app.include_router(budget.router, prefix="/budget", tags=["budget"])
 app.include_router(alerts.router, prefix="/alerts", tags=["alerts"])

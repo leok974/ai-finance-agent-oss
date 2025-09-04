@@ -106,7 +106,15 @@ export const testRule = (seed: any) => http(`/rules/test`, { method: 'POST', bod
 
 // ---------- ML ----------
 export const mlSuggest = (month: string, limit=100, topk=3) => http(`/ml/suggest${q({ month, limit, topk })}`)
-export const mlTrain = (month?: string, passes=2) => http(`/ml/train${q({ month, passes })}`, { method: 'POST' })
+// ---------- ML Train ----------
+export async function mlTrain(month?: string, passes = 1, min_samples = 25) {
+  const body = { month, passes, min_samples };
+  return http(`/ml/train`, {
+    method: "POST",
+    body: JSON.stringify(body),
+    headers: { "Content-Type": "application/json" },
+  });
+}
 
 // ---------- Explain & Agent ----------
 export const getExplain = (txnId: number) => http(`/txns/${txnId}/explain`)
