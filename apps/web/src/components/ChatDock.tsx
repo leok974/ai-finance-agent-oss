@@ -43,6 +43,12 @@ const TOOLS: ToolSpec[] = [
     examplePayload: { month: undefined, limitLargeTxns: 10, includeUnknownSpend: true },
   },
   {
+  key: "insights.expanded",
+  label: "Insights: Expanded (MoM + anomalies)",
+    path: "/agent/tools/insights/expanded",
+    examplePayload: { month: undefined, large_limit: 10 },
+  },
+  {
     key: "charts.summary",
     label: "Charts: Summary",
     path: "/agent/tools/charts/summary",
@@ -147,6 +153,9 @@ export default function ChatDock() {
           break;
         case "insights.summary":
           data = await agentTools.insightsSummary(body);
+          break;
+        case "insights.expanded":
+          data = await agentTools.insightsExpanded(body);
           break;
         case "charts.summary":
           data = await agentTools.chartsSummary(body);

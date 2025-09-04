@@ -6,6 +6,7 @@ export type ToolKey =
   | "budget.summary"
   | "budget.check"
   | "insights.summary"
+  | "insights.expanded"
   | "charts.summary"
   | "charts.merchants"
   | "charts.flows"

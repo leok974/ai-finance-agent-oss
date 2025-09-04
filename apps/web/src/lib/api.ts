@@ -212,6 +212,9 @@ export const agentTools = {
     includeUnknownSpend?: boolean;
   }) => postTool("/agent/tools/insights/summary", payload),
 
+  insightsExpanded: (payload: { month?: string; large_limit?: number }) =>
+    postTool("/agent/tools/insights/expanded", payload),
+
   // Charts
   chartsSummary: (payload: { month?: string }) =>
     postTool("/agent/tools/charts/summary", payload),

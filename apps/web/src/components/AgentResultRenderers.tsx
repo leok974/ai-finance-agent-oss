@@ -7,6 +7,7 @@ import type {
   BudgetSummaryResult,
   BudgetCheckResult,
   InsightSummaryResult,
+  // We'll accept unknown shape for expanded; optional future type
   ChartsSummaryResult,
   ChartsMerchantsResult,
   ChartsFlowsResult,
@@ -206,6 +207,11 @@ export function AgentResultRenderer({ tool, data }: { tool: string; data: unknow
     case "budget.summary":            return <BudgetSummaryCard data={data as BudgetSummaryResult} />;
     case "budget.check":              return <BudgetCheckCard data={data as BudgetCheckResult} />;
     case "insights.summary":          return <InsightSummaryCard data={data as InsightSummaryResult} />;
+    case "insights.expanded":         return (
+      <Card title="Insights — Expanded">
+        <pre className="text-xs whitespace-pre-wrap break-words">{JSON.stringify(data, null, 2)}</pre>
+      </Card>
+    );
     case "charts.summary":            return <ChartsSummaryCard data={data as ChartsSummaryResult} />;
     case "charts.merchants":          return <ChartsMerchantsCard data={data as ChartsMerchantsResult} />;
     case "charts.flows":              return <ChartsFlowsCard data={data as ChartsFlowsResult} />;
