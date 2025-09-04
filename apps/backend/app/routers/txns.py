@@ -114,3 +114,90 @@ def to_txn_dict(t: Transaction) -> Dict[str, Any]:
         "account": getattr(t, "account", None),
         "month": getattr(t, "month", None),
     }
+
+
+# ------------------------ Extended operations -------------------------------
+from pydantic import BaseModel, Field
+from app.services.tx_ops import link_transfer, unlink_transfer, upsert_splits
+from app.services.recurring import scan_recurring
+from app.orm_models import TransferLink as TransferLinkORM, TransactionSplit as TransactionSplitORM, RecurringSeries as RecurringSeriesORM
+
+
+# --- Transfers ---------------------------------------------------------------
+class TransferIn(BaseModel):
+    txn_out_id: int = Field(..., description="Outflow txn id (negative amount)")
+    txn_in_id: int = Field(..., description="Inflow txn id (positive amount)")
+
+
+@router.post("/mark_transfer")
+def mark_transfer(payload: TransferIn, db: Session = Depends(get_db)):
+    try:
+        link = link_transfer(db, payload.txn_out_id, payload.txn_in_id)
+        return {"status": "ok", "link_id": link.id}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.delete("/transfer/{link_id}")
+def delete_transfer(link_id: int, db: Session = Depends(get_db)):
+    unlink_transfer(db, link_id)
+    return {"status": "ok"}
+
+
+# --- Splits ------------------------------------------------------------------
+class SplitLeg(BaseModel):
+    category: str
+    amount: float
+    note: Optional[str] = None
+
+
+class SplitIn(BaseModel):
+    legs: List[SplitLeg]
+
+
+@router.post("/{txn_id}/split")
+def create_or_replace_splits(txn_id: int, payload: SplitIn, db: Session = Depends(get_db)):
+    try:
+        legs = upsert_splits(db, txn_id, [l.dict() for l in payload.legs])
+        return {"status": "ok", "count": len(legs)}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.delete("/{txn_id}/split/{split_id}")
+def delete_split_leg(txn_id: int, split_id: int, db: Session = Depends(get_db)):
+    leg = db.query(TransactionSplitORM).get(split_id)
+    if not leg or leg.parent_txn_id != txn_id:
+        raise HTTPException(status_code=404, detail="Split not found")
+    db.delete(leg)
+    db.commit()
+    return {"status": "ok"}
+
+
+# --- Recurring ---------------------------------------------------------------
+class RecurringScanIn(BaseModel):
+    month: Optional[str] = None
+
+
+@router.post("/recurring/scan")
+def recurring_scan(payload: RecurringScanIn, db: Session = Depends(get_db)):
+    n = scan_recurring(db, month=payload.month)
+    return {"status": "ok", "upserts": n}
+
+
+@router.get("/recurring")
+def recurring_list(db: Session = Depends(get_db)):
+    items = db.query(RecurringSeriesORM).order_by(RecurringSeriesORM.merchant).all()
+    out: List[Dict[str, Any]] = []
+    for r in items:
+        out.append(dict(
+            id=r.id,
+            merchant=r.merchant,
+            avg_amount=float(r.avg_amount),
+            cadence=r.cadence,
+            first_seen=str(r.first_seen),
+            last_seen=str(r.last_seen),
+            next_due=str(r.next_due) if r.next_due else None,
+            sample_txn_id=r.sample_txn_id,
+        ))
+    return out

@@ -22,6 +22,13 @@ engine = create_engine(
 )
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, future=True)
 
+# Ensure models are registered with Base when the app imports the DB module
+try:
+    import app.orm_models  # noqa: F401
+except Exception:
+    # During certain tooling/import orders this may fail; Alembic env.py also imports orm_models
+    pass
+
 
 def get_db():
     db = SessionLocal()

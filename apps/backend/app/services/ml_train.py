@@ -26,7 +26,7 @@ def _ensure_dirs() -> None:
 
 def _fetch_labeled_rows(db: Session, month: Optional[str]) -> List[Dict[str, Any]]:
     try:
-        from app.models import Transaction  # type: ignore
+        from app.orm_models import Transaction  # type: ignore
         q = (
             db.query(Transaction)
             .filter(Transaction.category.isnot(None))
@@ -90,7 +90,6 @@ def _make_pipeline() -> Pipeline:
         solver="lbfgs",
         max_iter=200,
         class_weight="balanced",
-        multi_class="auto",
     )
     return Pipeline(steps=[("pre", pre), ("clf", clf)])
 

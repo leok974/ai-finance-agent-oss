@@ -6,7 +6,7 @@ from typing import Optional, Dict, Any
 from sqlalchemy.orm import Session
 from sqlalchemy import text as sql_text
 
-from app.database import get_db
+from app.db import get_db
 from app.services.ml_train import train_on_db, latest_meta, load_latest_model
 from app.services.ml_suggest import suggest_for_unknowns  # keep if you added it
 import math
