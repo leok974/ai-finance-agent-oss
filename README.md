@@ -40,6 +40,11 @@ pnpm dev  # http://localhost:5173/app/
 ### 4) Load sample data
 In the web UI, go to **CSV Ingest** and upload `transactions_sample.csv` from `apps/backend/app/data/samples/`.
 
+## Month handling and data refresh
+- The app initializes the UI month from your data automatically by calling the transactions search tool without a month; the backend returns the latest month it finds.
+- Charts endpoints require an explicit `month`. The UI always passes it, and the Chat Dock auto-injects the current month for month-required tools.
+- After a successful CSV upload, the app snaps the global month to the latest available and refreshes dashboards in the background (non-blocking).
+
 ## Environment
 - `OPENAI_BASE_URL` (e.g. `http://localhost:11434/v1` for Ollama, or your vLLM URL)
 - `OPENAI_API_KEY` (dummy like `ollama` for Ollama, or your real key for remote servers)
@@ -54,6 +59,57 @@ apps/
 packages/
   shared/   - shared types
 ```
+
+## Agent Chat
+- Minimal chat is available in the web app (uses backend `POST /agent/chat`).
+- Point `OPENAI_BASE_URL` and `OPENAI_API_KEY` to your local/remote LLM server; default model is `gpt-oss:20b`.
+
+## Agent Tools: Insights and Charts
+
+### Insights Summary
+POST `/agent/tools/insights/summary`
+
+Request (example):
+
+```json
+{ "month": "2025-08", "include_unknown_spend": true, "limit_large_txns": 10 }
+```
+
+Notes
+- Legacy `/report` is removed. Use this Insights Summary tool instead.
+- The UI’s `getReport` maps to this endpoint.
+
+### Charts (month required)
+POST `/agent/tools/charts/summary`
+
+```json
+{ "month": "2025-08" }
+```
+
+POST `/agent/tools/charts/merchants`
+
+```json
+{ "month": "2025-08", "limit": 10 }
+```
+
+POST `/agent/tools/charts/flows`
+
+```json
+{ "month": "2025-08" }
+```
+
+POST `/agent/tools/charts/spending_trends`
+
+```json
+{ "months": ["2025-03", "2025-04", "2025-05", "2025-06", "2025-07", "2025-08"], "order": "asc" }
+```
+
+Notes
+- Charts endpoints require a month (or months list for trends). The UI injects the selected month automatically.
+
+## Dev tips
+- Windows PowerShell: activate venv with `.venv\Scripts\Activate.ps1`.
+- Optional backend smoke check script lives under `apps/backend/app/scripts/smoke-backend.ps1` (used by the web smoke script).
 
 ## Why this will impress judges
 - **Applies gpt-oss uniquely**: on-device, function-calling agent that explains its reasoning (“Explain Signal”) and learns from user feedback (train->reclassify loop).

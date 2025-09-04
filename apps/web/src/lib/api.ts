@@ -33,14 +33,14 @@ async function http<T=any>(path: string, init?: RequestInit): Promise<T> {
   return ct.includes('application/json') ? res.json() : (await res.text() as any);
 }
 
-// tiny mapper: pick and rename fields (camelCase -> snake_case)
-const pick = <T extends object>(obj: any, map: Record<string, string>) => {
-  const out: any = {};
-  for (const [from, to] of Object.entries(map)) {
-    if (obj?.[from] !== undefined) out[to] = obj[from];
-    if (obj?.[to]   !== undefined) out[to] = obj[to]; // allow snake_case too
+// mapper: rename keys (camelCase -> snake_case) and allow snake_case passthrough
+const mapKeys = <T extends object>(src: any, pairs: Record<string, string>) => {
+  const o: any = {};
+  for (const [from, to] of Object.entries(pairs)) {
+    if (src && src[from] !== undefined) o[to] = src[from];
+    if (src && src[to]   !== undefined) o[to] = src[to]; // allow snake too
   }
-  return out as T;
+  return o as T;
 };
 
 // ---------- Reports / Insights / Alerts ----------
@@ -184,10 +184,14 @@ export async function agentStatusOk(): Promise<boolean> {
 
 // ---------- CSV ingest ----------
 // web/src/lib/api.ts
-export async function uploadCsv(file: File, replace = true) {
+export async function uploadCsv(file: File, replace = true, expensesArePositive = false) {
   const form = new FormData();
   form.append("file", file, file.name);
-  return fetchJson(`/ingest?replace=${replace ? "true" : "false"}`, {
+  const params = new URLSearchParams({
+    replace: replace ? "true" : "false",
+    expenses_are_positive: expensesArePositive ? "true" : "false",
+  });
+  return fetchJson(`/ingest?${params.toString()}`, {
     method: "POST",
     body: form,
   });
@@ -199,6 +203,11 @@ async function postTool<T = any>(path: string, payload: any, init?: RequestInit)
   return http<T>(path, { method: "POST", body: JSON.stringify(payload), ...(init || {}) });
 }
 
+// ---------- Meta (Agent Tools) ----------
+export const meta = {
+  latestMonth: () => http("/agent/tools/meta/latest_month", { method: "POST" }),
+};
+
 // Namespaced helpers for agent tool endpoints
 export const agentTools = {
   // Transactions
@@ -206,6 +215,7 @@ export const agentTools = {
     month?: string;
     limit?: number;
     offset?: number;
+  sort?: { field: string; dir: "asc" | "desc" };
     filters?: {
       merchant?: string;
       minAmount?: number;
@@ -240,7 +250,7 @@ export const agentTools = {
     include_unknown_spend?: boolean;
   }, signal?: AbortSignal) => postTool("/agent/tools/insights/summary", {
     month: payload?.month,
-    ...pick(payload, {
+    ...mapKeys(payload, {
       limitLargeTxns: "limit_large_txns",
       includeUnknownSpend: "include_unknown_spend",
     }),
@@ -249,7 +259,7 @@ export const agentTools = {
   insightsExpanded: (payload: { month?: string; large_limit?: number; largeLimit?: number }, signal?: AbortSignal) =>
     postTool("/agent/tools/insights/expanded", {
       month: payload?.month,
-      ...pick(payload, { largeLimit: "large_limit" }),
+      ...mapKeys(payload, { largeLimit: "large_limit" }),
     }, { signal }),
 
   // Charts
@@ -262,8 +272,19 @@ export const agentTools = {
   chartsFlows: (payload: { month: string }, signal?: AbortSignal) =>
     postTool("/agent/tools/charts/flows", payload, { signal }),
 
-  chartsSpendingTrends: (payload: { month: string; monthsBack?: number }, signal?: AbortSignal) =>
-    postTool("/agent/tools/charts/spending_trends", payload, { signal }),
+  chartsSpendingTrends: (
+    payload: { month: string; monthsBack?: number; months_back?: number },
+    signal?: AbortSignal
+  ) =>
+    postTool(
+      "/agent/tools/charts/spending_trends",
+      {
+        month: payload.month,
+  ...mapKeys(payload, { monthsBack: "months_back" }),
+        ...(payload.months_back !== undefined ? { months_back: payload.months_back } : {}),
+      },
+      { signal }
+    ),
 
   // Rules
   rulesTest: (payload: {
@@ -297,10 +318,26 @@ export const rulesCrud = {
 // Calls charts summary without a month; backend will respond with the resolved month.
 export async function fetchLatestMonth(): Promise<string | null> {
   try {
-    // Use transactions.search without month; backend resolves to latest and echoes `month`
-    const res: any = await agentTools.searchTransactions({ limit: 1 });
-    return typeof res?.month === "string" ? res.month : null;
-  } catch {
-    return null;
-  }
+    // Prefer the dedicated meta endpoint when available
+    const r: any = await meta.latestMonth();
+    if (typeof r?.month === "string") return r.month;
+  } catch {}
+  try {
+    // ask for 1 txn, newest first (if backend ignores sort, we still handle gracefully)
+    const res: any = await agentTools.searchTransactions({
+      limit: 1,
+      sort: { field: "date", dir: "desc" },
+    });
+
+    // 1) some endpoints echo a resolved `month`
+    if (typeof res?.month === "string") return res.month;
+
+    // 2) derive from the first item
+    const first = res?.items?.[0] || res?.transactions?.[0] || res?.data?.[0];
+    if (typeof first?.month === "string") return first.month;
+    if (typeof first?.date === "string" && first.date.length >= 7) {
+      return first.date.slice(0, 7); // YYYY-MM from ISO date
+    }
+  } catch {}
+  return null;
 }

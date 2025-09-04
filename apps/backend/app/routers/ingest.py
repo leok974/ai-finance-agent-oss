@@ -12,6 +12,7 @@ router = APIRouter(prefix="/ingest", tags=["ingest"])
 async def ingest_csv(
     file: UploadFile = File(...),
     replace: bool = Query(False),
+    expenses_are_positive: bool = Query(False),  # when true, flip signs so expenses become negative
     db: Session = Depends(get_db),
 ):
     if replace:
@@ -37,7 +38,10 @@ async def ingest_csv(
         # map/parse your CSV columns here
         # robust parse and ensure month string
         date = dt.datetime.strptime(row["date"], "%Y-%m-%d").date()
-        amount = float(row["amount"])
+        raw_amt = float(row["amount"]) if row.get("amount") not in (None, "") else 0.0
+        # If the source marks expenses as positive numbers and income as negative,
+        # flip the sign to normalize (internal convention: spend < 0, income > 0)
+        amount = -raw_amt if expenses_are_positive else raw_amt
         desc = row.get("description") or row.get("memo") or ""
         merch = row.get("merchant") or None
         acct = row.get("account") or None

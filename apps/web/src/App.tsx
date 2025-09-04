@@ -12,6 +12,7 @@ import RulesPanel from "./components/RulesPanel";
 import ChatDock from "./components/ChatDock";
 import ChartsPanel from "./components/ChartsPanel";
 import TopEmptyBanner from "./components/TopEmptyBanner";
+import AgentChat from "./components/AgentChat";
 
 
 const App: React.FC = () => {
@@ -57,6 +58,18 @@ const App: React.FC = () => {
     } catch {}
   })() }, [monthReady, month, refreshKey])
 
+  // Ensure app reloads charts/insights when the month changes (background, non-blocking)
+  useEffect(() => {
+    if (!month) return;
+    void Promise.allSettled([
+      getReport(month),
+      agentTools.chartsSummary({ month }),
+      agentTools.chartsMerchants({ month, limit: 10 }),
+      agentTools.chartsFlows({ month }),
+      agentTools.chartsSpendingTrends({ month, months_back: 6 } as any),
+    ]);
+  }, [month]);
+
   // Probe backend emptiness (latest by default). If charts summary returns null or month:null, show banner.
   useEffect(() => { (async () => {
     if (!monthReady || !month) return;
@@ -99,6 +112,8 @@ const App: React.FC = () => {
 
         {/* Insights */}
   <InsightsCard insights={insights} />
+        {/* Agent chat box */}
+        <AgentChat />
   {/* ChartsPanel now requires month; always pass the selected month */}
   <ChartsPanel month={month} refreshKey={refreshKey} />
 
