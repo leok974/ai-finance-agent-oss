@@ -17,7 +17,8 @@ class RuleBody(BaseModel):
     target: Target
     category: str = Field(..., min_length=1)
     month: str = Field(..., description="YYYY-MM to test/apply against")
-    limit: conint(ge=1, le=10000) = 1000  # max matches to return/apply
+    # Use Field constraints to appease type checkers instead of conint
+    limit: int = Field(1000, ge=1, le=10000, description="Max matches to return/apply")
 
 
 class HitDTO(BaseModel):
@@ -44,6 +45,8 @@ class ApplyResp(BaseModel):
     updated: int
     category: str
     rule: Dict[str, Any]
+
+
 
 
 def _unlabeled_condition():
@@ -126,3 +129,5 @@ def apply_rule(body: RuleBody, db: Session = Depends(get_db)) -> ApplyResp:
         category=body.category,
         rule={"pattern": body.pattern, "target": body.target},
     )
+
+

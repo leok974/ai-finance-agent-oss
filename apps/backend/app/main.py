@@ -9,6 +9,8 @@ from app.routers import agent_tools_budget as agent_tools_budget
 from app.routers import agent_tools_insights as agent_tools_insights
 from app.routers import agent_tools_charts as agent_tools_charts
 from app.routers import agent_tools_rules as agent_tools_rules
+from app.routers import agent_tools_rules_crud as rules_crud_router
+from app.routers import agent_tools_rules_apply_all as rules_apply_all_router
 from .routers import charts
 from .routers import health as health_router
 from .utils.state import load_state, save_state
@@ -66,6 +68,8 @@ app.include_router(agent_tools_budget.router)
 app.include_router(agent_tools_insights.router)
 app.include_router(agent_tools_charts.router)
 app.include_router(agent_tools_rules.router)
+app.include_router(rules_crud_router.router)
+app.include_router(rules_apply_all_router.router)
 
 # Mount health router at root so /healthz is available at top-level
 app.include_router(health_router.router)  # exposes GET /healthz

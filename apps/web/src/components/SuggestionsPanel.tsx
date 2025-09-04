@@ -5,7 +5,7 @@ import EmptyState from './EmptyState'
 
 type Suggestion = { txn_id: number; merchant?: string; description?: string; topk: Array<{ category: string; confidence: number }> }
 
-export default function SuggestionsPanel({ refreshKey = 0 }: { refreshKey?: number }) {
+export default function SuggestionsPanel({ month, refreshKey = 0 }: { month?: string; refreshKey?: number }) {
   const [items, setItems] = useState<Suggestion[]>([])
   const [selected, setSelected] = useState<Record<number, string>>({})
   const [loading, setLoading] = useState(false)
@@ -16,7 +16,7 @@ export default function SuggestionsPanel({ refreshKey = 0 }: { refreshKey?: numb
   useEffect(()=>{ (async()=>{
     setLoading(true); setError(null); setEmpty(false)
     try {
-      const res = await getSuggestions()
+      const res = await getSuggestions(month)
       // empty boot state
       if (!res) { setEmpty(true); setItems([]); setResolvedMonth(null); return }
       setResolvedMonth(res?.month ?? null)
@@ -59,7 +59,7 @@ export default function SuggestionsPanel({ refreshKey = 0 }: { refreshKey?: numb
     } catch (e: any) {
       setError(e?.message ?? String(e))
     } finally { setLoading(false) }
-  })() }, [refreshKey])
+  })() }, [month, refreshKey])
 
   const canApply = useMemo(()=> Object.keys(selected).length>0, [selected])
 

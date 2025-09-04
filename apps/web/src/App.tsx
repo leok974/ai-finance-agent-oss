@@ -1,4 +1,5 @@
 import React, { useMemo, useState, useCallback, useEffect } from "react";
+import { MonthContext } from "./context/MonthContext";
 import UploadCsv from "./components/UploadCsv";
 import UnknownsPanel from "./components/UnknownsPanel";
 import SuggestionsPanel from "./components/SuggestionsPanel";
@@ -48,8 +49,10 @@ const App: React.FC = () => {
   }, [push]);
 
   return (
-    <div className="min-h-screen bg-gray-50 text-gray-900 p-6 dark:bg-gray-950 dark:text-gray-100">
-      <div className="mx-auto max-w-6xl space-y-6">
+    <MonthContext.Provider value={{ month, setMonth }}>
+      <div className="min-h-screen bg-gray-50 text-gray-900 p-6 dark:bg-gray-950 dark:text-gray-100">
+        <div className="relative">
+          <div className="mx-auto max-w-6xl space-y-6">
         <header className="flex items-center justify-between">
           <h1 className="text-3xl font-bold">Finance Agent</h1>
           <div className="flex items-center gap-3">
@@ -72,18 +75,20 @@ const App: React.FC = () => {
 
         {/* Main grid */}
         <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-          <UnknownsPanel refreshKey={refreshKey} />
-          <SuggestionsPanel refreshKey={refreshKey} />
+          <UnknownsPanel month={month} refreshKey={refreshKey} />
+          <SuggestionsPanel month={month} refreshKey={refreshKey} />
         </div>
 
         {/* Rules + Tester */}
         <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
           <RulesPanel refreshKey={refreshKey} />
           <RuleTesterPanel onChanged={() => setRefreshKey((k) => k + 1)} />
+          </div>
+          <ChatDock />
         </div>
       </div>
-  <ChatDock />
-    </div>
+  </div>
+    </MonthContext.Provider>
   );
 };
 

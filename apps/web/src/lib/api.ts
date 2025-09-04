@@ -167,3 +167,85 @@ export async function uploadCsv(file: File, replace = true) {
     body: form,
   });
 }
+
+// ---------- Agent Tools (Transactions, Budget, Insights, Charts, Rules) ----------
+// Generic POST helper for Agent Tools (reuses existing http() which handles API_BASE and JSON headers)
+async function postTool<T = any>(path: string, payload: any): Promise<T> {
+  return http<T>(path, { method: "POST", body: JSON.stringify(payload) });
+}
+
+// Namespaced helpers for agent tool endpoints
+export const agentTools = {
+  // Transactions
+  searchTransactions: (payload: {
+    month?: string;
+    limit?: number;
+    offset?: number;
+    filters?: {
+      merchant?: string;
+      minAmount?: number;
+      maxAmount?: number;
+      category?: string;
+      labeled?: boolean; // true = labeled only, false = unlabeled only, omit = all
+    };
+  }) => postTool("/agent/tools/transactions/search", payload),
+
+  categorizeTransactions: (payload: {
+    updates: Array<{ id: number | string; category: string }>;
+    onlyIfUnlabeled?: boolean; // backend should respect this; defaults true
+  }) => postTool("/agent/tools/transactions/categorize", payload),
+
+  getTransactionsByIds: (payload: { ids: Array<number | string> }) =>
+    postTool("/agent/tools/transactions/get_by_ids", payload),
+
+  // Budget
+  budgetSummary: (payload: { month?: string }) =>
+    postTool("/agent/tools/budget/summary", payload),
+
+  budgetCheck: (payload: { month?: string }) =>
+    postTool("/agent/tools/budget/check", payload),
+
+  // Insights
+  insightsSummary: (payload: {
+    month?: string;
+    limitLargeTxns?: number;
+    includeUnknownSpend?: boolean;
+  }) => postTool("/agent/tools/insights/summary", payload),
+
+  // Charts
+  chartsSummary: (payload: { month?: string }) =>
+    postTool("/agent/tools/charts/summary", payload),
+
+  chartsMerchants: (payload: { month?: string; limit?: number }) =>
+    postTool("/agent/tools/charts/merchants", payload),
+
+  chartsFlows: (payload: { month?: string }) =>
+    postTool("/agent/tools/charts/flows", payload),
+
+  chartsSpendingTrends: (payload: { month?: string; monthsBack?: number }) =>
+    postTool("/agent/tools/charts/spending_trends", payload),
+
+  // Rules
+  rulesTest: (payload: {
+    rule: { merchant?: string; description?: string; pattern?: string; category?: string };
+    month?: string;
+  }) => postTool("/agent/tools/rules/test", payload),
+
+  rulesApply: (payload: {
+    rule: { merchant?: string; description?: string; pattern?: string; category: string };
+    month?: string;
+    onlyUnlabeled?: boolean; // default true in backend
+  }) => postTool("/agent/tools/rules/apply", payload),
+};
+
+// ---------- Agent Tools: Rules CRUD ----------
+export const rulesCrud = {
+  list: () => http("/agent/tools/rules"),
+  create: (rule: { merchant?: string; description?: string; pattern?: string; category: string; active?: boolean }) =>
+    http("/agent/tools/rules", { method: "POST", body: JSON.stringify(rule) }),
+  update: (
+    id: number,
+    rule: Partial<{ merchant: string; description: string; pattern: string; category: string; active: boolean }>
+  ) => http(`/agent/tools/rules/${id}`, { method: "PUT", body: JSON.stringify(rule) }),
+  remove: (id: number) => http(`/agent/tools/rules/${id}`, { method: "DELETE" }),
+};
