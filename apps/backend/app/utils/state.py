@@ -1,0 +1,37 @@
+from __future__ import annotations
+import json
+from pathlib import Path
+from typing import Any, Dict, List
+
+STORE_DIR = Path(__file__).resolve().parent.parent / "data" / "store"
+STORE_DIR.mkdir(parents=True, exist_ok=True)
+TXNS_PATH = STORE_DIR / "txns.json"
+LABELS_PATH = STORE_DIR / "user_labels.json"
+RULES_PATH = STORE_DIR / "rules.json"
+
+def _read_json(path: Path, default):
+    try:
+        if path.exists():
+            with path.open("r", encoding="utf-8") as f:
+                return json.load(f)
+    except Exception:
+        pass
+    return default
+
+def _write_json(path: Path, data) -> None:
+    tmp = path.with_suffix(".tmp")
+    with tmp.open("w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False)
+    tmp.replace(path)
+
+def load_state(app) -> None:
+    """Load txns/rules/labels into app.state if present on disk."""
+    app.state.txns = _read_json(TXNS_PATH, [])
+    app.state.user_labels = _read_json(LABELS_PATH, [])
+    app.state.rules = _read_json(RULES_PATH, [])
+
+def save_state(app) -> None:
+    """Persist txns/rules/labels from app.state to disk."""
+    _write_json(TXNS_PATH, getattr(app.state, "txns", []))
+    _write_json(LABELS_PATH, getattr(app.state, "user_labels", []))
+    _write_json(RULES_PATH, getattr(app.state, "rules", []))

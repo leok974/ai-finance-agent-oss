@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import Card from "./Card";
 import { getBudgetCheck } from "../lib/api";
+import EmptyState from "./EmptyState";
 
 interface Props {
   /** Optional. If omitted, backend uses latest month. */
@@ -12,15 +13,18 @@ const BudgetsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<any | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [empty, setEmpty] = useState(false);
 
   useEffect(() => {
     let alive = true;
     (async () => {
       setLoading(true); setError(null);
+      setEmpty(false);
       try {
         const res = await getBudgetCheck(month); // 👈 month optional
         if (!alive) return;
-        setData(res);
+        if (!res) { setEmpty(true); setData(null); }
+        else { setData(res); }
       } catch (e: any) {
         if (!alive) return;
         setError(e?.message ?? String(e));
@@ -37,11 +41,14 @@ const BudgetsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
   return (
     <Card title={`Budgets — ${resolvedMonth}`}>
       {loading && <p className="text-sm text-gray-400">Loading budgets…</p>}
-      {error &&   <p className="text-sm text-rose-300">Error: {error}</p>}
-      {!loading && !error && items.length === 0 && (
+      {error && !empty && <p className="text-sm text-rose-300">Error: {error}</p>}
+      {empty && !error && (
+        <EmptyState title="No budgets to show" note="Upload a CSV and/or add budget rules to see this panel." />
+      )}
+      {!loading && !error && !empty && items.length === 0 && (
         <p className="text-sm text-gray-400">No budget rules yet.</p>
       )}
-      {!loading && !error && items.length > 0 && (
+      {!loading && !error && !empty && items.length > 0 && (
         <div className="space-y-2 text-sm">
           {items.map((b: any, i: number) => {
             const over = (b.over ?? 0) > 0;

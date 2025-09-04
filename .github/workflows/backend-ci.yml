@@ -1,0 +1,83 @@
+name: backend-ci
+
+on:
+  push:
+    paths:
+      - "apps/backend/**"
+      - ".github/workflows/backend-ci.yml"
+  pull_request:
+    paths:
+      - "apps/backend/**"
+      - ".github/workflows/backend-ci.yml"
+
+jobs:
+  sqlite:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install backend deps
+        run: |
+          python -m pip install --upgrade pip wheel
+          pip install -r requirements.txt
+
+      - name: Run tests (SQLite)
+        env:
+          PYTHONPATH: .
+          # Ensure tests don't pick up a DATABASE_URL from repo vars
+          DATABASE_URL: ""
+        run: |
+          pytest -q
+
+  postgres:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: myuser
+          POSTGRES_PASSWORD: mypassword
+          POSTGRES_DB: finance
+        ports:
+          - 5432:5432
+        # give PG a moment to be ready
+        options: >-
+          --health-cmd="pg_isready -U myuser -d finance"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+    defaults:
+      run:
+        working-directory: apps/backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install backend deps
+        run: |
+          python -m pip install --upgrade pip wheel
+          pip install -r requirements.txt
+
+      - name: Alembic upgrade head (PG)
+        env:
+          DATABASE_URL: postgresql+psycopg://myuser:mypassword@localhost:5432/finance
+          PYTHONPATH: .
+        run: |
+          python -m alembic upgrade head
+
+      - name: Run tests (but force SQLite for unit tests)
+        env:
+          PYTHONPATH: .
+          DATABASE_URL: ""   # our tests' conftest.py forces SQLite anyway
+        run: |
+          pytest -q

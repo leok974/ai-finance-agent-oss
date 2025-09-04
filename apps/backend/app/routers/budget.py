@@ -19,9 +19,10 @@ def list_budgets() -> Dict[str, float]:
 def budget_check(month: Optional[str] = None) -> List[Dict]:
     from ..main import app
     if not month:
-        month = latest_month_from_txns(app.state.txns)
+        txns = getattr(app.state, "txns", [])
+        month = latest_month_from_txns(txns)
         if not month:
-            raise HTTPException(status_code=400, detail="No transactions loaded")
+            return []
     spent = {}
     for t in app.state.txns:
         if t["date"].startswith(month):
