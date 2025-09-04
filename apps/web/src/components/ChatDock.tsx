@@ -2,6 +2,7 @@ import React from "react";
 import { agentTools } from "../lib/api";
 import type { ToolKey, ToolSpec, ToolRunState } from "../types/agentTools";
 import { AgentResultRenderer } from "./AgentResultRenderers";
+import ErrorBoundary from "./ErrorBoundary";
 import { useMonth } from "../context/MonthContext";
 
 const TOOL_GROUPS: Array<{ label: string; items: ToolSpec[] }> = [
@@ -33,7 +34,7 @@ const TOOL_GROUPS: Array<{ label: string; items: ToolSpec[] }> = [
       { key: "charts.summary",   label: "Charts: Summary",         path: "/agent/tools/charts/summary",          examplePayload: { month: undefined } },
       { key: "charts.merchants", label: "Charts: Top Merchants",   path: "/agent/tools/charts/merchants",        examplePayload: { month: undefined, limit: 10 } },
       { key: "charts.flows",     label: "Charts: Flows",           path: "/agent/tools/charts/flows",            examplePayload: { month: undefined } },
-      { key: "charts.trends",    label: "Charts: Spending Trends", path: "/agent/tools/charts/spending_trends",  examplePayload: { month: undefined, monthsBack: 6 } },
+  { key: "charts.trends",    label: "Charts: Spending Trends", path: "/agent/tools/charts/spending_trends",  examplePayload: { month: undefined, months_back: 6 } },
     ],
   },
   {
@@ -69,6 +70,7 @@ export default function ChatDock() {
   const [state, setState] = React.useState<ToolRunState>({ loading: false, error: null, data: null });
   const [lastRunForTool, setLastRunForTool] = React.useState<Record<string, string | undefined>>({});
   const runningRef = React.useRef<AbortController | null>(null);
+  const lastClickAtRef = React.useRef<number>(0);
   const [monthReady, setMonthReady] = React.useState<boolean>(false);
 
   // stop saving/restoring "open"; clean any legacy value once
@@ -120,35 +122,53 @@ export default function ChatDock() {
   };
 
   const run = React.useCallback(async () => {
-    // prevent concurrent runs
+    // simple cooldown (prevents quick double-click flicker)
+    const now = Date.now();
+  if (now - lastClickAtRef.current < 300) return;
+    lastClickAtRef.current = now;
+
+    // prevent overlap
     if (runningRef.current) return;
 
-    let body: any;
+    // parse a FRESH body (never mutate previous object)
+    let body: any = {};
     try {
       body = payloadText.trim() ? JSON.parse(payloadText) : {};
     } catch {
-      setState({ loading: false, error: "Invalid JSON payload.", data: null });
+      setState({ loading:false, error:"Invalid JSON payload.", data:null });
       return;
     }
 
-    // ensure month for month-required tools
+    // inject/snap month for month-required tools
     const monthRequired = new Set<ToolKey>([
       "insights.summary",
+      "insights.expanded",
       "charts.summary",
       "charts.merchants",
       "charts.flows",
       "charts.trends",
+      "transactions.search",
     ]);
-    if (monthRequired.has(tool) && (!body?.month || body.month === "")) {
-      body.month = month;
-      const newText = JSON.stringify({ ...body }, null, 2);
-      setPayloadText(newText);
-      setPayloads(p => ({ ...p, [tool]: newText }));
+    if (monthRequired.has(tool)) {
+      if (!body.month || body.month === "") {
+        body = { ...body, month };
+        const newText = JSON.stringify(body, null, 2);
+        setPayloadText(newText);
+        setPayloads(p => ({ ...p, [tool]: newText }));
+      } else if (body.month !== month) {
+        // snap payload to current global month to avoid confusion
+        body = { ...body, month };
+        const newText = JSON.stringify(body, null, 2);
+        setPayloadText(newText);
+        setPayloads(p => ({ ...p, [tool]: newText }));
+      }
     }
 
+    // single-flight
     const ctrl = new AbortController();
     runningRef.current = ctrl;
     setState({ loading: true, error: null, data: null });
+
     try {
       let data: unknown;
       switch (tool) {
@@ -170,18 +190,15 @@ export default function ChatDock() {
       }
       setState({ loading: false, error: null, data });
     } catch (e: any) {
-      if (e?.name === "AbortError") {
-        // ignore
-      } else {
+      if (e?.name !== "AbortError") {
         setState({ loading: false, error: e?.message ?? "Request failed", data: null });
       }
-    }
-    finally {
+    } finally {
       runningRef.current = null;
     }
   }, [tool, payloadText, month]);
 
-  // whenever global month changes, auto-insert & auto-run
+  // whenever global month changes, auto-insert & auto-run (single-flight guarded)
   React.useEffect(() => {
     if (!monthReady) return;
     if (runningRef.current) return;
@@ -350,10 +367,19 @@ export default function ChatDock() {
               <div className="text-red-400 text-sm whitespace-pre-wrap">{state.error}</div>
             ) : state.loading ? (
               <div className="flex items-center gap-2 text-neutral-300"><Spinner/> <span>Loading…</span></div>
-            ) : state.data ? (
-              <AgentResultRenderer tool={tool} data={state.data as any} />
             ) : (
-              <div className="text-neutral-400 text-sm">No result yet.</div>
+              <ErrorBoundary fallback={(err) => (
+                <div className="text-red-400 text-sm">
+                  Renderer error: {String(err)}
+                  <pre className="mt-2 text-xs whitespace-pre-wrap">{JSON.stringify(state.data, null, 2)}</pre>
+                </div>
+              )}>
+                {state.data ? (
+                  <AgentResultRenderer tool={tool} data={state.data as any} />
+                ) : (
+                  <div className="text-neutral-400 text-sm">No result yet.</div>
+                )}
+              </ErrorBoundary>
             )}
           </div>
         </div>
