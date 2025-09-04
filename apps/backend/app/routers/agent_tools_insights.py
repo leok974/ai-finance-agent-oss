@@ -1,11 +1,12 @@
 from typing import List, Optional, Literal, Dict, Any
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel, Field, conint, confloat
+from pydantic import BaseModel, Field
 from sqlalchemy import func, case, desc
 from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.orm_models import Transaction
+from app.services.insights_expanded import build_expanded_insights
 
 router = APIRouter(prefix="/agent/tools/insights", tags=["agent-tools:insights"])
 
@@ -20,9 +21,9 @@ Kind = Literal[
 
 class InsightsRequest(BaseModel):
     month: str = Field(..., description="YYYY-MM")
-    top_n: conint(ge=1, le=10) = 3
+    top_n: int = Field(3, ge=1, le=10)
     # Consider any single transaction with abs(amount) >= large_txn_threshold as 'large'
-    large_txn_threshold: confloat(ge=0) = 200.0
+    large_txn_threshold: float = Field(200.0, ge=0)
     include_unknown: bool = True
 
 class InsightItem(BaseModel):
@@ -193,3 +194,14 @@ def insights_summary(body: InsightsRequest, db: Session = Depends(get_db)) -> In
         )
 
     return InsightsResponse(month=body.month, insights=insights)
+
+
+# --- Expanded insights (agent tools) -----------------------------------------
+class ExpandedIn(BaseModel):
+    month: Optional[str] = None
+    large_limit: Optional[int] = 10
+
+
+@router.post("/expanded")
+def insights_expanded(body: ExpandedIn, db: Session = Depends(get_db)) -> Dict[str, Any]:
+    return build_expanded_insights(db=db, month=body.month, large_limit=body.large_limit or 10)
