@@ -1,5 +1,6 @@
 import React, { useCallback, useRef, useState } from "react";
-import { uploadCsv } from "../lib/api"; // uses your existing helper
+import { uploadCsv, fetchLatestMonth, getReport, agentTools } from "../lib/api"; // uses your existing helpers
+import { useMonth } from "../context/MonthContext";
 
 type UploadResult = {
   ok: boolean;
@@ -29,6 +30,7 @@ const prettyBytes = (n: number) => {
 };
 
 const UploadCsv: React.FC<UploadCsvProps> = ({ onUploaded, defaultReplace = true, className }) => {
+  const { month, setMonth } = useMonth();
   const [file, setFile] = useState<File | null>(null);
   const [replace, setReplace] = useState<boolean>(defaultReplace);
   const [dragOver, setDragOver] = useState(false);
@@ -64,6 +66,27 @@ const UploadCsv: React.FC<UploadCsvProps> = ({ onUploaded, defaultReplace = true
     if (inputRef.current) inputRef.current.value = "";
   }, []);
 
+  // After a successful upload, snap to latest month and refetch key dashboards
+  const handleUploadSuccess = useCallback(async () => {
+    try {
+      const latest = await fetchLatestMonth();
+      const resolved = latest || month;
+      if (resolved && resolved !== month) setMonth(resolved);
+
+      if (resolved) {
+        await Promise.allSettled([
+          getReport(resolved),
+          agentTools.chartsSummary({ month: resolved }),
+          agentTools.chartsMerchants({ month: resolved, limit: 10 }),
+          agentTools.chartsFlows({ month: resolved }),
+          agentTools.chartsSpendingTrends({ month: resolved, monthsBack: 6 }),
+        ]);
+      }
+    } catch {
+      // best-effort; UI will still refresh via parent onUploaded handler
+    }
+  }, [month, setMonth]);
+
   const doUpload = useCallback(async () => {
     if (!file) return;
     setBusy(true);
@@ -73,7 +96,9 @@ const UploadCsv: React.FC<UploadCsvProps> = ({ onUploaded, defaultReplace = true
       const data = await uploadCsv(file, replace);
       const r: UploadResult = { ok: true, data, message: "CSV ingested successfully." };
       setResult(r);
-  onUploaded?.(r);
+      onUploaded?.(r);
+      // snap month + refetch dashboards
+      await handleUploadSuccess();
       // optional: reset file after success
       // reset();
     } catch (err: any) {
@@ -86,7 +111,7 @@ const UploadCsv: React.FC<UploadCsvProps> = ({ onUploaded, defaultReplace = true
     } finally {
       setBusy(false);
     }
-  }, [file, replace, onUploaded]);
+  }, [file, replace, onUploaded, handleUploadSuccess]);
 
   const disabled = busy || !file;
 

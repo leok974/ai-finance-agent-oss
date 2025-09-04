@@ -7,7 +7,7 @@
     "dev": "pnpm smoke:backend && vite",
     "build": "vite build",
   "preview": "vite preview --port 5173 --strictPort",
-  "smoke:backend": "powershell -ExecutionPolicy Bypass -File ../apps/backend/scripts/smoke-backend.ps1"
+  "smoke:backend": "powershell -ExecutionPolicy Bypass -File ../backend/app/scripts/smoke-backend.ps1"
   
     
   },
