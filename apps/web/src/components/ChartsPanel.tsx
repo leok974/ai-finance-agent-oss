@@ -134,8 +134,17 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={categoriesData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="name" /><YAxis /><Tooltip /><Legend />
+                <CartesianGrid stroke="var(--grid-line)" />
+                <XAxis dataKey="name" tick={{ fill: "var(--text-muted)" }} stroke="var(--border-subtle)" />
+                <YAxis tick={{ fill: "var(--text-muted)" }} stroke="var(--border-subtle)" />
+                <Tooltip
+                  contentStyle={{
+                    background: "var(--tooltip-bg)",
+                    borderColor: "var(--tooltip-br)",
+                    color: "var(--tooltip-text)",
+                  }}
+                />
+                <Legend />
                 <Bar dataKey="amount" name="Spend" />
               </BarChart>
             </ResponsiveContainer>
@@ -152,8 +161,17 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={merchantsData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="merchant" /><YAxis /><Tooltip /><Legend />
+                <CartesianGrid stroke="var(--grid-line)" />
+                <XAxis dataKey="merchant" tick={{ fill: "var(--text-muted)" }} stroke="var(--border-subtle)" />
+                <YAxis tick={{ fill: "var(--text-muted)" }} stroke="var(--border-subtle)" />
+                <Tooltip
+                  contentStyle={{
+                    background: "var(--tooltip-bg)",
+                    borderColor: "var(--tooltip-br)",
+                    color: "var(--tooltip-text)",
+                  }}
+                />
+                <Legend />
                 <Bar dataKey="amount" name="Spend" />
               </BarChart>
             </ResponsiveContainer>
@@ -170,8 +188,17 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={flowsData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="date" /><YAxis /><Tooltip /><Legend />
+                <CartesianGrid stroke="var(--grid-line)" />
+                <XAxis dataKey="date" tick={{ fill: "var(--text-muted)" }} stroke="var(--border-subtle)" />
+                <YAxis tick={{ fill: "var(--text-muted)" }} stroke="var(--border-subtle)" />
+                <Tooltip
+                  contentStyle={{
+                    background: "var(--tooltip-bg)",
+                    borderColor: "var(--tooltip-br)",
+                    color: "var(--tooltip-text)",
+                  }}
+                />
+                <Legend />
                 <Line type="monotone" dataKey="in" name="In" />
                 <Line type="monotone" dataKey="out" name="Out" />
                 <Line type="monotone" dataKey="net" name="Net" />
@@ -190,10 +217,16 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={trendsData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="month" />
-                <YAxis />
-                <Tooltip />
+                <CartesianGrid stroke="var(--grid-line)" />
+                <XAxis dataKey="month" tick={{ fill: "var(--text-muted)" }} stroke="var(--border-subtle)" />
+                <YAxis tick={{ fill: "var(--text-muted)" }} stroke="var(--border-subtle)" />
+                <Tooltip
+                  contentStyle={{
+                    background: "var(--tooltip-bg)",
+                    borderColor: "var(--tooltip-br)",
+                    color: "var(--tooltip-text)",
+                  }}
+                />
                 <Legend />
                 <Line type="monotone" dataKey="spent" name="Spent" />
               </LineChart>

@@ -73,6 +73,7 @@ def insights_summary(body: InsightsRequest, db: Session = Depends(get_db)) -> In
     total_out = float(sums.outflow or 0.0)
     total_in = float(sums.inflow or 0.0)
     net = float(sums.net_raw or 0.0)
+    print(f"DEBUG: Insights query for month={body.month}, found {sums.unknown_count} unknown txns")  # Add after line 67
 
     insights.append(
         InsightItem(

@@ -1,4 +1,4 @@
-import csv, io
+import csv, io, datetime as dt
 from typing import Iterable
 from sqlalchemy.orm import Session
 from app.orm_models import Transaction
@@ -7,6 +7,24 @@ INCOME_HINTS = (
     "payroll","paycheck","salary","employer","bonus","refund","reimbursement",
     "interest","dividend","income","deposit","transfer in"
 )
+
+def _parse_date(s: str | None) -> dt.date | None:
+    if not s:
+        return None
+    s = s.strip()
+    # try ISO first
+    try:
+        return dt.date.fromisoformat(s[:10])
+    except Exception:
+        pass
+    # add any custom parse formats you need here
+    # try MM/DD/YYYY
+    for fmt in ("%m/%d/%Y", "%m/%d/%y", "%d/%m/%Y", "%Y/%m/%d"):
+        try:
+            return dt.datetime.strptime(s[:10], fmt).date()
+        except Exception:
+            continue
+    return None
 
 async def ingest_csv_file(
     db: Session,
@@ -25,7 +43,10 @@ async def ingest_csv_file(
     rows = 0
     for r in reader:
         # Adjust these keys to your CSV columns if different
-        date = (r.get("date") or r.get("Date") or "").strip()
+        date_str = (r.get("date") or r.get("Date") or "").strip()
+        date_obj = _parse_date(date_str)  # <-- proper Python date
+        month = date_obj.strftime("%Y-%m") if date_obj else None
+        
         merchant = (r.get("merchant") or r.get("Merchant") or "").strip() or None
         description = (r.get("description") or r.get("Description") or "").strip() or None
         category = (r.get("category") or r.get("Category") or "").strip() or None
@@ -35,9 +56,6 @@ async def ingest_csv_file(
         except Exception:
             amount = 0.0
 
-        # Normalize month (expects ISO date like YYYY-MM-DD)
-        month = date[:7] if date else None
-
         # Flip positive expenses to negative (keep obvious income positive)
         if expenses_are_positive and amount > 0:
             blob = f"{merchant or ''} {description or ''} {category or ''}".lower()
@@ -46,8 +64,8 @@ async def ingest_csv_file(
                 amount = -abs(amount)
 
         db.add(Transaction(
-            date=date or None,
-            month=month,
+            date=date_obj,          # <-- store DATE, not string
+            month=month,            # <-- keep month string
             merchant=merchant,
             description=description,
             amount=amount,

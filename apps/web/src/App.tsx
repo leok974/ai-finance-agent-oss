@@ -28,16 +28,27 @@ const App: React.FC = () => {
 
   // Resolve month on startup from backend (transactions.search), with calendar fallback
   useEffect(() => { (async () => {
+    console.log("🔍 App startup: resolving latest month...");
     try {
       const m = await fetchLatestMonth();
+      console.log("📅 fetchLatestMonth returned:", m);
       if (m) {
+        console.log("✅ Setting month to:", m);
         setMonth(m);
       } else {
         const now = new Date();
         const fallback = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+        console.log("⚠️ No month from backend, using fallback:", fallback);
         setMonth(fallback);
       }
+    } catch (error) {
+      console.error("❌ Error fetching latest month:", error);
+      const now = new Date();
+      const fallback = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+      console.log("🔄 Error fallback month:", fallback);
+      setMonth(fallback);
     } finally {
+      console.log("🏁 Month resolution complete");
       setMonthReady(true);
     }
   })() }, []);
