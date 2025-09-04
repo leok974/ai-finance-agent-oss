@@ -1,18 +1,25 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import Card from './Card'
 import { getSuggestions, categorizeTxn, getExplain } from '../lib/api'
+import EmptyState from './EmptyState'
 
 type Suggestion = { txn_id: number; merchant?: string; description?: string; topk: Array<{ category: string; confidence: number }> }
 
-export default function SuggestionsPanel({ month, refreshKey }: { month?: string; refreshKey?: number }) {
+export default function SuggestionsPanel({ month, refreshKey = 0 }: { month?: string; refreshKey?: number }) {
   const [items, setItems] = useState<Suggestion[]>([])
   const [selected, setSelected] = useState<Record<number, string>>({})
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [resolvedMonth, setResolvedMonth] = useState<string | null>(null)
+  const [empty, setEmpty] = useState(false)
 
   useEffect(()=>{ (async()=>{
-    setLoading(true)
+    setLoading(true); setError(null); setEmpty(false)
     try {
       const res = await getSuggestions(month)
+      // empty boot state
+      if (!res) { setEmpty(true); setItems([]); setResolvedMonth(null); return }
+      setResolvedMonth(res?.month ?? null)
       // normalize various server shapes -> list of { txn_id, merchant, description, topk[] }
       const arr: any[] = Array.isArray(res?.results)
         ? res.results
@@ -49,6 +56,8 @@ export default function SuggestionsPanel({ month, refreshKey }: { month?: string
         prev.topk = Array.from(cats.values()).slice(0,3)
       }
       setItems(Array.from(byTxn.values()))
+    } catch (e: any) {
+      setError(e?.message ?? String(e))
     } finally { setLoading(false) }
   })() }, [month, refreshKey])
 
@@ -74,13 +83,17 @@ export default function SuggestionsPanel({ month, refreshKey }: { month?: string
   }
 
   return (
-  <Card title={`ML Suggestions — ${month ?? '(latest)'}`} right={
+  <Card title={`ML Suggestions — ${resolvedMonth ?? '(latest)'}`} right={
       <div className="flex gap-2">
         <button className="px-2 py-1 rounded bg-blue-700 disabled:opacity-40" disabled={!canApply} onClick={applySelected}>Apply selected</button>
         <button className="px-2 py-1 rounded bg-emerald-700" onClick={()=>autoApplyBest(0.85)}>Auto‑apply best ≥ 0.85</button>
       </div>
     }>
       {loading && <div className="opacity-70">Loading…</div>}
+      {error && !empty && <p className="text-sm text-rose-300">Error: {error}</p>}
+      {empty && !error && (
+        <EmptyState title="No suggestions yet" note="Upload a CSV to generate category/merchant suggestions." />
+      )}
       <ul className="space-y-2">
         {items.map(it => (
           <li key={it.txn_id} className="rounded-lg border border-neutral-800 p-3 bg-neutral-900">
@@ -110,6 +123,9 @@ export default function SuggestionsPanel({ month, refreshKey }: { month?: string
           </li>
         ))}
       </ul>
+      {!loading && !error && !empty && items.length === 0 && (
+        <p className="text-sm text-gray-400">No suggestions.</p>
+      )}
     </Card>
   )
 }

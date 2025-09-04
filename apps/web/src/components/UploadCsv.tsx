@@ -1,5 +1,6 @@
 import React, { useCallback, useRef, useState } from "react";
-import { uploadCsv } from "../lib/api"; // uses your existing helper
+import { uploadCsv, fetchLatestMonth, getReport, agentTools } from "../lib/api"; // uses your existing helpers
+import { useMonth } from "../context/MonthContext";
 
 type UploadResult = {
   ok: boolean;
@@ -10,7 +11,7 @@ type UploadResult = {
 
 interface UploadCsvProps {
   /** Called after a successful upload. Useful to refresh Unknowns/Suggestions. */
-  onUploaded?: (result: UploadResult) => void;
+  onUploaded?: (result?: UploadResult) => void;
   /** Default for the "Replace existing data" toggle. */
   defaultReplace?: boolean;
   /** Optional className passthrough. */
@@ -29,9 +30,11 @@ const prettyBytes = (n: number) => {
 };
 
 const UploadCsv: React.FC<UploadCsvProps> = ({ onUploaded, defaultReplace = true, className }) => {
+  const { month, setMonth } = useMonth();
   const [file, setFile] = useState<File | null>(null);
   const [replace, setReplace] = useState<boolean>(defaultReplace);
   const [dragOver, setDragOver] = useState(false);
+  const [expensesArePositive, setExpensesArePositive] = useState<boolean>(false);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<UploadResult | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -64,16 +67,40 @@ const UploadCsv: React.FC<UploadCsvProps> = ({ onUploaded, defaultReplace = true
     if (inputRef.current) inputRef.current.value = "";
   }, []);
 
+  // After a successful upload, snap to latest month and refetch key dashboards
+  const handleUploadSuccess = useCallback(async () => {
+    try {
+      const latest = await fetchLatestMonth();
+      const resolved = latest || month;
+      if (resolved && resolved !== month) setMonth(resolved);
+
+      if (resolved) {
+        // fire-and-forget to avoid blocking UI
+        void Promise.allSettled([
+          getReport(resolved),
+          agentTools.chartsSummary({ month: resolved }),
+          agentTools.chartsMerchants({ month: resolved, limit: 10 }),
+          agentTools.chartsFlows({ month: resolved }),
+          agentTools.chartsSpendingTrends({ month: resolved, months_back: 6 }),
+        ]);
+      }
+    } catch {
+      // best-effort; UI will still refresh via parent onUploaded handler
+    }
+  }, [month, setMonth]);
+
   const doUpload = useCallback(async () => {
     if (!file) return;
     setBusy(true);
     setResult(null);
     try {
       // Uses your existing API helper; falls back to direct fetch if needed.
-      const data = await uploadCsv(file, replace);
+  const data = await uploadCsv(file, replace, expensesArePositive);
       const r: UploadResult = { ok: true, data, message: "CSV ingested successfully." };
       setResult(r);
       onUploaded?.(r);
+  // snap month + refetch dashboards (non-blocking)
+  void handleUploadSuccess();
       // optional: reset file after success
       // reset();
     } catch (err: any) {
@@ -86,7 +113,7 @@ const UploadCsv: React.FC<UploadCsvProps> = ({ onUploaded, defaultReplace = true
     } finally {
       setBusy(false);
     }
-  }, [file, replace, onUploaded]);
+  }, [file, replace, onUploaded, handleUploadSuccess]);
 
   const disabled = busy || !file;
 
@@ -152,7 +179,7 @@ const UploadCsv: React.FC<UploadCsvProps> = ({ onUploaded, defaultReplace = true
 
         <div className="mt-4 flex items-center justify-between">
           <div className="text-xs text-gray-400">
-            Endpoint: <code className="text-gray-300">/ingest?replace={String(replace)}</code>
+            Endpoint: <code className="text-gray-300">/ingest?replace={String(replace)}&expenses_are_positive={String(expensesArePositive)}</code>
           </div>
           <button
             type="button"
@@ -165,6 +192,18 @@ const UploadCsv: React.FC<UploadCsvProps> = ({ onUploaded, defaultReplace = true
           >
             {busy ? "Uploading…" : "Upload CSV"}
           </button>
+        </div>
+
+        <div className="mt-3 flex items-center gap-3">
+          <label className="inline-flex items-center gap-2 text-sm text-gray-300">
+            <input
+              type="checkbox"
+              className="h-4 w-4 rounded border-gray-600 bg-gray-800 text-indigo-500 focus:ring-indigo-500"
+              checked={expensesArePositive}
+              onChange={(e) => setExpensesArePositive(e.target.checked)}
+            />
+            Expenses are positive
+          </label>
         </div>
 
         {/* Progress / Result */}
@@ -196,6 +235,9 @@ const UploadCsv: React.FC<UploadCsvProps> = ({ onUploaded, defaultReplace = true
             )}
           </div>
         )}
+        <div className="mt-3 text-xs text-gray-400">
+          Hint: If your bank exports expenses as positive numbers, check “Expenses are positive” so we’ll normalize them during import. Income stays positive.
+        </div>
       </div>
     </div>
   );

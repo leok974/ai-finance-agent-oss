@@ -1,22 +1,44 @@
-from fastapi import APIRouter
-from typing import List
-from ..models import Rule
+from fastapi import APIRouter, HTTPException, Depends
+from typing import List, Dict, Any
+from sqlalchemy.orm import Session
+from sqlalchemy import select, delete
+from app.db import get_db
+from app.models import Rule as RuleSchema
+from app.orm_models import Rule
+# from app.schemas import RuleIn  # optional: use a separate schema for input
 
 router = APIRouter()
 
+
 @router.get("")
-def list_rules() -> List[Rule]:
-    from ..main import app
-    return [Rule(**r) for r in app.state.rules]
+def list_rules(db: Session = Depends(get_db)) -> List[Dict[str, Any]]:
+    rows = db.execute(select(Rule).order_by(Rule.id.desc())).scalars().all()
+    return [
+        {"id": r.id, "pattern": r.pattern, "target": r.target, "category": r.category}
+        for r in rows
+    ]
+
 
 @router.post("")
-def add_rule(rule: Rule):
-    from ..main import app
-    app.state.rules.append(rule.model_dump())
-    return {"ok": True, "rule": rule}
+def add_rule(rule: RuleSchema, db: Session = Depends(get_db)):
+    r = Rule(pattern=rule.pattern, target=rule.target, category=rule.category)
+    db.add(r)
+    db.commit()
+    db.refresh(r)
+    return {"ok": True, "id": r.id, "rule": {"pattern": r.pattern, "target": r.target, "category": r.category}}
+
 
 @router.delete("")
-def clear_rules():
-    from ..main import app
-    app.state.rules = []
+def clear_rules(db: Session = Depends(get_db)):
+    db.execute(delete(Rule))
+    db.commit()
+    return {"ok": True}
+
+
+@router.delete("/{rule_id}")
+def delete_rule(rule_id: int, db: Session = Depends(get_db)):
+    res = db.execute(delete(Rule).where(Rule.id == rule_id))
+    if getattr(res, "rowcount", 0) == 0:
+        raise HTTPException(status_code=404, detail="not found")
+    db.commit()
     return {"ok": True}
