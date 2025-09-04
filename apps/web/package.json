@@ -4,9 +4,12 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "pnpm smoke:backend && vite",
     "build": "vite build",
-    "preview": "vite preview --port 5173 --strictPort"
+  "preview": "vite preview --port 5173 --strictPort",
+  "smoke:backend": "powershell -ExecutionPolicy Bypass -File ../apps/backend/scripts/smoke-backend.ps1"
+  
+    
   },
   "dependencies": {
     "react": "^18.2.0",

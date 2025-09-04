@@ -1,128 +1,96 @@
+# apps/backend/app/routers/ml.py
+from __future__ import annotations
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
+from typing import Optional, Dict, Any
+from sqlalchemy.orm import Session
+from sqlalchemy import text as sql_text
 
-from fastapi import APIRouter, Depends, Query
-import json, urllib.request
+from app.database import get_db
+from app.services.ml_train import train_on_db, latest_meta, load_latest_model
+from app.services.ml_suggest import suggest_for_unknowns  # keep if you added it
+import math
+import pandas as pd
 
-# ensure we have a router to attach endpoints to
-router = APIRouter()
+router = APIRouter(prefix="/ml", tags=["ml"])
+
+class TrainRequest(BaseModel):
+    month: Optional[str] = None
+    min_samples: int = 25
+    test_size: float = 0.2
+    random_state: int = 42
+    passes: int = 1
+
+@router.post("/train")
+def train(req: TrainRequest, db: Session = Depends(get_db)) -> Dict[str, Any]:
+    try:
+        last = None
+        for _ in range(max(1, req.passes)):
+            last = train_on_db(
+                db=db,
+                month=req.month,
+                min_samples=max(1, req.min_samples),
+                test_size=req.test_size,
+                random_state=req.random_state,
+            )
+        if not last:
+            return {"status": "error", "error": "training_returned_none"}
+        return last
+    except Exception as e:
+        # Never 500; return a readable error instead
+        return {"status": "error", "error": str(e)}
 
 @router.get("/status")
-def ml_status():
-    """Check if Ollama is running and which models are available."""
-    try:
-        with urllib.request.urlopen("http://127.0.0.1:11434/api/tags", timeout=1.0) as resp:
-            data = json.loads(resp.read().decode("utf-8", errors="ignore"))
-            models = []
-            if isinstance(data, dict) and isinstance(data.get("models"), list):
-                for m in data["models"]:
-                    name = (m or {}).get("name")
-                    if name:
-                        models.append(name)
-            return {"ok": True, "models": models}
-    except Exception as e:
-        return {"ok": False, "error": str(e)}
-
-from fastapi import HTTPException
-from typing import List, Dict, Optional
-from ..services.llm import LLMClient
-from ..services.rules_engine import apply_rules
-from ..utils.dates import latest_month_from_txns
-from sqlalchemy import select, func, or_
-from sqlalchemy.orm import Session
-from app.db import get_db
-from app.orm_models import Transaction
-
-def dedup_and_topk(items: List[Dict], k: int = 3) -> List[Dict]:
-    seen = set()
-    out = []
-    for s in items:
-        cat = s.get("category")
-        if not cat:
-            continue
-        key = cat.strip().lower()
-        if key in seen:
-            continue
-        seen.add(key)
-        out.append({"category": cat.strip(), "confidence": float(s.get("confidence", 0.0))})
-        if len(out) >= k:
-            break
-    return out
-
-def _latest_month_str(db: Session) -> Optional[str]:
-    """Return YYYY-MM for the latest transaction date, or None."""
-    max_d = db.execute(select(func.max(Transaction.date))).scalar()
-    return max_d.strftime("%Y-%m") if max_d else None
-
-
-def to_txn_dict(t: Transaction) -> dict:
-    return {
-        "id": t.id,
-        "date": t.date.isoformat() if getattr(t, "date", None) else None,
-        "merchant": t.merchant,
-        "description": t.description,
-        "amount": float(t.amount) if t.amount is not None else 0.0,
-        "category": t.category,
-        "account": t.account,
-        "month": t.month,
-    }
-
+def status() -> Dict[str, Any]:
+    return latest_meta()
 
 @router.get("/suggest")
-async def suggest(
-    month: Optional[str] = Query(None, pattern=r"^\d{4}-\d{2}$"),
-    limit: int = 50,
-    topk: int = 3,
+def suggest(
+    month: Optional[str] = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=500),
+    topk: int = Query(default=3, ge=1, le=10),
     db: Session = Depends(get_db),
 ):
-    """
-    Return ML/rule-based suggestions for transactions in a month. If `month` is omitted,
-    default to the latest month available. Response includes both legacy fields and
-    a top-level `month` and `suggestions` for forward compatibility.
-    """
-    from ..main import app
-    if not month:
-        # Prefer DB if available; fall back to in-memory test data
-        month = _latest_month_str(db)
-        if not month:
-            month = latest_month_from_txns(getattr(app.state, "txns", []))
-        if not month:
-            return {"month": None, "count": 0, "results": [], "suggestions": []}
+    return suggest_for_unknowns(db=db, month=month, limit=limit, topk=topk)
 
-    rows = (
-        db.execute(
-            select(Transaction)
-            .where(
-                Transaction.month == month,
-                or_(
-                    Transaction.category.is_(None),
-                    Transaction.category == "",
-                    Transaction.category == "Unknown",
-                ),
-            )
-            .order_by(Transaction.date.desc(), Transaction.id.desc())
-            .limit(limit)
-        )
-        .scalars()
-        .all()
-    )
-    items = [to_txn_dict(t) for t in rows]
-    llm = LLMClient()
-    out = []
-    for t in items:
-        # try rules first
-        cat = apply_rules(t, app.state.rules)
-        suggestions = []
-        if cat:
-            suggestions.append({"category": cat, "confidence": 0.99})
-        # ask llm
-        llm_sug = await llm.suggest_categories(t)
-        suggestions.extend(llm_sug or [])
-        suggestions = sorted(suggestions, key=lambda x: -float(x.get("confidence", 0.0)))
-        suggestions = dedup_and_topk(suggestions, k=topk)
-        out.append({"txn": t, "suggestions": suggestions})
-    # Backward + forward compatible shape
+
+@router.get("/diag")
+def diag(db: Session = Depends(get_db)):
+    def one(sql: str, params=None):
+        return db.execute(sql_text(sql), params or {}).mappings().all()
+
+    rows_total = one("SELECT COUNT(*) AS n FROM transactions")
+    rows_labeled = one("SELECT COUNT(*) AS n FROM transactions WHERE category IS NOT NULL AND category <> ''")
+    rows_unknown = one("SELECT COUNT(*) AS n FROM transactions WHERE category IS NULL OR category = ''")
+    by_cat = one("SELECT COALESCE(category,'<NULL>') AS category, COUNT(*) AS n FROM transactions GROUP BY category ORDER BY n DESC")
+    by_month_labeled = one("SELECT month, COUNT(*) AS n FROM transactions WHERE category IS NOT NULL AND category <> '' GROUP BY month ORDER BY month")
+
     return {
-        "month": month,
-        "count": len(out),
-        "results": out,
-        "suggestions": out,
+        "rows_total": rows_total[0]["n"] if rows_total else 0,
+        "rows_labeled": rows_labeled[0]["n"] if rows_labeled else 0,
+        "rows_unknown": rows_unknown[0]["n"] if rows_unknown else 0,
+        "distinct_categories": len([r for r in by_cat if r["category"] not in (None, "", "<NULL>")]),
+        "by_category": by_cat,
+        "by_month_labeled": by_month_labeled,
     }
+
+
+@router.get("/preview")
+def preview(merchant: str = "", description: str = "", amount: float = 0.0, topk: int = 3):
+    pipe = load_latest_model()
+    if pipe is None:
+        return {"status": "error", "error": "no_model"}
+
+    text = (merchant or "").strip() + " " + (description or "").strip()
+    num0 = -1.0 if amount < 0 else 1.0
+    num1 = math.log1p(abs(amount))
+    df = pd.DataFrame({"text": [text], "num0": [num0], "num1": [num1]})
+
+    if not hasattr(pipe, "predict_proba"):
+        return {"status": "error", "error": "model_no_proba"}
+
+    proba = pipe.predict_proba(df)[0].tolist()
+    clf = getattr(pipe, "named_steps", {}).get("clf", None)
+    classes = clf.classes_.tolist() if clf is not None else list(getattr(pipe, "classes_", []))
+    pairs = sorted(zip(classes, proba), key=lambda t: t[1], reverse=True)[: max(1, topk)]
+    return {"status": "ok", "top": [{"category": c, "confidence": p} for c, p in pairs]}
