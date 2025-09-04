@@ -7,6 +7,8 @@ import type {
   BudgetSummaryResult,
   BudgetCheckResult,
   InsightSummaryResult,
+  InsightsExpandedResult,
+  MoMStat,
   // We'll accept unknown shape for expanded; optional future type
   ChartsSummaryResult,
   ChartsMerchantsResult,
@@ -16,6 +18,7 @@ import type {
   RulesApplyResult,
   Txn,
 } from "../types/agentToolsResults";
+import type { ToolKey } from "../types/agentTools";
 
 // Shared card
 function Card({ title, children, right }: React.PropsWithChildren<{ title: string; right?: React.ReactNode }>) {
@@ -198,8 +201,123 @@ export function RulesApplyCard({ data }: { data: RulesApplyResult }) {
   );
 }
 
+// ----- Insights Expanded helpers and card -----
+// helper
+const pctFmt = (p: number | null) => (p == null ? "—" : `${Math.round(p * 100)}%`);
+const deltaBadge = (v: number) => (
+  <span className={`px-2 py-0.5 rounded-full text-xs ${v > 0 ? "bg-red-50 text-red-700" : v < 0 ? "bg-emerald-50 text-emerald-700" : "bg-gray-100 text-gray-600"}`}>
+    {v > 0 ? "▲" : v < 0 ? "▼" : "•"} {Math.abs(v).toFixed(2)}
+  </span>
+);
+
+function MoMRow({ label, stat }: { label: string; stat: MoMStat }) {
+  return (
+    <tr className="border-t">
+      <td className="py-1 pr-4 text-gray-700">{label}</td>
+      <td className="py-1 pr-4">{stat.prev.toFixed(2)}</td>
+      <td className="py-1 pr-4">{stat.curr.toFixed(2)}</td>
+      <td className="py-1 pr-4">{deltaBadge(stat.delta)}</td>
+      <td className="py-1 pr-4">{pctFmt(stat.pct)}</td>
+    </tr>
+  );
+}
+
+export function InsightsExpandedCard({ data }: { data: InsightsExpandedResult }) {
+  const sum = data.summary;
+  const mom = data.mom;
+  const cats = data.anomalies?.categories ?? [];
+  const merch = data.anomalies?.merchants ?? [];
+
+  return (
+    <div className="space-y-3">
+      <Card title={`Expanded Insights ${data.month ? `— ${data.month}` : ""}`} right={
+        <span className="text-xs text-gray-500">{data.prev_month ? `vs ${data.prev_month}` : "no prior month"}</span>
+      }>
+        {sum ? (
+          <div className="grid grid-cols-3 gap-3 text-sm">
+            <div><div className="text-gray-500">Income</div><div className="font-semibold">{money(sum.income)}</div></div>
+            <div><div className="text-gray-500">Spend</div><div className="font-semibold">{money(sum.spend)}</div></div>
+            <div><div className="text-gray-500">Net</div><div className="font-semibold">{money(sum.net)}</div></div>
+          </div>
+        ) : (
+          <div className="text-sm text-gray-600">No data for this month.</div>
+        )}
+
+        {data.unknown_spend ? (
+          <div className="mt-3 text-sm text-amber-700">
+            Unknown spend: <b>{money(data.unknown_spend.amount)}</b> ({data.unknown_spend.count} txns)
+          </div>
+        ) : null}
+      </Card>
+
+      {mom ? (
+        <Card title="Month-over-Month">
+          <div className="overflow-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-gray-500">
+                  <th className="py-1 pr-4">Metric</th>
+                  <th className="py-1 pr-4">Prev</th>
+                  <th className="py-1 pr-4">Curr</th>
+                  <th className="py-1 pr-4">Δ</th>
+                  <th className="py-1 pr-4">% Δ</th>
+                </tr>
+              </thead>
+              <tbody>
+                <MoMRow label="Income" stat={mom.income} />
+                <MoMRow label="Spend" stat={mom.spend} />
+                <MoMRow label="Net" stat={mom.net} />
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      ) : null}
+
+      <div className="grid md:grid-cols-2 gap-3">
+        <Card title="Top Categories">
+          <T header={["Category", "Amount"]} rows={(data.top_categories ?? []).map(c => [c.category, money(c.amount)])} />
+        </Card>
+        <Card title="Top Merchants">
+          <T header={["Merchant", "Amount"]} rows={(data.top_merchants ?? []).map(m => [m.merchant, money(m.amount)])} />
+        </Card>
+      </div>
+
+      <Card title="Large Transactions">
+        <T
+          header={["Date","Merchant","Category","Amount"]}
+          rows={(data.large_transactions ?? []).map(t => [
+            shortDate(t.date ?? undefined),
+            t.merchant || "—",
+            t.category || "Unknown",
+            money(t.amount),
+          ])}
+        />
+      </Card>
+
+      <div className="grid md:grid-cols-2 gap-3">
+        <Card title="Anomalies — Categories">
+          {cats.length ? (
+            <T
+              header={["Category","Prev","Curr","Δ","% Δ"]}
+              rows={cats.map(a => [a.key, a.prev.toFixed(2), a.curr.toFixed(2), a.delta.toFixed(2), pctFmt(a.pct)])}
+            />
+          ) : <div className="text-sm text-gray-600">No category spikes detected.</div>}
+        </Card>
+        <Card title="Anomalies — Merchants">
+          {merch.length ? (
+            <T
+              header={["Merchant","Prev","Curr","Δ","% Δ"]}
+              rows={merch.map(a => [a.key, a.prev.toFixed(2), a.curr.toFixed(2), a.delta.toFixed(2), pctFmt(a.pct)])}
+            />
+          ) : <div className="text-sm text-gray-600">No merchant spikes detected.</div>}
+        </Card>
+      </div>
+    </div>
+  );
+}
+
 // ----- Dispatcher
-export function AgentResultRenderer({ tool, data }: { tool: string; data: unknown }) {
+export function AgentResultRenderer({ tool, data }: { tool: ToolKey; data: any }) {
   switch (tool) {
     case "transactions.search":       return <TransactionsSearchCard data={data as TransactionsSearchResult} />;
     case "transactions.categorize":   return <CategorizeResultCard data={data as CategorizeResult} />;
@@ -207,11 +325,7 @@ export function AgentResultRenderer({ tool, data }: { tool: string; data: unknow
     case "budget.summary":            return <BudgetSummaryCard data={data as BudgetSummaryResult} />;
     case "budget.check":              return <BudgetCheckCard data={data as BudgetCheckResult} />;
     case "insights.summary":          return <InsightSummaryCard data={data as InsightSummaryResult} />;
-    case "insights.expanded":         return (
-      <Card title="Insights — Expanded">
-        <pre className="text-xs whitespace-pre-wrap break-words">{JSON.stringify(data, null, 2)}</pre>
-      </Card>
-    );
+  case "insights.expanded":         return <InsightsExpandedCard data={data as InsightsExpandedResult} />;
     case "charts.summary":            return <ChartsSummaryCard data={data as ChartsSummaryResult} />;
     case "charts.merchants":          return <ChartsMerchantsCard data={data as ChartsMerchantsResult} />;
     case "charts.flows":              return <ChartsFlowsCard data={data as ChartsFlowsResult} />;
@@ -220,9 +334,7 @@ export function AgentResultRenderer({ tool, data }: { tool: string; data: unknow
     case "rules.apply":               return <RulesApplyCard data={data as RulesApplyResult} />;
     default:
       return (
-        <Card title="Result">
-          <pre className="text-xs whitespace-pre-wrap break-words">{JSON.stringify(data, null, 2)}</pre>
-        </Card>
+        <pre className="text-xs whitespace-pre-wrap break-all">{JSON.stringify(data, null, 2)}</pre>
       );
   }
 }

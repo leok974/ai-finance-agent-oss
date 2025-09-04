@@ -12,7 +12,8 @@ export type ToolKey =
   | "charts.flows"
   | "charts.trends"
   | "rules.test"
-  | "rules.apply";
+  | "rules.apply"
+  | "rules.apply_all";
 
 export type ToolSpec = {
   key: ToolKey;

@@ -13,18 +13,43 @@ function q(params: Record<string, any>) {
 }
 
 async function http<T=any>(path: string, init?: RequestInit): Promise<T> {
-  const url = API_BASE ? `${API_BASE}${path}` : path
+  const url = API_BASE ? `${API_BASE}${path}` : path;
   const res = await fetch(url, {
     headers: { 'Content-Type': 'application/json' },
     ...init,
-  })
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
-  const ct = res.headers.get('content-type') || ''
-  return ct.includes('application/json') ? res.json() : (await res.text() as any)
+  });
+  if (!res.ok) {
+    let msg = `${res.status} ${res.statusText}`;
+    try {
+      const j = await res.json();
+      if (j?.detail) msg += ` — ${JSON.stringify(j.detail)}`;
+    } catch {
+      const t = await res.text().catch(() => "");
+      if (t) msg += ` — ${t}`;
+    }
+    throw new Error(msg);
+  }
+  const ct = res.headers.get('content-type') || '';
+  return ct.includes('application/json') ? res.json() : (await res.text() as any);
 }
 
+// tiny mapper: pick and rename fields (camelCase -> snake_case)
+const pick = <T extends object>(obj: any, map: Record<string, string>) => {
+  const out: any = {};
+  for (const [from, to] of Object.entries(map)) {
+    if (obj?.[from] !== undefined) out[to] = obj[from];
+    if (obj?.[to]   !== undefined) out[to] = obj[to]; // allow snake_case too
+  }
+  return out as T;
+};
+
 // ---------- Reports / Insights / Alerts ----------
-export const getReport = (month?: string) => http(`/report${q({ month })}`)
+// Legacy /report removed: map to agent tools insights summary and require month
+export const getReport = (month: string) =>
+  http(`/agent/tools/insights/summary`, {
+    method: "POST",
+    body: JSON.stringify({ month, include_unknown_spend: true, limit_large_txns: 10 }),
+  })
 // Use robust fetchJson; keep optional month for backward-compat callers
 export const getInsights = (month?: string) =>
   fetchJson(`/insights${month ? `?month=${encodeURIComponent(month)}` : ""}`)
@@ -170,8 +195,8 @@ export async function uploadCsv(file: File, replace = true) {
 
 // ---------- Agent Tools (Transactions, Budget, Insights, Charts, Rules) ----------
 // Generic POST helper for Agent Tools (reuses existing http() which handles API_BASE and JSON headers)
-async function postTool<T = any>(path: string, payload: any): Promise<T> {
-  return http<T>(path, { method: "POST", body: JSON.stringify(payload) });
+async function postTool<T = any>(path: string, payload: any, init?: RequestInit): Promise<T> {
+  return http<T>(path, { method: "POST", body: JSON.stringify(payload), ...(init || {}) });
 }
 
 // Namespaced helpers for agent tool endpoints
@@ -188,57 +213,72 @@ export const agentTools = {
       category?: string;
       labeled?: boolean; // true = labeled only, false = unlabeled only, omit = all
     };
-  }) => postTool("/agent/tools/transactions/search", payload),
+  }, signal?: AbortSignal) => postTool("/agent/tools/transactions/search", payload, { signal }),
 
   categorizeTransactions: (payload: {
     updates: Array<{ id: number | string; category: string }>;
     onlyIfUnlabeled?: boolean; // backend should respect this; defaults true
-  }) => postTool("/agent/tools/transactions/categorize", payload),
+  }, signal?: AbortSignal) => postTool("/agent/tools/transactions/categorize", payload, { signal }),
 
-  getTransactionsByIds: (payload: { ids: Array<number | string> }) =>
-    postTool("/agent/tools/transactions/get_by_ids", payload),
+  getTransactionsByIds: (payload: { ids: Array<number | string> }, signal?: AbortSignal) =>
+    postTool("/agent/tools/transactions/get_by_ids", payload, { signal }),
 
   // Budget
-  budgetSummary: (payload: { month?: string }) =>
-    postTool("/agent/tools/budget/summary", payload),
+  budgetSummary: (payload: { month?: string }, signal?: AbortSignal) =>
+    postTool("/agent/tools/budget/summary", payload, { signal }),
 
-  budgetCheck: (payload: { month?: string }) =>
-    postTool("/agent/tools/budget/check", payload),
+  budgetCheck: (payload: { month?: string }, signal?: AbortSignal) =>
+    postTool("/agent/tools/budget/check", payload, { signal }),
 
   // Insights
   insightsSummary: (payload: {
     month?: string;
-    limitLargeTxns?: number;
-    includeUnknownSpend?: boolean;
-  }) => postTool("/agent/tools/insights/summary", payload),
+    limitLargeTxns?: number;      // camel
+    includeUnknownSpend?: boolean;// camel
+    // also accept snake_case to be flexible
+    limit_large_txns?: number;
+    include_unknown_spend?: boolean;
+  }, signal?: AbortSignal) => postTool("/agent/tools/insights/summary", {
+    month: payload?.month,
+    ...pick(payload, {
+      limitLargeTxns: "limit_large_txns",
+      includeUnknownSpend: "include_unknown_spend",
+    }),
+  }, { signal }),
 
-  insightsExpanded: (payload: { month?: string; large_limit?: number }) =>
-    postTool("/agent/tools/insights/expanded", payload),
+  insightsExpanded: (payload: { month?: string; large_limit?: number; largeLimit?: number }, signal?: AbortSignal) =>
+    postTool("/agent/tools/insights/expanded", {
+      month: payload?.month,
+      ...pick(payload, { largeLimit: "large_limit" }),
+    }, { signal }),
 
   // Charts
-  chartsSummary: (payload: { month?: string }) =>
-    postTool("/agent/tools/charts/summary", payload),
+  chartsSummary: (payload: { month: string }, signal?: AbortSignal) =>
+    postTool("/agent/tools/charts/summary", payload, { signal }),
 
-  chartsMerchants: (payload: { month?: string; limit?: number }) =>
-    postTool("/agent/tools/charts/merchants", payload),
+  chartsMerchants: (payload: { month: string; limit?: number }, signal?: AbortSignal) =>
+    postTool("/agent/tools/charts/merchants", payload, { signal }),
 
-  chartsFlows: (payload: { month?: string }) =>
-    postTool("/agent/tools/charts/flows", payload),
+  chartsFlows: (payload: { month: string }, signal?: AbortSignal) =>
+    postTool("/agent/tools/charts/flows", payload, { signal }),
 
-  chartsSpendingTrends: (payload: { month?: string; monthsBack?: number }) =>
-    postTool("/agent/tools/charts/spending_trends", payload),
+  chartsSpendingTrends: (payload: { month: string; monthsBack?: number }, signal?: AbortSignal) =>
+    postTool("/agent/tools/charts/spending_trends", payload, { signal }),
 
   // Rules
   rulesTest: (payload: {
     rule: { merchant?: string; description?: string; pattern?: string; category?: string };
     month?: string;
-  }) => postTool("/agent/tools/rules/test", payload),
+  }, signal?: AbortSignal) => postTool("/agent/tools/rules/test", payload, { signal }),
 
   rulesApply: (payload: {
     rule: { merchant?: string; description?: string; pattern?: string; category: string };
     month?: string;
     onlyUnlabeled?: boolean; // default true in backend
-  }) => postTool("/agent/tools/rules/apply", payload),
+  }, signal?: AbortSignal) => postTool("/agent/tools/rules/apply", payload, { signal }),
+
+  rulesApplyAll: (payload: { month?: string }, signal?: AbortSignal) =>
+    postTool("/agent/tools/rules/apply_all", payload, { signal }),
 };
 
 // ---------- Agent Tools: Rules CRUD ----------
@@ -252,3 +292,15 @@ export const rulesCrud = {
   ) => http(`/agent/tools/rules/${id}`, { method: "PUT", body: JSON.stringify(rule) }),
   remove: (id: number) => http(`/agent/tools/rules/${id}`, { method: "DELETE" }),
 };
+
+// ---------- Helper: resolve latest month from backend ----------
+// Calls charts summary without a month; backend will respond with the resolved month.
+export async function fetchLatestMonth(): Promise<string | null> {
+  try {
+    // Use transactions.search without month; backend resolves to latest and echoes `month`
+    const res: any = await agentTools.searchTransactions({ limit: 1 });
+    return typeof res?.month === "string" ? res.month : null;
+  } catch {
+    return null;
+  }
+}

@@ -22,8 +22,8 @@ const LineChart = RC.LineChart as unknown as React.FC<any>;
 const Line = RC.Line as unknown as React.FC<any>;
 
 interface Props {
-  /** Optional. If omitted, backend uses latest month in txns. */
-  month?: string;
+  /** Required: charts endpoints require month */
+  month: string;
   refreshKey?: number;
 }
 
@@ -40,7 +40,7 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
   const [error, setError] = useState<string | null>(null);
 
   // resolvedMonth prefers server-returned month, falls back to prop
-  const resolvedMonth = summary?.month ?? month ?? "(latest)";
+  const resolvedMonth = summary?.month ?? month;
 
   useEffect(() => {
     let alive = true;
@@ -50,7 +50,7 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
       setEmpty(false);
       try {
         const [s, m, f, t] = await Promise.all([
-          getMonthSummary(month),    // month is optional now
+          getMonthSummary(month),
           getMonthMerchants(month),
           getMonthFlows(month),
           getSpendingTrends(6),

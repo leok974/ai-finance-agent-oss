@@ -7,7 +7,7 @@ import RuleTesterPanel from "./components/RuleTesterPanel";
 import InsightsCard from "./components/InsightsCard";
 import { useToast } from "./components/Toast";
 // import RulesPanel from "./components/RulesPanel";
-import { getReport, getInsights, getAlerts, getMonthSummary, getMonthMerchants, getMonthFlows } from './lib/api'
+import { getReport, getInsights, getAlerts, getMonthSummary, getMonthMerchants, getMonthFlows, fetchLatestMonth, agentTools } from './lib/api'
 import RulesPanel from "./components/RulesPanel";
 import ChatDock from "./components/ChatDock";
 import ChartsPanel from "./components/ChartsPanel";
@@ -16,7 +16,8 @@ import TopEmptyBanner from "./components/TopEmptyBanner";
 
 const App: React.FC = () => {
   const { push } = useToast();
-  const [month, setMonth] = useState<string>("2023-12");
+  const [month, setMonth] = useState<string>("");
+  const [monthReady, setMonthReady] = useState<boolean>(false);
   const [refreshKey, setRefreshKey] = useState<number>(0);
   const [report, setReport] = useState<any>(null)
   const [insights, setInsights] = useState<any>(null)
@@ -24,29 +25,57 @@ const App: React.FC = () => {
   const [empty, setEmpty] = useState<boolean>(false)
   const [bannerDismissed, setBannerDismissed] = useState<boolean>(false)
 
+  // Resolve month on startup from backend (transactions.search), with calendar fallback
+  useEffect(() => { (async () => {
+    try {
+      const m = await fetchLatestMonth();
+      if (m) {
+        setMonth(m);
+      } else {
+        const now = new Date();
+        const fallback = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+        setMonth(fallback);
+      }
+    } finally {
+      setMonthReady(true);
+    }
+  })() }, []);
+
   useEffect(()=>{ (async()=>{
+    if (!monthReady || !month) return;
     try {
       setReport(await getReport(month))
       setInsights(await getInsights(month))
       setAlerts(await getAlerts(month))
-      await Promise.all([getMonthSummary(month), getMonthMerchants(month), getMonthFlows(month)])
+      await Promise.all([
+        getMonthSummary(month),
+        getMonthMerchants(month),
+        getMonthFlows(month)
+      ])
+      // Ensure charts agent endpoint is also exercised with an explicit month
+      void agentTools.chartsSummary({ month })
     } catch {}
-  })() }, [month, refreshKey])
+  })() }, [monthReady, month, refreshKey])
 
   // Probe backend emptiness (latest by default). If charts summary returns null or month:null, show banner.
   useEffect(() => { (async () => {
+    if (!monthReady || !month) return;
     try {
-      const s = await getMonthSummary();
+      const s = await getMonthSummary(month);
       setEmpty(!s || s?.month == null);
     } catch {
       setEmpty(true);
     }
-  })() }, [refreshKey])
+  })() }, [monthReady, month, refreshKey])
 
   const onCsvUploaded = useCallback(() => {
     setRefreshKey((k) => k + 1);
     push({ title: "CSV ingested", message: "Transactions imported. Panels refreshed." });
   }, [push]);
+
+  if (!monthReady) {
+    return <div className="p-6 text-gray-600">Loading…</div>;
+  }
 
   return (
     <MonthContext.Provider value={{ month, setMonth }}>
@@ -70,8 +99,8 @@ const App: React.FC = () => {
 
         {/* Insights */}
   <InsightsCard insights={insights} />
-  {/* ChartsPanel can omit month to use latest by default */}
-  <ChartsPanel refreshKey={refreshKey} />
+  {/* ChartsPanel now requires month; always pass the selected month */}
+  <ChartsPanel month={month} refreshKey={refreshKey} />
 
         {/* Main grid */}
         <div className="grid grid-cols-1 gap-6 md:grid-cols-2">

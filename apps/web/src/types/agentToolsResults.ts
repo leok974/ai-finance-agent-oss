@@ -72,3 +72,28 @@ export type RulesApplyResult = {
   applied: number;
   preview?: number;
 };
+
+// --- Insights: Expanded ---
+export type MoMStat = { curr: number; prev: number; delta: number; pct: number | null };
+
+export type InsightsExpandedResult = {
+  month: string | null;
+  prev_month: string | null;
+  summary: { income: number; spend: number; net: number } | null;
+  mom: { income: MoMStat; spend: MoMStat; net: MoMStat } | null;
+  unknown_spend: { count: number; amount: number } | null;
+  top_categories: Array<{ category: string; amount: number }>;
+  top_merchants: Array<{ merchant: string; amount: number }>;
+  large_transactions: Array<{
+    id: number | string;
+    date?: string | null;
+    merchant?: string | null;
+    description?: string | null;
+    amount: number;
+    category?: string | null;
+  }>;
+  anomalies: {
+    categories: Array<{ key: string; curr: number; prev: number; delta: number; pct: number | null }>;
+    merchants: Array<{ key: string; curr: number; prev: number; delta: number; pct: number | null }>;
+  };
+};
