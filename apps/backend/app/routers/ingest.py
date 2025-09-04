@@ -47,6 +47,7 @@ async def ingest_csv(
         acct = row.get("account") or None
         raw_cat = row.get("category") or None
         month = date.strftime("%Y-%m")
+        print(f"DEBUG: Storing transaction with date={date}, month={month}")  # Add this
 
         exists = db.execute(
             select(Transaction.id).where(

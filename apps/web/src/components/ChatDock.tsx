@@ -141,23 +141,14 @@ export default function ChatDock() {
 
     // inject/snap month for month-required tools
     const monthRequired = new Set<ToolKey>([
-      "insights.summary",
-      "insights.expanded",
-      "charts.summary",
-      "charts.merchants",
-      "charts.flows",
-      "charts.trends",
+      "insights.summary","insights.expanded",
+      "charts.summary","charts.merchants","charts.flows","charts.trends",
       "transactions.search",
     ]);
+
     if (monthRequired.has(tool)) {
-      if (!body.month || body.month === "") {
-        body = { ...body, month };
-        const newText = JSON.stringify(body, null, 2);
-        setPayloadText(newText);
-        setPayloads(p => ({ ...p, [tool]: newText }));
-      } else if (body.month !== month) {
-        // snap payload to current global month to avoid confusion
-        body = { ...body, month };
+      if (!body.month || body.month !== month) {
+        body = { ...body, month }; // snap to current MonthContext
         const newText = JSON.stringify(body, null, 2);
         setPayloadText(newText);
         setPayloads(p => ({ ...p, [tool]: newText }));
@@ -199,26 +190,26 @@ export default function ChatDock() {
   }, [tool, payloadText, month]);
 
   // whenever global month changes, auto-insert & auto-run (single-flight guarded)
-  React.useEffect(() => {
-    if (!monthReady) return;
-    if (runningRef.current) return;
-    if (lastRunForTool[tool] === month) return;
+  // React.useEffect(() => {
+  //   if (!monthReady) return;
+  //   if (runningRef.current) return;
+  //   if (lastRunForTool[tool] === month) return;
 
-    // update payload month to reflect current context
-    try {
-      const obj = payloadText.trim() ? JSON.parse(payloadText) : {};
-      obj.month = month;
-      const newText = JSON.stringify(obj, null, 2);
-      setPayloadText(newText);
-      setPayloads(p => ({ ...p, [tool]: newText }));
-    } catch {}
+  //   // update payload month to reflect current context
+  //   try {
+  //     const obj = payloadText.trim() ? JSON.parse(payloadText) : {};
+  //     obj.month = month;
+  //     const newText = JSON.stringify(obj, null, 2);
+  //     setPayloadText(newText);
+  //     setPayloads(p => ({ ...p, [tool]: newText }));
+  //   } catch {}
 
-    (async () => {
-      await run();
-      setLastRunForTool(prev => ({ ...prev, [tool]: month }));
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [monthReady, month]);
+  //   (async () => {
+  //     await run();
+  //     setLastRunForTool(prev => ({ ...prev, [tool]: month }));
+  //   })();
+  //   // eslint-disable-next-line react-hooks/exhaustive-deps
+  // }, [monthReady, month]);
 
   // unified FAB click-or-drag handler (opens on click, drags on movement)
   const startFabDrag = React.useCallback((e: React.PointerEvent) => {
@@ -346,7 +337,11 @@ export default function ChatDock() {
         <div>
           <label className="text-xs font-medium text-neutral-400">Payload (JSON)</label>
           <textarea
-            className="mt-1 w-full h-52 md:h-60 rounded-xl border border-neutral-700 p-3 font-mono text-sm bg-neutral-800 text-neutral-100 resize-y"
+            className="w-full h-48 rounded-xl border p-3
+                       bg-[var(--bg-card)] border-[color:var(--border-subtle)]
+                       text-[var(--text)] placeholder:text-[var(--text-muted)]
+                       focus:outline-none focus:ring-2 focus:ring-[color:var(--border-subtle)]
+                       font-mono text-sm resize-y"
             spellCheck={false}
             value={payloadText}
             onChange={(e) => {

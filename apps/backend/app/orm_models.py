@@ -1,7 +1,7 @@
 from sqlalchemy import String, Integer, Float, Date, DateTime, Text, UniqueConstraint, func, Numeric, ForeignKey, Boolean
 from sqlalchemy.orm import Mapped, mapped_column
 from app.db import Base
-from datetime import datetime
+from datetime import datetime, date
 
 class Transaction(Base):
     __tablename__ = "transactions"

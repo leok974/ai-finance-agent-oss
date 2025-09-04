@@ -3,5 +3,56 @@
 @tailwind utilities;
 
 :root { color-scheme: dark; }
+
+/* === Global dark theme tokens === */
+:root {
+  /* surfaces */
+  --bg-app:        #0b0b0d;   /* page background */
+  --bg-card:       #0f0f13;   /* cards/panels */
+  --bg-card-alt:   #141419;   /* zebra rows / subtler blocks */
+  --bg-elevated:   #0f0f13;   /* modals, dock */
+
+  /* borders & grid lines */
+  --border-subtle: #2f3037;   /* neutral-700ish */
+  --grid-line:     #25262c;
+
+  /* text */
+  --text-strong:   #fafafa;   /* titles/figures */
+  --text:          #e6e6e7;   /* body */
+  --text-muted:    #a6a7ad;   /* captions/labels */
+
+  /* accents */
+  --accent-good:   #34d399;   /* emerald-400 */
+  --accent-bad:    #fb7185;   /* rose-400 */
+  --accent-warn:   #f59e0b;   /* amber-500 */
+
+  /* badges / chips */
+  --chip-warn-bg:  rgba(245, 158, 11, 0.15);
+  --chip-warn-br:  rgba(245, 158, 11, 0.4);
+
+  /* tooltip */
+  --tooltip-bg:    #0b0b0d;
+  --tooltip-br:    #2f3037;
+  --tooltip-text:  #e6e6e7;
+}
+
 body { @apply bg-neutral-950 text-neutral-100; }
 .card { @apply bg-[color:var(--card,#111418)] rounded-2xl shadow p-4; }
+
+/* Utility wrappers (optional but handy) */
+.card-dark {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  color: var(--text);
+  border-radius: 1rem; /* ≈ rounded-2xl */
+  box-shadow: 0 6px 20px rgba(0,0,0,0.35);
+}
+.card-title   { color: var(--text); font-weight: 600; }
+.card-subtle  { color: var(--text-muted); }
+.badge-warn {
+  display: inline-flex; align-items: center; gap: .25rem;
+  background: var(--chip-warn-bg);
+  border: 1px solid var(--chip-warn-br);
+  color: var(--accent-warn);
+  border-radius: 9999px; padding: .125rem .5rem; font-size: .75rem;
+}

@@ -317,27 +317,52 @@ export const rulesCrud = {
 // ---------- Helper: resolve latest month from backend ----------
 // Calls charts summary without a month; backend will respond with the resolved month.
 export async function fetchLatestMonth(): Promise<string | null> {
+  console.log("🔍 fetchLatestMonth: starting...");
+  
   try {
     // Prefer the dedicated meta endpoint when available
+    console.log("📡 Trying meta.latestMonth()...");
     const r: any = await meta.latestMonth();
-    if (typeof r?.month === "string") return r.month;
-  } catch {}
+    console.log("📊 Meta endpoint response:", r);
+    if (typeof r?.month === "string") {
+      console.log("✅ Meta endpoint returned month:", r.month);
+      return r.month;
+    }
+  } catch (error) {
+    console.log("⚠️ Meta endpoint failed:", error);
+  }
+  
   try {
     // ask for 1 txn, newest first (if backend ignores sort, we still handle gracefully)
+    console.log("📡 Trying agentTools.searchTransactions...");
     const res: any = await agentTools.searchTransactions({
       limit: 1,
       sort: { field: "date", dir: "desc" },
     });
+    console.log("📊 Search transactions response:", res);
 
     // 1) some endpoints echo a resolved `month`
-    if (typeof res?.month === "string") return res.month;
+    if (typeof res?.month === "string") {
+      console.log("✅ Search returned month field:", res.month);
+      return res.month;
+    }
 
     // 2) derive from the first item
     const first = res?.items?.[0] || res?.transactions?.[0] || res?.data?.[0];
-    if (typeof first?.month === "string") return first.month;
-    if (typeof first?.date === "string" && first.date.length >= 7) {
-      return first.date.slice(0, 7); // YYYY-MM from ISO date
+    console.log("📊 First transaction:", first);
+    if (typeof first?.month === "string") {
+      console.log("✅ Derived month from transaction.month:", first.month);
+      return first.month;
     }
-  } catch {}
+    if (typeof first?.date === "string" && first.date.length >= 7) {
+      const derivedMonth = first.date.slice(0, 7); // YYYY-MM from ISO date
+      console.log("✅ Derived month from transaction.date:", derivedMonth);
+      return derivedMonth;
+    }
+  } catch (error) {
+    console.log("❌ Search transactions failed:", error);
+  }
+  
+  console.log("🚫 fetchLatestMonth: no month found, returning null");
   return null;
 }

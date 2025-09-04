@@ -10,13 +10,11 @@ router = APIRouter()
 @router.get("")
 def insights(month: str | None = Query(None), db: Session = Depends(get_db)):
     # Total net amount (income positive, spend negative)
-    base = select(Transaction.amount)
-    if month:
-        base = base.where(Transaction.month == month)
     total = (
-        db.execute(select(func.sum(Transaction.amount)).select_from(base.subquery()))
-        .scalar()
-        or 0.0
+        db.execute(select(func.sum(Transaction.amount)).where(
+            Transaction.month == month if month else True
+        ))
+        .scalar() or 0.0
     )
 
     # Top merchants by absolute net amount
