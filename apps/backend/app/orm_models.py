@@ -1,4 +1,4 @@
-from sqlalchemy import String, Integer, Float, Date, DateTime, Text, UniqueConstraint, func, Numeric, ForeignKey
+from sqlalchemy import String, Integer, Float, Date, DateTime, Text, UniqueConstraint, func, Numeric, ForeignKey, Boolean
 from sqlalchemy.orm import Mapped, mapped_column
 from app.db import Base
 from datetime import datetime
@@ -21,10 +21,21 @@ class Transaction(Base):
 class RuleORM(Base):
     __tablename__ = "rules"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    pattern: Mapped[str] = mapped_column(String(256), index=True)
-    target: Mapped[str] = mapped_column(String(32))  # merchant|description
+    # match fields (any subset is allowed)
+    merchant: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    pattern: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    # legacy targeting field kept for compatibility (e.g., 'merchant'|'description')
+    target: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    # action
     category: Mapped[str] = mapped_column(String(128), index=True)
+    # meta
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="1")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+# Backward-compat: expose classic name 'Rule' for imports/tests
+Rule = RuleORM
 
 class UserLabel(Base):
     __tablename__ = "user_labels"

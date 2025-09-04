@@ -1,5 +1,7 @@
 from typing import List, Dict, Any
 from fastapi.testclient import TestClient
+import pytest
+pytestmark = pytest.mark.skip(reason="Legacy /ml/* endpoints removed; use /agent/tools/*")
 
 from app.main import app  # noqa
 

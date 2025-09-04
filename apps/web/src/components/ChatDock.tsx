@@ -1,284 +1,254 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
-import {
-  agentStatusOk,
-  agentChat,
-  getBudgetCheck,
-  getInsights,
-  getAlerts,
-  getMonthSummary,
-  getMonthMerchants,
-} from "../lib/api";
+// --- src/components/ChatDock.tsx ---
+import React from "react";
+import { agentTools } from "../lib/api";
+import type { ToolKey, ToolSpec, ToolRunState } from "../types/agentTools";
+import { AgentResultRenderer } from "./AgentResultRenderers";
+import { useMonth } from "../context/MonthContext";
 
-type Msg = { role: "user" | "assistant" | "system"; content: string; onboarding?: boolean };
+const TOOLS: ToolSpec[] = [
+  {
+    key: "transactions.search",
+    label: "Transactions: Search",
+    path: "/agent/tools/transactions/search",
+    examplePayload: { month: undefined, limit: 20, filters: { labeled: false } },
+  },
+  {
+    key: "transactions.categorize",
+    label: "Transactions: Categorize",
+    path: "/agent/tools/transactions/categorize",
+    examplePayload: { updates: [{ id: 1, category: "Groceries" }], onlyIfUnlabeled: true },
+  },
+  {
+    key: "transactions.get_by_ids",
+    label: "Transactions: Get by IDs",
+    path: "/agent/tools/transactions/get_by_ids",
+    examplePayload: { ids: [1, 2, 3] },
+  },
+  {
+    key: "budget.summary",
+    label: "Budget: Summary",
+    path: "/agent/tools/budget/summary",
+    examplePayload: { month: undefined },
+  },
+  {
+    key: "budget.check",
+    label: "Budget: Check",
+    path: "/agent/tools/budget/check",
+    examplePayload: { month: undefined },
+  },
+  {
+    key: "insights.summary",
+    label: "Insights: Summary",
+    path: "/agent/tools/insights/summary",
+    examplePayload: { month: undefined, limitLargeTxns: 10, includeUnknownSpend: true },
+  },
+  {
+    key: "charts.summary",
+    label: "Charts: Summary",
+    path: "/agent/tools/charts/summary",
+    examplePayload: { month: undefined },
+  },
+  {
+    key: "charts.merchants",
+    label: "Charts: Top Merchants",
+    path: "/agent/tools/charts/merchants",
+    examplePayload: { month: undefined, limit: 10 },
+  },
+  {
+    key: "charts.flows",
+    label: "Charts: Flows",
+    path: "/agent/tools/charts/flows",
+    examplePayload: { month: undefined },
+  },
+  {
+    key: "charts.trends",
+    label: "Charts: Spending Trends",
+    path: "/agent/tools/charts/spending_trends",
+    examplePayload: { month: undefined, monthsBack: 6 },
+  },
+  {
+    key: "rules.test",
+    label: "Rules: Test",
+    path: "/agent/tools/rules/test",
+    examplePayload: { month: undefined, rule: { merchant: "Starbucks", category: "Dining out" } },
+  },
+  {
+    key: "rules.apply",
+    label: "Rules: Apply (unlabeled only)",
+    path: "/agent/tools/rules/apply",
+    examplePayload: { month: undefined, onlyUnlabeled: true, rule: { merchant: "Starbucks", category: "Dining out" } },
+  },
+];
 
-interface ChatDockProps { month?: string }
-
-const ChatDock: React.FC<ChatDockProps> = ({ month }) => {
-  const [open, setOpen] = useState<boolean>(() => (localStorage.getItem("chatdock_open") ?? "1") === "1");
-  const [ready, setReady] = useState(false);
-  const [msgs, setMsgs] = useState<Msg[]>([]);
-  const [input, setInput] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [toolBusy, setToolBusy] = useState<string | null>(null);
-  const scrollRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    localStorage.setItem("chatdock_open", open ? "1" : "0");
-  }, [open]);
-
-  useEffect(() => { (async () => setReady(await agentStatusOk()))(); }, []);
-
-  // --- Onboarding helper: if backend has no txns, show message and bail ---
-  const ensureDataOrOnboard = useCallback(async (): Promise<boolean> => {
-    try {
-      const s = await getMonthSummary(); // returns null when backend is empty
-      if (!s) {
-        setMsgs((prev) => [
-          ...prev,
-          { role: "assistant", content: "No data yet — upload a CSV to begin.", onboarding: true },
-        ]);
-        return false;
-      }
-      return true;
-    } catch {
-      setMsgs((prev) => [
-        ...prev,
-        { role: "assistant", content: "No data yet — upload a CSV to begin.", onboarding: true },
-      ]);
-      return false;
-    }
-  }, []);
-
-  useEffect(() => {
-    // autoscroll
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
-  }, [msgs, open]);
-
-  const send = useCallback(async (finalInput?: string) => {
-    const text = (finalInput ?? input).trim();
-    if (!text || busy) return;
-    if (!finalInput) setInput("");
-    const nextMsgs = [...msgs, { role: "user" as const, content: text }];
-    setMsgs(nextMsgs);
-    setBusy(true);
-    try {
-      const apiMsgs = nextMsgs.map((m) => ({ role: m.role, content: m.content }));
-      const r = await agentChat(apiMsgs, { system: "You are Finance Agent OSS. Be concise and helpful." });
-      if (!r) {
-        setMsgs((xs) => [
-          ...xs,
-          { role: "assistant", content: "No data yet — upload a CSV to begin.", onboarding: true },
-        ]);
-      } else {
-        const reply = r?.reply ?? r?.content ?? (typeof r === "string" ? r : JSON.stringify(r));
-        setMsgs((xs) => [...xs, { role: "assistant", content: reply }]);
-      }
-    } catch (e: any) {
-      setMsgs((xs) => [...xs, { role: "system", content: `⚠️ Chat failed: ${e?.message ?? e}` }]);
-    } finally {
-      setBusy(false);
-    }
-  }, [input, busy, msgs]);
-
-  // ---- Quick Tools: fetch data, add as system context, then ask model ----
-  const runToolAndAsk = useCallback(
-    async (label: string, fetcher: () => Promise<any>, userQuestion: string) => {
-      if (toolBusy) return;
-      setToolBusy(label);
-      try {
-        const data = await fetcher();
-        const payload = JSON.stringify(data).slice(0, 4000);
-        const toolContext = { role: "system" as const, content: `[tool:${label}] ${payload}` };
-        const nextMsgs = [...msgs, toolContext, { role: "user" as const, content: userQuestion }];
-        setMsgs(nextMsgs);
-        const r = await agentChat(nextMsgs, { system: "You are Finance Agent OSS. Use provided tool context if relevant." });
-        if (!r) {
-          setMsgs((xs) => [
-            ...xs,
-            { role: "assistant", content: "No data yet — upload a CSV to begin.", onboarding: true },
-          ]);
-        } else {
-          const reply = r?.reply ?? r?.content ?? (typeof r === "string" ? r : JSON.stringify(r));
-          setMsgs((xs) => [...xs, { role: "assistant", content: reply }]);
-        }
-      } catch (e: any) {
-        setMsgs((xs) => [...xs, { role: "system", content: `⚠️ ${label} failed: ${e?.message ?? e}` }]);
-      } finally {
-        setToolBusy(null);
-      }
-    },
-    [msgs, toolBusy]
+function spinner() {
+  return (
+    <div className="animate-spin h-5 w-5 rounded-full border-2 border-gray-400 border-t-transparent" aria-label="loading" />
   );
+}
+
+export default function ChatDock() {
+  const { month } = useMonth();
+  const [tool, setTool] = React.useState<ToolKey>("insights.summary");
+  const spec = React.useMemo(() => TOOLS.find(t => t.key === tool)!, [tool]);
+
+  // Store payloads keyed by tool so switching tools preserves edits
+  const [payloads, setPayloads] = React.useState<Record<string, string>>({});
+  const [payloadText, setPayloadText] = React.useState<string>("");
+  React.useEffect(() => {
+    const existing = payloads[tool];
+    setPayloadText(existing ?? JSON.stringify(spec.examplePayload, null, 2));
+  }, [tool, spec, payloads]);
+
+  const [state, setState] = React.useState<ToolRunState>({ loading: false, error: null, data: null });
+
+  // Use global month from MonthContext; fallback lets backend choose latest
+  const inferMonth = React.useCallback(() => month, [month]);
+
+  const insertContext = React.useCallback(() => {
+    try {
+      const obj = payloadText.trim() ? JSON.parse(payloadText) : {};
+      if (obj.month === undefined) obj.month = inferMonth();
+    const next = JSON.stringify(obj, null, 2);
+    setPayloadText(next);
+    setPayloads((p) => ({ ...p, [tool]: next }));
+    } catch {
+      // ignore if invalid JSON; keep user text
+    }
+  }, [payloadText, inferMonth, tool]);
+
+  const run = React.useCallback(async () => {
+    let body: any;
+    try {
+      body = payloadText.trim() ? JSON.parse(payloadText) : {};
+    } catch (e: any) {
+      setState({ loading: false, error: "Invalid JSON payload.", data: null });
+      return;
+    }
+
+    setState({ loading: true, error: null, data: null });
+    try {
+      let data: unknown;
+
+      switch (tool) {
+        case "transactions.search":
+          data = await agentTools.searchTransactions(body);
+          break;
+        case "transactions.categorize":
+          data = await agentTools.categorizeTransactions(body);
+          break;
+        case "transactions.get_by_ids":
+          data = await agentTools.getTransactionsByIds(body);
+          break;
+        case "budget.summary":
+          data = await agentTools.budgetSummary(body);
+          break;
+        case "budget.check":
+          data = await agentTools.budgetCheck(body);
+          break;
+        case "insights.summary":
+          data = await agentTools.insightsSummary(body);
+          break;
+        case "charts.summary":
+          data = await agentTools.chartsSummary(body);
+          break;
+        case "charts.merchants":
+          data = await agentTools.chartsMerchants(body);
+          break;
+        case "charts.flows":
+          data = await agentTools.chartsFlows(body);
+          break;
+        case "charts.trends":
+          data = await agentTools.chartsSpendingTrends(body);
+          break;
+        case "rules.test":
+          data = await agentTools.rulesTest(body);
+          break;
+        case "rules.apply":
+          data = await agentTools.rulesApply(body);
+          break;
+        default:
+          throw new Error("Unknown tool.");
+      }
+
+      setState({ loading: false, error: null, data });
+    } catch (e: any) {
+      setState({ loading: false, error: e?.message ?? "Request failed", data: null });
+    }
+  }, [tool, payloadText]);
 
   return (
-    <>
-      {/* Toggle button */}
-      <button
-        onClick={() => setOpen((v) => !v)}
-        className="fixed bottom-4 left-4 z-[70] rounded-full bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-lg hover:bg-indigo-500"
-      >
-        {open ? "Close Chat" : "Finance Chat"}
-      </button>
+    <div className="fixed bottom-6 left-6 z-50 w-[min(720px,calc(100vw-2rem))]">
+      <div className="rounded-2xl shadow-xl bg-white/90 backdrop-blur p-4 border border-gray-200">
+        <div className="flex items-center gap-3">
+          <select
+            className="px-3 py-2 rounded-xl border border-gray-300 bg-white"
+            value={tool}
+            onChange={(e) => setTool(e.target.value as ToolKey)}
+          >
+            {TOOLS.map(t => (
+              <option key={t.key} value={t.key}>{t.label}</option>
+            ))}
+          </select>
 
-      {/* Panel */}
-      {open && (
-        <div className="fixed bottom-20 left-4 z-[70] w-[360px] max-w-[92vw] rounded-2xl border border-gray-700 bg-gray-900/90 backdrop-blur shadow-2xl">
-          <div className="flex items-center justify-between px-3 py-2">
-            <div className="text-sm font-semibold text-gray-100">Finance Chat</div>
-            <div className={`text-xs ${ready ? "text-emerald-300" : "text-gray-400"}`}>
-              {ready ? "online" : "offline"}
+          <button
+            className="px-3 py-2 rounded-xl border bg-gray-50 hover:bg-gray-100"
+            onClick={insertContext}
+            title="Insert default context (month, safe defaults)"
+          >
+            Insert context
+          </button>
+
+          <button
+            className="px-4 py-2 rounded-xl bg-black text-white hover:opacity-90 disabled:opacity-50 flex items-center gap-2"
+            onClick={run}
+            disabled={state.loading}
+          >
+            {state.loading ? (<>{spinner()} Running…</>) : "Run"}
+          </button>
+        </div>
+
+        <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div>
+            <label className="text-xs font-medium text-gray-500">Payload (JSON)</label>
+            <textarea
+              className="mt-1 w-full h-44 rounded-xl border border-gray-300 p-3 font-mono text-sm"
+              spellCheck={false}
+              value={payloadText}
+              onChange={(e) => {
+                const val = e.target.value;
+                setPayloadText(val);
+                setPayloads((p) => ({ ...p, [tool]: val }));
+              }}
+              placeholder='{}'
+            />
+            <p className="mt-1 text-[11px] text-gray-500">
+              Tip: Leave <code>month</code> empty to let the backend default to the latest month.
+            </p>
+          </div>
+
+          <div>
+            <label className="text-xs font-medium text-gray-500">Result</label>
+            <div className="mt-1 h-44 md:h-auto max-h-96 overflow-auto rounded-xl border border-gray-300 p-3 bg-gray-50">
+              {state.error ? (
+                <div className="text-red-600 text-sm whitespace-pre-wrap">{state.error}</div>
+              ) : state.loading ? (
+                <div className="flex items-center gap-2 text-gray-600">
+                  <div className="animate-spin h-5 w-5 rounded-full border-2 border-gray-400 border-t-transparent" />
+                  <span>Loading…</span>
+                </div>
+              ) : state.data ? (
+                <AgentResultRenderer tool={tool} data={state.data as any} />
+              ) : (
+                <div className="text-gray-500 text-sm">No result yet.</div>
+              )}
             </div>
           </div>
-          {/* Quick Tools */}
-          <div className="flex flex-wrap gap-2 px-3 pb-2">
-            <button
-              onClick={async () => {
-                if (!(await ensureDataOrOnboard())) return;
-                runToolAndAsk(
-                  "month_summary",
-                  () => getMonthSummary(month),
-                  month ? `Summarize my finances for ${month} (spend, income, net, notable categories).` : `Summarize my latest month finances (spend, income, net, notable categories).`
-                );
-              }}
-              className="rounded-full border border-gray-700 px-2 py-1 text-xs text-gray-200 hover:bg-gray-800 disabled:opacity-50"
-              disabled={!!toolBusy || !ready}
-              title="Fetch totals + categories"
-            >
-              {toolBusy === "month_summary" ? "…" : "Summary"}
-            </button>
-
-            <button
-              onClick={async () => {
-                if (!(await ensureDataOrOnboard())) return;
-                runToolAndAsk(
-                  "top_merchants",
-                  () => getMonthMerchants(month),
-                  month ? `Which merchants dominated spending in ${month}? Any outliers?` : `Which merchants dominated spending in the latest month? Any outliers?`
-                );
-              }}
-              className="rounded-full border border-gray-700 px-2 py-1 text-xs text-gray-200 hover:bg-gray-800 disabled:opacity-50"
-              disabled={!!toolBusy || !ready}
-              title="Fetch top merchants"
-            >
-              {toolBusy === "top_merchants" ? "…" : "Top merchants"}
-            </button>
-
-            <button
-              onClick={async () => {
-                if (!(await ensureDataOrOnboard())) return;
-                runToolAndAsk(
-                  "budget_check",
-                  () => getBudgetCheck(month),
-                  month ? `Where am I over/under budget in ${month}? Give brief guidance.` : `Where am I over/under budget for the latest month? Give brief guidance.`
-                );
-              }}
-              className="rounded-full border border-gray-700 px-2 py-1 text-xs text-gray-200 hover:bg-gray-800 disabled:opacity-50"
-              disabled={!!toolBusy || !ready}
-              title="Fetch budget status"
-            >
-              {toolBusy === "budget_check" ? "…" : "Budgets"}
-            </button>
-
-            <button
-              onClick={() =>
-                runToolAndAsk(
-                  "alerts",
-                  () => getAlerts(),
-                  `Review current alerts and tell me what I should act on first.`
-                )
-              }
-              className="rounded-full border border-gray-700 px-2 py-1 text-xs text-gray-200 hover:bg-gray-800 disabled:opacity-50"
-              disabled={!!toolBusy || !ready}
-              title="Fetch alerts"
-            >
-              {toolBusy === "alerts" ? "…" : "Alerts"}
-            </button>
-
-            <button
-              onClick={() =>
-                runToolAndAsk(
-                  "insights",
-                  () => getInsights(),
-                  `Turn these insights into 2–3 bullet takeaways and one suggestion.`
-                )
-              }
-              className="rounded-full border border-gray-700 px-2 py-1 text-xs text-gray-200 hover:bg-gray-800 disabled:opacity-50"
-              disabled={!!toolBusy || !ready}
-              title="Fetch insights"
-            >
-              {toolBusy === "insights" ? "…" : "Insights"}
-            </button>
-
-            <button
-              onClick={async () => {
-                if (!(await ensureDataOrOnboard())) return;
-                runToolAndAsk(
-                  "context_month_hint",
-                  async () => (month ? { month } : {}), // light-weight context when available
-                  month ? `Find large transactions in ${month} over $500. Return a short list with date, merchant, and amount.` : `Find large transactions over $500 in the latest month. Return a short list with date, merchant, and amount.`
-                );
-              }}
-              className="rounded-full border border-gray-700 px-2 py-1 text-xs text-gray-200 hover:bg-gray-800 disabled:opacity-50"
-              disabled={!!toolBusy || !ready}
-              title="Find > $500 txns this month"
-            >
-              {toolBusy === "context_month_hint" ? "…" : "Large txns > $500"}
-            </button>
-          </div>
-
-          {/* Transcript */}
-          <div ref={scrollRef} className="mx-3 h-64 overflow-auto rounded-xl bg-black/20 p-2 text-sm">
-            {msgs.length === 0 && (
-              <div className="text-gray-400">
-                Ask about months, categories, anomalies… or tap a quick tool above.
-              </div>
-            )}
-            {msgs.map((m, i) => (
-              <div key={i} className="mb-2">
-                <span
-                  className={`mr-2 rounded px-1.5 py-0.5 text-[11px] ${
-                    m.onboarding
-                      ? "bg-amber-700/70 text-amber-100"
-                      : m.role === "user"
-                      ? "bg-indigo-600/70 text-white"
-                      : m.role === "assistant"
-                      ? "bg-emerald-600/70 text-white"
-                      : "bg-gray-600/70 text-gray-100"
-                  }`}
-                >
-                  {m.role}
-                </span>
-                <span className={`whitespace-pre-wrap ${m.onboarding ? "text-amber-200" : "text-gray-100"}`}>{m.content}</span>
-              </div>
-            ))}
-          </div>
-          <div className="flex items-center gap-2 p-3">
-            <input
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && send()}
-              placeholder={ready ? "Type your question…" : "Agent offline…"}
-              disabled={!ready || busy}
-              className="flex-1 rounded-xl border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-            />
-            <button
-              onClick={() => send()}
-              disabled={!ready || busy || !input.trim()}
-              className={`rounded-xl px-3 py-2 text-sm font-medium ${
-                !ready || busy || !input.trim()
-                  ? "cursor-not-allowed bg-gray-800 text-gray-500"
-                  : "bg-indigo-600 text-white hover:bg-indigo-500"
-              }`}
-            >
-              {busy ? "…" : "Send"}
-            </button>
-          </div>
         </div>
-      )}
-    </>
-  );
-};
 
-export default ChatDock;
+        <div className="mt-2 text-[11px] text-gray-500">
+          Endpoints are POST-only and return agent-friendly JSON. Payload must be valid JSON.
+        </div>
+      </div>
+    </div>
+  );
+}

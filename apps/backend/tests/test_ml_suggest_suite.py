@@ -1,10 +1,11 @@
 import io
 import textwrap
 import pytest
+pytestmark = pytest.mark.skip(reason="Legacy /ml/* endpoints removed; use /agent/tools/*")
 from fastapi.testclient import TestClient
 
 # Mark entire module as ML-related tests
-pytestmark = pytest.mark.ml
+pytestmark = pytest.mark.skip(reason="Legacy /ml/* endpoints removed; use /agent/tools/*")
 
 from app.main import app
 
