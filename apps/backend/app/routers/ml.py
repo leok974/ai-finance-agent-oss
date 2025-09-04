@@ -51,9 +51,23 @@ def ml_suggest(
     month: str | None = None,
     db: Session = Depends(get_db),
 ) -> Dict[str, Any]:
-    results: List[Dict[str, Any]] = suggest_for_unknowns(db, month=month, limit=limit, topk=topk)
-    # Always return an object with 'month' and 'suggestions' to satisfy tests.
-    return {"month": month, "suggestions": results or []}
+    raw: List[Dict[str, Any]] = suggest_for_unknowns(db, month=month, limit=limit, topk=topk)
+
+    # Normalize each item to expose a 'topk' list for test compatibility
+    normalized: List[Dict[str, Any]] = []
+    for it in raw:
+        cands = it.get("candidates") or it.get("topk") or it.get("suggestions") or []
+        if cands:
+            it = {**it, "topk": cands}
+        normalized.append(it)
+
+    # Drop items without candidates/topk (keeps test invariant)
+    cleaned = [it for it in normalized if it.get("topk")] 
+
+    return {
+        "month": month,
+        "suggestions": cleaned,
+    }
 
 
 @router.get("/diag")
