@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useRef } from "react";
 import { agentTools } from "../lib/api";
 import type { ToolKey, ToolSpec, ToolRunState } from "../types/agentTools";
 import { AgentResultRenderer } from "./AgentResultRenderers";
@@ -71,6 +71,10 @@ export default function ChatDock() {
   const runningRef = React.useRef<AbortController | null>(null);
   const lastClickAtRef = React.useRef<number>(0);
   const [monthReady, setMonthReady] = React.useState<boolean>(false);
+  
+  // Auto-run state for debounced month changes
+  const isAutoRunning = useRef(false);
+  const debounceTimer = useRef<number | null>(null);
 
   // stop saving/restoring "open"; clean any legacy value once
   React.useEffect(() => { localStorage.removeItem("chatdock_open"); }, []);
@@ -190,27 +194,38 @@ export default function ChatDock() {
     }
   }, [tool, payloadText, month]);
 
-  // whenever global month changes, auto-insert & auto-run (single-flight guarded)
-  // React.useEffect(() => {
-  //   if (!monthReady) return;
-  //   if (runningRef.current) return;
-  //   if (lastRunForTool[tool] === month) return;
+  // Auto-run on month change with debouncing and in-flight protection
+  useEffect(() => {
+    if (!month || !monthReady) return;
 
-  //   // update payload month to reflect current context
-  //   try {
-  //     const obj = payloadText.trim() ? JSON.parse(payloadText) : {};
-  //     obj.month = month;
-  //     const newText = JSON.stringify(obj, null, 2);
-  //     setPayloadText(newText);
-  //     setPayloads(p => ({ ...p, [tool]: newText }));
-  //   } catch {}
+    // Debounce 300ms to avoid double-run from rapid state updates
+    if (debounceTimer.current) {
+      window.clearTimeout(debounceTimer.current);
+    }
+    
+    debounceTimer.current = window.setTimeout(async () => {
+      if (isAutoRunning.current) return;
+      if (runningRef.current) return; // Already running from manual click
+      if (lastRunForTool[tool] === month) return; // Already ran for this month/tool combo
+      
+      try {
+        isAutoRunning.current = true;
+        insertContext(); // Update payload with current month
+        await run(); // Run the tool
+        setLastRunForTool(prev => ({ ...prev, [tool]: month }));
+      } catch (e) {
+        console.error("Auto insertContext/run failed:", e);
+      } finally {
+        isAutoRunning.current = false;
+      }
+    }, 300);
 
-  //   (async () => {
-  //     await run();
-  //     setLastRunForTool(prev => ({ ...prev, [tool]: month }));
-  //   })();
-  //   // eslint-disable-next-line react-hooks/exhaustive-deps
-  // }, [monthReady, month]);
+    return () => {
+      if (debounceTimer.current) {
+        window.clearTimeout(debounceTimer.current);
+      }
+    };
+  }, [month, monthReady, tool, insertContext, run, lastRunForTool]); // runs every time month changes
 
   // unified FAB click-or-drag handler (opens on click, drags on movement)
   const startFabDrag = React.useCallback((e: React.PointerEvent) => {

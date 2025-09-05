@@ -40,6 +40,106 @@ pnpm dev  # http://localhost:5173/app/
 ### 4) Load sample data
 In the web UI, go to **CSV Ingest** and upload `transactions_sample.csv` from `apps/backend/app/data/samples/`.
 
+---
+
+# Finance Agent — Setup & Notes
+
+This branch (UI-fix-globalmonth) includes fixes and improvements around CSV ingest, global month handling, and auto context updates.
+
+## 🛠️ Features Added
+### Frontend
+
+**Global Month Auto-Run**
+- On UI startup, fetches `/agent/tools/meta/latest_month`.
+- Auto-triggers "Insert Context" whenever month changes.
+- Debounced + guarded to prevent "second click glitch."
+
+**UI Upload Flow Simplified**
+- Removed checkbox for "expenses are positive."
+- Upload panel now just posts to `/ingest?replace=...`.
+- Backend automatically infers if expenses should be flipped.
+
+### Backend
+
+**Meta Endpoints**
+- `/agent/tools/meta/version` → shows current git branch + commit.
+- `/agent/tools/meta/latest_month` → shows latest month in DB (e.g. "2025-08").
+
+**CSV Ingest Improvements**
+- New auto-detection logic: if most expense-like rows are positive, amounts are flipped automatically.
+- Heuristic: ignores obvious income (payroll, deposits, refunds, etc.), samples up to 200 rows.
+- Adds `flip_auto` field in response if flip was inferred.
+
+Response shape:
+```json
+{ "ok": true, "added": 10, "count": 10, "flip_auto": true }
+```
+
+### Database
+- Transactions table must exist (`alembic upgrade head` in backend container).
+- Example:
+```bash
+docker exec -it finance-pg psql -U myuser -d finance -c "SELECT month, COUNT(*) FROM transactions;"
+```
+
+## 🚀 Local Dev via Docker Compose
+### 1. Build & start stack
+```bash
+docker compose down -v   # optional: nuke DB volume
+docker compose up --build
+```
+
+### 2. Run migrations
+```powershell
+$BE = (docker ps --format "{{.Names}}" | Select-String -Pattern "backend" | ForEach-Object { $_.ToString() })
+docker exec -it $BE alembic upgrade head
+```
+
+### 3. Ingest CSV
+Example with provided sample:
+```powershell
+curl.exe -X POST `
+  -F "file=@C:\ai-finance-agent-oss\apps\backend\app\data\samples\transactions_sample.csv" `
+  "http://127.0.0.1:8000/ingest?replace=true"
+```
+
+Response should include `"flip_auto": true` if your CSV has positive expenses.
+
+### 4. Verify
+```powershell
+# Check latest month
+Invoke-WebRequest -UseBasicParsing -Method POST http://127.0.0.1:8000/agent/tools/meta/latest_month | Select -Expand Content
+
+# DB peek
+docker exec -it finance-pg psql -U myuser -d finance -c "SELECT MAX(date), month, COUNT(*) FROM transactions GROUP BY month ORDER BY month DESC;"
+```
+
+## ✅ Expected Behavior
+- On UI startup → global month is set to latest (2025-08 with sample CSV).
+- After CSV upload → global month updates automatically, charts & insights refresh.
+- Insert Context → auto-runs whenever month changes (no more manual clicks needed).
+- Run Button → works without glitching on second click.
+- Expenses → correctly negative regardless of CSV sign convention.
+
+## 🔧 Troubleshooting
+
+**`web-1 exited with code 1` during compose**
+→ Make sure `smoke-backend.ps1` is not called in containerized environments (Windows-only).
+
+**`relation "transactions" does not exist`**
+→ Run migrations inside backend container:
+```bash
+docker exec -it <backend_container> alembic upgrade head
+```
+
+**Latest month looks wrong**
+→ Check DB directly:
+```bash
+docker exec -it finance-pg psql -U myuser -d finance -c "SELECT MAX(date) FROM transactions;"
+```
+
+---
+
 ## Month handling and data refresh
 - The app initializes the UI month from your data automatically by calling the transactions search tool without a month; the backend returns the latest month it finds.
 - Charts endpoints require an explicit `month`. The UI always passes it, and the Chat Dock auto-injects the current month for month-required tools.

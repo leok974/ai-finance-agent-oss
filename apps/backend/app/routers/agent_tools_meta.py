@@ -4,6 +4,7 @@ from sqlalchemy import func
 from typing import Optional, Dict
 from app.database import get_db
 from app.orm_models import Transaction
+import subprocess
 
 router = APIRouter(prefix="/agent/tools/meta", tags=["agent_tools.meta"])
 
@@ -19,3 +20,15 @@ def latest_month(db: Session = Depends(get_db)) -> Dict[str, Optional[str]]:
     # Fallback: month column (should be zero-padded "YYYY-MM")
     latest_month = db.query(func.max(Transaction.month)).filter(Transaction.month.isnot(None)).scalar()
     return {"month": latest_month}
+
+@router.post("/version")
+def version(_: dict | None = None, db: Session = Depends(get_db)):
+    try:
+        branch = subprocess.check_output(["git","rev-parse","--abbrev-ref","HEAD"]).decode().strip()
+    except Exception:
+        branch = None
+    try:
+        sha = subprocess.check_output(["git","rev-parse","--short","HEAD"]).decode().strip()
+    except Exception:
+        sha = None
+    return {"branch": branch, "commit": sha}

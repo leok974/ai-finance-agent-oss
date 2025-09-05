@@ -7,12 +7,15 @@ import RuleTesterPanel from "./components/RuleTesterPanel";
 import { AgentResultRenderer } from "./components/AgentResultRenderers";
 import { useToast } from "./components/Toast";
 // import RulesPanel from "./components/RulesPanel";
-import { getReport, getAlerts, getMonthSummary, getMonthMerchants, getMonthFlows, fetchLatestMonth, agentTools } from './lib/api'
+import { getReport, getAlerts, getMonthSummary, getMonthMerchants, getMonthFlows, agentTools, meta, resolveLatestMonthHybrid } from './lib/api'
 import RulesPanel from "./components/RulesPanel";
 import ChatDock from "./components/ChatDock";
 import ChartsPanel from "./components/ChartsPanel";
 import TopEmptyBanner from "./components/TopEmptyBanner";
 import AgentChat from "./components/AgentChat";
+
+// Log frontend version info
+console.info("[Web] branch=", __WEB_BRANCH__, "commit=", __WEB_COMMIT__);
 
 
 const App: React.FC = () => {
@@ -26,24 +29,27 @@ const App: React.FC = () => {
   const [empty, setEmpty] = useState<boolean>(false)
   const [bannerDismissed, setBannerDismissed] = useState<boolean>(false)
 
-  // 1) ask backend for the true latest month before rendering the app
+  // Initialize month once
   useEffect(() => {
     (async () => {
-      const backendMonth = await fetchLatestMonth();
-      if (backendMonth) {
-        setMonth(backendMonth);
-      } else {
-        // fallback: current calendar month
-        const now = new Date();
-        setMonth(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`);
-      }
+      console.info("[boot] resolving month…");
+      const m = (await resolveLatestMonthHybrid())
+        ?? (() => {
+             const now = new Date();
+             return `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}`;
+           })();
+      
+      console.info("[boot] resolved month =", m);
+      setMonth(m);
       setReady(true);
     })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // 2) whenever month changes, (re)load dashboard data
+  // Load dashboard data whenever month is set
   useEffect(() => {
     if (!ready || !month) return;
+    console.info("[boot] loading dashboards for month", month);
     void Promise.allSettled([
       getReport(month),
       agentTools.chartsSummary({ month }),

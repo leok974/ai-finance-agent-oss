@@ -184,13 +184,16 @@ export async function agentStatusOk(): Promise<boolean> {
 
 // ---------- CSV ingest ----------
 // web/src/lib/api.ts
-export async function uploadCsv(file: File, replace = true, expensesArePositive = false) {
+export async function uploadCsv(file: File, replace = true, expensesArePositive?: boolean) {
   const form = new FormData();
   form.append("file", file, file.name);
   const params = new URLSearchParams({
     replace: replace ? "true" : "false",
-    expenses_are_positive: expensesArePositive ? "true" : "false",
   });
+  // Only add expenses_are_positive if explicitly provided
+  if (expensesArePositive !== undefined) {
+    params.set("expenses_are_positive", expensesArePositive ? "true" : "false");
+  }
   return fetchJson(`/ingest?${params.toString()}`, {
     method: "POST",
     body: form,
@@ -205,7 +208,14 @@ async function postTool<T = any>(path: string, payload: any, init?: RequestInit)
 
 // ---------- Meta (Agent Tools) ----------
 export const meta = {
-  latestMonth: () => http("/agent/tools/meta/latest_month", { method: "POST" }),
+  // No body; simple POST
+  latestMonth: () => http("/agent/tools/meta/latest_month", { method: "POST", body: "{}" }),
+  
+  // Optional: distinct months list (if you add it later)
+  months: () => http("/agent/tools/meta/months", { method: "POST" }),
+  
+  // Git version info
+  version: () => http("/agent/tools/meta/version", { method: "POST" }),
 };
 
 // Namespaced helpers for agent tool endpoints
@@ -248,17 +258,17 @@ export const agentTools = {
     }, { signal }),
 
   // Charts
-  chartsSummary: (payload: { month: string }, signal?: AbortSignal) =>
+  chartsSummary: (payload: { month?: string }, signal?: AbortSignal) =>
     postTool("/agent/tools/charts/summary", payload, { signal }),
 
-  chartsMerchants: (payload: { month: string; limit?: number }, signal?: AbortSignal) =>
+  chartsMerchants: (payload: { month?: string; limit?: number }, signal?: AbortSignal) =>
     postTool("/agent/tools/charts/merchants", payload, { signal }),
 
-  chartsFlows: (payload: { month: string }, signal?: AbortSignal) =>
+  chartsFlows: (payload: { month?: string }, signal?: AbortSignal) =>
     postTool("/agent/tools/charts/flows", payload, { signal }),
 
   chartsSpendingTrends: (
-    payload: { month: string; monthsBack?: number; months_back?: number },
+    payload: { month?: string; monthsBack?: number; months_back?: number },
     signal?: AbortSignal
   ) =>
     postTool(
@@ -301,6 +311,18 @@ export const rulesCrud = {
 
 // ---------- Helper: resolve latest month from backend ----------
 export async function fetchLatestMonth(): Promise<string | null> {
+  const res = await fetch(`${API_BASE}/agent/tools/meta/latest_month`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: "{}"
+  });
+  if (!res.ok) return null;
+  const data = await res.json(); // { month: "YYYY-MM" | null }
+  return data?.month ?? null;
+}
+
+// Original fetchLatestMonth with retry and fallback (kept for compatibility)
+export async function fetchLatestMonthWithFallback(): Promise<string | null> {
   // Try meta route (fast path) with a tiny retry
   for (let i = 0; i < 2; i++) {
     try {
@@ -322,6 +344,62 @@ export async function fetchLatestMonth(): Promise<string | null> {
       return first.date.slice(0, 7);
     }
   } catch { /* ignore */ }
+
+  return null;
+}
+
+// Hybrid resolver used by App boot
+export async function resolveLatestMonthHybrid(): Promise<string | null> {
+  // A) meta.latest_month (fast path, 1 retry)
+  for (let i = 0; i < 2; i++) {
+    try {
+      console.debug("[boot] try meta.latestMonth");
+      const r = await meta.latestMonth();
+      const m = (r && typeof r.month === "string") ? r.month : null;
+      if (m && m.length >= 7) {
+        console.debug("[boot] meta.latestMonth OK:", m);
+        return m;
+      }
+      console.debug("[boot] meta.latestMonth returned:", r);
+    } catch (e) {
+      console.debug("[boot] meta.latestMonth failed:", e);
+    }
+  }
+
+  // B) charts.summary without month; backend should default & echo back
+  try {
+    console.debug("[boot] try charts.summary {}");
+    const cs = await agentTools.chartsSummary({}); // intentionally empty body
+    const m = (cs && typeof cs.month === "string") ? cs.month : null;
+    if (m && m.length >= 7) {
+      console.debug("[boot] charts.summary OK:", m);
+      return m;
+    }
+    console.debug("[boot] charts.summary returned:", cs);
+  } catch (e) {
+    console.debug("[boot] charts.summary failed:", e);
+  }
+
+  // C) transactions.search newest → derive YYYY-MM
+  try {
+    console.debug("[boot] try transactions.search newest");
+    const ts = await agentTools.searchTransactions({
+      limit: 1,
+      sort: { field: "date", dir: "desc" },
+    });
+    const first = ts?.items?.[0] ?? ts?.transactions?.[0] ?? ts?.data?.[0] ?? null;
+    const m =
+      (first && typeof first.month === "string" && first.month) ||
+      (first && typeof first.date === "string" && first.date.slice(0, 7)) ||
+      null;
+    console.debug("[boot] transactions.search returned:", first);
+    if (m && m.length >= 7) {
+      console.debug("[boot] transactions.search OK:", m);
+      return m;
+    }
+  } catch (e) {
+    console.debug("[boot] transactions.search failed:", e);
+  }
 
   return null;
 }

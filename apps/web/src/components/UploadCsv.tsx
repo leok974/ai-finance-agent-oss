@@ -34,7 +34,6 @@ const UploadCsv: React.FC<UploadCsvProps> = ({ onUploaded, defaultReplace = true
   const [file, setFile] = useState<File | null>(null);
   const [replace, setReplace] = useState<boolean>(defaultReplace);
   const [dragOver, setDragOver] = useState(false);
-  const [expensesArePositive, setExpensesArePositive] = useState<boolean>(false);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<UploadResult | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -71,9 +70,15 @@ const UploadCsv: React.FC<UploadCsvProps> = ({ onUploaded, defaultReplace = true
   const handleUploadSuccess = useCallback(async () => {
     try {
       const latest = await fetchLatestMonth();
-      const resolved = latest || month;
-      if (resolved && resolved !== month) setMonth(resolved);
+      // Only update month if we got a meaningful result that's different from current
+      // Avoid overwriting a carefully resolved month from boot unless truly necessary
+      if (latest && latest !== month && latest.length >= 7) {
+        console.debug("[upload] updating month from", month, "to", latest);
+        setMonth(latest);
+      }
 
+      // Use the resolved month (prefer current context month over latest)
+      const resolved = month || latest;
       if (resolved) {
         // fire-and-forget to avoid blocking UI
         void Promise.allSettled([
@@ -95,7 +100,7 @@ const UploadCsv: React.FC<UploadCsvProps> = ({ onUploaded, defaultReplace = true
     setResult(null);
     try {
       // Uses your existing API helper; falls back to direct fetch if needed.
-  const data = await uploadCsv(file, replace, expensesArePositive);
+      const data = await uploadCsv(file, replace); // Auto-inference enabled
       const r: UploadResult = { ok: true, data, message: "CSV ingested successfully." };
       setResult(r);
       onUploaded?.(r);
@@ -179,7 +184,7 @@ const UploadCsv: React.FC<UploadCsvProps> = ({ onUploaded, defaultReplace = true
 
         <div className="mt-4 flex items-center justify-between">
           <div className="text-xs text-gray-400">
-            Endpoint: <code className="text-gray-300">/ingest?replace={String(replace)}&expenses_are_positive={String(expensesArePositive)}</code>
+            Endpoint: <code className="text-gray-300">/ingest?replace={String(replace)}</code> (auto-detects expense signs)
           </div>
           <button
             type="button"
@@ -192,18 +197,6 @@ const UploadCsv: React.FC<UploadCsvProps> = ({ onUploaded, defaultReplace = true
           >
             {busy ? "Uploading…" : "Upload CSV"}
           </button>
-        </div>
-
-        <div className="mt-3 flex items-center gap-3">
-          <label className="inline-flex items-center gap-2 text-sm text-gray-300">
-            <input
-              type="checkbox"
-              className="h-4 w-4 rounded border-gray-600 bg-gray-800 text-indigo-500 focus:ring-indigo-500"
-              checked={expensesArePositive}
-              onChange={(e) => setExpensesArePositive(e.target.checked)}
-            />
-            Expenses are positive
-          </label>
         </div>
 
         {/* Progress / Result */}

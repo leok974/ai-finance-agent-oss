@@ -15,6 +15,16 @@ from app.routers import agent_tools_meta as meta_router
 from .routers import charts
 from .routers import health as health_router
 from .utils.state import load_state, save_state
+import logging
+import subprocess
+
+# Print git info on boot
+try:
+    b = subprocess.check_output(["git","rev-parse","--abbrev-ref","HEAD"]).decode().strip()
+    s = subprocess.check_output(["git","rev-parse","--short","HEAD"]).decode().strip()
+    logging.getLogger("uvicorn").info(f"Backend booting from {b}@{s}")
+except Exception:
+    pass
 
 app = FastAPI(title="AI Finance Agent", version="0.1.0")
 
