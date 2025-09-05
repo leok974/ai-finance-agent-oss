@@ -6,15 +6,15 @@
   "scripts": {
     "dev": "pnpm smoke:backend && vite",
     "build": "vite build",
-  "preview": "vite preview --port 5173 --strictPort",
-  "smoke:backend": "powershell -ExecutionPolicy Bypass -File ../backend/app/scripts/smoke-backend.ps1"
-  
-    
+    "preview": "vite preview --port 5173 --strictPort",
+    "smoke:backend": "powershell -ExecutionPolicy Bypass -File ../backend/app/scripts/smoke-backend.ps1"
   },
   "dependencies": {
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "recharts": "^2.10.4"
+    "react-markdown": "^10.1.0",
+    "recharts": "^2.10.4",
+    "remark-gfm": "^4.0.1"
   },
   "devDependencies": {
     "@types/react": "^18.2.66",

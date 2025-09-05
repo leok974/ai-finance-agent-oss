@@ -12,7 +12,7 @@ import RulesPanel from "./components/RulesPanel";
 import ChatDock from "./components/ChatDock";
 import ChartsPanel from "./components/ChartsPanel";
 import TopEmptyBanner from "./components/TopEmptyBanner";
-import AgentChat from "./components/AgentChat";
+// import AgentChat from "./components/AgentChat"; // legacy chat bubble disabled
 
 // Log frontend version info
 console.info("[Web] branch=", __WEB_BRANCH__, "commit=", __WEB_COMMIT__);
@@ -111,8 +111,8 @@ const App: React.FC = () => {
 
         {/* Insights */}
         {insights && <AgentResultRenderer tool="insights.expanded" data={insights} />}
-        {/* Agent chat box */}
-        <AgentChat />
+  {/* Agent chat box (legacy) — disabled; use ChatDock instead */}
+  {/* <AgentChat /> */}
   {/* ChartsPanel now requires month; always pass the selected month */}
   <ChartsPanel month={month} refreshKey={refreshKey} />
 
