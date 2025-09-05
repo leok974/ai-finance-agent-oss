@@ -1,5 +1,5 @@
 import React from "react";
-import { agentChat, type AgentChatRequest, type AgentChatResponse, type ChatMessage } from "../lib/api";
+import { agentChat, getAgentModels, type AgentChatRequest, type AgentChatResponse, type AgentModelsResponse, type ChatMessage } from "../lib/api";
 
 interface ExtendedMessage extends ChatMessage {
   meta?: {
@@ -16,6 +16,32 @@ export default function AgentChat() {
   ]);
   const [input, setInput] = React.useState("");
   const [loading, setLoading] = React.useState(false);
+  const [advancedOpen, setAdvancedOpen] = React.useState(false);
+  const [modelsInfo, setModelsInfo] = React.useState<AgentModelsResponse | null>(null);
+  const [selectedModel, setSelectedModel] = React.useState<string>(""); // empty => use server default
+
+  // Persist selected model per tab session
+  React.useEffect(() => {
+    const saved = sessionStorage.getItem('fa.model');
+    if (saved) setSelectedModel(saved);
+  }, []);
+  React.useEffect(() => {
+    if (selectedModel) sessionStorage.setItem('fa.model', selectedModel);
+    else sessionStorage.removeItem('fa.model');
+  }, [selectedModel]);
+
+  React.useEffect(() => {
+    let ignore = false;
+    (async () => {
+      try {
+        const info = await getAgentModels();
+        if (!ignore) setModelsInfo(info);
+      } catch {
+        // ignore fetch errors; UI will just hide advanced section
+      }
+    })();
+    return () => { ignore = true; };
+  }, []);
 
   async function send() {
     if (!input.trim() || loading) return;
@@ -33,8 +59,10 @@ export default function AgentChat() {
         })),
         // no context on purpose — server will auto-enrich (month, rules, alerts, etc.)
         intent: 'general',
-        model: 'gpt-oss:20b'
       };
+      if (selectedModel) {
+        (req as any).model = selectedModel;
+      }
       
       const resp: AgentChatResponse = await agentChat(req);
       const assistantMsg: ExtendedMessage = {
@@ -62,6 +90,42 @@ export default function AgentChat() {
 
   return (
     <div className="rounded-xl border border-neutral-700 p-3 bg-neutral-900 text-neutral-100">
+      {modelsInfo ? (
+        <div className="mb-2">
+          <button
+            className="text-xs text-neutral-400 hover:text-neutral-200"
+            onClick={() => setAdvancedOpen(v => !v)}
+          >
+            {advancedOpen ? "Hide advanced" : "Show advanced"}
+          </button>
+          {advancedOpen && (
+            <div className="mt-2 p-2 rounded-lg border border-neutral-800 bg-neutral-800/50">
+              <div className="flex items-center gap-3">
+                <div className="text-xs text-neutral-400">
+                  Provider: <span className="text-neutral-200">{modelsInfo.provider}</span>
+                  {modelsInfo.default ? (
+                    <>
+                      <span className="mx-2">·</span>
+                      Default: <span className="text-neutral-200">{modelsInfo.default}</span>
+                    </>
+                  ) : null}
+                </div>
+                <div className="ml-auto" />
+                <select
+                  className="px-2 py-1 text-sm rounded-md bg-neutral-800 border border-neutral-700 text-neutral-100"
+                  value={selectedModel}
+                  onChange={(e) => setSelectedModel(e.target.value)}
+                >
+                  <option value="">Use default</option>
+                  {modelsInfo.models?.map(m => (
+                    <option key={m.id} value={m.id}>{m.id}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          )}
+        </div>
+      ) : null}
       <div className="space-y-2 max-h-64 overflow-auto text-sm">
         {messages.filter(m => m.role !== "system").map((m, i) => (
           <div key={i} className={m.role === "user" ? "text-right" : ""}>
