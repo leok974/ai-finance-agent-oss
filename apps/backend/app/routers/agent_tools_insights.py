@@ -55,8 +55,10 @@ def _abs_outflow_sum():
 def _inflow_sum():
     return func.sum(case((Transaction.amount > 0, Transaction.amount), else_=0.0))
 
+# TODO: remove /summary after UI fully migrated to /expanded
 @router.post("/summary", response_model=InsightsResponse)
 def insights_summary(body: InsightsRequest, db: Session = Depends(get_db)) -> InsightsResponse:
+    # TODO: remove /summary after UI fully migrated to /expanded
     insights: List[InsightItem] = []
 
     # Overall summary

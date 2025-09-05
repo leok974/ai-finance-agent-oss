@@ -5,7 +5,6 @@ export type ToolKey =
   | "transactions.get_by_ids"
   | "budget.summary"
   | "budget.check"
-  | "insights.summary"
   | "insights.expanded"
   | "charts.summary"
   | "charts.merchants"

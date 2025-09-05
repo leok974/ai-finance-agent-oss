@@ -498,8 +498,6 @@ export function AgentResultRenderer({ tool, data }: { tool: ToolKey; data: any }
       return <BudgetSummaryCard data={data as BudgetSummaryResult} />;
     case "budget.check":
       return <BudgetCheckCard data={data as BudgetCheckResult} />;
-    case "insights.summary":
-      return <InsightSummaryCard data={data as InsightSummaryResult} />;
     case "insights.expanded":
       return <InsightsExpandedCard data={data as InsightsExpandedResult} />;
     case "charts.summary":

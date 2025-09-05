@@ -166,8 +166,21 @@ def month_summary(month: str | None = Query(None, pattern=r"^\d{4}-\d{2}$"), db:
     if txn_count == 0:
         try:
             from ..main import app
+            import datetime as dt
             items = [t for t in getattr(app.state, "txns", []) if isinstance(t, dict)]
-            month_items = [t for t in items if str(t.get("date", ""))[:7] == month]
+            # Filter using proper date parsing instead of string slicing
+            month_items = []
+            for t in items:
+                date_str = str(t.get("date", ""))
+                if date_str:
+                    try:
+                        date_obj = dt.date.fromisoformat(date_str[:10])
+                        if date_obj.strftime("%Y-%m") == month:
+                            month_items.append(t)
+                    except (ValueError, TypeError):
+                        # Fallback to string slicing for malformed dates
+                        if date_str[:7] == month:
+                            month_items.append(t)
             if month_items:
                 pos = [abs(float(t.get("amount", 0.0))) for t in month_items if float(t.get("amount", 0.0)) > 0]
                 neg = [abs(float(t.get("amount", 0.0))) for t in month_items if float(t.get("amount", 0.0)) < 0]
