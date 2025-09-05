@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import Card from './Card'
-import { getUnknowns, explainTxn, categorizeTxn } from '../lib/api'
+import { getUnknowns, categorizeTxn } from '../lib/api'
 import EmptyState from './EmptyState'
 
 export default function UnknownsPanel({ month, onSeedRule, onChanged, refreshKey }: {

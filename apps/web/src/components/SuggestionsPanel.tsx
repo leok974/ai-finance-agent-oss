@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import Card from './Card'
-import { getSuggestions, categorizeTxn, getExplain } from '../lib/api'
+import { getSuggestions, categorizeTxn, agentChat } from '../lib/api'
 import EmptyState from './EmptyState'
 
 type Suggestion = { txn_id: number; merchant?: string; description?: string; topk: Array<{ category: string; confidence: number }> }
@@ -115,8 +115,16 @@ export default function SuggestionsPanel({ month, refreshKey = 0 }: { month?: st
               </div>
               <div>
                 <button className="text-sm opacity-80 underline" onClick={async()=>{
-                  const r = await getExplain(it.txn_id)
-                  alert(r?.explanation ?? JSON.stringify(r))
+                  try {
+                    const resp = await agentChat({
+                      messages: [{ role: 'user', content: `Explain transaction ${it.txn_id} and suggest one action.` }],
+                      intent: 'explain_txn',
+                      txn_id: String(it.txn_id)
+                    });
+                    alert(resp?.reply || '(no reply)')
+                  } catch (e: any) {
+                    alert(e?.message ?? String(e))
+                  }
                 }}>Explain</button>
               </div>
             </div>

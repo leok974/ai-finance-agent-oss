@@ -143,15 +143,6 @@ export async function mlTrain(month?: string, passes = 1, min_samples = 25) {
 
 // ---------- Explain & Agent ----------
 export const getExplain = (txnId: number) => http(`/txns/${txnId}/explain`)
-export async function explainTxn(id: number): Promise<AgentChatResponse> {
-  const req: AgentChatRequest = {
-    messages: [{ role:'user', content:`Explain transaction ${id} succinctly and suggest an action.` }],
-    intent: 'explain_txn',
-    txn_id: String(id),
-    model: 'gpt-oss:20b'
-  };
-  return agentChat(req);
-}
 
 // Helper: unified chat for transaction explanations (returns formatted response for UI)
 export async function explainTxnForChat(txnId: string | number): Promise<{
@@ -163,7 +154,11 @@ export async function explainTxnForChat(txnId: string | number): Promise<{
     model?: string;
   };
 }> {
-  const resp = await explainTxn(Number(txnId));
+  const resp = await agentChat({
+    messages: [{ role:'user', content:`Explain transaction ${txnId} and suggest one action.` }],
+    intent: 'explain_txn',
+    txn_id: String(txnId)
+  });
   return {
     reply: resp.reply,
     meta: {
