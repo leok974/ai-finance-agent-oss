@@ -1,5 +1,7 @@
 import React, { useEffect, useRef } from "react";
-import { agentTools } from "../lib/api";
+import { agentTools, agentChat, getAgentModels, type AgentChatRequest, type AgentChatResponse, type AgentModelsResponse } from "../lib/api";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import type { ToolKey, ToolSpec, ToolRunState } from "../types/agentTools";
 import { AgentResultRenderer } from "./AgentResultRenderers";
 import ErrorBoundary from "./ErrorBoundary";
@@ -71,6 +73,12 @@ export default function ChatDock() {
   const runningRef = React.useRef<AbortController | null>(null);
   const lastClickAtRef = React.useRef<number>(0);
   const [monthReady, setMonthReady] = React.useState<boolean>(false);
+  // unified chat state
+  const [modelsInfo, setModelsInfo] = React.useState<AgentModelsResponse | null>(null);
+  const [showAdvanced, setShowAdvanced] = React.useState(false);
+  const [selectedModel, setSelectedModel] = React.useState<string>(""); // empty => server default
+  const [busy, setBusy] = React.useState(false);
+  const [chatResp, setChatResp] = React.useState<AgentChatResponse | null>(null);
   
   // Auto-run state for debounced month changes
   const isAutoRunning = useRef(false);
@@ -79,6 +87,10 @@ export default function ChatDock() {
   // stop saving/restoring "open"; clean any legacy value once
   React.useEffect(() => { localStorage.removeItem("chatdock_open"); }, []);
   React.useEffect(() => { localStorage.setItem("chatdock_pos", JSON.stringify(pos)); }, [pos]);
+  // fetch models (best-effort)
+  React.useEffect(() => { (async () => {
+    try { const info = await getAgentModels(); setModelsInfo(info || null); } catch { /* ignore */ }
+  })(); }, []);
 
   // handle keyboard
   React.useEffect(() => {
@@ -194,6 +206,46 @@ export default function ChatDock() {
     }
   }, [tool, payloadText, month]);
 
+  // Lightweight tool palette → uses unified /agent/chat
+  const appendAssistant = React.useCallback((resp: AgentChatResponse) => {
+    setChatResp(resp);
+  }, []);
+
+  const quickTools: Array<{ key: string; label: string; run: () => Promise<void> }> = React.useMemo(() => ([
+    {
+      key: 'month_summary',
+      label: 'Month summary',
+      run: async () => {
+        setBusy(true);
+        try {
+          const req: AgentChatRequest = {
+            messages: [{ role: 'user', content: 'Summarize my spending this month in 4 bullets and one action.' }],
+            intent: 'general',
+            ...(selectedModel ? { model: selectedModel } : {})
+          };
+          const resp = await agentChat(req);
+          appendAssistant(resp);
+        } finally { setBusy(false); }
+      }
+    },
+    {
+      key: 'find_subs',
+      label: 'Find subscriptions',
+      run: async () => {
+        setBusy(true);
+        try {
+          const req: AgentChatRequest = {
+            messages: [{ role: 'user', content: 'Identify recurring subscriptions this month and suggest which I could cancel.' }],
+            intent: 'general',
+            ...(selectedModel ? { model: selectedModel } : {})
+          };
+          const resp = await agentChat(req);
+          appendAssistant(resp);
+        } finally { setBusy(false); }
+      }
+    }
+  ]), [appendAssistant, selectedModel]);
+
   // Auto-run on month change with debouncing and in-flight protection
   useEffect(() => {
     if (!month || !monthReady) return;
@@ -308,6 +360,16 @@ export default function ChatDock() {
       >
         <div className="text-sm text-neutral-300">Agent Tools</div>
         <div className="ml-auto flex items-center gap-2">
+          {modelsInfo ? (
+            <button
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => { e.stopPropagation(); setShowAdvanced(v=>!v); }}
+              className="px-2 py-1 rounded-lg bg-neutral-800 text-neutral-200 border border-neutral-700 hover:bg-neutral-700"
+              title="Advanced (models)"
+            >
+              {showAdvanced ? 'Hide advanced' : 'Advanced'}
+            </button>
+          ) : null}
           <button
             onPointerDown={(e) => e.stopPropagation()}
             onClick={(e) => { e.stopPropagation(); setOpen(false); }}
@@ -317,6 +379,44 @@ export default function ChatDock() {
             Collapse
           </button>
         </div>
+      </div>
+
+      {showAdvanced && modelsInfo && (
+        <div className="mb-2 p-2 rounded-lg border border-neutral-800 bg-neutral-800/40">
+          <div className="text-xs opacity-70 mb-1">
+            Provider: {modelsInfo.provider} · Default: {modelsInfo.default}
+          </div>
+          <div className="flex items-center gap-2">
+            <select
+              className="px-2 py-1 text-sm rounded-md bg-neutral-800 border border-neutral-700 text-neutral-100"
+              value={selectedModel}
+              onChange={(e) => setSelectedModel(e.target.value)}
+            >
+              <option value="">{`Default (${modelsInfo.provider}: ${modelsInfo.default})`}</option>
+              {modelsInfo.models?.map(m => (
+                <option key={m.id} value={m.id}>{m.id}</option>
+              ))}
+            </select>
+          </div>
+          <div className="text-[11px] mt-1 opacity-60">
+            Leave blank to use the server default. This selection applies only in this tab.
+          </div>
+        </div>
+      )}
+
+      {/* Unified tool bar (chat-powered quick actions) */}
+      <div className="mb-2 px-1 py-1 border border-neutral-800 rounded-lg bg-neutral-900/60 flex gap-2 flex-wrap">
+        {quickTools.map(t => (
+          <button
+            key={t.key}
+            disabled={busy}
+            onClick={t.run}
+            className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50"
+            title={`Run ${t.label}`}
+          >
+            {t.label}
+          </button>
+        ))}
       </div>
 
       <div className="flex items-center gap-3">
@@ -373,7 +473,31 @@ export default function ChatDock() {
 
         <div>
           <label className="text-xs font-medium text-neutral-400">Result</label>
-          <div className="mt-1 max-h-[50vh] overflow-auto rounded-xl border border-neutral-700 p-3 bg-neutral-800 text-neutral-100">
+          <div className="mt-1 max-h-[50vh] overflow-auto rounded-xl border border-neutral-700 p-3 bg-neutral-800 text-neutral-100 space-y-3">
+            {chatResp ? (
+              <div className="rounded-md p-2 bg-neutral-900/60">
+                <div className="prose prose-invert max-w-none text-sm">
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                    {chatResp.reply || ""}
+                  </ReactMarkdown>
+                </div>
+                {chatResp?.citations?.length ? (
+                  <div className="mt-2 text-xs opacity-70">
+                    Used data: {chatResp.citations.map((c: any) => c.count ? `${c.type} ${c.count}` : `${c.type}`).join(' · ')}
+                    {chatResp.used_context?.month ? ` · month ${chatResp.used_context.month}` : ''}
+                    {chatResp.model ? ` · ${chatResp.model}` : ''}
+                    {chatResp.tool_trace?.length ? (
+                      <details className="mt-1">
+                        <summary className="cursor-pointer hover:text-neutral-300">Trace</summary>
+                        <pre className="whitespace-pre-wrap text-[10px] mt-1 p-2 bg-neutral-900 rounded overflow-auto max-h-32">
+                          {JSON.stringify(chatResp.tool_trace, null, 2)}
+                        </pre>
+                      </details>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
             {state.error ? (
               <div className="text-red-400 text-sm whitespace-pre-wrap">{state.error}</div>
             ) : state.loading ? (
