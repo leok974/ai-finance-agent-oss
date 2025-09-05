@@ -143,8 +143,36 @@ export async function mlTrain(month?: string, passes = 1, min_samples = 25) {
 
 // ---------- Explain & Agent ----------
 export const getExplain = (txnId: number) => http(`/txns/${txnId}/explain`)
-export async function explainTxn(id: number) {
-  return fetchJson(`/txns/explain?id=${id}`);
+export async function explainTxn(id: number): Promise<AgentChatResponse> {
+  const req: AgentChatRequest = {
+    messages: [{ role:'user', content:`Explain transaction ${id} succinctly and suggest an action.` }],
+    intent: 'explain_txn',
+    txn_id: String(id),
+    model: 'gpt-oss:20b'
+  };
+  return agentChat(req);
+}
+
+// Helper: unified chat for transaction explanations (returns formatted response for UI)
+export async function explainTxnForChat(txnId: string | number): Promise<{
+  reply: string;
+  meta: {
+    citations?: { type: string; id?: string; count?: number }[];
+    ctxMonth?: string;
+    trace?: any[];
+    model?: string;
+  };
+}> {
+  const resp = await explainTxn(Number(txnId));
+  return {
+    reply: resp.reply,
+    meta: {
+      citations: resp.citations,
+      ctxMonth: resp.used_context?.month,
+      trace: resp.tool_trace,
+      model: resp.model
+    }
+  };
 }
 
 export async function agentStatus() {
@@ -153,23 +181,50 @@ export async function agentStatus() {
 
 export type ChatMessage = { role: "system" | "user" | "assistant"; content: string };
 
+export type AgentChatRequest = {
+  messages: { role: 'system'|'user'|'assistant', content: string }[];
+  context?: any;
+  intent?: 'general'|'explain_txn'|'budget_help'|'rule_seed';
+  txn_id?: string | null;
+  model?: string;
+  temperature?: number;
+  top_p?: number;
+};
+
+export type AgentChatResponse = {
+  reply: string;
+  citations: { type: string; id?: string; count?: number }[];
+  used_context: { month?: string };
+  tool_trace: any[];
+  model: string;
+};
+
 export async function agentChat(
-  input: string | ChatMessage[],
+  input: string | ChatMessage[] | AgentChatRequest,
   opts?: { system?: string }
-) {
-  let messages: ChatMessage[];
-  if (Array.isArray(input)) {
-    messages = input;
+): Promise<AgentChatResponse> {
+  let request: AgentChatRequest;
+  
+  if (typeof input === 'object' && 'messages' in input) {
+    // New unified API format
+    request = input;
   } else {
-    messages = [];
-    if (opts?.system) messages.push({ role: "system", content: opts.system });
-    messages.push({ role: "user", content: input });
+    // Legacy compatibility - convert to new format
+    let messages: ChatMessage[];
+    if (Array.isArray(input)) {
+      messages = input;
+    } else {
+      messages = [];
+      if (opts?.system) messages.push({ role: "system", content: opts.system });
+      messages.push({ role: "user", content: input });
+    }
+    request = { messages, intent: 'general' };
   }
 
   return fetchJson(`/agent/chat`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ messages }),
+    body: JSON.stringify(request),
   });
 }
 
