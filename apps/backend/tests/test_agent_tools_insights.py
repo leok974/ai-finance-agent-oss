@@ -15,6 +15,8 @@ def _ingest(csv_text: str):
     assert r.status_code in (200, 201), r.text
 
 
+# TODO: remove after UI fully migrated to /expanded
+@pytest.mark.skip(reason="Summary endpoint deprecated in favor of expanded")
 def test_insights_summary_shapes_and_signals():
     month = "2025-08"
     csv = textwrap.dedent(f"""\

@@ -193,16 +193,41 @@ def call_tool(name: str, args: Dict[str, Any]):
         }
 
     elif name == "spending_trends":
+        import datetime as dt
         months = args.get("months", 6)
         category_filter = args.get("category")
         
-        # Get available months
-        all_months = sorted(set(t["date"][:7] for t in app.state.txns))
+        # Get available months using proper date parsing
+        all_months = set()
+        for t in app.state.txns:
+            date_str = t.get("date", "")
+            if date_str:
+                try:
+                    date_obj = dt.date.fromisoformat(date_str[:10])
+                    all_months.add(date_obj.strftime("%Y-%m"))
+                except (ValueError, TypeError):
+                    # Fallback to string slicing for malformed dates
+                    if len(date_str) >= 7:
+                        all_months.add(date_str[:7])
+        
+        all_months = sorted(all_months)
         recent_months = all_months[-months:] if len(all_months) > months else all_months
         
         trends = []
         for month in recent_months:
-            month_txns = [t for t in app.state.txns if t["date"].startswith(month)]
+            month_txns = []
+            for t in app.state.txns:
+                date_str = t.get("date", "")
+                if date_str:
+                    try:
+                        date_obj = dt.date.fromisoformat(date_str[:10])
+                        if date_obj.strftime("%Y-%m") == month:
+                            month_txns.append(t)
+                    except (ValueError, TypeError):
+                        # Fallback to string prefix matching for malformed dates
+                        if date_str.startswith(month):
+                            month_txns.append(t)
+            
             if category_filter:
                 month_txns = [t for t in month_txns if t.get("category") == category_filter]
             

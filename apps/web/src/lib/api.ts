@@ -241,21 +241,6 @@ export const agentTools = {
     postTool("/agent/tools/budget/check", payload, { signal }),
 
   // Insights
-  insightsSummary: (payload: {
-    month?: string;
-    limitLargeTxns?: number;      // camel
-    includeUnknownSpend?: boolean;// camel
-    // also accept snake_case to be flexible
-    limit_large_txns?: number;
-    include_unknown_spend?: boolean;
-  }, signal?: AbortSignal) => postTool("/agent/tools/insights/summary", {
-    month: payload?.month,
-    ...mapKeys(payload, {
-      limitLargeTxns: "limit_large_txns",
-      includeUnknownSpend: "include_unknown_spend",
-    }),
-  }, { signal }),
-
   insightsExpanded: (payload: { month?: string; large_limit?: number; largeLimit?: number }, signal?: AbortSignal) =>
     postTool("/agent/tools/insights/expanded", {
       month: payload?.month,
@@ -315,54 +300,28 @@ export const rulesCrud = {
 };
 
 // ---------- Helper: resolve latest month from backend ----------
-// Calls charts summary without a month; backend will respond with the resolved month.
 export async function fetchLatestMonth(): Promise<string | null> {
-  console.log("🔍 fetchLatestMonth: starting...");
-  
-  try {
-    // Prefer the dedicated meta endpoint when available
-    console.log("📡 Trying meta.latestMonth()...");
-    const r: any = await meta.latestMonth();
-    console.log("📊 Meta endpoint response:", r);
-    if (typeof r?.month === "string") {
-      console.log("✅ Meta endpoint returned month:", r.month);
-      return r.month;
-    }
-  } catch (error) {
-    console.log("⚠️ Meta endpoint failed:", error);
+  // Try meta route (fast path) with a tiny retry
+  for (let i = 0; i < 2; i++) {
+    try {
+      const r = await meta.latestMonth();
+      if (r && typeof r.month === "string" && r.month.length >= 7) return r.month;
+    } catch { /* ignore and retry once */ }
   }
-  
+
+  // Fallback: ask transactions.search for the newest txn and derive YYYY-MM
   try {
-    // ask for 1 txn, newest first (if backend ignores sort, we still handle gracefully)
-    console.log("📡 Trying agentTools.searchTransactions...");
-    const res: any = await agentTools.searchTransactions({
+    const res = await agentTools.searchTransactions({
       limit: 1,
-      sort: { field: "date", dir: "desc" },
+      sort: { field: "date", dir: "desc" }, // harmless if backend ignores
     });
-    console.log("📊 Search transactions response:", res);
-
-    // 1) some endpoints echo a resolved `month`
-    if (typeof res?.month === "string") {
-      console.log("✅ Search returned month field:", res.month);
-      return res.month;
-    }
-
-    // 2) derive from the first item
-    const first = res?.items?.[0] || res?.transactions?.[0] || res?.data?.[0];
-    console.log("📊 First transaction:", first);
-    if (typeof first?.month === "string") {
-      console.log("✅ Derived month from transaction.month:", first.month);
-      return first.month;
-    }
+    if (typeof res?.month === "string") return res.month;
+    const first = res?.items?.[0] ?? res?.transactions?.[0] ?? res?.data?.[0];
+    if (first?.month) return first.month;
     if (typeof first?.date === "string" && first.date.length >= 7) {
-      const derivedMonth = first.date.slice(0, 7); // YYYY-MM from ISO date
-      console.log("✅ Derived month from transaction.date:", derivedMonth);
-      return derivedMonth;
+      return first.date.slice(0, 7);
     }
-  } catch (error) {
-    console.log("❌ Search transactions failed:", error);
-  }
-  
-  console.log("🚫 fetchLatestMonth: no month found, returning null");
+  } catch { /* ignore */ }
+
   return null;
 }

@@ -4,10 +4,10 @@ import UploadCsv from "./components/UploadCsv";
 import UnknownsPanel from "./components/UnknownsPanel";
 import SuggestionsPanel from "./components/SuggestionsPanel";
 import RuleTesterPanel from "./components/RuleTesterPanel";
-import InsightsCard from "./components/InsightsCard";
+import { AgentResultRenderer } from "./components/AgentResultRenderers";
 import { useToast } from "./components/Toast";
 // import RulesPanel from "./components/RulesPanel";
-import { getReport, getInsights, getAlerts, getMonthSummary, getMonthMerchants, getMonthFlows, fetchLatestMonth, agentTools } from './lib/api'
+import { getReport, getAlerts, getMonthSummary, getMonthMerchants, getMonthFlows, fetchLatestMonth, agentTools } from './lib/api'
 import RulesPanel from "./components/RulesPanel";
 import ChatDock from "./components/ChatDock";
 import ChartsPanel from "./components/ChartsPanel";
@@ -18,7 +18,7 @@ import AgentChat from "./components/AgentChat";
 const App: React.FC = () => {
   const { push } = useToast();
   const [month, setMonth] = useState<string>("");
-  const [monthReady, setMonthReady] = useState<boolean>(false);
+  const [ready, setReady] = useState<boolean>(false);
   const [refreshKey, setRefreshKey] = useState<number>(0);
   const [report, setReport] = useState<any>(null)
   const [insights, setInsights] = useState<any>(null)
@@ -26,79 +26,61 @@ const App: React.FC = () => {
   const [empty, setEmpty] = useState<boolean>(false)
   const [bannerDismissed, setBannerDismissed] = useState<boolean>(false)
 
-  // Resolve month on startup from backend (transactions.search), with calendar fallback
-  useEffect(() => { (async () => {
-    console.log("🔍 App startup: resolving latest month...");
-    try {
-      const m = await fetchLatestMonth();
-      console.log("📅 fetchLatestMonth returned:", m);
-      if (m) {
-        console.log("✅ Setting month to:", m);
-        setMonth(m);
-      } else {
-        const now = new Date();
-        const fallback = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-        console.log("⚠️ No month from backend, using fallback:", fallback);
-        setMonth(fallback);
-      }
-    } catch (error) {
-      console.error("❌ Error fetching latest month:", error);
-      const now = new Date();
-      const fallback = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-      console.log("🔄 Error fallback month:", fallback);
-      setMonth(fallback);
-    } finally {
-      console.log("🏁 Month resolution complete");
-      setMonthReady(true);
-    }
-  })() }, []);
-
-  useEffect(()=>{ (async()=>{
-    if (!monthReady || !month) return;
-    try {
-      setReport(await getReport(month))
-      setInsights(await getInsights(month))
-      setAlerts(await getAlerts(month))
-      await Promise.all([
-        getMonthSummary(month),
-        getMonthMerchants(month),
-        getMonthFlows(month)
-      ])
-      // Ensure charts agent endpoint is also exercised with an explicit month
-      void agentTools.chartsSummary({ month })
-    } catch {}
-  })() }, [monthReady, month, refreshKey])
-
-  // Ensure app reloads charts/insights when the month changes (background, non-blocking)
+  // 1) ask backend for the true latest month before rendering the app
   useEffect(() => {
-    if (!month) return;
+    (async () => {
+      const backendMonth = await fetchLatestMonth();
+      if (backendMonth) {
+        setMonth(backendMonth);
+      } else {
+        // fallback: current calendar month
+        const now = new Date();
+        setMonth(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`);
+      }
+      setReady(true);
+    })();
+  }, []);
+
+  // 2) whenever month changes, (re)load dashboard data
+  useEffect(() => {
+    if (!ready || !month) return;
     void Promise.allSettled([
       getReport(month),
       agentTools.chartsSummary({ month }),
       agentTools.chartsMerchants({ month, limit: 10 }),
       agentTools.chartsFlows({ month }),
-      agentTools.chartsSpendingTrends({ month, months_back: 6 } as any),
+      agentTools.chartsSpendingTrends({ month, months_back: 6 }),
     ]);
-  }, [month]);
+  }, [ready, month]);
+
+  // Load insights and alerts separately for state management
+  useEffect(()=>{ (async()=>{
+    if (!ready || !month) return;
+    try {
+      setReport(await getReport(month))
+      setInsights(await agentTools.insightsExpanded({ month, large_limit: 10 }))
+      setAlerts(await getAlerts(month))
+    } catch {}
+  })() }, [ready, month, refreshKey])
 
   // Probe backend emptiness (latest by default). If charts summary returns null or month:null, show banner.
   useEffect(() => { (async () => {
-    if (!monthReady || !month) return;
+    if (!ready || !month) return;
     try {
       const s = await getMonthSummary(month);
       setEmpty(!s || s?.month == null);
     } catch {
       setEmpty(true);
     }
-  })() }, [monthReady, month, refreshKey])
+  })() }, [ready, month, refreshKey])
 
   const onCsvUploaded = useCallback(() => {
     setRefreshKey((k) => k + 1);
     push({ title: "CSV ingested", message: "Transactions imported. Panels refreshed." });
   }, [push]);
 
-  if (!monthReady) {
-    return <div className="p-6 text-gray-600">Loading…</div>;
+  if (!ready) {
+    return <div className="p-6 text-[color:var(--text-muted)]">Loading…</div>;
   }
 
   return (
@@ -122,7 +104,7 @@ const App: React.FC = () => {
   <UploadCsv defaultReplace={true} onUploaded={onCsvUploaded} />
 
         {/* Insights */}
-  <InsightsCard insights={insights} />
+        {insights && <AgentResultRenderer tool="insights.expanded" data={insights} />}
         {/* Agent chat box */}
         <AgentChat />
   {/* ChartsPanel now requires month; always pass the selected month */}

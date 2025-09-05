@@ -9,7 +9,6 @@ const TOOL_GROUPS: Array<{ label: string; items: ToolSpec[] }> = [
   {
     label: "Insights",
     items: [
-      { key: "insights.summary",  label: "Insights: Summary",  path: "/agent/tools/insights/summary",  examplePayload: { include_unknown_spend: true, limit_large_txns: 10, month: undefined } },
       { key: "insights.expanded", label: "Insights: Expanded (MoM + anomalies)", path: "/agent/tools/insights/expanded", examplePayload: { month: undefined, large_limit: 10 } },
     ],
   },
@@ -62,7 +61,7 @@ export default function ChatDock() {
     return raw ? JSON.parse(raw) : { x: 24, y: 24 };
   });
 
-  const [tool, setTool] = React.useState<ToolKey>("insights.summary");
+  const [tool, setTool] = React.useState<ToolKey>("insights.expanded");
   const spec = React.useMemo(() => findSpec(tool), [tool]);
 
   const [payloads, setPayloads] = React.useState<Record<string, string>>({});
@@ -141,9 +140,12 @@ export default function ChatDock() {
 
     // inject/snap month for month-required tools
     const monthRequired = new Set<ToolKey>([
-      "insights.summary","insights.expanded",
-      "charts.summary","charts.merchants","charts.flows","charts.trends",
       "transactions.search",
+      "insights.expanded",
+      "charts.summary",
+      "charts.merchants",
+      "charts.flows",
+      "charts.trends",
     ]);
 
     if (monthRequired.has(tool)) {
@@ -168,7 +170,6 @@ export default function ChatDock() {
         case "transactions.get_by_ids":   data = await agentTools.getTransactionsByIds(body, ctrl.signal); break;
         case "budget.summary":            data = await agentTools.budgetSummary(body, ctrl.signal); break;
         case "budget.check":              data = await agentTools.budgetCheck(body, ctrl.signal); break;
-        case "insights.summary":          data = await agentTools.insightsSummary(body, ctrl.signal); break;
         case "insights.expanded":         data = await agentTools.insightsExpanded(body, ctrl.signal); break;
         case "charts.summary":            data = await agentTools.chartsSummary(body, ctrl.signal); break;
         case "charts.merchants":          data = await agentTools.chartsMerchants(body, ctrl.signal); break;

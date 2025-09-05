@@ -7,11 +7,20 @@ from ..models import Txn, CategorizeRequest
 from app.orm_models import Transaction
 from ..utils.dates import latest_month_from_txns
 from ..utils.state import save_state
+import datetime as dt
 
 router = APIRouter()
 
 def month_of(date_str: str) -> str:
-    return date_str[:7] if date_str else ""
+    if not date_str:
+        return ""
+    try:
+        # Parse date string and use strftime for consistent formatting
+        date_obj = dt.date.fromisoformat(date_str[:10])
+        return date_obj.strftime("%Y-%m")
+    except (ValueError, TypeError):
+        # Fallback to string slicing for malformed dates
+        return date_str[:7] if len(date_str) >= 7 else ""
 
 @router.get("/unknowns")
 def get_unknowns(month: Optional[str] = None) -> Dict[str, Any]:
