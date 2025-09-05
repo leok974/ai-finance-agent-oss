@@ -5,6 +5,7 @@ from io import TextIOWrapper
 import csv, datetime as dt
 from ..db import get_db
 from app.orm_models import Transaction
+from app.services.ingest_utils import detect_positive_expense_format
 
 router = APIRouter(prefix="/ingest", tags=["ingest"])
 
@@ -12,9 +13,13 @@ router = APIRouter(prefix="/ingest", tags=["ingest"])
 async def ingest_csv(
     file: UploadFile = File(...),
     replace: bool = Query(False),
-    expenses_are_positive: bool = Query(False),  # when true, flip signs so expenses become negative
+    expenses_are_positive: bool | None = Query(None),  # <-- now optional
     db: Session = Depends(get_db),
 ):
+    """
+    Ingest CSV; if `expenses_are_positive` is None, auto-detect and flip if needed.
+    Expected columns: date, amount, merchant, description, category? (category optional)
+    """
     if replace:
         db.query(Transaction).delete()
         db.commit()
@@ -25,7 +30,29 @@ async def ingest_csv(
         except Exception:
             pass
 
-    reader = csv.DictReader(TextIOWrapper(file.file, encoding="utf-8"))
+    # Read all rows once for inference and processing
+    wrapper = TextIOWrapper(file.file, encoding="utf-8")
+    reader = csv.DictReader(wrapper)
+    rows = list(reader)
+
+    # Try to infer if not provided
+    flip = False
+    if expenses_are_positive is None:
+        sample = []
+        for r in rows[:200]:
+            amt_str = (r.get("amount") or "").strip()
+            if not amt_str:
+                continue
+            try:
+                amt = float(amt_str)
+            except ValueError:
+                continue
+            desc = (r.get("description") or r.get("memo") or "").strip()
+            sample.append((amt, desc))
+        flip = detect_positive_expense_format(sample)
+    else:
+        flip = bool(expenses_are_positive)
+
     added = 0
     # prepare legacy in-memory list for compatibility
     try:
@@ -34,14 +61,19 @@ async def ingest_csv(
     except Exception:
         mem_list = None
     next_id = (len(mem_list) + 1) if isinstance(mem_list, list) else 1
-    for row in reader:
+    
+    for row in rows:
         # map/parse your CSV columns here
         # robust parse and ensure month string
-        date = dt.datetime.strptime(row["date"], "%Y-%m-%d").date()
+        try:
+            date = dt.datetime.strptime(row["date"], "%Y-%m-%d").date()
+        except (ValueError, KeyError):
+            continue
+            
         raw_amt = float(row["amount"]) if row.get("amount") not in (None, "") else 0.0
-        # If the source marks expenses as positive numbers and income as negative,
-        # flip the sign to normalize (internal convention: spend < 0, income > 0)
-        amount = -raw_amt if expenses_are_positive else raw_amt
+        # Use the inferred flip value to normalize amounts
+        # (internal convention: spend < 0, income > 0)
+        amount = -raw_amt if flip else raw_amt
         desc = row.get("description") or row.get("memo") or ""
         merch = row.get("merchant") or None
         acct = row.get("account") or None
@@ -99,4 +131,4 @@ async def ingest_csv(
                 db.execute(update(Transaction).where(Transaction.id == rid).values(month=d.strftime("%Y-%m")))
             db.commit()
     # include both keys for compatibility
-    return {"ok": True, "added": added, "count": added}
+    return {"ok": True, "added": added, "count": added, "flip_auto": flip and (expenses_are_positive is None)}

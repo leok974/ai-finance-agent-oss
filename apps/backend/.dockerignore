@@ -1,0 +1,9 @@
+﻿# Keep this super small first; we can add more after it builds once.
+.venv
+__pycache__
+*.pyc
+*.pyo
+.git
+*.log
+.env
+.env.*
