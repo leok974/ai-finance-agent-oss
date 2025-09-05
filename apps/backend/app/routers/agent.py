@@ -17,7 +17,7 @@ from app.orm_models import Transaction
 from app.routers import agent_tools_charts, agent_tools_budget, agent_tools_insights 
 from app.routers import agent_tools_transactions, agent_tools_rules_crud, agent_tools_meta
 
-from app.utils.llm import call_local_llm
+from app.utils import llm as llm_mod  # <-- import module so tests can monkeypatch llm_mod.call_local_llm
 
 router = APIRouter()  # <-- no prefix here (main.py supplies /agent)
 
@@ -197,7 +197,7 @@ def latest_month(db: Session) -> Optional[str]:
 
 def _enrich_context(db: Session, ctx: Optional[Dict[str, Any]], txn_id: Optional[str]) -> Dict[str, Any]:
     ctx = dict(ctx or {})
-    month = ctx.get("month") or latest_month(db)
+    month = ctx.get("month") or latest_month(db) or "1970-01"  # Safe fallback
 
     # Only fetch what's missing to stay cheap and composable
     if month:
@@ -302,7 +302,7 @@ def agent_chat(req: AgentChatRequest, db: Session = Depends(get_db)):
         else:
             print(f"Context size: {trimmed_size} chars (~{trimmed_tokens} tokens)")
 
-        reply, tool_trace = call_local_llm(
+        reply, tool_trace = llm_mod.call_local_llm(
             model=model,
             messages=final_messages,
             temperature=req.temperature,
