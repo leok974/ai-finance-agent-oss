@@ -89,7 +89,7 @@ def test_agent_chat_model_normalization(monkeypatch):
     })
     assert r.status_code == 200
     j = r.json()
-    assert j["model"] == "gpt-oss-20b"  # Should be normalized
+    assert j["model"] == "gpt-oss:20b"  # Canonical colon tag
     
     # Test with hyphen version
     r = client.post("/agent/chat", json={
@@ -98,37 +98,7 @@ def test_agent_chat_model_normalization(monkeypatch):
     })
     assert r.status_code == 200
     j = r.json()
-    assert j["model"] == "gpt-oss-20b"  # Should remain the same
-
-    def test_agent_chat_model_normalization_dash_to_colon(monkeypatch):
-        """
-        If client sends model='gpt-oss-20b' (dash), backend should rewrite
-        to 'gpt-oss:20b' (colon) before calling the local LLM.
-        """
-        from fastapi.testclient import TestClient
-        from app.main import app
-        from app.utils import llm as llm_mod
-
-        seen = {"model": None}
-
-        def _fake_llm(*, model, messages, temperature=0.2, top_p=0.9):
-            # capture the model name the router actually passed to the LLM
-            seen["model"] = model
-            return "ok: normalized", [{"tool": "_fake_llm", "ok": True}]
-
-        monkeypatch.setattr(llm_mod, "call_local_llm", _fake_llm)
-
-        client = TestClient(app)
-        payload = {
-            "messages": [{"role": "user", "content": "hi"}],
-            "intent": "general",
-            "model": "gpt-oss-20b"  # <-- dash form (client-facing)
-        }
-        r = client.post("/agent/chat", json=payload)
-        assert r.status_code == 200, r.text
-
-        # Assert backend normalized to the colon tag that Ollama actually exposes
-        assert seen["model"] == "gpt-oss:20b", f"expected colon tag, got {seen['model']}"
+    assert j["model"] == "gpt-oss:20b"  # Should normalize dash -> colon
 
 
 def test_agent_chat_comprehensive_citations(monkeypatch, seeded_txn_id):

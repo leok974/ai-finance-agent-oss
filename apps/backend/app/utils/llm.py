@@ -4,7 +4,11 @@ import os, requests
 from app.config import settings
 
 def _post_chat(base: str, key: str, payload: dict, timeout: int = 60) -> dict:
-    url = f"{base.rstrip('/')}/chat/completions"
+    root = base.rstrip('/')
+    # Ensure we use OpenAI-style /v1 path exactly once
+    if not root.endswith('/v1'):
+        root = f"{root}/v1"
+    url = f"{root}/chat/completions"
     headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
     r = requests.post(url, json=payload, headers=headers, timeout=timeout)
     if r.status_code == 404:
@@ -38,36 +42,39 @@ def call_llm(*, model: str, messages: List[Dict[str,str]], temperature: float=0.
 def call_local_llm(*args, **kwargs):
     return call_llm(*args, **kwargs)
 
-def list_models() -> Dict[str, List[Dict[str,str]]]:
-        """
-        Return available model names for the configured provider.
-        Shape:
-        {
-            "provider": "ollama" | "openai",
-            "default": "<settings.DEFAULT_LLM_MODEL>",
-            "models": [{"id":"<name>"}, ...]
-        }
-        """
-        provider = (settings.DEFAULT_LLM_PROVIDER or "ollama").lower()
-        base = settings.OPENAI_BASE_URL
-        key  = settings.OPENAI_API_KEY
+def list_models() -> Dict[str, List[Dict[str, str]]]:
+    """
+    Return available model names for the configured provider.
+    Shape:
+    {
+      "provider": "ollama" | "openai",
+      "default": "<settings.DEFAULT_LLM_MODEL>",
+      "models": [{"id":"<name>"}, ...]
+    }
+    """
+    provider = (settings.DEFAULT_LLM_PROVIDER or "ollama").lower()
+    base = settings.OPENAI_BASE_URL
+    key = settings.OPENAI_API_KEY
 
-        if provider == "ollama":
-                # Ollama tags endpoint
-                url = f"{base.rstrip('/')}/api/tags"
-                r = requests.get(url, timeout=15)
-                r.raise_for_status()
-                data = r.json()
-                # data = {"models":[{"name":"llama3.1:8b","model":"...","modified_at":"...","size":...}, ...]}
-                models = [{"id": m.get("name")} for m in data.get("models", []) if m.get("name")]
-                return {"provider": provider, "default": settings.DEFAULT_LLM_MODEL, "models": models}
-
-        # OpenAI (or any OpenAI-compatible host)
-        url = f"{base.rstrip('/')}/models"
-        headers = {"Authorization": f"Bearer {key}"}
-        r = requests.get(url, headers=headers, timeout=15)
+    if provider == "ollama":
+        # Ollama tags endpoint uses root (not /v1). Accept both base forms.
+        root = base.rstrip('/')
+        if root.endswith('/v1'):
+            root = root[:-3]  # drop trailing '/v1'
+        url = f"{root}/api/tags"
+        r = requests.get(url, timeout=15)
         r.raise_for_status()
         data = r.json()
-        # data = {"object":"list","data":[{"id":"gpt-5", ...}, ...]}
-        models = [{"id": m.get("id")} for m in data.get("data", []) if m.get("id")]
+        # data = {"models":[{"name":"llama3.1:8b", ...}, ...]}
+        models = [{"id": m.get("name")} for m in data.get("models", []) if m.get("name")]
         return {"provider": provider, "default": settings.DEFAULT_LLM_MODEL, "models": models}
+
+    # OpenAI (or any OpenAI-compatible host)
+    url = f"{base.rstrip('/')}/models"
+    headers = {"Authorization": f"Bearer {key}"}
+    r = requests.get(url, headers=headers, timeout=15)
+    r.raise_for_status()
+    data = r.json()
+    # data = {"object":"list","data":[{"id":"gpt-5", ...}, ...]}
+    models = [{"id": m.get("id")} for m in data.get("data", []) if m.get("id")]
+    return {"provider": provider, "default": settings.DEFAULT_LLM_MODEL, "models": models}
