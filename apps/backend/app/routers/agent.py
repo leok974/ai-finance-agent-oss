@@ -4,7 +4,7 @@ import re
 import logging
 from typing import Any, Dict, List, Optional, Tuple, Literal
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from starlette.responses import JSONResponse, RedirectResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
@@ -17,14 +17,19 @@ from app.orm_models import Transaction
 from app.routers import agent_tools_charts, agent_tools_budget, agent_tools_insights 
 from app.routers import agent_tools_transactions, agent_tools_rules_crud, agent_tools_meta
 
-from app.utils import llm as llm_mod  # <-- import module so tests can monkeypatch llm_mod.call_local_llm
+from app.utils import llm as llm_mod  # <-- import module so tests can monkeypatch
+from app.config import settings
 
 router = APIRouter()  # <-- no prefix here (main.py supplies /agent)
 
 # Model name normalization
 MODEL_ALIASES = {
-    "gpt-oss:20b": "gpt-oss-20b",
-    "gpt-oss-20b": "gpt-oss-20b",
+    # Local aliases (Ollama-style tags)
+    "gpt-oss:20b": "gpt-oss:20b",
+    "gpt-oss-20b": "gpt-oss:20b",
+    # Convenience shortcuts -> defer to config default
+    "gpt": None,
+    "default": None,
 }
 
 # Sensitive keys for PII redaction in logs
@@ -246,14 +251,15 @@ def _enrich_context(db: Session, ctx: Optional[Dict[str, Any]], txn_id: Optional
     return ctx
 
 @router.post("/chat")
-def agent_chat(req: AgentChatRequest, db: Session = Depends(get_db)):
+def agent_chat(
+    req: AgentChatRequest,
+    db: Session = Depends(get_db),
+    debug: bool = Query(False, description="Return raw CONTEXT in response (dev only)"),
+):
     try:
         # Log request (with PII redacted)
         print(f"Agent chat request: {redact_pii(req.dict())}")
-        
-        # Normalize model name
-        model = MODEL_ALIASES.get(req.model, req.model) if req.model else "gpt-oss-20b"
-        
+
         ctx = _enrich_context(db, req.context, req.txn_id)
         
         # Fallback for explain_txn intent when txn_id is missing
@@ -302,6 +308,12 @@ def agent_chat(req: AgentChatRequest, db: Session = Depends(get_db)):
         else:
             print(f"Context size: {trimmed_size} chars (~{trimmed_tokens} tokens)")
 
+        # Resolve model: alias -> canonical -> or config default
+        requested_model = req.model if req.model else settings.DEFAULT_LLM_MODEL
+        model = MODEL_ALIASES.get(requested_model, requested_model)
+        if model is None:
+            model = settings.DEFAULT_LLM_MODEL
+
         reply, tool_trace = llm_mod.call_local_llm(
             model=model,
             messages=final_messages,
@@ -329,13 +341,19 @@ def agent_chat(req: AgentChatRequest, db: Session = Depends(get_db)):
         if ctx.get("txn"): 
             citations.append({"type": "txn", "id": ctx["txn"].get("id")})
 
-        return JSONResponse({
+        resp = {
             "reply": reply,
             "citations": citations,
             "used_context": {"month": ctx.get("month")},
             "tool_trace": tool_trace,
             "model": model,
-        })
+        }
+
+        # Only expose raw context for debugging when NOT in production
+        if debug and getattr(settings, "ENV", "dev") != "prod":
+            resp["__debug_context"] = ctx
+
+        return JSONResponse(resp)
         
     except Exception as e:
         # Log error (with PII redacted)
@@ -370,15 +388,39 @@ def deprecated_gpt_chat():
     response.headers["X-Redirect-Reason"] = "Legacy endpoint - use /agent/chat"
     return response
 
-# Alternative JSON response for clients that prefer structured redirects
-@router.post("/chat")
-def deprecated_chat():
-    """Alternative legacy redirect with JSON response."""
-    return JSONResponse(
-        status_code=301,
-        content={
-            "error": "This endpoint has moved",
-            "new_url": "/agent/chat",
-            "message": "Please update your client to use /agent/chat for unified agent functionality"
+@router.get("/models")
+def list_models():
+    """
+    Returns available models for the current provider (Ollama or OpenAI),
+    plus the configured default.
+    """
+    try:
+        info = llm_mod.list_models()
+        # Optional: prepend a few convenience aliases the UI can show
+        aliases = []
+        if info["provider"] == "ollama":
+            aliases = [{"id": "gpt-oss:20b"}, {"id": "default"}]
+        else:
+            aliases = [{"id": "gpt-5"}, {"id": "default"}]
+        # De-dup while preserving order
+        seen = set()
+        merged = []
+        for m in (aliases + info["models"]):
+            mid = m["id"]
+            if mid in seen:
+                continue
+            seen.add(mid)
+            merged.append(m)
+        return {
+            "provider": info["provider"],
+            "default": info["default"],
+            "models": merged,
         }
-    )
+    except Exception as e:
+        return JSONResponse(
+            status_code=502,
+            content={"error": f"Failed to list models: {type(e).__name__}: {e}"},
+        )
+
+# Alternative JSON response for clients that prefer structured redirects
+# (Removed duplicate /agent/chat legacy JSON redirect to avoid route conflicts)
