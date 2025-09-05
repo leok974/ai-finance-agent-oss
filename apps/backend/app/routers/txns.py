@@ -3,6 +3,8 @@ from typing import List, Optional, Dict, Any
 from sqlalchemy.orm import Session
 from sqlalchemy import select
 from app.db import get_db
+from app.config import settings
+from sqlalchemy import desc
 from ..models import Txn, CategorizeRequest
 from app.orm_models import Transaction
 from ..utils.dates import latest_month_from_txns
@@ -210,3 +212,32 @@ def recurring_list(db: Session = Depends(get_db)):
             sample_txn_id=r.sample_txn_id,
         ))
     return out
+
+# --- DEV helper: recent transactions (not available in prod) ---
+@router.get("/recent")
+def recent_txns(limit: int = Query(20, ge=1, le=200), db: Session = Depends(get_db)):
+    """
+    Return latest transactions (id, date, merchant, amount, category, month).
+    Hidden in production. Useful for quickly grabbing txn_ids to test /agent/chat explain_txn.
+    """
+    if getattr(settings, "ENV", "dev") == "prod":
+        # Hide in prod
+        raise HTTPException(status_code=404, detail="Not found")
+
+    rows = (
+        db.query(Transaction)
+        .order_by(desc(Transaction.date), desc(Transaction.id))
+        .limit(limit)
+        .all()
+    )
+    items = []
+    for r in rows:
+        items.append({
+            "id": r.id,
+            "date": r.date.isoformat() if r.date else "",
+            "merchant": r.merchant,
+            "amount": float(r.amount or 0.0),
+            "category": r.category or "Unknown",
+            "month": getattr(r, "month", None),
+        })
+    return {"items": items, "limit": limit}
