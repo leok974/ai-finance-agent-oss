@@ -199,6 +199,12 @@ export type AgentChatResponse = {
   model: string;
 };
 
+export type AgentModelsResponse = {
+  provider: 'ollama' | 'openai' | string;
+  default: string;
+  models: { id: string }[];
+};
+
 export async function agentChat(
   input: string | ChatMessage[] | AgentChatRequest,
   opts?: { system?: string }
@@ -226,6 +232,10 @@ export async function agentChat(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(request),
   });
+}
+
+export async function getAgentModels(): Promise<AgentModelsResponse> {
+  return fetchJson(`/agent/models`);
 }
 
 export async function agentStatusOk(): Promise<boolean> {
