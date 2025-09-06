@@ -5,6 +5,9 @@ import { getUnknowns, categorizeTxn } from '@/api'
 import { setRuleDraft } from '@/state/rulesDraft'
 import { getGlobalMonth } from '@/state/month'
 import { useOkErrToast } from '@/lib/toast-helpers'
+import { useToast } from '@/hooks/use-toast'
+import { ToastAction } from '@/components/ui/toast'
+import { scrollToId } from '@/lib/scroll'
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 import { InfoDot } from './InfoDot'
 
@@ -19,7 +22,8 @@ export default function UnknownsPanel({ month, onSeedRule, onChanged, refreshKey
   const [error, setError] = useState<string | null>(null)
   const [empty, setEmpty] = useState(false)
   const [resolvedMonth, setResolvedMonth] = useState<string | null>(null)
-  const { ok, err } = useOkErrToast()
+  const { err } = useOkErrToast()
+  const { toast } = useToast()
 
   async function load() {
     setLoading(true)
@@ -62,9 +66,22 @@ export default function UnknownsPanel({ month, onSeedRule, onChanged, refreshKey
       // (Rule Tester will sync to global month when toggle is on)
       month: getGlobalMonth() || undefined,
     } as any)
-  ok('Merchant & description copied; adjust and test.', 'Seeded into Rule Tester')
-    const el = document.querySelector('#rule-tester-anchor')
-    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    // Dual CTA: open Rule Tester or jump to Charts
+    toast({
+      title: 'Seeded into Rule Tester',
+      description: 'Merchant & description copied; adjust and test.',
+      duration: 4000,
+      action: (
+        <div className="flex gap-2">
+          <ToastAction altText="Open Rule Tester" onClick={() => scrollToId('rule-tester-anchor')}>
+            Rule Tester
+          </ToastAction>
+          <ToastAction altText="View charts" onClick={() => scrollToId('charts-panel')}>
+            View charts
+          </ToastAction>
+        </div>
+      ),
+    })
   }
 
   const titleMonth = (resolvedMonth ?? month) ? `— ${resolvedMonth ?? month}` : '— (latest)'

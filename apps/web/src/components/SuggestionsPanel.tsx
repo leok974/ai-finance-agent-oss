@@ -4,6 +4,9 @@ import { getSuggestions, categorizeTxn, agentChat } from '@/api'
 import EmptyState from './EmptyState'
 import { useChatDock } from '../context/ChatDockContext'
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
+import { useToast } from '@/hooks/use-toast'
+import { ToastAction } from '@/components/ui/toast'
+import { scrollToId } from '@/lib/scroll'
 import { InfoDot } from './InfoDot'
 
 type Suggestion = { txn_id: number; merchant?: string; description?: string; topk: Array<{ category: string; confidence: number }> }
@@ -16,6 +19,7 @@ export default function SuggestionsPanel({ month, refreshKey = 0 }: { month?: st
   const [resolvedMonth, setResolvedMonth] = useState<string | null>(null)
   const [empty, setEmpty] = useState(false)
   const chat = useChatDock()
+  const { toast } = useToast()
 
   async function refresh() {
     setLoading(true); setError(null); setEmpty(false)
@@ -70,6 +74,24 @@ export default function SuggestionsPanel({ month, refreshKey = 0 }: { month?: st
     await Promise.all(entries.map(([id,cat])=>categorizeTxn(Number(id), cat)))
     setItems(list => list.filter(it => !(it.txn_id in selected)))
     setSelected({})
+    // Success toast with CTAs
+    if (entries.length > 0) {
+      toast({
+        title: 'Suggestions applied',
+        description: `Applied ${entries.length} suggestion${entries.length === 1 ? '' : 's'}.`,
+        duration: 4000,
+        action: (
+          <div className="flex gap-2">
+            <ToastAction altText="View unknowns" onClick={() => scrollToId('unknowns-panel')}>
+              View unknowns
+            </ToastAction>
+            <ToastAction altText="View charts" onClick={() => scrollToId('charts-panel')}>
+              View charts
+            </ToastAction>
+          </div>
+        ),
+      })
+    }
   }
 
   async function autoApplyBest(threshold=0.85) {
@@ -82,6 +104,22 @@ export default function SuggestionsPanel({ month, refreshKey = 0 }: { month?: st
     if (!pairs.length) return
     await Promise.all(pairs.map(([id,cat])=>categorizeTxn(Number(id), cat)))
     setItems(list => list.filter(it => !(it.txn_id in picks)))
+    // Success toast with CTAs
+    toast({
+      title: 'Auto-applied best suggestions',
+      description: `Applied ${pairs.length} high-confidence suggestion${pairs.length === 1 ? '' : 's'}.`,
+      duration: 4000,
+      action: (
+        <div className="flex gap-2">
+          <ToastAction altText="View unknowns" onClick={() => scrollToId('unknowns-panel')}>
+            View unknowns
+          </ToastAction>
+          <ToastAction altText="View charts" onClick={() => scrollToId('charts-panel')}>
+            View charts
+          </ToastAction>
+        </div>
+      ),
+    })
   }
 
   return (
@@ -106,8 +144,8 @@ export default function SuggestionsPanel({ month, refreshKey = 0 }: { month?: st
         >
           {loading ? 'Refreshing…' : 'Refresh'}
         </button>
-        <button className="btn btn-sm w-full sm:w-auto hover:bg-accent" disabled={!canApply} onClick={applySelected}>Apply selected</button>
-        <button className="btn btn-sm w-full sm:w-auto hover:bg-accent" title="Automatically apply high-confidence suggestions" onClick={()=>autoApplyBest(0.85)}>Auto‑apply best ≥ 0.85</button>
+  <button className="btn btn-sm w-full sm:w-auto hover:bg-accent" disabled={!canApply} onClick={applySelected}>Apply selected</button>
+  <button className="btn btn-sm w-full sm:w-auto hover:bg-accent" title="Automatically apply high-confidence suggestions" onClick={()=>autoApplyBest(0.85)}>Auto‑apply best ≥ 0.85</button>
       </div>
     }>
       {loading && <div className="opacity-70">Loading…</div>}

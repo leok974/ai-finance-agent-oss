@@ -1,6 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { getRules, createRule, updateRule, deleteRule, type Rule, type RuleInput } from '@/api';
 import { useOkErrToast } from '@/lib/toast-helpers';
+import { useToast } from '@/hooks/use-toast';
+import { ToastAction } from '@/components/ui/toast';
+import { scrollToId } from '@/lib/scroll';
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { InfoDot } from './InfoDot';
 
@@ -8,6 +11,7 @@ type Props = { refreshKey?: number };
 
 export default function RulesPanel({ refreshKey }: Props) {
   const { ok, err } = useOkErrToast();
+  const { toast } = useToast();
   const [rules, setRules] = useState<Rule[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -44,7 +48,22 @@ export default function RulesPanel({ refreshKey }: Props) {
       await createRule(form);
       setForm({ name: '', enabled: true, when: { description_like: '' }, then: { category: '' } });
       refresh();
-  ok(`“${form.name || 'Untitled'}” saved successfully.`, 'Rule created');
+      // Use raw toast so we can attach actions
+      toast({
+        title: 'Rule created',
+        description: `“${form.name || 'Untitled'}” saved successfully.`,
+        duration: 4000,
+        action: (
+          <div className="flex gap-2">
+            <ToastAction altText="View unknowns" onClick={() => scrollToId('unknowns-panel')}>
+              View unknowns
+            </ToastAction>
+            <ToastAction altText="View charts" onClick={() => scrollToId('charts-panel')}>
+              View charts
+            </ToastAction>
+          </div>
+        ),
+      });
     } catch (e: any) {
       const message = e?.message || 'Failed to create rule';
       err(message, 'Create failed');

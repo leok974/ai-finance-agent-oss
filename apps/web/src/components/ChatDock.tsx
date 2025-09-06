@@ -1031,7 +1031,7 @@ export default function ChatDock() {
           disabled={busy}
         />
         <button
-          className="px-3 py-2 rounded-md border hover:bg-muted disabled:opacity-50"
+          className="btn hover:bg-muted disabled:opacity-50"
           disabled={!input.trim() || busy}
           onClick={(e) => handleSend(e)}
           title="Send (Enter). Shift+Enter = newline. Hold Alt to omit context."

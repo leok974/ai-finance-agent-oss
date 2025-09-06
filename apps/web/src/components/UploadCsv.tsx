@@ -1,5 +1,8 @@
 import React, { useCallback, useRef, useState } from "react";
 import { uploadCsv, fetchLatestMonth, agentTools } from "../lib/api"; // uses your existing helpers
+import { useToast } from "@/hooks/use-toast";
+import { ToastAction } from "@/components/ui/toast";
+import { scrollToId } from "@/lib/scroll";
 import { useMonth } from "../context/MonthContext";
 
 type UploadResult = {
@@ -37,6 +40,7 @@ const UploadCsv: React.FC<UploadCsvProps> = ({ onUploaded, defaultReplace = true
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<UploadResult | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const { toast } = useToast();
 
   const onPick = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0] ?? null;
@@ -105,6 +109,22 @@ const UploadCsv: React.FC<UploadCsvProps> = ({ onUploaded, defaultReplace = true
       onUploaded?.(r);
   // snap month + refetch dashboards (non-blocking)
   void handleUploadSuccess();
+      // Success toast with dual CTAs
+      toast({
+        title: "Import complete",
+        description: "Transactions imported successfully.",
+        duration: 4000,
+        action: (
+          <div className="flex gap-2">
+            <ToastAction altText="View unknowns" onClick={() => scrollToId("unknowns-panel")}>
+              View unknowns
+            </ToastAction>
+            <ToastAction altText="View charts" onClick={() => scrollToId("charts-panel")}>
+              View charts
+            </ToastAction>
+          </div>
+        ),
+      });
       // optional: reset file after success
       // reset();
     } catch (err: any) {
@@ -139,7 +159,7 @@ const UploadCsv: React.FC<UploadCsvProps> = ({ onUploaded, defaultReplace = true
             <button
               onClick={reset}
               type="button"
-              className="rounded-xl border border-gray-700 px-3 py-1.5 text-sm text-gray-300 hover:bg-gray-800"
+              className="btn btn-sm"
             >
               Reset
             </button>
@@ -189,10 +209,7 @@ const UploadCsv: React.FC<UploadCsvProps> = ({ onUploaded, defaultReplace = true
             type="button"
             disabled={disabled}
             onClick={doUpload}
-            className={`rounded-xl px-4 py-2 text-sm font-medium transition
-              ${disabled
-                ? "cursor-not-allowed bg-gray-800 text-gray-500"
-                : "bg-indigo-600 text-white hover:bg-indigo-500"}`}
+            className="btn"
           >
             {busy ? "Uploading…" : "Upload CSV"}
           </button>
