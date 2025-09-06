@@ -116,7 +116,7 @@ In the web UI, go to **CSV Ingest** and upload `transactions_sample.csv` from `a
 
 # Finance Agent — Setup & Notes
 
-This branch (UI-fix-globalmonth) includes fixes and improvements around CSV ingest, global month handling, and auto context updates.
+This branch (UI-update) focuses on UI/UX refinements and stability: unified toasts (single Toaster), actionable CTA toasts with smooth scroll to anchors, shared scroll helper, and removal of deprecated insights summary usage.
 
 ## 🛠️ Features Added
 
@@ -233,6 +233,11 @@ docker exec -it finance-pg psql -U myuser -d finance -c "SELECT MAX(date) FROM t
 - Charts endpoints require an explicit `month`. The UI always passes it, and the Chat Dock auto-injects the current month for month-required tools.
 - After a successful CSV upload, the app snaps the global month to the latest available and refreshes dashboards in the background (non-blocking).
 
+## UI updates (Sep 2025)
+- Unified notifications with a single shadcn-style Toaster mounted once in the web app.
+- Added CTA-rich success toasts across key actions (rule create/apply, unknowns seed, CSV upload) with buttons to jump to charts or unknowns.
+- Introduced page anchors (`#charts-panel`, `#unknowns-panel`, `#rule-tester-anchor`) plus a shared `scrollToId` helper for smooth in-page navigation.
+
 ## Environment
 - `OPENAI_BASE_URL` (e.g. `http://localhost:11434/v1` for Ollama, or your vLLM URL)
 - `OPENAI_API_KEY` (dummy like `ollama` for Ollama, or your real key for remote servers)
@@ -242,11 +247,18 @@ docker exec -it finance-pg psql -U myuser -d finance -c "SELECT MAX(date) FROM t
 ## Repo layout
 ```
 apps/
-  backend/  - FastAPI
-  web/      - Vite/React
-packages/
-  shared/   - shared types
+  backend/   - FastAPI app (ingest, charts, insights, agent tools, tests)
+  web/       - Vite/React web app (UI, charts, chat)
+scripts/     - Windows helpers (dev, run-ollama)
+docker-compose.yml
 ```
+
+## Dev scripts (Windows)
+- `scripts/dev.ps1` — starts Ollama (pulls model), backend (Uvicorn), and frontend (Vite) in parallel and streams logs.
+  - Parameters: `-Model gpt-oss:20b` (default), `-Py .venv/\Scripts/\python.exe` to point at your venv.
+- `scripts/run-ollama.ps1` — ensures Ollama is running, pulls the model, and performs a quick generation test.
+
+Tip: In PowerShell, you may need to allow script execution for your repo path: `Set-ExecutionPolicy -Scope Process Bypass`.
 
 ## Agent Chat
 - Minimal chat is available in the web app (uses backend `POST /agent/chat`).
@@ -254,18 +266,19 @@ packages/
 
 ## Agent Tools: Insights and Charts
 
-### Insights Summary
-POST `/agent/tools/insights/summary`
+### Insights (expanded)
+POST `/agent/tools/insights/expanded`
 
 Request (example):
 
 ```json
-{ "month": "2025-08", "include_unknown_spend": true, "limit_large_txns": 10 }
+{ "month": "2025-08", "large_limit": 10 }
 ```
 
 Notes
-- Legacy `/report` is removed. Use this Insights Summary tool instead.
-- The UI’s `getReport` maps to this endpoint.
+- This replaces prior summary-style endpoints. Legacy `/report` and `/insights/summary` are deprecated/removed.
+- `month` is optional; when omitted, the backend uses the latest month in your data.
+- Response includes `summary` (income/spend/net), `mom` deltas when available, `unknown_spend`, `top_categories`, `top_merchants`, `large_transactions`, and basic `anomalies`.
 
 ### Charts (month required)
 POST `/agent/tools/charts/summary`
