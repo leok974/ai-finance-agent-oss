@@ -2,6 +2,8 @@ import React, { useEffect, useState } from 'react'
 import Card from './Card'
 import { getUnknowns, categorizeTxn } from '../lib/api'
 import EmptyState from './EmptyState'
+import { setRuleDraft } from '../state/rulesDraft'
+import { useToast } from './Toast'
 
 export default function UnknownsPanel({ month, onSeedRule, onChanged, refreshKey }: {
   month?: string
@@ -9,6 +11,7 @@ export default function UnknownsPanel({ month, onSeedRule, onChanged, refreshKey
   onChanged?: () => void
   refreshKey?: number
 }) {
+  const { push } = useToast();
   const [items, setItems] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -43,6 +46,20 @@ export default function UnknownsPanel({ month, onSeedRule, onChanged, refreshKey
     onChanged?.()
   }
 
+  function seedRuleFromRow(row: any) {
+    const name = String(row.merchant || row.description || 'New Rule').slice(0, 40)
+    const description_like = String(row.merchant || row.description || '').slice(0, 64)
+    setRuleDraft({
+      name,
+      enabled: true,
+      when: { description_like },
+      then: { category: '' },
+    })
+    push({ title: 'Rule draft sent', message: 'Open Rule Tester to review and save.' })
+    const el = document.querySelector('#rule-tester-anchor')
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
+
   const titleMonth = (resolvedMonth ?? month) ? `— ${resolvedMonth ?? month}` : '— (latest)'
   return (
     <Card title={`Unknowns ${titleMonth}`} right={<span className="text-sm opacity-70">{items.length}</span>}>
@@ -65,7 +82,7 @@ export default function UnknownsPanel({ month, onSeedRule, onChanged, refreshKey
               </div>
             </div>
             <div className="mt-2 flex gap-2">
-              <button className="px-2 py-1 rounded bg-neutral-800" onClick={()=> onSeedRule?.({ id: tx.id, merchant: tx.merchant, description: tx.description })}>Seed rule</button>
+              <button className="px-2 py-1 rounded bg-neutral-800" onClick={()=> seedRuleFromRow(tx)}>Seed rule</button>
               {['Groceries','Dining','Shopping'].map(c => (
                 <button key={c} className="px-2 py-1 rounded bg-blue-700 hover:bg-blue-600" onClick={()=>quickApply(tx.id, c)}>
                   Apply {c}
