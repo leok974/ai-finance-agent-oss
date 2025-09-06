@@ -142,7 +142,15 @@ export async function mlTrain(month?: string, passes = 1, min_samples = 25) {
 }
 
 // ---------- Explain & Agent ----------
-export const getExplain = (txnId: number) => http(`/txns/${txnId}/explain`)
+// Legacy shim: route explain to unified chat to avoid 404 on /txns/{id}/explain
+export const getExplain = async (txnId: number) => {
+  const resp = await agentChat({
+    messages: [{ role: 'user', content: `Explain transaction ${txnId} and suggest one action.` }],
+    intent: 'explain_txn',
+    txn_id: String(txnId)
+  });
+  return { reply: resp.reply, citations: resp.citations, model: resp.model } as any;
+}
 
 // Helper: unified chat for transaction explanations (returns formatted response for UI)
 export async function explainTxnForChat(txnId: string | number): Promise<{

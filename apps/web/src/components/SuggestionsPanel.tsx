@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react'
 import Card from './Card'
 import { getSuggestions, categorizeTxn, agentChat } from '../lib/api'
 import EmptyState from './EmptyState'
+import { useChatDock } from '../context/ChatDockContext'
 
 type Suggestion = { txn_id: number; merchant?: string; description?: string; topk: Array<{ category: string; confidence: number }> }
 
@@ -12,6 +13,7 @@ export default function SuggestionsPanel({ month, refreshKey = 0 }: { month?: st
   const [error, setError] = useState<string | null>(null)
   const [resolvedMonth, setResolvedMonth] = useState<string | null>(null)
   const [empty, setEmpty] = useState(false)
+  const chat = useChatDock()
 
   useEffect(()=>{ (async()=>{
     setLoading(true); setError(null); setEmpty(false)
@@ -116,14 +118,15 @@ export default function SuggestionsPanel({ month, refreshKey = 0 }: { month?: st
               <div>
                 <button className="text-sm opacity-80 underline" onClick={async()=>{
                   try {
+                    chat.appendUser?.(`Explain transaction ${it.txn_id}`)
                     const resp = await agentChat({
                       messages: [{ role: 'user', content: `Explain transaction ${it.txn_id} and suggest one action.` }],
                       intent: 'explain_txn',
                       txn_id: String(it.txn_id)
                     });
-                    alert(resp?.reply || '(no reply)')
+                    chat.appendAssistant?.(resp.reply, { meta: { citations: resp.citations, ctxMonth: resp.used_context?.month, trace: resp.tool_trace, model: resp.model } })
                   } catch (e: any) {
-                    alert(e?.message ?? String(e))
+                    chat.appendAssistant?.(`(Error) ${e?.message ?? String(e)}`)
                   }
                 }}>Explain</button>
               </div>
