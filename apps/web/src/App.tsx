@@ -10,6 +10,7 @@ import { useToast } from "./components/Toast";
 import { getReport, getAlerts, getMonthSummary, getMonthMerchants, getMonthFlows, agentTools, meta, resolveLatestMonthHybrid } from './lib/api'
 import RulesPanel from "./components/RulesPanel";
 import ChatDock from "./components/ChatDock";
+import { ChatDockProvider } from "./context/ChatDockContext";
 import ChartsPanel from "./components/ChartsPanel";
 import TopEmptyBanner from "./components/TopEmptyBanner";
 // import AgentChat from "./components/AgentChat"; // legacy chat bubble disabled
@@ -91,6 +92,7 @@ const App: React.FC = () => {
 
   return (
     <MonthContext.Provider value={{ month, setMonth }}>
+      <ChatDockProvider>
       <div className="min-h-screen bg-gray-50 text-gray-900 p-6 dark:bg-gray-950 dark:text-gray-100">
         <div className="relative">
           <div className="mx-auto max-w-6xl space-y-6">
@@ -131,6 +133,7 @@ const App: React.FC = () => {
         </div>
       </div>
   </div>
+      </ChatDockProvider>
     </MonthContext.Provider>
   );
 };

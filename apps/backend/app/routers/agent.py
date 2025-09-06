@@ -39,7 +39,7 @@ rules, alerts, insights, suggestions, and optionally a specific transaction.
 
 Style:
 - Use clean, human-readable bullets; no raw JSON keys or array indices.
-- If you cite data, do it naturally ("month summary", "a matching rule", "top merchants include …").
+- If you cite data, do it naturally ("month summary", "a matching rule", "top merchants include Delta").
 - End with one clear next step when helpful.
 - If unsure, say so and propose a tiny action to get certainty.
 
