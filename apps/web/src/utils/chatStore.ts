@@ -63,8 +63,13 @@ export const chatStore = {
     notify();
   },
   clear() {
-    write([]);
-    bc?.postMessage("update");
+    try {
+      // Hard reset key to trigger storage event in other tabs
+      localStorage.removeItem(LS_KEY);
+    } catch {
+      write([]); // fallback if removeItem fails
+    }
+    bc?.postMessage("clear");
     notify();
   },
 };
