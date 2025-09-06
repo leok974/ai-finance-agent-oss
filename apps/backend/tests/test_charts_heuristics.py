@@ -172,3 +172,41 @@ date,amount,merchant,description,account,category
 
     # (We don't assert on income here to keep the test compatible
     #  whether you choose to exclude transfers from income or count Transfer In as income.)
+
+
+def test_month_merchants_spend_positive(client: TestClient):
+    # Seed some data
+    csv = dedent("""
+        date,amount,merchant,description,account,category
+        2025-08-02,12.50,Chipotle,Burrito,Visa,
+        2025-08-03,8.99,Amazon,USB-C,Visa,
+        2025-08-04,47.60,Shell,Gas,Visa,
+        2025-08-05,2000.00,Employer,Paycheck,Checking,
+    """)
+    _ingest_csv(client, csv)
+
+    res = client.get("/charts/month_merchants")
+    assert res.status_code == 200, res.text
+    body = res.json()
+    assert body["month"] == "2025-08"
+    rows = body["merchants"]
+    assert isinstance(rows, list)
+    # amount should be positive magnitude for charting
+    for r in rows:
+        assert "amount" in r and isinstance(r["amount"], (int, float))
+        assert r["amount"] >= 0
+
+
+def test_spending_trends_normalized(client: TestClient):
+    res = client.get("/charts/spending_trends?months=6")
+    assert res.status_code == 200, res.text
+    body = res.json()
+    assert isinstance(body, dict)
+    rows = body.get("trends", [])
+    assert isinstance(rows, list)
+    for r in rows:
+        assert all(k in r for k in ("income", "spending", "net"))
+        assert all(isinstance(r[k], (int, float)) for k in ("income", "spending", "net"))
+        # spending is positive magnitude; net = income - spending
+        assert r["spending"] >= 0
+        assert abs(r["net"] - (r["income"] - r["spending"])) < 1e-6

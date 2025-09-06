@@ -9,7 +9,7 @@ import ErrorBoundary from "./ErrorBoundary";
 import { useMonth } from "../context/MonthContext";
 import { useChatDock } from "../context/ChatDockContext";
 import { exportThreadAsJSON, exportThreadAsMarkdown } from "../utils/chatExport";
-import { chatStore } from "../utils/chatStore";
+import { chatStore, type BasicMsg } from "../utils/chatStore";
 
 // ---- Chat message types, storage keys, versioning (outside component) ----
 type MsgRole = 'user' | 'assistant';
@@ -123,8 +123,9 @@ export default function ChatDock() {
   const [selectedModel, setSelectedModel] = React.useState<string>(""); // empty => server default
   const [busy, setBusy] = React.useState(false);
   const [chatResp, setChatResp] = React.useState<AgentChatResponse | null>(null);
-  const [draft, setDraft] = useState("");
+  const [input, setInput] = useState("");
   const listRef = useRef<HTMLDivElement>(null);
+  const bottomRef = useRef<HTMLDivElement>(null);
   // NEW: Tiny tools panel state
   const [showTools, setShowTools] = useState<boolean>(true);
   const [activePreset, setActivePreset] = useState<ToolPresetKey>('insights_expanded');
@@ -134,8 +135,15 @@ export default function ChatDock() {
   const ENABLE_TOPBAR_TOOL_BUTTONS = false;   // keep a single “Agent tools” toggle
   const ENABLE_LEGACY_TOOL_FORM    = false;   // hide Payload/Result/Insert context/Run
 
-  // Live message stream (single source of truth) + persistence
-  const [messages, setMessages] = useState<Msg[]>([]);
+  // Live message stream (render from UI state, persist via chatStore)
+  const [uiMessages, setUiMessages] = useState<Msg[]>([]);
+  const syncFromStore = React.useCallback(() => {
+    try {
+      const basic = chatStore.get() || [];
+      const mapped: Msg[] = (basic || []).map((b: { role: string; content: string; createdAt: number }) => ({ role: (b.role === 'assistant' ? 'assistant' : 'user') as MsgRole, text: String(b.content || ''), ts: Number(b.createdAt) || Date.now() }));
+      setUiMessages(mapped);
+    } catch { /* ignore */ }
+  }, []);
   const hydratedRef = useRef(false);
   useEffect(() => {
     if (hydratedRef.current) return;
@@ -143,18 +151,26 @@ export default function ChatDock() {
     chatStore.initCrossTab();
     const unsub = chatStore.subscribe((basic: { role: string; content: string; createdAt: number }[]) => {
       const mapped: Msg[] = (basic || []).map((b: { role: string; content: string; createdAt: number }) => ({ role: (b.role === 'assistant' ? 'assistant' : 'user') as MsgRole, text: String(b.content || ''), ts: Number(b.createdAt) || Date.now() }));
-      setMessages(mapped);
+      setUiMessages(mapped);
       // scroll to bottom after initial hydration
-      setTimeout(() => {
-        const el = document.querySelector('#chatdock-scroll-anchor') as HTMLElement | null;
-        el?.scrollIntoView({ block: 'end' });
-      }, 0);
+      setTimeout(() => { bottomRef.current?.scrollIntoView({ block: 'end' }); }, 0);
     });
+    // seed on mount (in case subscribe callback races)
+    try {
+      const basic = chatStore.get() || [];
+      const mapped: Msg[] = (basic || []).map((b: { role: string; content: string; createdAt: number }) => ({ role: (b.role === 'assistant' ? 'assistant' : 'user') as MsgRole, text: String(b.content || ''), ts: Number(b.createdAt) || Date.now() }));
+      setUiMessages(mapped);
+    } catch {}
     return () => { try { unsub(); } catch {} };
   }, []);
 
+  // Smooth auto-scroll to bottom on new messages or when busy changes
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+  }, [uiMessages, busy]);
+
   // quick sanity ping so you can confirm the file actually recompiled
-  useEffect(() => { console.log("[ChatDock] v0906a loaded"); }, []);
+  useEffect(() => { console.log("[ChatDock] v0906d loaded"); }, []);
 
   // --- helpers for timestamps & day dividers ---
   const pad = (n: number) => String(n).padStart(2, "0");
@@ -171,7 +187,7 @@ export default function ChatDock() {
   const renderedMessages = React.useMemo(() => {
     const out: React.ReactNode[] = [];
     let lastDay: string | null = null;
-    (messages || []).forEach((m, i) => {
+    (uiMessages || []).forEach((m, i) => {
       const ts = typeof (m as any)?.ts === 'number' ? (m as any).ts : Date.now();
       const day = toDayKey(ts);
       if (day !== lastDay) {
@@ -212,15 +228,19 @@ export default function ChatDock() {
       );
     });
     return out;
-  }, [messages]);
+  }, [uiMessages]);
 
   function appendUser(text: string) {
-    chatStore.append({ role: 'user', content: text, createdAt: Date.now() });
+    const ts = Date.now();
+    setUiMessages(cur => [...cur, { role: 'user', text, ts }]); // optimistic UI
+    chatStore.append({ role: 'user', content: text, createdAt: ts });
   }
 
   function appendAssistant(text: string, meta?: any) {
+    const ts = Date.now();
+    setUiMessages(cur => [...cur, { role: 'assistant', text, ts }]); // optimistic UI
     // Persist minimal assistant message to cross-tab store
-    chatStore.append({ role: 'assistant', content: text, createdAt: Date.now() });
+    chatStore.append({ role: 'assistant', content: text, createdAt: ts });
     // Keep most recent response metadata in memory for current tab rendering
     setChatResp({
       reply: text,
@@ -233,6 +253,49 @@ export default function ChatDock() {
 
   // History toggle (reads directly from messages)
   const [historyOpen, setHistoryOpen] = useState<boolean>(false);
+  // Undo snackbar state and timer for Clear
+  const [undoSnack, setUndoSnack] = useState<{ visible: boolean; data: BasicMsg[]; timer: number | null }>({ visible: false, data: [], timer: null });
+  const clearUndoTimer = React.useCallback(() => {
+    if (undoSnack.timer) {
+      window.clearTimeout(undoSnack.timer);
+    }
+  }, [undoSnack.timer]);
+
+  // Clear history handler (with Undo)
+  const handleClearHistory = React.useCallback(() => {
+    const prev = chatStore.get();
+    if (!prev?.length) return;
+    try {
+      const ok = window.confirm('Clear chat history across tabs?');
+      if (!ok) return;
+    } catch { /* ignore */ }
+  chatStore.clear();
+  // ensure immediate local update without waiting for broadcast
+  setUiMessages([]);
+    // start undo window
+    clearUndoTimer();
+    const t = window.setTimeout(() => {
+      setUndoSnack({ visible: false, data: [], timer: null });
+    }, 5000);
+    setUndoSnack({ visible: true, data: prev, timer: t });
+  }, [clearUndoTimer]);
+
+  const mapBasicToMsg = React.useCallback((arr: BasicMsg[]): Msg[] => {
+    return (arr || []).map(b => ({ role: (b.role === 'assistant' ? 'assistant' : 'user') as MsgRole, text: String(b.content || ''), ts: Number(b.createdAt) || Date.now() }));
+  }, []);
+
+  const handleUndoClear = React.useCallback(() => {
+    clearUndoTimer();
+    if (undoSnack.data?.length) {
+  chatStore.set(undoSnack.data);
+  setUiMessages(mapBasicToMsg(undoSnack.data));
+    }
+    setUndoSnack({ visible: false, data: [], timer: null });
+  }, [undoSnack.data, clearUndoTimer, mapBasicToMsg]);
+
+  React.useEffect(() => {
+    return () => { clearUndoTimer(); };
+  }, [clearUndoTimer]);
   
   // Auto-run state for debounced month changes
   const isAutoRunning = useRef(false);
@@ -399,6 +462,36 @@ export default function ChatDock() {
     try { return (window as any).__FA_CONTEXT ?? null; } catch { return null; }
   };
 
+  // Composer send (optimistic append + context-aware)
+  const handleSend = React.useCallback(async (ev?: React.MouseEvent | React.KeyboardEvent) => {
+    if (busy) return;
+    const text = input.trim();
+    if (!text) return;
+    setInput("");
+    appendUser(text);
+    setBusy(true);
+    try {
+      const req: AgentChatRequest = {
+        messages: [{ role: 'user', content: text }],
+        intent: 'general',
+        context: getContext(ev as any),
+        ...(selectedModel ? { model: selectedModel } : {})
+      };
+  const resp = await agentChat(req);
+  handleAgentResponse(resp);
+  syncFromStore();
+    } catch (e: any) {
+      appendAssistant(`Send failed: ${e?.message ?? String(e)}`);
+    } finally {
+      setBusy(false);
+    }
+  }, [busy, input, selectedModel, handleAgentResponse]);
+
+  const onComposerKeyDown = React.useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); handleSend(e); return; }
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(e); }
+  }, [handleSend]);
+
   // --- ONE-CLICK TOOL RUNNERS (top bar) ---
   const runMonthSummary = React.useCallback(async (ev?: React.MouseEvent) => {
     if (busy) return;
@@ -411,8 +504,9 @@ export default function ChatDock() {
     context: getContext(ev),
         ...(selectedModel ? { model: selectedModel } : {})
       };
-      const resp = await agentChat(req);
-      handleAgentResponse(resp);
+  const resp = await agentChat(req);
+  handleAgentResponse(resp);
+  syncFromStore();
     } finally {
       setBusy(false);
     }
@@ -429,8 +523,9 @@ export default function ChatDock() {
     context: getContext(ev),
         ...(selectedModel ? { model: selectedModel } : {})
       };
-      const resp = await agentChat(req);
-      handleAgentResponse(resp);
+  const resp = await agentChat(req);
+  handleAgentResponse(resp);
+  syncFromStore();
     } finally {
       setBusy(false);
     }
@@ -448,8 +543,9 @@ export default function ChatDock() {
         context: getContext(ev),
         ...(selectedModel ? { model: selectedModel } : {})
       };
-      const resp = await agentChat(req);
-      handleAgentResponse(resp);
+  const resp = await agentChat(req);
+  handleAgentResponse(resp);
+  syncFromStore();
     } finally { setBusy(false); }
   }, [busy, selectedModel, handleAgentResponse]);
 
@@ -464,8 +560,9 @@ export default function ChatDock() {
         context: getContext(ev),
         ...(selectedModel ? { model: selectedModel } : {})
       };
-      const resp = await agentChat(req);
-      handleAgentResponse(resp);
+  const resp = await agentChat(req);
+  handleAgentResponse(resp);
+  syncFromStore();
     } finally { setBusy(false); }
   }, [busy, selectedModel, handleAgentResponse]);
 
@@ -480,8 +577,9 @@ export default function ChatDock() {
         context: getContext(ev),
         ...(selectedModel ? { model: selectedModel } : {})
       };
-      const resp = await agentChat(req);
-      handleAgentResponse(resp);
+  const resp = await agentChat(req);
+  handleAgentResponse(resp);
+  syncFromStore();
     } finally { setBusy(false); }
   }, [busy, selectedModel, handleAgentResponse]);
 
@@ -496,8 +594,9 @@ export default function ChatDock() {
         context: getContext(ev),
         ...(selectedModel ? { model: selectedModel } : {})
       };
-      const resp = await agentChat(req);
-      handleAgentResponse(resp);
+  const resp = await agentChat(req);
+  handleAgentResponse(resp);
+  syncFromStore();
     } finally { setBusy(false); }
   }, [busy, selectedModel, handleAgentResponse]);
 
@@ -512,8 +611,9 @@ export default function ChatDock() {
         context: getContext(ev),
         ...(selectedModel ? { model: selectedModel } : {})
       };
-      const resp = await agentChat(req);
-      handleAgentResponse(resp);
+  const resp = await agentChat(req);
+  handleAgentResponse(resp);
+  syncFromStore();
     } finally { setBusy(false); }
   }, [busy, selectedModel, handleAgentResponse]);
 
@@ -528,8 +628,9 @@ export default function ChatDock() {
         context: getContext(ev),
         ...(selectedModel ? { model: selectedModel } : {})
       };
-      const resp = await agentChat(req);
-      handleAgentResponse(resp);
+  const resp = await agentChat(req);
+  handleAgentResponse(resp);
+  syncFromStore();
     } finally { setBusy(false); }
   }, [busy, selectedModel, handleAgentResponse]);
 
@@ -687,8 +788,8 @@ export default function ChatDock() {
             type="button"
             onPointerDown={(e) => e.stopPropagation()}
             onClick={(e) => { e.stopPropagation();
-              const normalized = (messages || []).map(m => ({ role: m.role, content: m.text, createdAt: m.ts }));
-              const firstUser = (messages || []).find(m => m.role === 'user');
+              const normalized = (uiMessages || []).map(m => ({ role: m.role, content: m.text, createdAt: m.ts }));
+              const firstUser = (uiMessages || []).find(m => m.role === 'user');
               const trimmed = (firstUser?.text || '').split('\n')[0].slice(0, 40).trim();
               const title = trimmed ? `finance-agent-chat—${trimmed.replace(/\s+/g, '_')}` : 'finance-agent-chat';
               exportThreadAsJSON(title, normalized);
@@ -702,8 +803,8 @@ export default function ChatDock() {
             type="button"
             onPointerDown={(e) => e.stopPropagation()}
             onClick={(e) => { e.stopPropagation();
-              const normalized = (messages || []).map(m => ({ role: m.role, content: m.text, createdAt: m.ts }));
-              const firstUser = (messages || []).find(m => m.role === 'user');
+              const normalized = (uiMessages || []).map(m => ({ role: m.role, content: m.text, createdAt: m.ts }));
+              const firstUser = (uiMessages || []).find(m => m.role === 'user');
               const trimmed = (firstUser?.text || '').split('\n')[0].slice(0, 40).trim();
               const title = trimmed ? `finance-agent-chat—${trimmed.replace(/\s+/g, '_')}` : 'finance-agent-chat';
               exportThreadAsMarkdown(title, normalized);
@@ -725,6 +826,15 @@ export default function ChatDock() {
             title="Show recent messages"
           >
             {historyOpen ? 'Hide history' : 'History'}
+          </button>
+          <button
+            type="button"
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => { e.stopPropagation(); handleClearHistory(); }}
+            className="text-xs px-2 py-1 border rounded-md hover:bg-muted"
+            title="Clear chat history (all tabs)"
+          >
+            Clear
           </button>
           <button
             type="button"
@@ -812,16 +922,16 @@ export default function ChatDock() {
             <div className="text-xs opacity-70">This tab’s recent messages</div>
             <button
               className="text-xs px-2 py-1 border rounded-md hover:bg-muted"
-              onClick={() => chatStore.clear()}
-              title="Clear this tab's chat"
+              onClick={handleClearHistory}
+              title="Clear chat history (all tabs)"
             >
               Clear
             </button>
           </div>
           <div className="max-h-48 overflow-auto space-y-2 text-sm">
-            {messages.length === 0 ? (
+            {uiMessages.length === 0 ? (
               <div className="opacity-60 text-xs">No messages yet.</div>
-            ) : messages.slice(-50).map((m, i) => (
+            ) : uiMessages.slice(-50).map((m, i) => (
               <div key={i} className="p-2 rounded-md border">
                 <div className="text-[11px] opacity-60 mb-1">
                   {m.role.toUpperCase()} · {new Date(m.ts).toLocaleTimeString()}
@@ -842,47 +952,63 @@ export default function ChatDock() {
       {/* Messages list (scrollable) with day dividers & timestamps */}
       <div className="flex-1 overflow-auto" ref={listRef}>
         {renderedMessages}
-        <div id="chatdock-scroll-anchor" />
+        {busy && (
+          <div className="px-3 py-2">
+            <div className="inline-block max-w-[85%] rounded-2xl px-3 py-2 shadow-sm bg-neutral-800/60 border border-neutral-700">
+              <div className="text-sm flex items-center gap-2 text-neutral-300">
+                <span className="inline-block w-2 h-2 rounded-full bg-neutral-400 animate-pulse" />
+                <span>Thinking…</span>
+              </div>
+            </div>
+          </div>
+        )}
+        <div id="chatdock-scroll-anchor" ref={bottomRef} />
       </div>
 
-      {/* Bottom input bar — ALWAYS visible */}
-      <div className="p-3 border-t flex items-center gap-2 bg-background sticky bottom-0 z-10">
-        <input
-          type="text"
-          placeholder="Ask the agent…"
-          className="flex-1 px-3 py-2 rounded-md border bg-background"
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && draft.trim()) {
-              onSend(draft.trim()); setDraft('');
-            }
-          }}
+      {/* Undo snackbar for Clear action */}
+      {undoSnack.visible && (
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[80]">
+          <div className="flex items-center gap-3 rounded-xl border border-neutral-700 bg-neutral-900/95 px-4 py-2 shadow-lg">
+            <div className="text-xs">Chat cleared.</div>
+            <button
+              type="button"
+              onClick={handleUndoClear}
+              className="rounded-lg border border-neutral-700 px-2 py-1 text-xs hover:bg-neutral-800"
+            >
+              Undo
+            </button>
+            <button
+              type="button"
+              onClick={() => setUndoSnack({ visible: false, data: [], timer: null })}
+              className="text-xs opacity-70 hover:opacity-100"
+              title="Dismiss"
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Composer — textarea with Enter to send, Shift+Enter newline */}
+      <div className="p-3 border-t bg-background sticky bottom-0 z-10 flex items-end gap-2">
+        <textarea
+          rows={1}
+          placeholder={busy ? 'Thinking…' : 'Ask the agent…'}
+          className="flex-1 resize-none px-3 py-2 rounded-md border bg-background text-sm"
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={onComposerKeyDown}
+          disabled={busy}
         />
         <button
           className="px-3 py-2 rounded-md border hover:bg-muted disabled:opacity-50"
-          disabled={!draft.trim() || busy}
-          onClick={() => { if (draft.trim()) { onSend(draft.trim()); setDraft(''); } }}
+          disabled={!input.trim() || busy}
+          onClick={(e) => handleSend(e)}
+          title="Send (Enter). Shift+Enter = newline. Hold Alt to omit context."
         >
-          Send
+          {busy ? '…' : 'Send'}
         </button>
       </div>
     </div>
   );
-  // Handler for sending agent chat from input bar
-  async function onSend(text: string) {
-    setBusy(true);
-    try {
-  appendUser(text);
-      const req: AgentChatRequest = {
-        messages: [{ role: 'user', content: text }],
-        intent: 'general',
-        ...(selectedModel ? { model: selectedModel } : {})
-      };
-  const resp = await agentChat(req);
-  handleAgentResponse(resp);
-    } finally {
-      setBusy(false);
-    }
-  }
 }

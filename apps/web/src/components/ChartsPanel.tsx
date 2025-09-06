@@ -136,7 +136,11 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
               <BarChart data={categoriesData}>
                 <CartesianGrid stroke="var(--grid-line)" />
                 <XAxis dataKey="name" tick={{ fill: "var(--text-muted)" }} stroke="var(--border-subtle)" />
-                <YAxis tick={{ fill: "var(--text-muted)" }} stroke="var(--border-subtle)" />
+                <YAxis
+                  tick={{ fill: "var(--text-muted)" }}
+                  stroke="var(--border-subtle)"
+                  label={{ value: "Spend (absolute)", angle: -90, position: "insideLeft", fill: "var(--text-muted)" }}
+                />
                 <Tooltip
                   contentStyle={{
                     background: "var(--tooltip-bg)",
@@ -163,7 +167,11 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
               <BarChart data={merchantsData}>
                 <CartesianGrid stroke="var(--grid-line)" />
                 <XAxis dataKey="merchant" tick={{ fill: "var(--text-muted)" }} stroke="var(--border-subtle)" />
-                <YAxis tick={{ fill: "var(--text-muted)" }} stroke="var(--border-subtle)" />
+                <YAxis
+                  tick={{ fill: "var(--text-muted)" }}
+                  stroke="var(--border-subtle)"
+                  label={{ value: "Spend (absolute)", angle: -90, position: "insideLeft", fill: "var(--text-muted)" }}
+                />
                 <Tooltip
                   contentStyle={{
                     background: "var(--tooltip-bg)",
@@ -190,7 +198,11 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
               <LineChart data={flowsData}>
                 <CartesianGrid stroke="var(--grid-line)" />
                 <XAxis dataKey="date" tick={{ fill: "var(--text-muted)" }} stroke="var(--border-subtle)" />
-                <YAxis tick={{ fill: "var(--text-muted)" }} stroke="var(--border-subtle)" />
+                <YAxis
+                  tick={{ fill: "var(--text-muted)" }}
+                  stroke="var(--border-subtle)"
+                  label={{ value: "Amount", angle: -90, position: "insideLeft", fill: "var(--text-muted)" }}
+                />
                 <Tooltip
                   contentStyle={{
                     background: "var(--tooltip-bg)",
@@ -219,7 +231,11 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
               <LineChart data={trendsData}>
                 <CartesianGrid stroke="var(--grid-line)" />
                 <XAxis dataKey="month" tick={{ fill: "var(--text-muted)" }} stroke="var(--border-subtle)" />
-                <YAxis tick={{ fill: "var(--text-muted)" }} stroke="var(--border-subtle)" />
+                <YAxis
+                  tick={{ fill: "var(--text-muted)" }}
+                  stroke="var(--border-subtle)"
+                  label={{ value: "Spend (absolute)", angle: -90, position: "insideLeft", fill: "var(--text-muted)" }}
+                />
                 <Tooltip
                   contentStyle={{
                     background: "var(--tooltip-bg)",

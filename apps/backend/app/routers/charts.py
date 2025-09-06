@@ -216,15 +216,36 @@ def month_merchants(month: str | None = Query(None, pattern=r"^\d{4}-\d{2}$"), d
         if not month:
             return {"month": None, "merchants": []}
     start, end = _month_bounds(month)
+    # Apply the same spend heuristic as month_summary and normalize to positive magnitudes
+    lower_cat = func.lower(func.coalesce(Transaction.category, ""))
+    lower_merc = func.lower(func.coalesce(Transaction.merchant, ""))
+    lower_desc = func.lower(func.coalesce(Transaction.description, ""))
+    income_keywords = or_(
+        lower_merc.like("%employer%"),
+        lower_merc.like("%payroll%"),
+        lower_merc.like("%salary%"),
+        lower_merc.like("%paycheck%"),
+        lower_merc.like("%payout%"),
+        lower_merc.like("%reimbursement%"),
+        lower_merc.like("%refund%"),
+        lower_desc.like("%reimbursement%"),
+        lower_desc.like("%refund%"),
+    )
+    is_transfer = _is_transfer(lower_cat, lower_merc)
+    spend_expr = case(
+        (and_(~is_transfer, ~income_keywords, ~lower_cat.in_(["income"])), func.abs(Transaction.amount)),
+        else_=0.0,
+    )
+
     rows = db.execute(
         select(
             Transaction.merchant.label("merchant"),
-            func.sum(Transaction.amount).label("amount"),
+            func.sum(spend_expr).label("amount"),
             func.count().label("n"),
         )
         .where(Transaction.date >= start, Transaction.date < end)
         .group_by(Transaction.merchant)
-        .order_by(func.sum(Transaction.amount).desc())
+        .order_by(func.sum(spend_expr).desc())
         .limit(10)
     ).all()
     return {
@@ -278,7 +299,7 @@ def spending_trends(months: int = Query(6, ge=1, le=24), db: Session = Depends(g
     ).all()
     trends = []
     for m, spend, income in rows:
-        s = float(spend or 0.0)
+        s = abs(float(spend or 0.0))
         i = float(income or 0.0)
         trends.append({"month": m, "spending": s, "income": i, "net": round(i - s, 2)})
     trends = list(reversed(trends))
