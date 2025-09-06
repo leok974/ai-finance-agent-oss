@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { getRules, createRule, updateRule, deleteRule, type Rule, type RuleInput } from '../lib/api';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 type Props = { refreshKey?: number };
 

@@ -157,7 +157,35 @@ export const testRule = (seed: RuleInput, month?: string) =>
     { method: 'POST', body: JSON.stringify(seed) }
   );
 
-export const createRule = addRule;
+// Enhanced createRule with richer FastAPI error reporting (e.g., 422 validation errors)
+export async function createRule(body: RuleInput): Promise<Rule> {
+  const url = API_BASE ? `${API_BASE}/rules` : `/rules`;
+  const r = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!r.ok) {
+    let msg = `createRule failed: ${r.status}`;
+    try {
+      const data = await r.json();
+      if (data?.detail) {
+        const text = Array.isArray(data.detail)
+          ? data.detail.map((d: any) => d?.msg || JSON.stringify(d)).join('; ')
+          : JSON.stringify(data.detail);
+        msg += ` — ${text}`;
+      }
+    } catch {
+      // Try to append response text if JSON parse fails
+      try {
+        const t = await r.text();
+        if (t) msg += ` — ${t}`;
+      } catch {}
+    }
+    throw new Error(msg);
+  }
+  return r.json();
+}
 export const updateRule = (id: number, patch: Partial<RuleInput>) =>
   http<Rule>(`/rules/${id}`, { method: 'PATCH', body: JSON.stringify(patch) });
 

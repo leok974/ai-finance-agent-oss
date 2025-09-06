@@ -1,6 +1,7 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { execSync } from "child_process";
+import path from "path";
 
 let BRANCH = "unknown", COMMIT = "unknown";
 try {
@@ -19,6 +20,7 @@ export default defineConfig({
   },
   resolve: {
     alias: {
+  '@': path.resolve(__dirname, './src'),
       // ✅ force lowercase import resolution
       Recharts: "recharts",
     },
