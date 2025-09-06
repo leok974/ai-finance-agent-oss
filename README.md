@@ -57,6 +57,19 @@ type AgentChatResponse = {
 };
 ```
 
+### Web UI: ChatDock updates (Sep 2025)
+- Single source of truth for chat: messages are persisted per tab in `sessionStorage` under `fa.chat.v1`.
+- History panel renders directly from the same `messages` stream; Clear wipes the chat (and history) for this tab.
+- Accessible header toggle with clear labels and `aria-expanded`/`aria-controls` targeting `#agent-tools-panel`.
+- Tools panel is labeled with `id="agent-tools-panel"`; tiny presets run via `/agent/chat` and append results to the chat stream.
+- Optional Lucide icons on the header toggle (ChevronUp/Wrench) for clarity.
+- “Explain” buttons funnel into chat, so everything is captured and restorable on reload.
+
+Tips
+- Open the ChatDock from the floating bubble (💬) or with Ctrl+Shift+K.
+- The model selection (Advanced) is saved per tab; leave blank to use the backend default.
+- Clearing the chat resets the persisted stream for this tab only.
+
 ## Quickstart
 
 ### Prereqs

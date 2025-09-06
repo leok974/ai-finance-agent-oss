@@ -150,9 +150,27 @@ export default function ChatDock() {
   useEffect(() => {
     if (hydratedRef.current) return;
     hydratedRef.current = true;
-    const stored = loadStoredMessages();
+    // Load current stored messages
+    let stored = loadStoredMessages();
+    // One-time migration from legacy fa.history if no stored messages
+    try {
+      if (!stored.length) {
+        const old = sessionStorage.getItem('fa.history');
+        if (old) {
+          const arr = JSON.parse(old);
+          if (Array.isArray(arr) && arr.length > 0) {
+            stored = arr
+              .filter((m:any)=>m && (m.role==='user'||m.role==='assistant') && typeof m.text==='string')
+              .map((m:any)=>({ role:m.role as MsgRole, text:String(m.text), ts: m.ts ?? Date.now(), meta: m.meta ?? undefined }))
+              .slice(-200);
+          }
+          sessionStorage.removeItem('fa.history');
+        }
+      }
+    } catch {}
     if (stored.length) {
       setMessages(stored);
+      // optional: scroll to bottom after first paint
       setTimeout(() => {
         const el = document.querySelector('#chatdock-scroll-anchor') as HTMLElement | null;
         el?.scrollIntoView({ block: 'end' });
@@ -176,29 +194,8 @@ export default function ChatDock() {
     } as AgentChatResponse);
   }
 
-  // Minimal message history (per-tab)
-  type Msg = { role: 'user'|'assistant'; text: string; ts: number; meta?: any };
+  // History toggle (reads directly from messages)
   const [historyOpen, setHistoryOpen] = useState<boolean>(false);
-  const [history, setHistory] = useState<Msg[]>([]);
-
-  // Load history (per-tab)
-  useEffect(() => {
-    try {
-      const raw = sessionStorage.getItem('fa.history');
-      if (raw) setHistory(JSON.parse(raw));
-    } catch {}
-  }, []);
-
-  // Persist history when it changes
-  useEffect(() => {
-    try {
-      sessionStorage.setItem('fa.history', JSON.stringify(history.slice(-200)));
-    } catch {}
-  }, [history]);
-
-  function pushHistory(m: Msg) {
-    setHistory(h => [...h, m].slice(-200));
-  }
   
   // Auto-run state for debounced month changes
   const isAutoRunning = useRef(false);
@@ -664,16 +661,16 @@ export default function ChatDock() {
             <div className="text-xs opacity-70">This tab’s recent messages</div>
             <button
               className="text-xs px-2 py-1 border rounded-md hover:bg-muted"
-              onClick={() => setHistory([])}
-              title="Clear this tab's history"
+              onClick={() => setMessages([])}
+              title="Clear this tab's chat"
             >
               Clear
             </button>
           </div>
           <div className="max-h-48 overflow-auto space-y-2 text-sm">
-            {history.length === 0 ? (
+            {messages.length === 0 ? (
               <div className="opacity-60 text-xs">No messages yet.</div>
-            ) : history.slice(-50).map((m, i) => (
+            ) : messages.slice(-50).map((m, i) => (
               <div key={i} className="p-2 rounded-md border">
                 <div className="text-[11px] opacity-60 mb-1">
                   {m.role.toUpperCase()} · {new Date(m.ts).toLocaleTimeString()}
