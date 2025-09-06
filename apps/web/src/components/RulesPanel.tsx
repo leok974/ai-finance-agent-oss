@@ -4,6 +4,7 @@ import { useOkErrToast } from '@/lib/toast-helpers';
 import { useToast } from '@/hooks/use-toast';
 import { ToastAction } from '@/components/ui/toast';
 import { scrollToId } from '@/lib/scroll';
+import { setRuleDraft } from '@/state/rulesDraft';
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { InfoDot } from './InfoDot';
 
@@ -46,6 +47,12 @@ export default function RulesPanel({ refreshKey }: Props) {
       if (!form.name?.trim()) throw new Error('Please name your rule.');
       if (!form.then?.category?.trim()) throw new Error('Please set a target category.');
       await createRule(form);
+      // Seed Rule Tester with what you just created
+      setRuleDraft({
+        name: form.name || '',
+        when: { description_like: (form?.when as any)?.description_like || '' },
+        then: { category: form?.then?.category || '' },
+      });
       setForm({ name: '', enabled: true, when: { description_like: '' }, then: { category: '' } });
       refresh();
       // Use raw toast so we can attach actions
@@ -72,15 +79,7 @@ export default function RulesPanel({ refreshKey }: Props) {
     }
   }
 
-  async function toggleEnabled(rule: Rule) {
-    const optimistic = rules?.map(r => (r.id === rule.id ? { ...r, enabled: !r.enabled } : r)) ?? null;
-    setRules(optimistic);
-    try {
-      await updateRule(rule.id, { enabled: !rule.enabled, name: rule.name, when: rule.when, then: rule.then });
-    } catch (e) {
-      refresh();
-    }
-  }
+  // Removed Enable/Disable toggle per request.
 
   async function remove(rule: Rule) {
     const keep = confirm(`Delete rule “${rule.name}”?`);
@@ -241,9 +240,6 @@ export default function RulesPanel({ refreshKey }: Props) {
                 </div>
               </div>
               <div className="flex items-center gap-2 shrink-0">
-                <button onClick={() => toggleEnabled(rule)} className="text-xs px-2 py-1 rounded-lg border hover:bg-accent">
-                  {rule.enabled ? 'Disable' : 'Enable'}
-                </button>
                 <button onClick={() => remove(rule)} className="text-xs px-2 py-1 rounded-lg border hover:bg-destructive/10 text-destructive">
                   Delete
                 </button>
