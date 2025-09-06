@@ -1,5 +1,5 @@
-from fastapi import APIRouter, HTTPException, Depends
-from typing import List, Dict, Any
+from fastapi import APIRouter, HTTPException, Depends, Query
+from typing import List, Dict, Any, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import select, delete
 from app.db import get_db
@@ -55,13 +55,19 @@ class RuleInput(BaseModel):
 
 
 @router.post("/test")
-def test_rule(body: RuleInput, db: Session = Depends(get_db)):
+def test_rule(
+    body: RuleInput,
+    db: Session = Depends(get_db),
+    month: Optional[str] = Query(None, description="YYYY-MM; defaults to all months if omitted"),
+):
     """
     Test a rule-like seed against transactions.
     Currently supports: when.description_like (case-insensitive LIKE)
     Returns: { matched_count: int, sample: [ {id,date,merchant,description,amount,category}, ... ] }
     """
     q = db.query(Transaction)
+    if month:
+        q = q.filter(Transaction.month == month)
     desc_like = (body.when or {}).get("description_like") if body.when else None
     if desc_like:
         like = f"%{desc_like}%"
@@ -84,4 +90,4 @@ def test_rule(body: RuleInput, db: Session = Depends(get_db)):
         for r in rows
     ]
 
-    return {"matched_count": total, "sample": sample}
+    return {"matched_count": total, "sample": sample, "month": month}

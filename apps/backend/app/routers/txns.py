@@ -251,12 +251,16 @@ class ReclassifyIn(BaseModel):
 
 
 @router.post("/reclassify")
-def reclassify(payload: Optional[ReclassifyIn] = None, db: Session = Depends(get_db)):
+def reclassify(
+    payload: Optional[ReclassifyIn] = None,
+    month: Optional[str] = Query(None, description="YYYY-MM; defaults to latest if omitted"),
+    db: Session = Depends(get_db),
+):
     """
     Re-run categorization over transactions by applying all active rules.
     Defaults to latest month if not provided.
     """
-    month = (payload.month if payload else None) or latest_month_from_data(db)
+    month = (month or (payload.month if payload else None) or latest_month_from_data(db))
     if not month:
         raise HTTPException(status_code=400, detail="No transactions available to determine month")
 

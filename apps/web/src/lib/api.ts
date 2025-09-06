@@ -122,12 +122,44 @@ export async function getSuggestions(month?: string) {
 export const categorizeTxn = (id: number, category: string) => http(`/txns/${id}/categorize`, { method: 'POST', body: JSON.stringify({ category }) })
 
 // ---------- Rules ----------
-export const getRules = () => http(`/rules`)
-export const listRules = () => http(`/rules`)
-export const addRule = (rule: any) => http(`/rules`, { method: 'POST', body: JSON.stringify(rule) })
-export const deleteRule = (id: number) => http(`/rules/${id}`, { method: 'DELETE' })
-export const clearRules = () => http(`/rules`, { method: 'DELETE' })
-export const testRule = (seed: any) => http(`/rules/test`, { method: 'POST', body: JSON.stringify(seed) })
+// Strongly-typed Rules API
+export type Rule = {
+  id: number;
+  name: string;
+  enabled: boolean;
+  when: Record<string, unknown>;
+  then: { category?: string };
+  created_at?: string;
+  updated_at?: string;
+};
+
+export type RuleInput = Omit<Rule, 'id' | 'created_at' | 'updated_at'>;
+
+export type RuleTestResult = {
+  matched_count: number;
+  sample: Array<{
+    id: number;
+    date: string;
+    merchant?: string;
+    description?: string;
+    amount: number;
+    category?: string | null;
+  }>;
+};
+
+export const getRules = () => http<Rule[]>(`/rules`);
+export const listRules = getRules;
+export const addRule = (rule: RuleInput) => http<Rule>(`/rules`, { method: 'POST', body: JSON.stringify(rule) });
+export const deleteRule = (id: number) => http(`/rules/${id}`, { method: 'DELETE' });
+export const clearRules = () => http(`/rules`, { method: 'DELETE' });
+export const testRule = (seed: RuleInput, month?: string) =>
+  http<RuleTestResult>(`/rules/test${month ? `?month=${encodeURIComponent(month)}` : ''}`,
+    { method: 'POST', body: JSON.stringify(seed) }
+  );
+
+export const createRule = addRule;
+export const updateRule = (id: number, patch: Partial<RuleInput>) =>
+  http<Rule>(`/rules/${id}`, { method: 'PATCH', body: JSON.stringify(patch) });
 
 // ---------- ML ----------
 export const mlSuggest = (month: string, limit=100, topk=3) => http(`/ml/suggest${q({ month, limit, topk })}`)
@@ -139,6 +171,43 @@ export async function mlTrain(month?: string, passes = 1, min_samples = 25) {
     body: JSON.stringify(body),
     headers: { "Content-Type": "application/json" },
   });
+}
+
+// ---------- ML / Reclassify helpers ----------
+export async function trainModel(params?: { min_samples?: number; test_size?: number }) {
+  return http(`/ml/train`, {
+    method: 'POST',
+    body: JSON.stringify(params ?? { min_samples: 6, test_size: 0.2 }),
+  });
+}
+
+export async function reclassifyAll(month?: string): Promise<{
+  status: string;
+  month?: string;
+  applied?: number;
+  skipped?: number;
+  details?: any;
+  updated?: number;
+}> {
+  return http(`/txns/reclassify${month ? `?month=${encodeURIComponent(month)}` : ''}`,
+    {
+      method: 'POST',
+      body: JSON.stringify({}),
+    }
+  );
+}
+
+// One-click: Save → Train → Reclassify
+export async function saveTrainReclassify(rule: RuleInput, month?: string) {
+  const saved = await createRule(rule);
+  const trained = await trainModel({ min_samples: 6, test_size: 0.2 });
+  let reclass: { status: string } | null = null;
+  try {
+    reclass = await reclassifyAll(month);
+  } catch {
+    reclass = null; // soft-fail if endpoint not present
+  }
+  return { saved, trained, reclass };
 }
 
 // ---------- Explain & Agent ----------
