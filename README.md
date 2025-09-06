@@ -2,14 +2,14 @@
 
 Offline-first finance agent with local inference via Ollama or vLLM. Designed for the Open Models hackathon.
 - **Agentic**: function-calling tools for categorization, rules, budgets, and insights
-- **Local**: point to your local LLM ser## Why this will impress judges
+- **Local**: point to your local LLM server (Ollama or vLLM) via env
 - **Applies gpt-oss uniquely**: on-device, function-calling agent that explains its reasoning ("Explain Signal") and learns from user feedback (train->reclassify loop).
 - **Natural Language Interface**: Revolutionary conversational transaction explanations - just say "Explain this coffee charge" and it works automatically.
 - **Production-Grade Architecture**: Robust Pydantic validation, smart context trimming, PII redaction, and comprehensive hermetic test coverage.
 - **Performance Optimized**: HTTP client reuse, token-aware context management, and intent-specific system prompts for better LLM responses.
 - **Design**: clean UX, resilient states, deduped suggestions, one-click "Auto-apply best" with threshold.
 - **Impact**: turns messy bank CSVs into actionable budgets & insights locally.
-- **Novelty**: "Explain" turns category predictions into transparent traces (rules + LLM rationale).Ollama or vLLM) via env
+- **Novelty**: "Explain" turns category predictions into transparent traces (rules + LLM rationale).
 - **Safe UX**: optimistic UI, loading/error states, no duplicate suggestions, explain-why
 - **Smart Chat**: unified `/agent/chat` endpoint with natural language transaction explanations and auto-context enrichment
 
@@ -58,17 +58,24 @@ type AgentChatResponse = {
 ```
 
 ### Web UI: ChatDock updates (Sep 2025)
-- Single source of truth for chat: messages are persisted per tab in `sessionStorage` under `fa.chat.v1`.
-- History panel renders directly from the same `messages` stream; Clear wipes the chat (and history) for this tab.
-- Accessible header toggle with clear labels and `aria-expanded`/`aria-controls` targeting `#agent-tools-panel`.
-- Tools panel is labeled with `id="agent-tools-panel"`; tiny presets run via `/agent/chat` and append results to the chat stream.
-- Optional Lucide icons on the header toggle (ChevronUp/Wrench) for clarity.
-- “Explain” buttons funnel into chat, so everything is captured and restorable on reload.
+- Unified messages stream persisted in `localStorage` at `financeAgent.chat.messages.v1` with cross‑tab sync via `BroadcastChannel`.
+- Hydrates on mount and auto-scrolls to the latest message; history renders from the same stream.
+- Header actions: Export chat as JSON or Markdown; History toggle; Tools toggle (with Lucide ChevronUp/Wrench icons).
+- Accessible toggle uses `aria-expanded` + `aria-controls="agent-tools-panel"`; the tools panel is labeled with that id.
+- Tiny tool presets run through `/agent/chat` and append back into the same messages stream; duplicate inline quick tools removed.
+- Model selection (Advanced) is saved per-tab in `sessionStorage` under `fa.model`; leave blank to use backend default.
+- “Explain” and other entry points now funnel into the same chat, so everything is captured and restorable.
+
+### Backend resilience updates (Sep 2025)
+- Insights enrichment is optional and non-fatal during `/agent/chat` context building; failures don’t block a reply.
+- Added a minimal `ExpandedBody` + `expand(...)` helper to normalize insights payloads defensively.
+- Normalized citations and `used_context.month` metadata are returned to support UI annotations.
 
 Tips
 - Open the ChatDock from the floating bubble (💬) or with Ctrl+Shift+K.
+- Export buttons live in the header (JSON/Markdown).
 - The model selection (Advanced) is saved per tab; leave blank to use the backend default.
-- Clearing the chat resets the persisted stream for this tab only.
+- Clearing the chat resets the persisted stream (synced across this browser’s tabs).
 
 ## Quickstart
 

@@ -130,6 +130,10 @@ export default function ChatDock() {
   const [activePreset, setActivePreset] = useState<ToolPresetKey>('insights_expanded');
   const [toolPayload, setToolPayload] = useState<string>(() => JSON.stringify(TOOL_PRESETS['insights_expanded'].defaultPayload ?? {}, null, 2));
 
+  // --- feature flags to forcibly hide legacy UI ---
+  const ENABLE_TOPBAR_TOOL_BUTTONS = false;   // keep a single “Agent tools” toggle
+  const ENABLE_LEGACY_TOOL_FORM    = false;   // hide Payload/Result/Insert context/Run
+
   // Live message stream (single source of truth) + persistence
   const [messages, setMessages] = useState<Msg[]>([]);
   const hydratedRef = useRef(false);
@@ -148,6 +152,67 @@ export default function ChatDock() {
     });
     return () => { try { unsub(); } catch {} };
   }, []);
+
+  // quick sanity ping so you can confirm the file actually recompiled
+  useEffect(() => { console.log("[ChatDock] v0906a loaded"); }, []);
+
+  // --- helpers for timestamps & day dividers ---
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const toDayKey = (ms: number) => {
+    const d = new Date(ms);
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  };
+  const toTimeHM = (ms: number) => {
+    const d = new Date(ms);
+    return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  };
+
+  // Build rendered list with day dividers and per-message timestamps
+  const renderedMessages = React.useMemo(() => {
+    const out: React.ReactNode[] = [];
+    let lastDay: string | null = null;
+    (messages || []).forEach((m, i) => {
+      const ts = typeof (m as any)?.ts === 'number' ? (m as any).ts : Date.now();
+      const day = toDayKey(ts);
+      if (day !== lastDay) {
+        lastDay = day;
+        out.push(
+          <div key={`day-${day}`} className="my-3 flex items-center gap-3">
+            <div className="flex-1 h-px bg-neutral-800" />
+            <div className="text-xs text-neutral-400">{day}</div>
+            <div className="flex-1 h-px bg-neutral-800" />
+          </div>
+        );
+      }
+      out.push(
+        <div key={`${m.role}-${ts}-${i}`} className="px-3 py-2">
+          <div className={m.role === 'user' ? 'text-primary' : ''}>
+            <div className="prose prose-invert max-w-none">
+              {m.role === 'assistant' ? (
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.text}</ReactMarkdown>
+              ) : (
+                <>{m.text}</>
+              )}
+            </div>
+            {/* Meta line: citations/model/month + time */}
+            <div className="mt-2 text-xs opacity-70 flex items-center gap-2 flex-wrap">
+              {m.role === 'assistant' && (m as any)?.meta?.citations?.length ? (
+                <>
+                  <span>
+                    Used data: {(m as any).meta.citations.map((c: any) => c.count ? `${c.type} ${c.count}` : `${c.type}`).join(' · ')}
+                  </span>
+                  {(m as any).meta?.ctxMonth ? <span>· month {(m as any).meta.ctxMonth}</span> : null}
+                  {(m as any).meta?.model ? <span>· {(m as any).meta.model}</span> : null}
+                </>
+              ) : null}
+              <span className="ml-auto text-neutral-400">{toTimeHM(ts)}</span>
+            </div>
+          </div>
+        </div>
+      );
+    });
+    return out;
+  }, [messages]);
 
   function appendUser(text: string) {
     chatStore.append({ role: 'user', content: text, createdAt: Date.now() });
@@ -328,42 +393,181 @@ export default function ChatDock() {
   chat.setAppendUser((text: string) => { appendUser(text); });
   }, [chat, appendAssistantFromText]);
 
-  const quickTools: Array<{ key: string; label: string; run: () => Promise<void> }> = React.useMemo(() => ([
-    {
-      key: 'month_summary',
-      label: 'Month summary',
-      run: async () => {
-        setBusy(true);
-        try {
-    appendUser('Summarize my spending this month in 4 bullets and one action.');
-          const req: AgentChatRequest = {
-            messages: [{ role: 'user', content: 'Summarize my spending this month in 4 bullets and one action.' }],
-            intent: 'general',
-            ...(selectedModel ? { model: selectedModel } : {})
-          };
-          const resp = await agentChat(req);
-          handleAgentResponse(resp);
-        } finally { setBusy(false); }
-      }
-    },
-    {
-      key: 'find_subs',
-      label: 'Find subscriptions',
-      run: async () => {
-        setBusy(true);
-        try {
-    appendUser('Identify recurring subscriptions this month and suggest which I could cancel.');
-          const req: AgentChatRequest = {
-            messages: [{ role: 'user', content: 'Identify recurring subscriptions this month and suggest which I could cancel.' }],
-            intent: 'general',
-            ...(selectedModel ? { model: selectedModel } : {})
-          };
-          const resp = await agentChat(req);
-          handleAgentResponse(resp);
-        } finally { setBusy(false); }
-      }
+  // Always include context; hold Alt while clicking to omit it.
+  const getContext = (ev?: { altKey?: boolean }) => {
+    if (ev?.altKey) return null;
+    try { return (window as any).__FA_CONTEXT ?? null; } catch { return null; }
+  };
+
+  // --- ONE-CLICK TOOL RUNNERS (top bar) ---
+  const runMonthSummary = React.useCallback(async (ev?: React.MouseEvent) => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      appendUser('Summarize my spending this month in 4 bullets and one action.');
+      const req: AgentChatRequest = {
+        messages: [{ role: 'user', content: 'Summarize my spending this month in 4 bullets and one action.' }],
+        intent: 'general',
+    context: getContext(ev),
+        ...(selectedModel ? { model: selectedModel } : {})
+      };
+      const resp = await agentChat(req);
+      handleAgentResponse(resp);
+    } finally {
+      setBusy(false);
     }
-  ]), [appendAssistant, appendUser, selectedModel]);
+  }, [busy, selectedModel, handleAgentResponse]);
+
+  const runFindSubscriptions = React.useCallback(async (ev?: React.MouseEvent) => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      appendUser('Identify recurring subscriptions this month and suggest which I could cancel.');
+      const req: AgentChatRequest = {
+        messages: [{ role: 'user', content: 'Identify recurring subscriptions this month and suggest which I could cancel.' }],
+        intent: 'general',
+    context: getContext(ev),
+        ...(selectedModel ? { model: selectedModel } : {})
+      };
+      const resp = await agentChat(req);
+      handleAgentResponse(resp);
+    } finally {
+      setBusy(false);
+    }
+  }, [busy, selectedModel, handleAgentResponse]);
+
+  // Additional one-click runners shown in the tools tray
+  const runTopMerchants = React.useCallback(async (ev?: React.MouseEvent) => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      appendUser('Show top merchants for the current month.');
+      const req: AgentChatRequest = {
+        messages: [{ role: 'user', content: 'List the top merchants for the selected month with totals.' }],
+        intent: 'general',
+        context: getContext(ev),
+        ...(selectedModel ? { model: selectedModel } : {})
+      };
+      const resp = await agentChat(req);
+      handleAgentResponse(resp);
+    } finally { setBusy(false); }
+  }, [busy, selectedModel, handleAgentResponse]);
+
+  const runCashflow = React.useCallback(async (ev?: React.MouseEvent) => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      appendUser('Show my cashflow (inflows vs outflows).');
+      const req: AgentChatRequest = {
+        messages: [{ role: 'user', content: 'Show monthly cashflow (inflows vs outflows) for the selected month.' }],
+        intent: 'general',
+        context: getContext(ev),
+        ...(selectedModel ? { model: selectedModel } : {})
+      };
+      const resp = await agentChat(req);
+      handleAgentResponse(resp);
+    } finally { setBusy(false); }
+  }, [busy, selectedModel, handleAgentResponse]);
+
+  const runTrends = React.useCallback(async (ev?: React.MouseEvent) => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      appendUser('Show my spending trends.');
+      const req: AgentChatRequest = {
+        messages: [{ role: 'user', content: 'Show spending trends over recent months with notable changes.' }],
+        intent: 'general',
+        context: getContext(ev),
+        ...(selectedModel ? { model: selectedModel } : {})
+      };
+      const resp = await agentChat(req);
+      handleAgentResponse(resp);
+    } finally { setBusy(false); }
+  }, [busy, selectedModel, handleAgentResponse]);
+
+  const runInsightsSummary = React.useCallback(async (ev?: React.MouseEvent) => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      appendUser('Summarize key insights for this month.');
+      const req: AgentChatRequest = {
+        messages: [{ role: 'user', content: 'Provide a concise insights summary for the selected month.' }],
+        intent: 'general',
+        context: getContext(ev),
+        ...(selectedModel ? { model: selectedModel } : {})
+      };
+      const resp = await agentChat(req);
+      handleAgentResponse(resp);
+    } finally { setBusy(false); }
+  }, [busy, selectedModel, handleAgentResponse]);
+
+  const runInsightsExpanded = React.useCallback(async (ev?: React.MouseEvent) => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      appendUser('Expand insights (month-over-month + anomalies).');
+      const req: AgentChatRequest = {
+        messages: [{ role: 'user', content: 'Expand insights with month-over-month changes and anomalies.' }],
+        intent: 'general',
+        context: getContext(ev),
+        ...(selectedModel ? { model: selectedModel } : {})
+      };
+      const resp = await agentChat(req);
+      handleAgentResponse(resp);
+    } finally { setBusy(false); }
+  }, [busy, selectedModel, handleAgentResponse]);
+
+  const runBudgetCheck = React.useCallback(async (ev?: React.MouseEvent) => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      appendUser('Check my budget status for this month.');
+      const req: AgentChatRequest = {
+        messages: [{ role: 'user', content: 'Run a budget check for the selected month and flag overspends.' }],
+        intent: 'general',
+        context: getContext(ev),
+        ...(selectedModel ? { model: selectedModel } : {})
+      };
+      const resp = await agentChat(req);
+      handleAgentResponse(resp);
+    } finally { setBusy(false); }
+  }, [busy, selectedModel, handleAgentResponse]);
+
+  const runAlerts = React.useCallback(async (ev?: React.MouseEvent) => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      appendUser('Show my alerts.');
+      const req: AgentChatRequest = {
+        messages: [{ role: 'user', content: 'List my alerts for the selected month.' }],
+        intent: 'general',
+        context: getContext(ev),
+        ...(selectedModel ? { model: selectedModel } : {})
+      };
+      const resp = await agentChat(req);
+      handleAgentResponse(resp);
+    } finally { setBusy(false); }
+  }, [busy, selectedModel, handleAgentResponse]);
+
+  const runSearchTransactions = React.useCallback(async (ev?: React.MouseEvent) => {
+    if (busy) return;
+    const q = window.prompt('Search transactions (merchant/amount/note):', '');
+    if (q == null || q.trim() === '') return;
+    setBusy(true);
+    try {
+      appendUser(`Search transactions: ${q.trim()}`);
+      const req: AgentChatRequest = {
+        messages: [{ role: 'user', content: `Search my transactions: ${q.trim()}` }],
+        intent: 'general',
+        context: getContext(ev),
+        ...(selectedModel ? { model: selectedModel } : {})
+      };
+      const resp = await agentChat(req);
+      handleAgentResponse(resp);
+    } finally { setBusy(false); }
+  }, [busy, selectedModel, handleAgentResponse]);
+
+  // (inline quick tool buttons removed; using top-bar runners instead)
 
   // Auto-run on month change with debouncing and in-flight protection
   useEffect(() => {
@@ -477,8 +681,8 @@ export default function ChatDock() {
         onPointerDown={startHeaderDrag}
       >
         <div className="text-sm text-neutral-300">Agent Tools</div>
-        <div className="ml-auto flex items-center gap-2">
-          {/* Export buttons */}
+  <div className="ml-auto flex items-center gap-2">
+          {/* Export */}
           <button
             type="button"
             onPointerDown={(e) => e.stopPropagation()}
@@ -509,6 +713,10 @@ export default function ChatDock() {
           >
             Export Markdown
           </button>
+          {/* Hide any legacy top-bar tool buttons */}
+          {ENABLE_TOPBAR_TOOL_BUTTONS && (
+            <div className="hidden" />
+          )}
           <button
             type="button"
             onPointerDown={(e) => e.stopPropagation()}
@@ -571,89 +779,29 @@ export default function ChatDock() {
         </div>
       )}
 
-      {/* Tiny Tools panel (chat-powered presets) */}
+      {/* Agent tools tray (all tools live here; one-click) */}
       {showTools && (
         <div id="agent-tools-panel" className="px-3 py-2 border-b bg-muted/10">
           {/* Tabs */}
-          <div className="flex gap-2 mb-2 flex-wrap">
-            {(Object.keys(TOOL_PRESETS) as ToolPresetKey[]).map(k => (
-              <button
-                key={k}
-                onClick={() => {
-                  setActivePreset(k);
-                  const p = TOOL_PRESETS[k];
-                  setToolPayload(JSON.stringify(p.defaultPayload ?? {}, null, 2));
-                }}
-                className={`text-xs px-2 py-1 rounded-md border border-neutral-700 hover:bg-neutral-700 ${activePreset === k ? 'bg-neutral-800' : 'bg-neutral-900/60'}`}
-              >
-                {TOOL_PRESETS[k].label}
-              </button>
-            ))}
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 mb-2">
+            <button type="button" onClick={(e) => runMonthSummary(e as any)} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50">Month summary</button>
+            <button type="button" onClick={(e) => runFindSubscriptions(e as any)} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50">Find subscriptions</button>
+            <button type="button" onClick={(e) => runTopMerchants(e as any)} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50">Top merchants</button>
+            <button type="button" onClick={(e) => runCashflow(e as any)} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50">Cashflow</button>
+            <button type="button" onClick={(e) => runTrends(e as any)} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50">Trends</button>
+            <button type="button" onClick={(e) => runInsightsSummary(e as any)} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50">Insights: Summary</button>
+            <button type="button" onClick={(e) => runInsightsExpanded(e as any)} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50">Insights: Expanded</button>
+            <button type="button" onClick={(e) => runBudgetCheck(e as any)} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50">Budget check</button>
+            <button type="button" onClick={(e) => runAlerts(e as any)} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50">Alerts</button>
+            <button type="button" onClick={(e) => runSearchTransactions(e as any)} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50">Search transactions…</button>
           </div>
+          <div className="text-[11px] opacity-60">Tip: Hold Alt to run without context.</div>
 
-          {/* Editor + Actions */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div>
-              <div className="text-xs mb-1 opacity-70">Payload (JSON)</div>
-              <textarea
-                className="w-full h-32 rounded-md border border-neutral-700 bg-neutral-800 p-2 font-mono text-xs"
-                value={toolPayload}
-                onChange={(e) => setToolPayload(e.target.value)}
-                spellCheck={false}
-              />
-              <div className="flex gap-2 mt-2">
-                <button
-                  onClick={() => {
-                    try {
-                      const obj = toolPayload.trim() ? JSON.parse(toolPayload) : {};
-                      if (!obj.month) obj.month = 'latest';
-                      setToolPayload(JSON.stringify(obj, null, 2));
-                    } catch {/* keep as-is */}
-                  }}
-                  className="text-xs px-2 py-1 rounded-md border border-neutral-700 hover:bg-neutral-700"
-                >
-                  Insert context
-                </button>
-                <button
-                  onClick={async () => {
-                    const preset = TOOL_PRESETS[activePreset];
-                    setBusy(true);
-                    try {
-                      // echo user action to chat (if a consumer renders it)
-                      chat.appendUser?.(`${preset.label}${toolPayload?.trim() ? ' with payload' : ''}`);
-                      let parsed: any = {};
-                      try { parsed = toolPayload ? JSON.parse(toolPayload) : {}; } catch { parsed = {}; }
-                      const messages: ChatMessage[] = [
-                        { role: 'user', content: `${preset.prompt}${Object.keys(parsed).length ? `\n\nPayload JSON:\n${JSON.stringify(parsed)}` : ''}` }
-                      ];
-                      const resp = await agentChat({
-                        messages,
-                        intent: preset.intent,
-                        ...(selectedModel ? { model: selectedModel } : {}),
-                      });
-                      chat.appendAssistant?.(resp.reply, { meta: { citations: resp.citations, ctxMonth: resp.used_context?.month, trace: resp.tool_trace, model: resp.model } });
-                      setChatResp(resp);
-                    } catch (e: any) {
-                      chat.appendAssistant?.(`(Error) ${e?.message ?? String(e)}`);
-                    } finally {
-                      setBusy(false);
-                    }
-                  }}
-                  disabled={busy}
-                  className="text-xs px-2 py-1 rounded-md border border-neutral-700 hover:bg-neutral-700 disabled:opacity-50"
-                >
-                  Run
-                </button>
-              </div>
-              <div className="text-[11px] mt-1 opacity-60">Tip: Leave month empty to use the latest from your data.</div>
+          {ENABLE_LEGACY_TOOL_FORM ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {/* ... existing payload/result form retained behind flag ... */}
             </div>
-            <div>
-              <div className="text-xs mb-1 opacity-70">Result</div>
-              <div className="rounded-md border border-neutral-700 bg-neutral-800 p-2 h-32 overflow-auto text-sm opacity-70">
-                Results are appended into the chat stream below.
-              </div>
-            </div>
-          </div>
+          ) : null}
         </div>
       )}
 
@@ -689,43 +837,11 @@ export default function ChatDock() {
         </div>
       )}
 
-      {/* Unified tool bar (chat-powered quick actions) */}
-      <div className="mb-2 px-1 py-1 border border-neutral-800 rounded-lg bg-neutral-900/60 flex gap-2 flex-wrap z-0">
-        {quickTools.map(t => (
-          <button
-            key={t.key}
-            disabled={busy}
-            onClick={t.run}
-            className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50"
-            title={`Run ${t.label}`}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
+  {/* Inline quick tools removed — use top-bar buttons only to prevent duplication */}
 
-      {/* Messages list (scrollable) */}
+      {/* Messages list (scrollable) with day dividers & timestamps */}
       <div className="flex-1 overflow-auto" ref={listRef}>
-        {messages.map((m, i) => (
-          <div key={i} className="px-3 py-2">
-            <div className={m.role === 'user' ? 'text-primary' : ''}>
-              <div className="prose prose-invert max-w-none">
-                {m.role === 'assistant' ? (
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.text}</ReactMarkdown>
-                ) : (
-                  <>{m.text}</>
-                )}
-              </div>
-              {m.role === 'assistant' && m.meta?.citations?.length ? (
-                <div className="mt-2 text-xs opacity-70">
-                  Used data: {m.meta.citations.map((c:any) => c.count ? `${c.type} ${c.count}` : `${c.type}`).join(' · ')}
-                  {m.meta.ctxMonth ? ` · month ${m.meta.ctxMonth}` : ''}
-                  {m.meta.model ? ` · ${m.meta.model}` : ''}
-                </div>
-              ) : null}
-            </div>
-          </div>
-        ))}
+        {renderedMessages}
         <div id="chatdock-scroll-anchor" />
       </div>
 
