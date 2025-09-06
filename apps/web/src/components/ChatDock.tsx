@@ -9,6 +9,7 @@ import ErrorBoundary from "./ErrorBoundary";
 import { useMonth } from "../context/MonthContext";
 import { useChatDock } from "../context/ChatDockContext";
 import { exportThreadAsJSON, exportThreadAsMarkdown } from "../utils/chatExport";
+import { chatStore } from "../utils/chatStore";
 
 // ---- Chat message types, storage keys, versioning (outside component) ----
 type MsgRole = 'user' | 'assistant';
@@ -17,24 +18,8 @@ type Msg = { role: MsgRole; text: string; ts: number; meta?: any };
 const CHAT_STORAGE_VER = 'v1';
 const CHAT_STORE_KEY = `fa.chat.${CHAT_STORAGE_VER}`;
 const MODEL_STORE_KEY = 'fa.model';
-const HISTORY_STORE_KEY = 'fa.history';
 
-function loadStoredMessages(): Msg[] {
-  try {
-    const raw = sessionStorage.getItem(CHAT_STORE_KEY);
-    if (!raw) return [];
-    const arr = JSON.parse(raw);
-    if (!Array.isArray(arr)) return [];
-    return arr
-      .filter((m: any) => m && (m.role === 'user' || m.role === 'assistant') && typeof m.text === 'string')
-      .map((m: any) => ({ role: m.role as MsgRole, text: m.text, ts: m.ts ?? Date.now(), meta: m.meta ?? undefined }))
-      .slice(-200);
-  } catch { return []; }
-}
-
-function saveStoredMessages(msgs: Msg[]) {
-  try { sessionStorage.setItem(CHAT_STORE_KEY, JSON.stringify(msgs.slice(-200))); } catch {}
-}
+// sessionStorage-based load/save removed in favor of chatStore (localStorage + BroadcastChannel)
 
 const TOOL_GROUPS: Array<{ label: string; items: ToolSpec[] }> = [
   {
@@ -151,41 +136,27 @@ export default function ChatDock() {
   useEffect(() => {
     if (hydratedRef.current) return;
     hydratedRef.current = true;
-    // Load current stored messages
-    let stored = loadStoredMessages();
-    // One-time migration from legacy fa.history if no stored messages
-    try {
-      if (!stored.length) {
-        const old = sessionStorage.getItem('fa.history');
-        if (old) {
-          const arr = JSON.parse(old);
-          if (Array.isArray(arr) && arr.length > 0) {
-            stored = arr
-              .filter((m:any)=>m && (m.role==='user'||m.role==='assistant') && typeof m.text==='string')
-              .map((m:any)=>({ role:m.role as MsgRole, text:String(m.text), ts: m.ts ?? Date.now(), meta: m.meta ?? undefined }))
-              .slice(-200);
-          }
-          sessionStorage.removeItem('fa.history');
-        }
-      }
-    } catch {}
-    if (stored.length) {
-      setMessages(stored);
-      // optional: scroll to bottom after first paint
+    chatStore.initCrossTab();
+    const unsub = chatStore.subscribe((basic: { role: string; content: string; createdAt: number }[]) => {
+      const mapped: Msg[] = (basic || []).map((b: { role: string; content: string; createdAt: number }) => ({ role: (b.role === 'assistant' ? 'assistant' : 'user') as MsgRole, text: String(b.content || ''), ts: Number(b.createdAt) || Date.now() }));
+      setMessages(mapped);
+      // scroll to bottom after initial hydration
       setTimeout(() => {
         const el = document.querySelector('#chatdock-scroll-anchor') as HTMLElement | null;
         el?.scrollIntoView({ block: 'end' });
       }, 0);
-    }
+    });
+    return () => { try { unsub(); } catch {} };
   }, []);
-  useEffect(() => { saveStoredMessages(messages); }, [messages]);
 
   function appendUser(text: string) {
-    setMessages(m => [...m, { role: 'user', text, ts: Date.now() }]);
+    chatStore.append({ role: 'user', content: text, createdAt: Date.now() });
   }
 
   function appendAssistant(text: string, meta?: any) {
-    setMessages(m => [...m, { role: 'assistant', text, ts: Date.now(), meta }]);
+    // Persist minimal assistant message to cross-tab store
+    chatStore.append({ role: 'assistant', content: text, createdAt: Date.now() });
+    // Keep most recent response metadata in memory for current tab rendering
     setChatResp({
       reply: text,
       citations: meta?.citations || [],
@@ -693,7 +664,7 @@ export default function ChatDock() {
             <div className="text-xs opacity-70">This tab’s recent messages</div>
             <button
               className="text-xs px-2 py-1 border rounded-md hover:bg-muted"
-              onClick={() => setMessages([])}
+              onClick={() => chatStore.clear()}
               title="Clear this tab's chat"
             >
               Clear

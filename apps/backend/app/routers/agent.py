@@ -228,9 +228,19 @@ def _enrich_context(db: Session, ctx: Optional[Dict[str, Any]], txn_id: Optional
                 
         if "insights" not in ctx:
             try:
-                insights_body = agent_tools_insights.ExpandedBody(month=month)
-                insights_result = agent_tools_insights.insights_expanded(insights_body, db)
-                ctx["insights"] = insights_result.dict()
+                # Use the proper request shape for insights_expanded
+                insights_body = agent_tools_insights.ExpandedIn(month=month, large_limit=10)
+                raw = agent_tools_insights.insights_expanded(insights_body, db)
+                # Normalize to a tiny, resilient shape to avoid prompt bloat
+                # and tolerate schema changes.
+                if isinstance(raw, dict):
+                    normalized = agent_tools_insights.expand(raw).dict()
+                else:
+                    try:
+                        normalized = agent_tools_insights.expand(raw.dict()).dict()  # type: ignore[attr-defined]
+                    except Exception:
+                        normalized = agent_tools_insights.ExpandedBody().dict()
+                ctx["insights"] = normalized
             except Exception as e:
                 print(f"Error enriching insights: {redact_pii(str(e))}")
     

@@ -208,3 +208,38 @@ class ExpandedIn(BaseModel):
 @router.post("/expanded")
 def insights_expanded(body: ExpandedIn, db: Session = Depends(get_db)) -> Dict[str, Any]:
     return build_expanded_insights(db=db, month=body.month, large_limit=body.large_limit or 10)
+
+
+# --- Minimal helper for /agent/chat resilience --------------------------------
+# These are permissive shapes/utilities that allow the chat endpoint to
+# normalize whatever "insights" payload exists, without crashing the request.
+from typing import Any as _Any, Optional as _Optional, List as _List  # aliases to avoid shadowing
+
+class ExpandedBody(BaseModel):
+    summary: str = ""
+    bullets: _List[str] = []
+    sources: _List[str] = []
+
+def expand(raw: _Optional[dict[str, _Any]] = None) -> ExpandedBody:
+    if not raw:
+        return ExpandedBody()
+
+    summary = str(raw.get("summary") or raw.get("title") or raw.get("headline") or "")
+
+    bullets = raw.get("bullets") or raw.get("items") or raw.get("points") or []
+    if not isinstance(bullets, list):
+        bullets = [str(bullets)]
+    bullets = [str(x) for x in bullets]
+
+    sources = raw.get("sources") or []
+    if not isinstance(sources, list):
+        sources = [str(sources)]
+    sources = [str(x) for x in sources]
+
+    return ExpandedBody(summary=summary, bullets=bullets, sources=sources)
+
+__all__ = [
+    # existing router symbols are exported via FastAPI router registration
+    "ExpandedBody",
+    "expand",
+]
