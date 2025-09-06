@@ -8,6 +8,7 @@ import { AgentResultRenderer } from "./AgentResultRenderers";
 import ErrorBoundary from "./ErrorBoundary";
 import { useMonth } from "../context/MonthContext";
 import { useChatDock } from "../context/ChatDockContext";
+import { exportThreadAsJSON, exportThreadAsMarkdown } from "../utils/chatExport";
 
 // ---- Chat message types, storage keys, versioning (outside component) ----
 type MsgRole = 'user' | 'assistant';
@@ -506,6 +507,37 @@ export default function ChatDock() {
       >
         <div className="text-sm text-neutral-300">Agent Tools</div>
         <div className="ml-auto flex items-center gap-2">
+          {/* Export buttons */}
+          <button
+            type="button"
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => { e.stopPropagation();
+              const normalized = (messages || []).map(m => ({ role: m.role, content: m.text, createdAt: m.ts }));
+              const firstUser = (messages || []).find(m => m.role === 'user');
+              const trimmed = (firstUser?.text || '').split('\n')[0].slice(0, 40).trim();
+              const title = trimmed ? `finance-agent-chat—${trimmed.replace(/\s+/g, '_')}` : 'finance-agent-chat';
+              exportThreadAsJSON(title, normalized);
+            }}
+            className="text-xs px-2 py-1 border rounded-md hover:bg-muted"
+            title="Download chat as JSON"
+          >
+            Export JSON
+          </button>
+          <button
+            type="button"
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => { e.stopPropagation();
+              const normalized = (messages || []).map(m => ({ role: m.role, content: m.text, createdAt: m.ts }));
+              const firstUser = (messages || []).find(m => m.role === 'user');
+              const trimmed = (firstUser?.text || '').split('\n')[0].slice(0, 40).trim();
+              const title = trimmed ? `finance-agent-chat—${trimmed.replace(/\s+/g, '_')}` : 'finance-agent-chat';
+              exportThreadAsMarkdown(title, normalized);
+            }}
+            className="text-xs px-2 py-1 border rounded-md hover:bg-muted"
+            title="Download chat as Markdown"
+          >
+            Export Markdown
+          </button>
           <button
             type="button"
             onPointerDown={(e) => e.stopPropagation()}
