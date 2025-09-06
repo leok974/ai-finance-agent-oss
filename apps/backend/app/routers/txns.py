@@ -10,6 +10,8 @@ from app.orm_models import Transaction
 from ..utils.dates import latest_month_from_txns
 from ..utils.state import save_state
 import datetime as dt
+from pydantic import BaseModel
+from app.services.rules_apply import apply_all_active_rules, latest_month_from_data
 
 router = APIRouter()
 
@@ -241,3 +243,22 @@ def recent_txns(limit: int = Query(20, ge=1, le=200), db: Session = Depends(get_
             "month": getattr(r, "month", None),
         })
     return {"items": items, "limit": limit}
+
+
+# --- Bulk reclassify (apply active rules) -----------------------------------
+class ReclassifyIn(BaseModel):
+    month: Optional[str] = None
+
+
+@router.post("/reclassify")
+def reclassify(payload: Optional[ReclassifyIn] = None, db: Session = Depends(get_db)):
+    """
+    Re-run categorization over transactions by applying all active rules.
+    Defaults to latest month if not provided.
+    """
+    month = (payload.month if payload else None) or latest_month_from_data(db)
+    if not month:
+        raise HTTPException(status_code=400, detail="No transactions available to determine month")
+
+    applied, skipped, details = apply_all_active_rules(db, month)
+    return {"status": "ok", "month": month, "applied": applied, "skipped": skipped, "details": details}
