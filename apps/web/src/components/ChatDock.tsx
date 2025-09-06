@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronUp, Wrench } from "lucide-react";
 import { agentTools, agentChat, getAgentModels, type AgentChatRequest, type AgentChatResponse, type AgentModelsResponse, type ChatMessage } from "../lib/api";
 import ReactMarkdown from "react-markdown";
@@ -126,6 +126,7 @@ export default function ChatDock() {
   const [input, setInput] = useState("");
   const listRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const syncTimerRef = useRef<number | null>(null);
   // NEW: Tiny tools panel state
   const [showTools, setShowTools] = useState<boolean>(true);
   const [activePreset, setActivePreset] = useState<ToolPresetKey>('insights_expanded');
@@ -137,32 +138,58 @@ export default function ChatDock() {
 
   // Live message stream (render from UI state, persist via chatStore)
   const [uiMessages, setUiMessages] = useState<Msg[]>([]);
+  // Equality guard to avoid redundant setState on cross-tab updates
+  const sameTimeline = React.useCallback((ui: Msg[], basic: BasicMsg[]) => {
+    if (!Array.isArray(ui) || !Array.isArray(basic)) return false;
+    if (ui.length !== basic.length) return false;
+    if (ui.length === 0) return true;
+    const lu = ui[ui.length - 1];
+    const lb = basic[basic.length - 1];
+    if (!lu || !lb) return false;
+    const lbRole = lb.role === 'assistant' ? 'assistant' : 'user';
+    return lu.role === lbRole && lu.text === String(lb.content || '') && lu.ts === Number(lb.createdAt || 0);
+  }, []);
+
   const syncFromStore = React.useCallback(() => {
     try {
       const basic = chatStore.get() || [];
-      const mapped: Msg[] = (basic || []).map((b: { role: string; content: string; createdAt: number }) => ({ role: (b.role === 'assistant' ? 'assistant' : 'user') as MsgRole, text: String(b.content || ''), ts: Number(b.createdAt) || Date.now() }));
-      setUiMessages(mapped);
+      setUiMessages(cur => {
+        if (sameTimeline(cur, basic)) return cur;
+        const mapped: Msg[] = (basic || []).map((b: { role: string; content: string; createdAt: number }) => ({ role: (b.role === 'assistant' ? 'assistant' : 'user') as MsgRole, text: String(b.content || ''), ts: Number(b.createdAt) || Date.now() }));
+        return mapped;
+      });
     } catch { /* ignore */ }
-  }, []);
+  }, [sameTimeline]);
+
+  const syncFromStoreDebounced = React.useCallback((ms = 120) => {
+    if (syncTimerRef.current) window.clearTimeout(syncTimerRef.current);
+    syncTimerRef.current = window.setTimeout(() => {
+      syncTimerRef.current = null;
+      syncFromStore();
+    }, ms);
+  }, [syncFromStore]);
   const hydratedRef = useRef(false);
   useEffect(() => {
     if (hydratedRef.current) return;
     hydratedRef.current = true;
     chatStore.initCrossTab();
-    const unsub = chatStore.subscribe((basic: { role: string; content: string; createdAt: number }[]) => {
-      const mapped: Msg[] = (basic || []).map((b: { role: string; content: string; createdAt: number }) => ({ role: (b.role === 'assistant' ? 'assistant' : 'user') as MsgRole, text: String(b.content || ''), ts: Number(b.createdAt) || Date.now() }));
-      setUiMessages(mapped);
-      // scroll to bottom after initial hydration
+    const unsub = chatStore.subscribe((_basic: { role: string; content: string; createdAt: number }[]) => {
+      // Debounce store-driven updates to avoid re-render bursts
+      syncFromStoreDebounced(120);
+      // scroll to bottom after initial hydration will occur after sync
       setTimeout(() => { bottomRef.current?.scrollIntoView({ block: 'end' }); }, 0);
     });
     // seed on mount (in case subscribe callback races)
     try {
       const basic = chatStore.get() || [];
-      const mapped: Msg[] = (basic || []).map((b: { role: string; content: string; createdAt: number }) => ({ role: (b.role === 'assistant' ? 'assistant' : 'user') as MsgRole, text: String(b.content || ''), ts: Number(b.createdAt) || Date.now() }));
-      setUiMessages(mapped);
+      setUiMessages(cur => {
+        if (sameTimeline(cur, basic as any)) return cur;
+        const mapped: Msg[] = (basic || []).map((b: { role: string; content: string; createdAt: number }) => ({ role: (b.role === 'assistant' ? 'assistant' : 'user') as MsgRole, text: String(b.content || ''), ts: Number(b.createdAt) || Date.now() }));
+        return mapped;
+      });
     } catch {}
     return () => { try { unsub(); } catch {} };
-  }, []);
+  }, [sameTimeline]);
 
   // Smooth auto-scroll to bottom on new messages or when busy changes
   useEffect(() => {
@@ -170,7 +197,10 @@ export default function ChatDock() {
   }, [uiMessages, busy]);
 
   // quick sanity ping so you can confirm the file actually recompiled
-  useEffect(() => { console.log("[ChatDock] v0906d loaded"); }, []);
+  useEffect(() => {
+    console.log("[ChatDock] v0906f loaded");
+    return () => { if (syncTimerRef.current) window.clearTimeout(syncTimerRef.current); };
+  }, []);
 
   // --- helpers for timestamps & day dividers ---
   const pad = (n: number) => String(n).padStart(2, "0");
@@ -479,7 +509,7 @@ export default function ChatDock() {
       };
   const resp = await agentChat(req);
   handleAgentResponse(resp);
-  syncFromStore();
+  syncFromStoreDebounced(120);
     } catch (e: any) {
       appendAssistant(`Send failed: ${e?.message ?? String(e)}`);
     } finally {
@@ -506,7 +536,7 @@ export default function ChatDock() {
       };
   const resp = await agentChat(req);
   handleAgentResponse(resp);
-  syncFromStore();
+  syncFromStoreDebounced(120);
     } finally {
       setBusy(false);
     }
@@ -525,7 +555,7 @@ export default function ChatDock() {
       };
   const resp = await agentChat(req);
   handleAgentResponse(resp);
-  syncFromStore();
+  syncFromStoreDebounced(120);
     } finally {
       setBusy(false);
     }
@@ -545,7 +575,7 @@ export default function ChatDock() {
       };
   const resp = await agentChat(req);
   handleAgentResponse(resp);
-  syncFromStore();
+  syncFromStoreDebounced(120);
     } finally { setBusy(false); }
   }, [busy, selectedModel, handleAgentResponse]);
 
@@ -562,7 +592,7 @@ export default function ChatDock() {
       };
   const resp = await agentChat(req);
   handleAgentResponse(resp);
-  syncFromStore();
+  syncFromStoreDebounced(120);
     } finally { setBusy(false); }
   }, [busy, selectedModel, handleAgentResponse]);
 
@@ -579,7 +609,7 @@ export default function ChatDock() {
       };
   const resp = await agentChat(req);
   handleAgentResponse(resp);
-  syncFromStore();
+  syncFromStoreDebounced(120);
     } finally { setBusy(false); }
   }, [busy, selectedModel, handleAgentResponse]);
 
