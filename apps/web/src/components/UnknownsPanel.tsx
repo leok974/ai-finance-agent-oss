@@ -69,7 +69,8 @@ export default function UnknownsPanel({ month, onSeedRule, onChanged, refreshKey
 
   const titleMonth = (resolvedMonth ?? month) ? `— ${resolvedMonth ?? month}` : '— (latest)'
   return (
-    <Card title={`Unknowns ${titleMonth}`}>
+      <div id="unknowns-panel">
+        <Card title={`Unknowns ${titleMonth}`}>
       {loading && <div className="opacity-70">Loading…</div>}
       {error && !empty && <div className="text-sm text-rose-300">{error}</div>}
       {empty && !error && (
@@ -126,6 +127,7 @@ export default function UnknownsPanel({ month, onSeedRule, onChanged, refreshKey
           </li>
         ))}
       </ul>
-    </Card>
+      </Card>
+    </div>
   )
 }

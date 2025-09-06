@@ -20,6 +20,12 @@ export default function RuleTesterPanel({ onChanged }: { onChanged?: () => void 
   const [testing, setTesting] = useState(false);
   const [saving, setSaving] = useState(false);
   const [result, setResult] = useState<null | { matched_count: number; sample: any[] }>(null);
+
+  // Smooth scroll helper for CTA buttons (charts / unknowns)
+  const scrollToId = (id: string) => {
+    const el = document.getElementById(id);
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
   React.useEffect(() => {
     // On mount or when toggle changes, consume any pending draft
     const d = consumeRuleDraft();
@@ -74,7 +80,17 @@ export default function RuleTesterPanel({ onChanged }: { onChanged?: () => void 
           matchCount > 0
             ? `Matched ${matchCount} transaction${matchCount === 1 ? '' : 's'}. Will set category: “${category}”.`
             : `No matches for the selected month. Category would be: “${category}”.`,
-        duration: 3000,
+        duration: 4000,
+        action: (
+          <div className="flex gap-2">
+            <ToastAction altText="View charts" onClick={() => scrollToId('charts-panel')}>
+              View charts
+            </ToastAction>
+            <ToastAction altText="View unknowns" onClick={() => scrollToId('unknowns-panel')}>
+              View unknowns
+            </ToastAction>
+          </div>
+        ),
       });
       // Cache last test result summary in localStorage for quick badges elsewhere
       try {
@@ -99,6 +115,12 @@ export default function RuleTesterPanel({ onChanged }: { onChanged?: () => void 
   async function onSaveTrainReclass() {
     setSaving(true);
     try {
+      // Smooth scroll helper for CTA buttons
+      const scrollToId = (id: string) => {
+        const el = document.getElementById(id);
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      };
+
       const effectiveMonth = useCurrentMonth ? (getGlobalMonth() || '') : month;
       const { saved, trained, reclass } = await saveTrainReclassify(
         form,
@@ -126,13 +148,16 @@ export default function RuleTesterPanel({ onChanged }: { onChanged?: () => void 
           title: 'Rule saved & model retrained',
           description:
             `Applied “${name}”. Reclassify endpoint not available; category would be “${category}”.`,
-          duration: 3500,
+          duration: 5000,
           action: (
-            <ToastAction altText="View charts" onClick={() => {
-              document.getElementById('charts-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-            }}>
-              View charts
-            </ToastAction>
+            <div className="flex gap-2">
+              <ToastAction altText="View charts" onClick={() => scrollToId('charts-panel')}>
+                View charts
+              </ToastAction>
+              <ToastAction altText="View unknowns" onClick={() => scrollToId('unknowns-panel')}>
+                View unknowns
+              </ToastAction>
+            </div>
           ),
         });
         console.info(
@@ -145,13 +170,16 @@ export default function RuleTesterPanel({ onChanged }: { onChanged?: () => void 
             reclassCount > 0
               ? `Applied “${name}”. Reclassified ${reclassCount} transaction${reclassCount === 1 ? '' : 's'} to “${category}”.`
               : `Applied “${name}”. Category set to “${category}”. No transactions needed reclassification.`,
-          duration: 3500,
+          duration: 5000,
           action: (
-            <ToastAction altText="View charts" onClick={() => {
-              document.getElementById('charts-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-            }}>
-              View charts
-            </ToastAction>
+            <div className="flex gap-2">
+              <ToastAction altText="View charts" onClick={() => scrollToId('charts-panel')}>
+                View charts
+              </ToastAction>
+              <ToastAction altText="View unknowns" onClick={() => scrollToId('unknowns-panel')}>
+                View unknowns
+              </ToastAction>
+            </div>
           ),
         });
       }

@@ -1,5 +1,5 @@
 import React, { useCallback, useRef, useState } from "react";
-import { uploadCsv, fetchLatestMonth, getReport, agentTools } from "../lib/api"; // uses your existing helpers
+import { uploadCsv, fetchLatestMonth, agentTools } from "../lib/api"; // uses your existing helpers
 import { useMonth } from "../context/MonthContext";
 
 type UploadResult = {
@@ -82,7 +82,6 @@ const UploadCsv: React.FC<UploadCsvProps> = ({ onUploaded, defaultReplace = true
       if (resolved) {
         // fire-and-forget to avoid blocking UI
         void Promise.allSettled([
-          getReport(resolved),
           agentTools.chartsSummary({ month: resolved }),
           agentTools.chartsMerchants({ month: resolved, limit: 10 }),
           agentTools.chartsFlows({ month: resolved }),

@@ -7,7 +7,7 @@ import RuleTesterPanel from "./components/RuleTesterPanel";
 import { AgentResultRenderer } from "./components/AgentResultRenderers";
 import { useOkErrToast } from "@/lib/toast-helpers";
 // import RulesPanel from "./components/RulesPanel";
-import { getReport, getAlerts, getMonthSummary, getMonthMerchants, getMonthFlows, agentTools, meta, resolveLatestMonthHybrid } from './lib/api'
+import { getAlerts, getMonthSummary, getMonthMerchants, getMonthFlows, agentTools, meta, resolveLatestMonthHybrid } from './lib/api'
 import RulesPanel from "./components/RulesPanel";
 import ChatDock from "./components/ChatDock";
 import { ChatDockProvider } from "./context/ChatDockContext";
@@ -26,7 +26,7 @@ const App: React.FC = () => {
   const [month, setMonth] = useState<string>("");
   const [ready, setReady] = useState<boolean>(false);
   const [refreshKey, setRefreshKey] = useState<number>(0);
-  const [report, setReport] = useState<any>(null)
+  // Legacy report removed: using expanded insights and charts exclusively
   const [insights, setInsights] = useState<any>(null)
   const [alerts, setAlerts] = useState<any>(null)
   const [empty, setEmpty] = useState<boolean>(false)
@@ -54,7 +54,6 @@ const App: React.FC = () => {
     if (!ready || !month) return;
     console.info("[boot] loading dashboards for month", month);
     void Promise.allSettled([
-      getReport(month),
       agentTools.chartsSummary({ month }),
       agentTools.chartsMerchants({ month, limit: 10 }),
       agentTools.chartsFlows({ month }),
@@ -66,7 +65,6 @@ const App: React.FC = () => {
   useEffect(()=>{ (async()=>{
     if (!ready || !month) return;
     try {
-      setReport(await getReport(month))
       setInsights(await agentTools.insightsExpanded({ month, large_limit: 10 }))
       setAlerts(await getAlerts(month))
     } catch {}

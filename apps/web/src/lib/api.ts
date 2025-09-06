@@ -43,13 +43,7 @@ const mapKeys = <T extends object>(src: any, pairs: Record<string, string>) => {
   return o as T;
 };
 
-// ---------- Reports / Insights / Alerts ----------
-// Legacy /report removed: map to agent tools insights summary and require month
-export const getReport = (month: string) =>
-  http(`/agent/tools/insights/summary`, {
-    method: "POST",
-    body: JSON.stringify({ month, include_unknown_spend: true, limit_large_txns: 10 }),
-  })
+// ---------- Insights / Alerts ----------
 // Use robust fetchJson; keep optional month for backward-compat callers
 export const getInsights = (month?: string) =>
   fetchJson(`/insights${month ? `?month=${encodeURIComponent(month)}` : ""}`)
