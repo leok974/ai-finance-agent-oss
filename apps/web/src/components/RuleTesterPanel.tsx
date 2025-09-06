@@ -6,6 +6,7 @@ import { getGlobalMonth, onGlobalMonthChange } from '@/state/month';
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { ToastAction } from "@/components/ui/toast";
 import { InfoDot } from './InfoDot';
+import { scrollToId } from "@/lib/scroll";
 
 export default function RuleTesterPanel({ onChanged }: { onChanged?: () => void }) {
   const { toast } = useToast();
@@ -22,10 +23,6 @@ export default function RuleTesterPanel({ onChanged }: { onChanged?: () => void 
   const [result, setResult] = useState<null | { matched_count: number; sample: any[] }>(null);
 
   // Smooth scroll helper for CTA buttons (charts / unknowns)
-  const scrollToId = (id: string) => {
-    const el = document.getElementById(id);
-    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  };
   React.useEffect(() => {
     // On mount or when toggle changes, consume any pending draft
     const d = consumeRuleDraft();
@@ -116,10 +113,6 @@ export default function RuleTesterPanel({ onChanged }: { onChanged?: () => void 
     setSaving(true);
     try {
       // Smooth scroll helper for CTA buttons
-      const scrollToId = (id: string) => {
-        const el = document.getElementById(id);
-        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      };
 
       const effectiveMonth = useCurrentMonth ? (getGlobalMonth() || '') : month;
       const { saved, trained, reclass } = await saveTrainReclassify(
