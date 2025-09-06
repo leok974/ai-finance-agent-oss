@@ -4,6 +4,72 @@
 
 :root { color-scheme: dark; }
 
+/* ---------- Global tooltip look & feel ---------- */
+@layer components {
+  /* Panels */
+  .panel {
+  @apply p-6 rounded-2xl shadow bg-card text-card-foreground;
+  }
+
+  /* Form grid + fields */
+  .form-grid {
+  @apply grid gap-x-4 gap-y-5 mb-6;
+  }
+  .field {
+    @apply flex flex-col gap-1;
+  }
+  .field-label {
+    @apply text-xs opacity-70 leading-5 flex items-center gap-1;
+  }
+  .label-nowrap {
+    @apply whitespace-nowrap overflow-hidden text-ellipsis;
+  }
+  .field-input {
+  @apply w-full min-w-0 px-3 h-10 rounded-xl border bg-background;
+  }
+  .field-help {
+    @apply text-xs opacity-70;
+  }
+
+  /* Action rows */
+  .actions-row {
+    @apply flex flex-wrap items-center gap-3;
+  }
+
+  /* Buttons */
+  .btn {
+    @apply inline-flex items-center justify-center h-10 px-3 rounded-xl border font-medium whitespace-nowrap;
+  }
+
+  .btn-sm {
+    @apply h-8 px-2 text-sm;
+  }
+
+  .btn-lg {
+    @apply h-12 px-4 text-base;
+  }
+
+  /* Button-like checkbox label */
+  .btn-toggle {
+    @apply btn btn-sm select-none gap-2;
+  }
+  .btn-toggle input[type="checkbox"] {
+    /* keep visible & accessible but sized neatly */
+    @apply h-4 w-4;
+  }
+
+  .ui-tooltip {
+    @apply rounded-xl border shadow-lg px-3 py-2 text-sm leading-snug z-50
+      max-w-64 break-words
+      bg-white text-gray-900 border-gray-200;
+  }
+
+  /* Optional: dark mode emphasis */
+  .dark .ui-tooltip {
+    @apply bg-neutral-900 text-neutral-50 border-neutral-800 shadow-black/20;
+  }
+}
+
 /* === Global dark theme tokens === */
 :root {
   /* surfaces */

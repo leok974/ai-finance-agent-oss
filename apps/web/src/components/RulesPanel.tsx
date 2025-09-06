@@ -1,10 +1,13 @@
 import React, { useEffect, useState } from 'react';
-import { getRules, createRule, updateRule, deleteRule, type Rule, type RuleInput } from '../lib/api';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { getRules, createRule, updateRule, deleteRule, type Rule, type RuleInput } from '@/api';
+import { useOkErrToast } from '@/lib/toast-helpers';
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { InfoDot } from './InfoDot';
 
 type Props = { refreshKey?: number };
 
 export default function RulesPanel({ refreshKey }: Props) {
+  const { ok, err } = useOkErrToast();
   const [rules, setRules] = useState<Rule[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -41,6 +44,10 @@ export default function RulesPanel({ refreshKey }: Props) {
       await createRule(form);
       setForm({ name: '', enabled: true, when: { description_like: '' }, then: { category: '' } });
       refresh();
+  ok(`“${form.name || 'Untitled'}” saved successfully.`, 'Rule created');
+    } catch (e: any) {
+      const message = e?.message || 'Failed to create rule';
+      err(message, 'Create failed');
     } finally {
       setCreating(false);
     }
@@ -80,36 +87,107 @@ export default function RulesPanel({ refreshKey }: Props) {
   }
 
   return (
-    <div className="p-4 rounded-2xl shadow bg-card text-card-foreground">
+    <div className="panel">
       <div className="flex items-center justify-between mb-3">
-        <h2 className="text-lg font-semibold">Rules</h2>
-        <button onClick={refresh} className="text-sm px-3 py-1 rounded-xl border hover:bg-accent" disabled={loading}>
-          {loading ? 'Refreshing…' : 'Refresh'}
-        </button>
+        <div className="flex items-center gap-2">
+          <h2 className="text-lg font-semibold">Rules</h2>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="inline-block cursor-help">ⓘ</span>
+            </TooltipTrigger>
+            <TooltipContent>
+              Saved rules are patterns that auto-categorize your transactions.
+              Each rule has a matcher (like “description contains Starbucks”) and a resulting category.
+            </TooltipContent>
+          </Tooltip>
+        </div>
+        {/* Right actions (md+): Refresh + Create (submits the form below) */}
+        <div className="hidden md:flex items-center gap-2">
+          <button
+            onClick={refresh}
+            className="btn btn-sm hover:bg-accent"
+            disabled={loading}
+          >
+            {loading ? 'Refreshing…' : 'Refresh'}
+          </button>
+          <button
+            type="submit"
+            form="rules-create-form"
+            className="btn btn-sm hover:bg-accent"
+            disabled={creating}
+            title="Create rule with the fields below"
+          >
+            {creating ? 'Creating…' : 'Create'}
+          </button>
+        </div>
       </div>
 
-      <form onSubmit={onCreate} className="grid md:grid-cols-4 gap-2 mb-4">
-        <input
-          className="col-span-1 px-3 py-2 rounded-xl border bg-background"
-          placeholder="Rule name"
-          value={form.name}
-          onChange={(e) => setForm(f => ({ ...f, name: e.target.value }))}
-        />
-        <input
-          className="col-span-1 px-3 py-2 rounded-xl border bg-background"
-          placeholder='Match: description contains…'
-          value={(form.when as any).description_like ?? ''}
-          onChange={(e) => setForm(f => ({ ...f, when: { ...(f.when || {}), description_like: e.target.value } }))}
-        />
-        <input
-          className="col-span-1 px-3 py-2 rounded-xl border bg-background"
-          placeholder="Then: set category…"
-          value={form.then?.category ?? ''}
-          onChange={(e) => setForm(f => ({ ...f, then: { ...(f.then || {}), category: e.target.value } }))}
-        />
-        <button type="submit" className="col-span-1 px-3 py-2 rounded-xl border font-medium hover:bg-accent" disabled={creating}>
-          {creating ? 'Creating…' : 'Create rule'}
-        </button>
+      {/* Give the form an id so the header button can submit it */}
+      <form id="rules-create-form" onSubmit={onCreate} className="form-grid grid-cols-1 md:grid-cols-12">
+        <div className="field col-span-3">
+          <div className="field-label">
+            <span className="label-nowrap" title="Rule name">Rule name</span>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="inline-block cursor-help flex-none">ⓘ</span>
+              </TooltipTrigger>
+              <TooltipContent>Short, descriptive label for this rule.</TooltipContent>
+            </Tooltip>
+          </div>
+          <input
+            className="field-input"
+            placeholder="e.g., Coffee shops"
+            value={form.name}
+            onChange={(e) => setForm(f => ({ ...f, name: e.target.value }))}
+            title="Short, descriptive name for the rule"
+          />
+        </div>
+        <div className="field col-span-5">
+          <div className="field-label">
+            <span title="Match — description contains">Match contains</span>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="inline-block cursor-help flex-none">ⓘ</span>
+              </TooltipTrigger>
+              <TooltipContent>Substring match (case-insensitive) against the transaction description.</TooltipContent>
+            </Tooltip>
+          </div>
+          <input
+            className="field-input"
+            placeholder='e.g., "STARBUCKS" (case-insensitive)'
+            value={(form.when as any).description_like ?? ''}
+            onChange={(e) => setForm(f => ({ ...f, when: { ...(f.when || {}), description_like: e.target.value } }))}
+            title='Substring match against description (SQL ILIKE "%text%")'
+          />
+        </div>
+        <div className="field col-span-3">
+          <div className="field-label">
+            <span title="Then — set category">Set category</span>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="inline-block cursor-help flex-none">ⓘ</span>
+              </TooltipTrigger>
+              <TooltipContent>Category assigned to all matching transactions.</TooltipContent>
+            </Tooltip>
+          </div>
+          <input
+            className="field-input"
+            placeholder="e.g., Coffee"
+            value={form.then?.category ?? ''}
+            onChange={(e) => setForm(f => ({ ...f, then: { ...(f.then || {}), category: e.target.value } }))}
+            title="The category assigned to all matches"
+          />
+        </div>
+        {/* Mobile-only create (header has md+ create) */}
+        <div className="col-span-1 flex items-end md:hidden">
+          <button
+            type="submit"
+            className="btn hover:bg-accent w-full"
+            disabled={creating}
+          >
+            {creating ? 'Creating…' : 'Create'}
+          </button>
+        </div>
       </form>
 
       {!rules?.length && (
@@ -117,7 +195,7 @@ export default function RulesPanel({ refreshKey }: Props) {
       )}
 
       {!!rules?.length && (
-        <div className="space-y-2">
+        <div className="space-y-3">
           {rules.map(rule => (
             <div key={rule.id} className="p-3 rounded-xl border flex items-center justify-between">
               <div className="min-w-0">

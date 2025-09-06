@@ -1,11 +1,14 @@
 import React, { useState } from 'react';
-import { testRule, saveTrainReclassify, type RuleInput } from '../lib/api';
-import { useToast } from './Toast';
-import { consumeRuleDraft, onOpenRuleTester } from '../state/rulesDraft';
-import { getGlobalMonth, onGlobalMonthChange } from '../state/month';
+import { testRule, saveTrainReclassify, type RuleInput } from '@/api';
+import { useToast } from '@/hooks/use-toast';
+import { consumeRuleDraft, onOpenRuleTester } from '@/state/rulesDraft';
+import { getGlobalMonth, onGlobalMonthChange } from '@/state/month';
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { ToastAction } from "@/components/ui/toast";
+import { InfoDot } from './InfoDot';
 
 export default function RuleTesterPanel({ onChanged }: { onChanged?: () => void }) {
-  const { push } = useToast();
+  const { toast } = useToast();
   const [form, setForm] = useState<RuleInput>({
     name: '',
     enabled: true,
@@ -56,9 +59,23 @@ export default function RuleTesterPanel({ onChanged }: { onChanged?: () => void 
     setResult(null);
     try {
       if (!form.then?.category?.trim()) throw new Error('Please choose a category to set.');
-  const r = await testRule(form, month || undefined);
+      const r = await testRule(form, month || undefined);
       setResult(r);
-      push({ title: 'Rule test', message: `Matched ${r.matched_count} txn(s)` });
+      // Infer match count for UX feedback
+      let matchCount = 0;
+      if (Array.isArray(r)) matchCount = r.length;
+      else if (r && typeof r === 'object') {
+        matchCount = Number((r as any).matched_count ?? (r as any).count ?? (r as any).matches ?? (r as any).total) || 0;
+      }
+      const category = form.then?.category || '—';
+      toast({
+        title: 'Rule tested',
+        description:
+          matchCount > 0
+            ? `Matched ${matchCount} transaction${matchCount === 1 ? '' : 's'}. Will set category: “${category}”.`
+            : `No matches for the selected month. Category would be: “${category}”.`,
+        duration: 3000,
+      });
       // Cache last test result summary in localStorage for quick badges elsewhere
       try {
         const key = 'ruleTestCache';
@@ -68,7 +85,12 @@ export default function RuleTesterPanel({ onChanged }: { onChanged?: () => void 
         localStorage.setItem(key, JSON.stringify(cache));
       } catch {}
     } catch (e: any) {
-      push({ title: 'Rule test failed', message: e?.message ?? 'Rule test failed' });
+      toast({
+        title: 'Test failed',
+        description: e?.message ?? 'Could not validate the rule. Please check the inputs.',
+        variant: 'destructive',
+        duration: 3000,
+      });
     } finally {
       setTesting(false);
     }
@@ -77,13 +99,63 @@ export default function RuleTesterPanel({ onChanged }: { onChanged?: () => void 
   async function onSaveTrainReclass() {
     setSaving(true);
     try {
-  const { saved, trained, reclass } = await saveTrainReclassify(form, month || undefined);
-      if (!reclass) {
-        push({ title: 'Saved & retrained', message: 'Reclassify endpoint not found; run it from backend if needed.' });
-        console.info('Try:\nInvoke-RestMethod -Method POST http://127.0.0.1:8000/txns/reclassify -Body "{}" -ContentType "application/json"');
-      } else {
-        push({ title: 'All done', message: 'Rule saved, model retrained, transactions reclassified.' });
+      const effectiveMonth = useCurrentMonth ? (getGlobalMonth() || '') : month;
+      const { saved, trained, reclass } = await saveTrainReclassify(
+        form,
+        effectiveMonth || undefined
+      );
+
+      // Infer how many transactions were reclassified (if API provides it)
+      let reclassCount = 0;
+      if (Array.isArray(reclass)) reclassCount = reclass.length;
+      else if (reclass && typeof reclass === 'object') {
+        reclassCount =
+          Number(
+            (reclass as any).updated ??
+              (reclass as any).applied ??
+              (reclass as any).reclassified ??
+              (reclass as any).count ??
+              (reclass as any).total
+          ) || 0;
       }
+      const category = form.then?.category || '—';
+      const name = form.name?.trim() || 'Untitled';
+
+      if (!reclass) {
+        toast({
+          title: 'Rule saved & model retrained',
+          description:
+            `Applied “${name}”. Reclassify endpoint not available; category would be “${category}”.`,
+          duration: 3500,
+          action: (
+            <ToastAction altText="View charts" onClick={() => {
+              document.getElementById('charts-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+            }}>
+              View charts
+            </ToastAction>
+          ),
+        });
+        console.info(
+          'Try:\nInvoke-RestMethod -Method POST http://127.0.0.1:8000/txns/reclassify -Body "{}" -ContentType "application/json"'
+        );
+      } else {
+        toast({
+          title: 'Rule saved & model retrained',
+          description:
+            reclassCount > 0
+              ? `Applied “${name}”. Reclassified ${reclassCount} transaction${reclassCount === 1 ? '' : 's'} to “${category}”.`
+              : `Applied “${name}”. Category set to “${category}”. No transactions needed reclassification.`,
+          duration: 3500,
+          action: (
+            <ToastAction altText="View charts" onClick={() => {
+              document.getElementById('charts-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+            }}>
+              View charts
+            </ToastAction>
+          ),
+        });
+      }
+
       // Cache id->name mapping if backend returned a saved rule id
       try {
         const key = 'ruleIdNameMap';
@@ -95,115 +167,180 @@ export default function RuleTesterPanel({ onChanged }: { onChanged?: () => void 
       } catch {}
       onChanged?.();
     } catch (e: any) {
-      push({ title: 'Save failed', message: e?.message ?? 'Failed to save/train/reclassify' });
+      toast({
+        title: 'Save / retrain / reclassify failed',
+        description: e?.message ?? 'Please check your rule inputs and try again.',
+        variant: 'destructive',
+      });
+      console.error(e);
     } finally {
       setSaving(false);
     }
   }
 
-  return (
-    <div className="p-4 rounded-2xl shadow bg-card text-card-foreground" id="rule-tester-anchor">
-      <div className="flex items-center justify-between mb-3">
-        <h2 className="text-lg font-semibold">Rule Tester</h2>
-        <div className="text-xs opacity-70">Validate a rule → Save → Retrain → Reclassify</div>
-      </div>
+  function clearForm() {
+    setForm({ name: '', enabled: true, when: { description_like: '' }, then: { category: '' } });
+    setUseCurrentMonth(true);
+    setMonth(getGlobalMonth() || '');
+    setResult(null);
+  }
 
-  <form onSubmit={onTest} className="grid md:grid-cols-6 gap-2 mb-4">
-        <input
-          className="col-span-1 px-3 py-2 rounded-xl border bg-background"
-          placeholder="Rule name"
-          value={form.name}
-          onChange={(e) => setForm(f => ({ ...f, name: e.target.value }))}
-        />
-        <input
-          className="col-span-1 px-3 py-2 rounded-xl border bg-background"
-          placeholder='Match: description contains…'
-          value={(form.when as any).description_like ?? ''}
-          onChange={(e) => setForm(f => ({ ...f, when: { ...(f.when || {}), description_like: e.target.value } }))}
-        />
-        <input
-          className="col-span-1 px-3 py-2 rounded-xl border bg-background"
-          placeholder="Then: set category…"
-          value={form.then?.category ?? ''}
-          onChange={(e) => setForm(f => ({ ...f, then: { ...(f.then || {}), category: e.target.value } }))}
-        />
-        <input
-          className={`col-span-1 px-3 py-2 rounded-xl border bg-background ${useCurrentMonth ? 'opacity-60 cursor-not-allowed' : ''}`}
-          placeholder="Month (YYYY-MM)"
-          value={month}
-          onChange={(e) => setMonth(e.target.value)}
-          title={useCurrentMonth ? 'Following current month — uncheck to edit' : 'Type a month like 2025-08'}
-          disabled={useCurrentMonth}
-        />
-        <label className="col-span-1 flex items-center gap-2 px-3 py-2 rounded-xl border bg-background text-sm select-none">
+  return (
+    <div className="panel" id="rule-tester-anchor">
+      <div className="flex items-center justify-between mb-3">
+        {/* left: title + tooltip (baseline aligned) */}
+        <div className="flex items-baseline gap-2">
+           <h2 className="text-lg font-semibold">Rule Tester</h2>
+           <Tooltip>
+             <TooltipTrigger asChild>
+               <span className="inline-block cursor-help">ⓘ</span>
+             </TooltipTrigger>
+             <TooltipContent>
+               Prototype a rule, test it for a month, then save/retrain/reclassify.
+             </TooltipContent>
+           </Tooltip>
+         </div>
+        {/* right: tight Month + toggle (one line on md+) */}
+        <div className="hidden md:flex items-center gap-2">
           <input
-            type="checkbox"
-            checked={useCurrentMonth}
-            onChange={(e) => {
-              const next = e.target.checked;
-              setUseCurrentMonth(next);
-              if (next) setMonth(getGlobalMonth() || '');
-            }}
+            className={`h-8 px-3 rounded-xl border bg-background text-sm w-24 ${
+              useCurrentMonth ? 'opacity-60 cursor-not-allowed' : ''
+            }`}
+            placeholder="YYYY-MM"
+            value={month}
+            onChange={(e) => setMonth(e.target.value)}
+            title={useCurrentMonth ? 'Following current month — uncheck to edit' : 'Type a month like 2025-08'}
+            disabled={useCurrentMonth}
           />
-          Use current month
-        </label>
-        <button
-          type="submit"
-          className="col-span-1 px-3 py-2 rounded-xl border font-medium hover:bg-accent"
-          disabled={testing}
-        >
-          {testing ? 'Testing…' : 'Test rule'}
-        </button>
+          <label className="btn-toggle whitespace-nowrap">
+             <input
+               type="checkbox"
+               checked={useCurrentMonth}
+               onChange={(e) => {
+                 const next = e.target.checked;
+                 setUseCurrentMonth(next);
+                 if (next) setMonth(getGlobalMonth() || '');
+               }}
+             />
+             Use current month
+           </label>
+         </div>
+       </div>
+
+      {/* Row 1: name / match / category (match made wider).
+          On mobile, month controls appear below as a separate row. */}
+      <form onSubmit={onTest} className="form-grid grid-cols-1 md:grid-cols-12">
+        <div className="field col-span-12 md:col-span-3">
+          <div className="field-label">
+            <span>Rule name</span>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="inline-block cursor-help">ⓘ</span>
+              </TooltipTrigger>
+              <TooltipContent>Optional label—helps you identify the rule later.</TooltipContent>
+            </Tooltip>
+          </div>
+          <input
+            className="field-input"
+            placeholder="e.g., Netflix subs"
+            value={form.name}
+            onChange={(e) => setForm(f => ({ ...f, name: e.target.value }))}
+            title="A label for this rule (optional for testing)"
+          />
+        </div>
+        <div className="field col-span-12 md:col-span-6">
+          <div className="field-label">
+            <span title="Match — description contains">Match contains</span>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="inline-block cursor-help">ⓘ</span>
+              </TooltipTrigger>
+              <TooltipContent>Substring match (case-insensitive) against the transaction description.</TooltipContent>
+            </Tooltip>
+          </div>
+          <input
+            className="field-input"
+            placeholder='e.g., "NETFLIX" (case-insensitive)'
+            value={(form.when as any).description_like ?? ''}
+            onChange={(e) => setForm(f => ({ ...f, when: { ...(f.when || {}), description_like: e.target.value } }))}
+            title='Substring match against description (SQL ILIKE "%text%")'
+          />
+        </div>
+        <div className="field col-span-12 md:col-span-3">
+          <div className="field-label">
+            <span title="Then — set category">Set category</span>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="inline-block cursor-help">ⓘ</span>
+              </TooltipTrigger>
+              <TooltipContent>Category to assign to all matches.</TooltipContent>
+            </Tooltip>
+          </div>
+          <input
+            className="field-input"
+            placeholder="e.g., Subscriptions"
+            value={form.then?.category ?? ''}
+            onChange={(e) => setForm(f => ({ ...f, then: { ...(f.then || {}), category: e.target.value } }))}
+            title="What category to assign to matches"
+          />
+        </div>
+
+        {/* Row 2 (mobile-only): month + toggle (since top-right is hidden on mobile) */}
+        <div className="col-span-12 grid grid-cols-12 gap-3 items-center md:hidden">
+          <div className="field col-span-7 min-w-0">
+            <div className="field-label"><span>Month</span></div>
+            <input
+              className={`field-input h-8 ${useCurrentMonth ? 'opacity-60 cursor-not-allowed' : ''}`}
+              placeholder="YYYY-MM"
+              value={month}
+              onChange={(e) => setMonth(e.target.value)}
+              disabled={useCurrentMonth}
+            />
+          </div>
+          <label className="btn-toggle col-span-5 justify-center">
+            <input
+              type="checkbox"
+              checked={useCurrentMonth}
+              onChange={(e) => {
+                const next = e.target.checked;
+                setUseCurrentMonth(next);
+                if (next) setMonth(getGlobalMonth() || '');
+              }}
+            />
+            Use current month
+          </label>
+        </div>
+
+        {/* Row 3: Actions (all on one row on md+) */}
+        <div className="col-span-12 flex items-center justify-end gap-3 flex-wrap md:flex-nowrap">
+          <button
+            type="submit"
+            className="btn hover:bg-accent w-full sm:w-auto shrink-0"
+            disabled={testing}
+          >
+            {testing ? 'Testing…' : 'Test rule'}
+          </button>
+          <button
+            type="button"
+            onClick={clearForm}
+            className="btn hover:bg-muted w-full sm:w-auto shrink-0"
+            title="Clear all fields and reset to current month"
+          >
+            Clear
+          </button>
+          <button
+            onClick={onSaveTrainReclass}
+            type="button"
+            className="btn hover:bg-accent w-full sm:w-auto shrink-0 font-semibold"
+            disabled={saving}
+          >
+            {saving ? 'Saving → Training → Reclassifying…' : 'Save → Retrain → Reclassify'}
+          </button>
+        </div>
       </form>
 
-      {result && (
-        <div className="rounded-xl border p-3 mb-3">
-          <div className="text-sm font-medium mb-2">
-            Matches: {result.matched_count}
-          </div>
-          {result.sample?.length ? (
-            <div className="text-xs overflow-auto">
-              <table className="w-full text-left border-separate border-spacing-y-1">
-                <thead className="opacity-70">
-                  <tr>
-                    <th className="pr-2">Date</th>
-                    <th className="pr-2">Merchant</th>
-                    <th className="pr-2">Description</th>
-                    <th className="pr-2">Amount</th>
-                    <th className="pr-2">Current Category</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {result.sample.slice(0, 10).map((t, i) => (
-                    <tr key={i} className="bg-muted/40">
-                      <td className="pr-2 py-1">{t.date}</td>
-                      <td className="pr-2 py-1">{t.merchant ?? '—'}</td>
-                      <td className="pr-2 py-1">{t.description ?? '—'}</td>
-                      <td className="pr-2 py-1">{t.amount}</td>
-                      <td className="pr-2 py-1">{t.category ?? '—'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-
-              </table>
-            </div>
-          ) : (
-            <div className="text-xs opacity-70">No sample rows returned.</div>
-          )}
-        </div>
-      )}
-
-      <div className="flex items-center gap-2">
-        <button
-          onClick={onSaveTrainReclass}
-          className="px-3 py-2 rounded-xl border font-medium hover:bg-accent"
-          disabled={saving}
-        >
-          {saving ? 'Saving → Training → Reclassifying…' : 'Save → Retrain → Reclassify'}
-        </button>
-        <div className="text-xs opacity-70">
-          Saves this rule, retrains the model, and reclassifies transactions.
-        </div>
+      <div className="text-xs opacity-70 mt-1">
+        Saves this rule, retrains the model, and reclassifies transactions.
       </div>
     </div>
   );

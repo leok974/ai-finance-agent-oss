@@ -1,8 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import Card from './Card'
-import { getSuggestions, categorizeTxn, agentChat } from '../lib/api'
+import { getSuggestions, categorizeTxn, agentChat } from '@/api'
 import EmptyState from './EmptyState'
 import { useChatDock } from '../context/ChatDockContext'
+import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
+import { InfoDot } from './InfoDot'
 
 type Suggestion = { txn_id: number; merchant?: string; description?: string; topk: Array<{ category: string; confidence: number }> }
 
@@ -15,14 +17,12 @@ export default function SuggestionsPanel({ month, refreshKey = 0 }: { month?: st
   const [empty, setEmpty] = useState(false)
   const chat = useChatDock()
 
-  useEffect(()=>{ (async()=>{
+  async function refresh() {
     setLoading(true); setError(null); setEmpty(false)
     try {
       const res = await getSuggestions(month)
-      // empty boot state
       if (!res) { setEmpty(true); setItems([]); setResolvedMonth(null); return }
       setResolvedMonth(res?.month ?? null)
-      // normalize various server shapes -> list of { txn_id, merchant, description, topk[] }
       const arr: any[] = Array.isArray(res?.results)
         ? res.results
         : Array.isArray(res?.items)
@@ -32,7 +32,6 @@ export default function SuggestionsPanel({ month, refreshKey = 0 }: { month?: st
         : Array.isArray(res)
         ? res
         : []
-      // map to Suggestion shape
       const mapped: Suggestion[] = arr.map((s: any) => {
         const txn = s.txn || s.txn_obj || s
         const suggs = s.suggestions || s.topk || []
@@ -48,7 +47,6 @@ export default function SuggestionsPanel({ month, refreshKey = 0 }: { month?: st
           topk
         }
       })
-      // coalesce by txn (one card per txn)
       const byTxn = new Map<number, Suggestion>()
       for (const s of mapped) {
         const prev = byTxn.get(s.txn_id)
@@ -61,7 +59,9 @@ export default function SuggestionsPanel({ month, refreshKey = 0 }: { month?: st
     } catch (e: any) {
       setError(e?.message ?? String(e))
     } finally { setLoading(false) }
-  })() }, [month, refreshKey])
+  }
+
+  useEffect(()=>{ refresh() }, [month, refreshKey])
 
   const canApply = useMemo(()=> Object.keys(selected).length>0, [selected])
 
@@ -85,10 +85,29 @@ export default function SuggestionsPanel({ month, refreshKey = 0 }: { month?: st
   }
 
   return (
-  <Card title={`ML Suggestions — ${resolvedMonth ?? '(latest)'}`} right={
-      <div className="flex gap-2">
-        <button className="px-2 py-1 rounded bg-blue-700 disabled:opacity-40" disabled={!canApply} onClick={applySelected}>Apply selected</button>
-        <button className="px-2 py-1 rounded bg-emerald-700" onClick={()=>autoApplyBest(0.85)}>Auto‑apply best ≥ 0.85</button>
+  <Card title={
+      <div className="flex items-center gap-2">
+        <span>ML Suggestions — {resolvedMonth ?? '(latest)'}</span>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <InfoDot />
+          </TooltipTrigger>
+          <TooltipContent>
+            ML-powered category suggestions for your uncategorized transactions. Pick one per row or auto-apply high-confidence matches.
+          </TooltipContent>
+        </Tooltip>
+      </div>
+    } right={
+      <div className="flex items-center gap-2 flex-wrap">
+  <button
+          onClick={refresh}
+          className="btn btn-sm hover:bg-accent w-full sm:w-auto"
+          disabled={loading}
+        >
+          {loading ? 'Refreshing…' : 'Refresh'}
+        </button>
+        <button className="btn btn-sm w-full sm:w-auto hover:bg-accent" disabled={!canApply} onClick={applySelected}>Apply selected</button>
+        <button className="btn btn-sm w-full sm:w-auto hover:bg-accent" title="Automatically apply high-confidence suggestions" onClick={()=>autoApplyBest(0.85)}>Auto‑apply best ≥ 0.85</button>
       </div>
     }>
       {loading && <div className="opacity-70">Loading…</div>}

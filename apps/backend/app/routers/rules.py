@@ -1,33 +1,92 @@
-from fastapi import APIRouter, HTTPException, Depends, Query
+from fastapi import APIRouter, HTTPException, Depends, Query, Body
 from typing import List, Dict, Any, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import select, delete
 from app.db import get_db
-from app.models import Rule as RuleSchema
+from pydantic import BaseModel, ConfigDict
 from app.orm_models import Rule
 from app.orm_models import Transaction
-from pydantic import BaseModel
 # from app.schemas import RuleIn  # optional: use a separate schema for input
 
 router = APIRouter()
+
+class CompatRuleInput(BaseModel):
+    """Liberal rule input accepting extra keys and a flexible shape.
+    Expected keys from web: name, enabled, when{ description_like? }, then{ category }
+    """
+    model_config = ConfigDict(extra="allow")
+    name: str
+    enabled: bool = True
+    when: Dict[str, Any] = {}
+    then: Dict[str, Any] = {}
+
+def map_to_orm_fields(body: CompatRuleInput) -> Dict[str, Any]:
+    """Map compat input to our ORM Rule fields (pattern/target/category/active)."""
+    when = body.when or {}
+    then = body.then or {}
+    category = then.get("category")
+    if not category:
+        raise HTTPException(status_code=422, detail="then.category is required")
+
+    # Prefer description_like, fallback merchant[_like]
+    target = None
+    pattern = None
+    if isinstance(when, dict):
+        if when.get("description_like"):
+            target = "description"
+            pattern = str(when.get("description_like"))
+        elif when.get("merchant_like"):
+            target = "merchant"
+            pattern = str(when.get("merchant_like"))
+        elif when.get("merchant"):
+            target = "merchant"
+            pattern = str(when.get("merchant"))
+
+    return {
+        "pattern": pattern,
+        "target": target,
+        "category": category,
+        "active": bool(body.enabled),
+    }
 
 
 @router.get("")
 def list_rules(db: Session = Depends(get_db)) -> List[Dict[str, Any]]:
     rows = db.execute(select(Rule).order_by(Rule.id.desc())).scalars().all()
-    return [
-        {"id": r.id, "pattern": r.pattern, "target": r.target, "category": r.category}
-        for r in rows
-    ]
+    # Present rules in the new web shape: {id, name, enabled, when, then}
+    out: List[Dict[str, Any]] = []
+    for r in rows:
+        when: Dict[str, Any] = {}
+        if r.target == "description" and r.pattern:
+            when = {"description_like": r.pattern}
+        elif r.target == "merchant" and r.pattern:
+            when = {"merchant_like": r.pattern}
+        name = f"{r.target or 'rule'}:{r.pattern}" if r.pattern else (getattr(r, "pattern", None) or "Unnamed rule")
+        out.append({
+            "id": r.id,
+            "name": name,
+            "enabled": bool(getattr(r, "active", True)),
+            "when": when,
+            "then": {"category": r.category},
+        })
+    return out
 
 
 @router.post("")
-def add_rule(rule: RuleSchema, db: Session = Depends(get_db)):
-    r = Rule(pattern=rule.pattern, target=rule.target, category=rule.category)
+def add_rule(body: CompatRuleInput = Body(...), db: Session = Depends(get_db)):
+    fields = map_to_orm_fields(body)
+    r = Rule(pattern=fields.get("pattern"), target=fields.get("target"), category=fields["category"], active=fields.get("active", True))
     db.add(r)
     db.commit()
     db.refresh(r)
-    return {"ok": True, "id": r.id, "rule": {"pattern": r.pattern, "target": r.target, "category": r.category}}
+    # Return in the new shape
+    return {
+        "id": r.id,
+        "name": f"{r.target or 'rule'}:{r.pattern}" if r.pattern else "Unnamed rule",
+        "enabled": bool(getattr(r, "active", True)),
+        "when": ({"description_like": r.pattern} if r.target == "description" and r.pattern else ({"merchant_like": r.pattern} if r.target == "merchant" and r.pattern else {})),
+        "then": {"category": r.category},
+    }
 
 
 @router.delete("")

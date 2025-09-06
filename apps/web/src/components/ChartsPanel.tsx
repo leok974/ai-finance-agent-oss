@@ -92,7 +92,7 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
   );
 
   return (
-    <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+    <div id="charts-panel" className="grid grid-cols-1 gap-6 lg:grid-cols-2">
       {empty && !error && (
         <div className="lg:col-span-2">
           <EmptyState title="No transactions yet" note="Once you upload, charts will populate automatically." />

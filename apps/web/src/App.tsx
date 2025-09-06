@@ -5,7 +5,7 @@ import UnknownsPanel from "./components/UnknownsPanel";
 import SuggestionsPanel from "./components/SuggestionsPanel";
 import RuleTesterPanel from "./components/RuleTesterPanel";
 import { AgentResultRenderer } from "./components/AgentResultRenderers";
-import { useToast } from "./components/Toast";
+import { useOkErrToast } from "@/lib/toast-helpers";
 // import RulesPanel from "./components/RulesPanel";
 import { getReport, getAlerts, getMonthSummary, getMonthMerchants, getMonthFlows, agentTools, meta, resolveLatestMonthHybrid } from './lib/api'
 import RulesPanel from "./components/RulesPanel";
@@ -22,7 +22,7 @@ console.info("[Web] branch=", __WEB_BRANCH__, "commit=", __WEB_COMMIT__);
 
 
 const App: React.FC = () => {
-  const { push } = useToast();
+  const { ok } = useOkErrToast();
   const [month, setMonth] = useState<string>("");
   const [ready, setReady] = useState<boolean>(false);
   const [refreshKey, setRefreshKey] = useState<number>(0);
@@ -85,8 +85,8 @@ const App: React.FC = () => {
 
   const onCsvUploaded = useCallback(() => {
     setRefreshKey((k) => k + 1);
-    push({ title: "CSV ingested", message: "Transactions imported. Panels refreshed." });
-  }, [push]);
+    ok("Transactions imported. Panels refreshed.", "CSV ingested");
+  }, [ok]);
 
   if (!ready) {
     return <div className="p-6 text-[color:var(--text-muted)]">Loading…</div>;

@@ -1,6 +1,6 @@
 import React from 'react'
 
-type Props = React.PropsWithChildren<{ title?: string; right?: React.ReactNode; className?: string }>
+type Props = React.PropsWithChildren<{ title?: React.ReactNode; right?: React.ReactNode; className?: string }>
 export default function Card({ title, right, className, children }: Props) {
   return (
     <section className={`card ${className ?? ''}`}>

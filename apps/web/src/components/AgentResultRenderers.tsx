@@ -1,5 +1,7 @@
 // src/components/AgentResultRenderers.tsx
 import React from "react";
+import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
+import { InfoDot } from "./InfoDot";
 import { money, shortDate } from "../utils/format";
 import type {
   TransactionsSearchResult,
@@ -25,7 +27,7 @@ function Card({
   title,
   children,
   right,
-}: React.PropsWithChildren<{ title: string; right?: React.ReactNode }>) {
+}: React.PropsWithChildren<{ title: React.ReactNode; right?: React.ReactNode }>) {
   return (
     <div className="rounded-2xl border border-[color:var(--border-subtle)] bg-[var(--bg-card)] shadow-sm p-4 text-[var(--text)]">
       <div className="flex items-center justify-between mb-2">
@@ -107,7 +109,21 @@ export function CategorizeResultCard({ data }: { data: CategorizeResult }) {
 export function BudgetSummaryCard({ data }: { data: BudgetSummaryResult }) {
   const rows = (data.totals ?? []).map((x) => [x.category, money(x.budget ?? null), money(x.actual)]);
   return (
-    <Card title={`Budget Summary ${data.month ? `— ${data.month}` : ""}`}>
+    <Card
+      title={
+        <div className="flex items-center gap-2">
+          <span>Budget Summary {data.month ? `— ${data.month}` : ""}</span>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <InfoDot />
+            </TooltipTrigger>
+            <TooltipContent>
+              Shows budgeted vs actual by category for the selected month.
+            </TooltipContent>
+          </Tooltip>
+        </div>
+      }
+    >
       <T header={["Category", "Budget", "Actual"]} rows={rows} />
     </Card>
   );
@@ -145,7 +161,21 @@ export function InsightSummaryCard({ data }: { data: InsightSummaryResult }) {
 
   return (
     <div className="grid md:grid-cols-2 gap-3">
-      <Card title={`Summary ${data.month ? `— ${data.month}` : ""}`}>
+      <Card
+        title={
+          <div className="flex items-center gap-2">
+            <span>Summary {data.month ? `— ${data.month}` : ""}</span>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <InfoDot />
+              </TooltipTrigger>
+              <TooltipContent>
+                Shows total income, spending, and net balance for the selected month.
+              </TooltipContent>
+            </Tooltip>
+          </div>
+        }
+      >
         <div className="text-sm space-y-1">
           <div className="text-[color:var(--text-muted)]">Income</div>
           <div className="text-2xl font-semibold text-[var(--text-strong)]">{money(income)}</div>
@@ -193,7 +223,21 @@ export function InsightSummaryCard({ data }: { data: InsightSummaryResult }) {
 
 export function ChartsSummaryCard({ data }: { data: ChartsSummaryResult }) {
   return (
-    <Card title={`Chart Summary ${data.month ? `— ${data.month}` : ""}`}>
+    <Card
+      title={
+        <div className="flex items-center gap-2">
+          <span>Chart Summary {data.month ? `— ${data.month}` : ""}</span>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <InfoDot />
+            </TooltipTrigger>
+            <TooltipContent>
+              High‑level totals (income, spend, net) for the selected month.
+            </TooltipContent>
+          </Tooltip>
+        </div>
+      }
+    >
       <div className="grid grid-cols-3 gap-3 text-sm">
         <div>
           <div className="text-[color:var(--text-muted)]">Income</div>

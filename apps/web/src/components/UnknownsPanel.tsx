@@ -1,9 +1,12 @@
 import React, { useEffect, useState } from 'react'
 import Card from './Card'
-import { getUnknowns, categorizeTxn } from '../lib/api'
 import EmptyState from './EmptyState'
-import { setRuleDraft } from '../state/rulesDraft'
-import { useToast } from './Toast'
+import { getUnknowns, categorizeTxn } from '@/api'
+import { setRuleDraft } from '@/state/rulesDraft'
+import { getGlobalMonth } from '@/state/month'
+import { useOkErrToast } from '@/lib/toast-helpers'
+import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
+import { InfoDot } from './InfoDot'
 
 export default function UnknownsPanel({ month, onSeedRule, onChanged, refreshKey }: {
   month?: string
@@ -11,12 +14,12 @@ export default function UnknownsPanel({ month, onSeedRule, onChanged, refreshKey
   onChanged?: () => void
   refreshKey?: number
 }) {
-  const { push } = useToast();
   const [items, setItems] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [empty, setEmpty] = useState(false)
   const [resolvedMonth, setResolvedMonth] = useState<string | null>(null)
+  const { ok, err } = useOkErrToast()
 
   async function load() {
     setLoading(true)
@@ -36,6 +39,7 @@ export default function UnknownsPanel({ month, onSeedRule, onChanged, refreshKey
       }
     } catch (e: any) {
       setError(e?.message ?? String(e))
+      err('Could not fetch uncategorized transactions.', 'Failed to load')
     } finally { setLoading(false) }
   }
   useEffect(()=>{ load() }, [month, refreshKey])
@@ -54,20 +58,37 @@ export default function UnknownsPanel({ month, onSeedRule, onChanged, refreshKey
       enabled: true,
       when: { description_like },
       then: { category: '' },
-    })
-    push({ title: 'Rule draft sent', message: 'Open Rule Tester to review and save.' })
+      // pass current global month so Rule Tester can honor it when toggle is off
+      // (Rule Tester will sync to global month when toggle is on)
+      month: getGlobalMonth() || undefined,
+    } as any)
+  ok('Merchant & description copied; adjust and test.', 'Seeded into Rule Tester')
     const el = document.querySelector('#rule-tester-anchor')
     if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 
   const titleMonth = (resolvedMonth ?? month) ? `— ${resolvedMonth ?? month}` : '— (latest)'
   return (
-    <Card title={`Unknowns ${titleMonth}`} right={<span className="text-sm opacity-70">{items.length}</span>}>
+    <Card title={`Unknowns ${titleMonth}`}>
       {loading && <div className="opacity-70">Loading…</div>}
       {error && !empty && <div className="text-sm text-rose-300">{error}</div>}
       {empty && !error && (
         <EmptyState title="No transactions yet" note="Upload a CSV to view and categorize unknowns." />
       )}
+      <div className="flex items-center justify-between mb-2 text-sm font-medium">
+        <div className="flex items-center gap-2">
+          <span>Uncategorized transactions</span>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <InfoDot />
+            </TooltipTrigger>
+            <TooltipContent>
+              These are transactions without a category. Use “Seed rule” to quickly create a rule in the Rule Tester.
+            </TooltipContent>
+          </Tooltip>
+        </div>
+        <div className="text-xs opacity-70">Review → Seed → Categorize</div>
+      </div>
       <ul className="space-y-2">
         {items.map(tx => (
           <li key={tx.id} className="rounded-lg border border-neutral-800 p-3 bg-neutral-900">
@@ -82,7 +103,20 @@ export default function UnknownsPanel({ month, onSeedRule, onChanged, refreshKey
               </div>
             </div>
             <div className="mt-2 flex gap-2">
-              <button className="px-2 py-1 rounded bg-neutral-800" onClick={()=> seedRuleFromRow(tx)}>Seed rule</button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    className="btn btn-sm hover:bg-accent"
+                    onClick={()=> seedRuleFromRow(tx)}
+                    aria-label="Seed rule (prefill Rule Tester)"
+                  >
+                    Seed rule
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  Sends merchant/description (and current month) into Rule Tester so you can test & save a rule quickly.
+                </TooltipContent>
+              </Tooltip>
               {['Groceries','Dining','Shopping'].map(c => (
                 <button key={c} className="px-2 py-1 rounded bg-blue-700 hover:bg-blue-600" onClick={()=>quickApply(tx.id, c)}>
                   Apply {c}
