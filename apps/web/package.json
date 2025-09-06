@@ -10,6 +10,7 @@
     "smoke:backend": "powershell -ExecutionPolicy Bypass -File ../backend/app/scripts/smoke-backend.ps1"
   },
   "dependencies": {
+    "@radix-ui/react-tooltip": "^1.2.8",
     "lucide-react": "^0.542.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",

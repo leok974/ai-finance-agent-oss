@@ -15,6 +15,7 @@ import ChartsPanel from "./components/ChartsPanel";
 import TopEmptyBanner from "./components/TopEmptyBanner";
 // import AgentChat from "./components/AgentChat"; // legacy chat bubble disabled
 import { setGlobalMonth } from "./state/month";
+import { Providers } from "@/components/Providers";
 
 // Log frontend version info
 console.info("[Web] branch=", __WEB_BRANCH__, "commit=", __WEB_COMMIT__);
@@ -93,6 +94,7 @@ const App: React.FC = () => {
 
   return (
     <MonthContext.Provider value={{ month, setMonth }}>
+      <Providers>
       <ChatDockProvider>
       <div className="min-h-screen bg-gray-50 text-gray-900 p-6 dark:bg-gray-950 dark:text-gray-100">
         <div className="relative">
@@ -134,7 +136,8 @@ const App: React.FC = () => {
         </div>
       </div>
   </div>
-      </ChatDockProvider>
+  </ChatDockProvider>
+  </Providers>
     </MonthContext.Provider>
   );
 };
