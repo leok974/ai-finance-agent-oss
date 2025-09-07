@@ -145,6 +145,33 @@ export type RuleTestResult = {
   }>;
 };
 
+// Unified test payload/response for POST /rules/test
+export type RuleTestPayload = { rule: RuleInput; month?: string };
+export type RuleTestResponse = { count: number; sample: any[]; month?: string };
+
+/**
+ * Test a rule against transactions for a month (YYYY-MM).
+ * Backend route: POST /rules/test  -> { count, sample: [...] }
+ * Also tolerates legacy shapes and normalizes to { count, sample }.
+ */
+export async function testRule(payload: RuleTestPayload): Promise<RuleTestResponse> {
+  const res = await http<any>(`/rules/test`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+  // Normalize result
+  if (Array.isArray(res)) {
+    return { count: res.length, sample: res };
+  }
+  if (res && typeof res === 'object') {
+    const count = Number((res as any).count ?? (res as any).matched_count ?? (res as any).total ?? (res as any).matches ?? 0) || 0;
+    const sample = Array.isArray((res as any).sample) ? (res as any).sample : [];
+    const month = (res as any).month;
+    return { count, sample, month };
+  }
+  return { count: 0, sample: [] };
+}
+
 export type GetRulesParams = { active?: boolean; q?: string; limit?: number; offset?: number };
 export type GetRulesResponse = { items: RuleListItem[]; total: number; limit: number; offset: number };
 export async function getRules(params: GetRulesParams = {}): Promise<GetRulesResponse> {
@@ -158,11 +185,6 @@ export async function getRules(params: GetRulesParams = {}): Promise<GetRulesRes
 }
 export const listRules = getRules;
 // New brief list endpoint returning items[] with optional active filter
-export async function getRulesList(params?: { active?: boolean }): Promise<{ items: RuleListItem[] }>
-{
-  const qs = params && typeof params.active !== 'undefined' ? `?active=${params.active}` : '';
-  return http<{ items: RuleListItem[] }>(`/rules/list${qs}`);
-}
 export const deleteRule = (id: number) => http(`/rules/${id}`, { method: 'DELETE' });
 // Enhanced createRule with richer FastAPI error reporting (e.g., 422 validation errors)
 export async function createRule(body: RuleInput): Promise<RuleCreateResponse> {
@@ -230,58 +252,15 @@ export async function reclassifyAll(month?: string): Promise<{
   );
 }
 
-// One-click: Save → Train → Reclassify
-// Detect a 404 based on error message thrown by http()/fetchJson()
-function _is404(err: any): boolean {
-  const msg = String((err && (err.message || err)) || "");
-  return /^404\b/.test(msg) || msg.includes(" 404 ") || /Not Found/i.test(msg);
-}
-
-// One-click: Save → Train → Reclassify, preferring unified backend route with fallback
+// One-click: Save → Train → Reclassify (no client-side fallback; unified endpoint is required)
 export async function saveTrainReclassify(
-  payloadOrRule: { rule: RuleInput; month?: string } | RuleInput,
-  maybeMonth?: string
-): Promise<{ rule_id: string; display_name: string; reclassified: number } & Record<string, any>> {
-  const payload: { rule: RuleInput; month?: string } =
-    (payloadOrRule && (payloadOrRule as any).then !== undefined && (payloadOrRule as any).rule === undefined)
-      ? { rule: payloadOrRule as RuleInput, month: maybeMonth }
-      : (payloadOrRule as { rule: RuleInput; month?: string });
-
-  // 1) Try unified backend endpoint
-  try {
-    const res = await http(`/rules/save-train-reclass`, {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    });
-    // res: { rule_id, display_name, reclassified }
-    return res as { rule_id: string; display_name: string; reclassified: number } & Record<string, any>;
-  } catch (err) {
-    if (!_is404(err)) throw err;
-  }
-
-  // 2) Fallback to existing client-side orchestration
-  const created = await createRule(payload.rule);
-  try {
-    await trainModel({ min_samples: 6, test_size: 0.2 });
-  } catch (e) {
-    if (!_is404(e)) throw e;
-  }
-  const re = await http(`/txns/reclassify${payload.month ? `?month=${encodeURIComponent(payload.month)}` : ''}`,
-    { method: 'POST', body: JSON.stringify({}) }
-  );
-  const reclassified = (() => {
-    if (Array.isArray(re)) return re.length;
-    if (re && typeof re === 'object') {
-      return Number((re as any).reclassified ?? (re as any).updated ?? (re as any).applied ?? (re as any).count ?? (re as any).total) || 0;
-    }
-    return 0;
-  })();
-  // Derive display name locally (or use server-returned name from createRule)
-  const like = String((payload.rule as any)?.when?.description_like || '').trim();
-  const categoryVal = String((payload.rule as any)?.then?.category || '').trim() || 'Uncategorized';
-  const derivedName = String((payload.rule as any)?.name || '').trim() || `${like || 'Any'} → ${categoryVal}`;
-  const display_name = (created as any)?.display_name || derivedName;
-  return { rule_id: (created as any)?.id ?? (created as any)?.rule_id ?? '', display_name, reclassified } as any;
+  payload: { rule: RuleInput; month?: string }
+): Promise<{ rule_id: string; display_name: string; reclassified: number }> {
+  const res = await http<{ rule_id: string; display_name: string; reclassified: number }>(`/rules/save-train-reclass`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+  return res;
 }
 
 // ---------- Explain & Agent ----------

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { getRules, deleteRule, type Rule, type RuleInput } from '@/api';
+import { getRules, deleteRule, type Rule, type RuleInput, type RuleListItem } from '@/api';
 import { addRule } from '@/state/rules';
 import { useOkErrToast } from '@/lib/toast-helpers';
 import { useToast } from '@/hooks/use-toast';
@@ -14,7 +14,7 @@ type Props = { refreshKey?: number };
 export default function RulesPanel({ refreshKey }: Props) {
   const { ok, err } = useOkErrToast();
   const { toast } = useToast();
-  const [rules, setRules] = useState<Rule[] | null>(null);
+  const [rules, setRules] = useState<RuleListItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [creating, setCreating] = useState(false);
   const [q, setQ] = useState('');
@@ -39,17 +39,9 @@ export default function RulesPanel({ refreshKey }: Props) {
   async function load() {
     setLoading(true);
     try {
-      const res = await getRules({ q: q || undefined, limit, offset: page * limit });
-      const items = Array.isArray((res as any)?.items) ? (res as any).items : [];
-      const mapped: Rule[] = items.map((it: any) => ({
-        id: Number(it.id),
-        name: String(it.display_name || ''),
-        enabled: it.active !== false,
-        when: {},
-        then: { category: it.category },
-      }));
-      setRules(mapped);
-      setTotal(Number((res as any)?.total || mapped.length));
+  const res = await getRules({ q: q || undefined, limit, offset: page * limit });
+      setRules(Array.isArray(res.items) ? res.items : []);
+      setTotal(Number(res.total || 0));
     } catch (e) {
       err('Could not load rules list', 'Load failed');
     } finally {
@@ -264,12 +256,18 @@ export default function RulesPanel({ refreshKey }: Props) {
             <div key={rule.id} className="p-3 rounded-xl border flex items-center justify-between">
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
-                  <span className="font-medium truncate">{rule.name}</span>
-                  <span className={`text-xs px-2 py-0.5 rounded-full ${rule.enabled ? 'bg-emerald-600/10 text-emerald-600' : 'bg-zinc-600/10 text-zinc-500'}`}>
-                    {rule.enabled ? 'Enabled' : 'Disabled'}
+                  <span className="font-medium truncate">{rule.display_name}</span>
+                  <span className={`text-xs px-2 py-0.5 rounded-full ${(rule.active ?? true) ? 'bg-emerald-600/10 text-emerald-600' : 'bg-zinc-600/10 text-zinc-500'}`}>
+                    {(rule.active ?? true) ? 'Enabled' : 'Disabled'}
                   </span>
                   {(() => {
-                    const badge = getBadgeFor(rule);
+                    const badge = getBadgeFor({
+                      id: rule.id,
+                      name: rule.display_name,
+                      enabled: rule.active ?? true,
+                      when: {},
+                      then: { category: rule.category },
+                    } as Rule);
                     if (!badge) return null;
                     return (
                       <span
@@ -281,12 +279,14 @@ export default function RulesPanel({ refreshKey }: Props) {
                     );
                   })()}
                 </div>
-                <div className="text-xs opacity-80 truncate">
-                  when: {JSON.stringify(rule.when)} → then: {JSON.stringify(rule.then)}
-                </div>
+                {rule.category && (
+                  <div className="text-xs opacity-80 truncate">
+                    category: {rule.category}
+                  </div>
+                )}
               </div>
               <div className="flex items-center gap-2 shrink-0">
-                <button onClick={() => remove(rule)} className="text-xs px-2 py-1 rounded-lg border hover:bg-destructive/10 text-destructive">
+                <button onClick={() => remove({ id: rule.id, name: rule.display_name, enabled: rule.active ?? true, when: {}, then: { category: rule.category } })} className="text-xs px-2 py-1 rounded-lg border hover:bg-destructive/10 text-destructive">
                   Delete
                 </button>
               </div>
