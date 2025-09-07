@@ -1,5 +1,6 @@
-import React, { useEffect, useState } from 'react';
-import { getRules, createRule, updateRule, deleteRule, type Rule, type RuleInput } from '@/api';
+import React, { useEffect, useMemo, useState } from 'react';
+import { getRules, deleteRule, type Rule, type RuleInput } from '@/api';
+import { addRule } from '@/state/rules';
 import { useOkErrToast } from '@/lib/toast-helpers';
 import { useToast } from '@/hooks/use-toast';
 import { ToastAction } from '@/components/ui/toast';
@@ -16,6 +17,10 @@ export default function RulesPanel({ refreshKey }: Props) {
   const [rules, setRules] = useState<Rule[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [q, setQ] = useState('');
+  const [page, setPage] = useState(0);
+  const [total, setTotal] = useState(0);
+  const limit = 20;
   const [form, setForm] = useState<RuleInput>({
     name: '',
     enabled: true,
@@ -23,20 +28,39 @@ export default function RulesPanel({ refreshKey }: Props) {
     then: { category: '' },
   });
 
-  async function refresh() {
+  // Derived values for UX and validation
+  const { like, category, derivedName, canCreate } = useMemo(() => {
+    const _like = String((form as any)?.when?.description_like || '').trim();
+    const _category = String((form as any)?.then?.category || '').trim();
+    const _derivedName = (form?.name || '').trim() || `${_like || 'Any'} → ${_category || 'Uncategorized'}`;
+    return { like: _like, category: _category, derivedName: _derivedName, canCreate: _like.length > 0 && _category.length > 0 };
+  }, [form]);
+
+  async function load() {
     setLoading(true);
     try {
-      const data = await getRules();
-      setRules(data);
+      const res = await getRules({ q: q || undefined, limit, offset: page * limit });
+      const items = Array.isArray((res as any)?.items) ? (res as any).items : [];
+      const mapped: Rule[] = items.map((it: any) => ({
+        id: Number(it.id),
+        name: String(it.display_name || ''),
+        enabled: it.active !== false,
+        when: {},
+        then: { category: it.category },
+      }));
+      setRules(mapped);
+      setTotal(Number((res as any)?.total || mapped.length));
+    } catch (e) {
+      err('Could not load rules list', 'Load failed');
     } finally {
       setLoading(false);
     }
   }
 
-  useEffect(() => { refresh(); }, []);
+  useEffect(() => { load(); }, [q, page]);
   useEffect(() => {
     if (typeof refreshKey !== 'undefined') {
-      refresh();
+      load();
     }
   }, [refreshKey]);
 
@@ -44,21 +68,22 @@ export default function RulesPanel({ refreshKey }: Props) {
     e.preventDefault();
     setCreating(true);
     try {
-      if (!form.name?.trim()) throw new Error('Please name your rule.');
-      if (!form.then?.category?.trim()) throw new Error('Please set a target category.');
-      await createRule(form);
+  const like = String((form as any)?.when?.description_like || '').trim();
+      const category = (form?.then?.category || '').trim() || 'Uncategorized';
+      const name = (form?.name || '').trim() || `${like || 'Any'} → ${category}`;
+  const res = await addRule({ name, enabled: true, when: { description_like: like }, then: { category } } as any);
       // Seed Rule Tester with what you just created
       setRuleDraft({
-        name: form.name || '',
-        when: { description_like: (form?.when as any)?.description_like || '' },
-        then: { category: form?.then?.category || '' },
+        name: (res as any)?.display_name || name,
+        when: { description_like: like },
+        then: { category },
       });
       setForm({ name: '', enabled: true, when: { description_like: '' }, then: { category: '' } });
-      refresh();
+  load();
       // Use raw toast so we can attach actions
       toast({
         title: 'Rule created',
-        description: `“${form.name || 'Untitled'}” saved successfully.`,
+        description: `“${(res as any)?.display_name || name}” saved successfully.`,
         duration: 4000,
         action: (
           <div className="flex gap-2">
@@ -119,10 +144,21 @@ export default function RulesPanel({ refreshKey }: Props) {
             </TooltipContent>
           </Tooltip>
         </div>
-        {/* Right actions (md+): Refresh + Create (submits the form below) */}
+        {/* Search + pager + actions (md+) */}
         <div className="hidden md:flex items-center gap-2">
+          <input
+            className="field-input w-56"
+            placeholder="Search rules…"
+            value={q}
+            onChange={(e) => { setPage(0); setQ(e.target.value); }}
+          />
+          <div className="flex items-center gap-2 text-sm">
+            <button className="btn btn-sm" disabled={page===0} onClick={() => setPage(p=>Math.max(0,p-1))}>Prev</button>
+            <span>{page*limit+1}–{Math.min((page+1)*limit, total)} of {total}</span>
+            <button className="btn btn-sm" disabled={(page+1)*limit>=total} onClick={() => setPage(p=>p+1)}>Next</button>
+          </div>
           <button
-            onClick={refresh}
+            onClick={load}
             className="btn btn-sm hover:bg-accent"
             disabled={loading}
           >
@@ -131,8 +167,8 @@ export default function RulesPanel({ refreshKey }: Props) {
           <button
             type="submit"
             form="rules-create-form"
-            className="btn btn-sm hover:bg-accent"
-            disabled={creating}
+            className={`btn btn-sm hover:bg-accent ${!canCreate ? 'opacity-60 cursor-not-allowed' : ''}`}
+            disabled={creating || !canCreate}
             title="Create rule with the fields below"
           >
             {creating ? 'Creating…' : 'Create'}
@@ -159,6 +195,9 @@ export default function RulesPanel({ refreshKey }: Props) {
             onChange={(e) => setForm(f => ({ ...f, name: e.target.value }))}
             title="Short, descriptive name for the rule"
           />
+          <div className="text-xs opacity-70 mt-1">
+            Will save as: <span className="opacity-100">{derivedName}</span>
+          </div>
         </div>
         <div className="field col-span-5">
           <div className="field-label">
@@ -196,12 +235,19 @@ export default function RulesPanel({ refreshKey }: Props) {
             title="The category assigned to all matches"
           />
         </div>
-        {/* Mobile-only create (header has md+ create) */}
-        <div className="col-span-1 flex items-end md:hidden">
+        {/* Mobile-only search + create (header has md+ controls) */}
+        <div className="col-span-1 flex items-end md:hidden gap-2">
+          <input
+            className="field-input"
+            placeholder="Search rules…"
+            value={q}
+            onChange={(e) => { setPage(0); setQ(e.target.value); }}
+            title="Search by name or category"
+          />
           <button
             type="submit"
-            className="btn hover:bg-accent w-full"
-            disabled={creating}
+            className={`btn hover:bg-accent ${!canCreate ? 'opacity-60 cursor-not-allowed' : ''}`}
+            disabled={creating || !canCreate}
           >
             {creating ? 'Creating…' : 'Create'}
           </button>

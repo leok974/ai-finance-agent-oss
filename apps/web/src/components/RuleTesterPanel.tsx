@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { testRule, saveTrainReclassify, type RuleInput } from '@/api';
 import { useToast } from '@/hooks/use-toast';
 import { consumeRuleDraft, onOpenRuleTester } from '@/state/rulesDraft';
@@ -20,7 +20,21 @@ export default function RuleTesterPanel({ onChanged }: { onChanged?: () => void 
   const [useCurrentMonth, setUseCurrentMonth] = useState<boolean>(true);
   const [testing, setTesting] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [result, setResult] = useState<null | { matched_count: number; sample: any[] }>(null);
+  const [result, setResult] = useState<null | { matched_count?: number; count?: number; sample: any[] }>(null);
+
+  // Derived values for UX and payloads
+  const { like, category, derivedName, canTest, canSave } = useMemo(() => {
+    const _like = String(form.when?.description_like || '').trim();
+    const _category = String(form.then?.category || '').trim();
+    const _derivedName = (form.name || '').trim() || `${_like || 'Any'} → ${_category || 'Uncategorized'}`;
+    return {
+      like: _like,
+      category: _category,
+      derivedName: _derivedName,
+      canTest: _like.length > 0,
+      canSave: _like.length > 0 && _category.length > 0,
+    };
+  }, [form]);
 
   // Smooth scroll helper for CTA buttons (charts / unknowns)
   React.useEffect(() => {
@@ -61,8 +75,24 @@ export default function RuleTesterPanel({ onChanged }: { onChanged?: () => void 
     setTesting(true);
     setResult(null);
     try {
-      if (!form.then?.category?.trim()) throw new Error('Please choose a category to set.');
-      const r = await testRule(form, month || undefined);
+      const descLike = String((form as any)?.when?.description_like || '').trim();
+      const safeRule = {
+        ...form,
+        when: { ...(form.when || {} as any), description_like: descLike },
+        then: { category: form.then?.category?.trim() || 'Uncategorized' },
+      } as RuleInput;
+      console.debug('TEST payload', {
+        rule: {
+          name: form.name,
+          when: { description_like: descLike },
+          then: { category: form.then?.category || '' },
+        },
+        month: (useCurrentMonth ? getGlobalMonth() : month) || undefined,
+      });
+      const r = await testRule({
+        rule: safeRule,
+        month: (useCurrentMonth ? getGlobalMonth() : month) || undefined,
+      });
       setResult(r);
       // Infer match count for UX feedback
       let matchCount = 0;
@@ -93,8 +123,8 @@ export default function RuleTesterPanel({ onChanged }: { onChanged?: () => void 
       try {
         const key = 'ruleTestCache';
         const cache = JSON.parse(localStorage.getItem(key) || '{}');
-        const ruleKey = (form.name?.trim()) || JSON.stringify(form.when || {});
-        cache[ruleKey] = { matched_count: r.matched_count, tested_at: new Date().toISOString() };
+  const ruleKey = (form.name?.trim()) || JSON.stringify(form.when || {});
+  cache[ruleKey] = { matched_count: (r as any).matched_count ?? (r as any).count ?? 0, tested_at: new Date().toISOString() };
         localStorage.setItem(key, JSON.stringify(cache));
       } catch {}
     } catch (e: any) {
@@ -112,77 +142,62 @@ export default function RuleTesterPanel({ onChanged }: { onChanged?: () => void 
   async function onSaveTrainReclass() {
     setSaving(true);
     try {
-      // Smooth scroll helper for CTA buttons
-
-      const effectiveMonth = useCurrentMonth ? (getGlobalMonth() || '') : month;
-      const { saved, trained, reclass } = await saveTrainReclassify(
-        form,
-        effectiveMonth || undefined
-      );
+      const like = String(form.when?.description_like || '').trim();
+      const categoryVal = (form.then?.category || '').trim() || 'Uncategorized';
+      const derivedName = (form.name || '').trim() || `${like || 'Any'} → ${categoryVal}`;
+      const res = await saveTrainReclassify({
+        rule: {
+          name: derivedName,
+          when: { description_like: like },
+          then: { category: categoryVal },
+        },
+        month: useCurrentMonth ? getGlobalMonth() : month,
+      } as any);
 
       // Infer how many transactions were reclassified (if API provides it)
+      const reclass = (res as any)?.reclass;
       let reclassCount = 0;
       if (Array.isArray(reclass)) reclassCount = reclass.length;
       else if (reclass && typeof reclass === 'object') {
-        reclassCount =
-          Number(
-            (reclass as any).updated ??
-              (reclass as any).applied ??
-              (reclass as any).reclassified ??
-              (reclass as any).count ??
-              (reclass as any).total
-          ) || 0;
-      }
-      const category = form.then?.category || '—';
-      const name = form.name?.trim() || 'Untitled';
-
-      if (!reclass) {
-        toast({
-          title: 'Rule saved & model retrained',
-          description:
-            `Applied “${name}”. Reclassify endpoint not available; category would be “${category}”.`,
-          duration: 5000,
-          action: (
-            <div className="flex gap-2">
-              <ToastAction altText="View charts" onClick={() => scrollToId('charts-panel')}>
-                View charts
-              </ToastAction>
-              <ToastAction altText="View unknowns" onClick={() => scrollToId('unknowns-panel')}>
-                View unknowns
-              </ToastAction>
-            </div>
-          ),
-        });
-        console.info(
-          'Try:\nInvoke-RestMethod -Method POST http://127.0.0.1:8000/txns/reclassify -Body "{}" -ContentType "application/json"'
-        );
+        reclassCount = Number(
+          (reclass as any).updated ??
+          (reclass as any).applied ??
+          (reclass as any).reclassified ??
+          (reclass as any).count ??
+          (reclass as any).total
+        ) || 0;
       } else {
-        toast({
-          title: 'Rule saved & model retrained',
-          description:
-            reclassCount > 0
-              ? `Applied “${name}”. Reclassified ${reclassCount} transaction${reclassCount === 1 ? '' : 's'} to “${category}”.`
-              : `Applied “${name}”. Category set to “${category}”. No transactions needed reclassification.`,
-          duration: 5000,
-          action: (
-            <div className="flex gap-2">
-              <ToastAction altText="View charts" onClick={() => scrollToId('charts-panel')}>
-                View charts
-              </ToastAction>
-              <ToastAction altText="View unknowns" onClick={() => scrollToId('unknowns-panel')}>
-                View unknowns
-              </ToastAction>
-            </div>
-          ),
-        });
+        reclassCount = Number((res as any)?.reclassified ?? 0) || 0;
       }
+      const category = categoryVal;
+      const name = (res as any)?.display_name || derivedName;
 
-      // Cache id->name mapping if backend returned a saved rule id
+      toast({
+        title: 'Rule saved & model retrained',
+        description:
+          reclassCount > 0
+            ? `Applied “${name}”. Reclassified ${reclassCount} transaction${reclassCount === 1 ? '' : 's'} to “${category}”.`
+            : `Applied “${name}”. Category set to “${category}”. No transactions needed reclassification.`,
+        duration: 5000,
+        action: (
+          <div className="flex gap-2">
+            <ToastAction altText="View charts" onClick={() => scrollToId('charts-panel')}>
+              View charts
+            </ToastAction>
+            <ToastAction altText="View unknowns" onClick={() => scrollToId('unknowns-panel')}>
+              View unknowns
+            </ToastAction>
+          </div>
+        ),
+      });
+
+      // Cache id->name mapping using unified response
       try {
         const key = 'ruleIdNameMap';
         const map = JSON.parse(localStorage.getItem(key) || '{}');
-        if ((saved as any)?.id && form?.name) {
-          map[(saved as any).id] = form.name;
+        const rid = (res as any)?.rule_id;
+        if (rid) {
+          map[rid] = name;
           localStorage.setItem(key, JSON.stringify(map));
         }
       } catch {}
@@ -336,8 +351,8 @@ export default function RuleTesterPanel({ onChanged }: { onChanged?: () => void 
         <div className="col-span-12 flex items-center justify-end gap-3 flex-wrap md:flex-nowrap">
           <button
             type="submit"
-            className="btn hover:bg-accent w-full sm:w-auto shrink-0"
-            disabled={testing}
+            className={`btn hover:bg-accent w-full sm:w-auto shrink-0 ${!canTest ? 'opacity-60 cursor-not-allowed' : ''}`}
+            disabled={testing || !canTest}
           >
             {testing ? 'Testing…' : 'Test rule'}
           </button>
@@ -352,8 +367,8 @@ export default function RuleTesterPanel({ onChanged }: { onChanged?: () => void 
           <button
             onClick={onSaveTrainReclass}
             type="button"
-            className="btn hover:bg-accent w-full sm:w-auto shrink-0 font-semibold"
-            disabled={saving}
+            className={`btn hover:bg-accent w-full sm:w-auto shrink-0 font-semibold ${!canSave ? 'opacity-60 cursor-not-allowed' : ''}`}
+            disabled={saving || !canSave}
           >
             {saving ? 'Saving → Training → Reclassifying…' : 'Save → Retrain → Reclassify'}
           </button>
