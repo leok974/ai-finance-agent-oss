@@ -79,7 +79,7 @@ def test_rule(body: RuleBody, db: Session = Depends(get_db)) -> TestResp:
     sample = [
         HitDTO(
             id=t.id,
-            date=str(t.date),
+            date=(t.date.isoformat() if getattr(t, "date", None) else ""),
             month=t.month,
             merchant=t.merchant or "",
             description=t.description or "",

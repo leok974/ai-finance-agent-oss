@@ -28,6 +28,10 @@ except Exception:
 
 app = FastAPI(title="AI Finance Agent", version="0.1.0")
 
+@app.get("/ping")
+def root_ping():
+    return {"ok": True}
+
 @app.on_event("startup")
 def _create_tables_dev():
     # Dev convenience for SQLite; guard to avoid conflicts with Alembic

@@ -5,9 +5,9 @@ from sqlalchemy.orm import Session
 from app.services.rules_apply import latest_month_from_data, apply_all_active_rules
 
 
-def reclassify_transactions(db: Session, month: Optional[str] = None) -> int:
+def reclassify_transactions(db: Session, month: Optional[str] = None, *, force: bool = False) -> int:
     m = month or latest_month_from_data(db)
     if not m:
         return 0
-    applied, _skipped, _details = apply_all_active_rules(db, m)
+    applied, _skipped, _details = apply_all_active_rules(db, m, force=force)
     return int(applied)

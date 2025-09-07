@@ -21,6 +21,7 @@ export default function RuleTesterPanel({ onChanged }: { onChanged?: () => void 
   const [testing, setTesting] = useState(false);
   const [saving, setSaving] = useState(false);
   const [result, setResult] = useState<null | { matched_count?: number; count?: number; sample: any[] }>(null);
+  const [force, setForce] = useState(false); // override existing categories when reclassifying
 
   // Derived values for UX and payloads
   const { like, category, derivedName, canTest, canSave } = useMemo(() => {
@@ -151,7 +152,8 @@ export default function RuleTesterPanel({ onChanged }: { onChanged?: () => void 
           when: { description_like: like },
           then: { category: categoryVal },
         },
-        month: useCurrentMonth ? getGlobalMonth() : month,
+  month: useCurrentMonth ? getGlobalMonth() : month,
+  force,
       } as any);
 
       // Infer how many transactions were reclassified (if API provides it)
@@ -176,8 +178,8 @@ export default function RuleTesterPanel({ onChanged }: { onChanged?: () => void 
         title: 'Rule saved & model retrained',
         description:
           reclassCount > 0
-            ? `Applied “${name}”. Reclassified ${reclassCount} transaction${reclassCount === 1 ? '' : 's'} to “${category}”.`
-            : `Applied “${name}”. Category set to “${category}”. No transactions needed reclassification.`,
+            ? `Applied “${name}”. Reclassified ${reclassCount} transaction${reclassCount === 1 ? '' : 's'} to “${category}”${force ? ' (override on)' : ''}.`
+            : `Applied “${name}”. Category set to “${category}”. No transactions needed reclassification${force ? ' (override on)' : ''}.`,
         duration: 5000,
         action: (
           <div className="flex gap-2">
@@ -260,6 +262,14 @@ export default function RuleTesterPanel({ onChanged }: { onChanged?: () => void 
              />
              Use current month
            </label>
+          <label className="btn-toggle whitespace-nowrap" title="Override existing categories when reclassifying">
+            <input
+              type="checkbox"
+              checked={force}
+              onChange={(e) => setForce(e.target.checked)}
+            />
+            Override existing
+          </label>
          </div>
        </div>
 
@@ -283,6 +293,18 @@ export default function RuleTesterPanel({ onChanged }: { onChanged?: () => void 
             onChange={(e) => setForm(f => ({ ...f, name: e.target.value }))}
             title="A label for this rule (optional for testing)"
           />
+        </div>
+
+        {/* Mobile: override existing toggle */}
+        <div className="col-span-12 md:hidden flex justify-center">
+          <label className="btn-toggle">
+            <input
+              type="checkbox"
+              checked={force}
+              onChange={(e) => setForce(e.target.checked)}
+            />
+            Override existing
+          </label>
         </div>
         <div className="field col-span-12 md:col-span-6">
           <div className="field-label">

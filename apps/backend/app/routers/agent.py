@@ -12,6 +12,7 @@ from pydantic import BaseModel, field_validator
 
 from app.db import get_db
 from app.orm_models import Transaction
+from app.schemas.transactions import txn_to_dict
 
 # Import existing agent tools endpoints
 from app.routers import agent_tools_charts, agent_tools_budget, agent_tools_insights 
@@ -118,16 +119,7 @@ def latest_txn_for_month(db: Session, month: str) -> Optional[Dict[str, Any]]:
         ).order_by(desc(Transaction.date), desc(Transaction.id)).first()
         
         if txn:
-            return {
-                "id": txn.id,
-                "date": str(txn.date),
-                "merchant": txn.merchant,
-                "description": txn.description,
-                "amount": txn.amount,
-                "category": txn.category,
-                "account": txn.account,
-                "month": txn.month
-            }
+            return txn_to_dict(txn)
     except Exception as e:
         logging.warning(f"Failed to find latest transaction for month {month}: {e}")
     

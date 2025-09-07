@@ -5,6 +5,10 @@ import argparse
 from pathlib import Path
 
 from app.scripts.seed_demo import seed as seed_demo, _default_sample_csv
+from app.db import SessionLocal
+from app.orm_models import Transaction
+from sqlalchemy import func
+import os, hashlib, random
 from app.scripts.backfill_month import backfill_months
 
 
@@ -46,6 +50,45 @@ def main():
         where_null_only=args.backfill_where_null_only,
         target_month=args.backfill_month,
     )
+
+    # Guarantee a few unknowns for UI/testing (reproducible)
+    try:
+        sess = SessionLocal()
+        # Determine target month (latest in DB), filter IDs by month
+        target_month = sess.query(func.max(Transaction.month)).scalar()
+        if target_month:
+            ids = [row[0] for row in sess.query(Transaction.id).filter(Transaction.month == target_month).all()]
+        else:
+            ids = [row[0] for row in sess.query(Transaction.id).all()]
+
+        # Configurable count via env var
+        try:
+            desired = int(os.getenv("DEV_UNKNOWN_COUNT", "7"))
+        except Exception:
+            desired = 7
+
+        # Deterministic per-month selection: hash month to seed RNG
+        seed_value = hashlib.md5((target_month or "ALL").encode("utf-8")).digest()[:8]
+        random.seed(int.from_bytes(seed_value, "big"))
+        N = min(desired, len(ids))
+        if N > 0:
+            for txn_id in random.sample(ids, N):
+                txn = sess.get(Transaction, txn_id)
+                if txn:
+                    txn.category = None
+                    if hasattr(txn, "raw_category"):
+                        txn.raw_category = None
+            sess.commit()
+            print(f"[dev_seed] Set {N} transactions to unknown category for demo (month={target_month}).")
+        else:
+            print("[dev_seed] No transactions found to mark as unknowns.")
+    except Exception as e:
+        print(f"[dev_seed] Skipped marking unknowns due to error: {e}")
+    finally:
+        try:
+            sess.close()
+        except Exception:
+            pass
 
     print(
         f"Done. Seeded {added} transactions from {csv_path}. "

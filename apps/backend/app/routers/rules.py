@@ -8,11 +8,25 @@ from app.orm_models import Rule
 from app.services.rules_apply import latest_month_from_data, apply_all_active_rules
 from app.services import rules_service, ml_train_service, txns_service
 from app.orm_models import Transaction
-from app.schemas.rules import SaveTrainPayload, SaveTrainResponse, RuleCreateResponse, RuleTestPayload, RuleTestResponse, RuleListItem, RuleListResponse
+from app.schemas.rules import (
+    SaveTrainPayload,
+    SaveTrainResponse,
+    RuleCreateResponse,
+    RuleTestPayload,
+    RuleTestResponse,
+    RuleListItem,
+    RuleListResponse,
+    TransactionSample,
+)
+from app.schemas.transactions import txn_to_dict
 from datetime import datetime, date
 # from app.schemas import RuleIn  # optional: use a separate schema for input
 
 router = APIRouter()
+
+@router.get("/ping")
+def ping():
+    return {"ok": True}
 
 def _derived_name_from_fields(target: Optional[str], pattern: Optional[str], category: Optional[str]) -> str:
     like = (pattern or "").strip()
@@ -83,13 +97,16 @@ def list_rules(
         base = base.filter(Rule.active == bool(active))
     if q:
         like = f"%{q.strip()}%"
-        exprs = [
-            Rule.pattern.ilike(like),
-            Rule.merchant.ilike(like),
-            Rule.description.ilike(like),
-            Rule.category.ilike(like),
-        ]
-        base = base.filter(or_(*exprs))
+        conds = []
+        # Include Rule.name when available on ORM model
+        if hasattr(Rule, "name"):
+            conds.append(Rule.name.ilike(like))
+        # Only append valid conditions; avoid placing raw False/None into or_()
+        for col in (getattr(Rule, "pattern", None), getattr(Rule, "merchant", None), getattr(Rule, "description", None), getattr(Rule, "category", None)):
+            if col is not None:
+                conds.append(col.ilike(like))
+        if conds:
+            base = base.filter(or_(*conds))
 
     total = base.with_entities(func.count(Rule.id)).scalar() or 0
     rows = base.order_by(Rule.updated_at.desc()).limit(limit).offset(offset).all()
@@ -200,67 +217,36 @@ def _month_bounds(yyyy_mm: Optional[str]) -> tuple[Optional[date], Optional[date
     summary="Test a rule against transactions",
     description="Matches transactions by description/merchant for the given month (YYYY-MM). Returns a count and a small sample.",
 )
-def test_rule(
-    payload: RuleTestPayload = Body(...),
-    db: Session = Depends(get_db),
-    month: Optional[str] = Query(None, description="YYYY-MM; optional; overrides body.month if provided"),
-):
-    """
-    Test a rule against transactions for an optional month window.
-    - Filters by month: [first day, next month first day)
-    - Matches case-insensitive on description OR merchant
-    - Returns a count and a small sample
-    Compatible with two payload shapes:
-      1) { rule: { when: { description_like } }, month?: 'YYYY-MM' }
-      2) legacy: rule object directly in body and month passed as query param
-    """
-    # Unify payload shape
-    rule_obj = payload.rule if hasattr(payload, "rule") else (payload.get("rule") if isinstance(payload, dict) else None)
-    month_val = month or (payload.month if hasattr(payload, "month") else (payload.get("month") if isinstance(payload, dict) else None))
+def test_rule(payload: RuleTestPayload, db: Session = Depends(get_db)):
+    # Validate presence of rule.when
+    if payload.rule is None or getattr(payload.rule, "when", None) is None:
+        raise HTTPException(status_code=400, detail="Missing rule.when")
 
-    # Extract like string
-    like_val = None
-    if isinstance(rule_obj, dict):
-        w = rule_obj.get("when") or {}
-        like_val = (w.get("description_like") or "").strip()
-    else:
-        try:
-            w = getattr(rule_obj, "when", None) or {}
-            like_val = (getattr(w, "description_like", "") or "").strip()
-        except Exception:
-            like_val = ""
-
+    like_val = (getattr(payload.rule.when, "description_like", "") or "").strip()
     if not like_val:
-        return {"count": 0, "sample": []}
+        return RuleTestResponse(count=0, sample=[])
 
     q = db.query(Transaction)
-    # Prefer indexed equality on Transaction.month if provided
-    if month_val:
-        q = q.filter(Transaction.month == month_val)
-    # Alternatively, use date bounds if you prefer:
-    # else:
-    #     start_d, end_d = _month_bounds(month_val)
-    #     if start_d and end_d:
-    #         q = q.filter(and_(Transaction.date >= start_d, Transaction.date < end_d))
-
+    if payload.month:
+        q = q.filter(Transaction.month == payload.month)
     like_expr = f"%{like_val}%"
-    q = q.filter(or_(Transaction.description.ilike(like_expr), Transaction.merchant.ilike(like_expr)))
-
-    total = q.count()
-    rows = q.order_by(Transaction.date.desc(), Transaction.id.desc()).limit(10).all()
-    sample = [
-        {
-            "id": getattr(r, "id", None),
-            "date": str(getattr(r, "date", "")),
-            "merchant": getattr(r, "merchant", None),
-            "description": getattr(r, "description", None),
-            "amount": float(getattr(r, "amount", 0.0) or 0.0),
-            "category": getattr(r, "category", None),
-        }
-        for r in rows
-    ]
-
-    return {"count": int(total), "sample": sample, "month": month_val}
+    try:
+        q = q.filter(or_(Transaction.description.ilike(like_expr), Transaction.merchant.ilike(like_expr)))
+        total = q.count()
+        rows = q.order_by(Transaction.date.desc(), Transaction.id.desc()).limit(5).all()
+        sample = [
+            {
+                "id": d["id"],
+                "merchant": d.get("merchant"),
+                "description": d.get("description"),
+                "date": d.get("date"),
+            }
+            for d in (txn_to_dict(t) for t in rows)
+        ]
+        return RuleTestResponse(count=int(total), sample=sample)
+    except Exception as e:
+        # Surface a clear 400 instead of connection reset
+        raise HTTPException(status_code=400, detail=f"Test failed: {e}")
 
 
 # --- Save → Train → Reclassify (convenience endpoint) -----------------------
@@ -274,17 +260,27 @@ def test_rule(
     description="Saves a rule, retrains the model (if available), and reclassifies transactions for the selected month.",
 )
 def save_train_reclass(payload: SaveTrainPayload, db: Session = Depends(get_db)) -> SaveTrainResponse:
-    # 1) Save rule via service
-    r = rules_service.create_rule(db, payload.rule)
-
-    # 2) Retrain model (best-effort)
+    # Validate presence of rule.then
+    if payload.rule is None or getattr(payload.rule, "then", None) is None:
+        raise HTTPException(status_code=400, detail="Missing rule.then")
     try:
-        ml_train_service.retrain_model(db, month=payload.month, min_samples=6, test_size=0.2)
-    except Exception:
-        pass
+        # 1) Save rule via service
+        r = rules_service.create_rule(db, payload.rule)
 
-    # 3) Reclassify and return count
-    count = txns_service.reclassify_transactions(db, payload.month)
-    # Prefer service-attached display_name; fallback to derived
-    display_name = getattr(r, "display_name", None) or _derived_name_from_fields(getattr(r, "target", None), getattr(r, "pattern", None), getattr(r, "category", None))
-    return SaveTrainResponse(rule_id=str(r.id), display_name=display_name, reclassified=int(count))
+        # 2) Retrain model (best-effort; swallow errors)
+        try:
+            ml_train_service.retrain_model(db)
+        except Exception:
+            pass
+
+        # 3) Reclassify and return count
+        reclassified = txns_service.reclassify_transactions(db, payload.month, force=getattr(payload, "force", False))
+        return SaveTrainResponse(
+            rule_id=str(r.id),
+            display_name=getattr(r, "name", f"Rule {r.id}"),
+            reclassified=reclassified,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Save/train/reclass failed: {e}")

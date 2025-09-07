@@ -29,19 +29,19 @@ def _rule_matches_txn(rule: Rule, txn: Transaction) -> bool:
                     or rule.pattern.lower() in (txn.description or "").lower())
     return ok
 
-def find_candidates(db: Session, month: str, rules: Iterable[Rule]) -> List[Transaction]:
+def find_candidates(db: Session, month: str, rules: Iterable[Rule], *, force: bool = False) -> List[Transaction]:
     """
-    Prefilter: unlabeled for the month. We’ll still guard per-rule in Python.
+    Prefilter transactions for the month.
+    - When force=False (default): only unlabeled (None/""/"Unknown").
+    - When force=True: all rows in the month.
     """
-    q = (
-        db.query(Transaction)
-          .filter(Transaction.month == month)
-          .filter(is_unlabeled_expr())
-    )
+    q = db.query(Transaction).filter(Transaction.month == month)
+    if not force:
+        q = q.filter(is_unlabeled_expr())
     return list(q.all())
 
 def apply_all_active_rules(
-    db: Session, month: str
+    db: Session, month: str, *, force: bool = False
 ) -> Tuple[int, int, List[Dict[str, Any]]]:
     """
     Returns: (applied, skipped, details[])
@@ -56,7 +56,7 @@ def apply_all_active_rules(
     if not rules:
         return 0, 0, []
 
-    txns = find_candidates(db, month, rules)
+    txns = find_candidates(db, month, rules, force=force)
     applied = 0
     skipped = 0
     details: List[Dict[str, Any]] = []

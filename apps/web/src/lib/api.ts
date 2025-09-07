@@ -102,9 +102,13 @@ export const getBudgetCheck = (month?: string) => {
 }
 
 // ---------- Unknowns / Suggestions ----------
-export async function getUnknowns(month?: string) {
-  const qs = month ? `?month=${encodeURIComponent(month)}` : "";
+export async function getUnknowns(params?: { month?: string }): Promise<{ month: string | null; unknowns: any[] }> {
+  const qs = params?.month ? `?month=${encodeURIComponent(params.month)}` : "";
   return fetchJson(`/txns/unknowns${qs}`);
+}
+
+export async function reclassifyTxns(payload?: { month?: string; force?: boolean }): Promise<{ status: string; month: string; applied: number; skipped: number; details: any }> {
+  return fetchJson(`/txns/reclassify`, { method: 'POST', body: JSON.stringify(payload ?? {}) });
 }
 
 export async function getSuggestions(month?: string) {
@@ -254,7 +258,7 @@ export async function reclassifyAll(month?: string): Promise<{
 
 // One-click: Save → Train → Reclassify (no client-side fallback; unified endpoint is required)
 export async function saveTrainReclassify(
-  payload: { rule: RuleInput; month?: string }
+  payload: { rule: RuleInput; month?: string; force?: boolean }
 ): Promise<{ rule_id: string; display_name: string; reclassified: number }> {
   const res = await http<{ rule_id: string; display_name: string; reclassified: number }>(`/rules/save-train-reclass`, {
     method: 'POST',

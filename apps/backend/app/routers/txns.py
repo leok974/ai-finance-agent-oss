@@ -12,6 +12,7 @@ from ..utils.state import save_state
 import datetime as dt
 from pydantic import BaseModel
 from app.services.rules_apply import apply_all_active_rules, latest_month_from_data
+from app.schemas.transactions import txn_to_dict
 
 router = APIRouter()
 
@@ -26,26 +27,30 @@ def month_of(date_str: str) -> str:
         # Fallback to string slicing for malformed dates
         return date_str[:7] if len(date_str) >= 7 else ""
 
-@router.get("/unknowns")
-def get_unknowns(month: Optional[str] = None) -> Dict[str, Any]:
+@router.get("/unknowns", summary="List uncategorized transactions")
+def get_unknowns(
+    month: Optional[str] = Query(default=None, pattern=r"^\d{4}-\d{2}$"),
+    limit: int = Query(default=200, ge=1, le=1000),
+    db: Session = Depends(get_db),
+) -> Dict[str, Any]:
     """
-    Return unknown (uncategorized) transactions for the given month.
-    If `month` is omitted, default to the latest month present in memory.
-    Response shape matches the web client: {"month": "...", "unknowns": [Txn, ...]}.
+    Return unknown (uncategorized) transactions for the given month (DB-backed).
+    If `month` is omitted, default to the latest month present in the database.
+    Always returns ISO date strings. Response shape: {"month": "...", "unknowns": [dict, ...]}.
     """
-    from ..main import app
-    items = getattr(app.state, "txns", [])
-    if not items:
-        return {"month": None, "unknowns": []}
+    # Resolve effective month
+    resolved_month = month or latest_month_from_data(db)
 
-    if not month:
-        month = latest_month_from_txns(items)
-        if not month:
-            return {"month": None, "unknowns": []}
+    q = db.query(Transaction).filter(Transaction.category.is_(None))
+    if resolved_month:
+        q = q.filter(Transaction.month == resolved_month)
 
-    month_items = [t for t in items if month_of(t.get("date", "")) == month]
-    unknowns = [Txn(**t) for t in month_items if (t.get("category") or "Unknown") == "Unknown"]
-    return {"month": month, "unknowns": unknowns}
+    rows = (
+        q.order_by(desc(Transaction.date), desc(Transaction.id))
+        .limit(limit)
+        .all()
+    )
+    return {"month": resolved_month, "unknowns": [txn_to_dict(t) for t in rows]}
 
 @router.post("/{txn_id}/categorize")
 def categorize(txn_id: int, req: CategorizeRequest, db: Session = Depends(get_db)):
@@ -66,7 +71,7 @@ def categorize(txn_id: int, req: CategorizeRequest, db: Session = Depends(get_db
             return {"ok": True, "txn": t}
     # If not found in memory but present in DB, return DB-mapped shape
     if tdb:
-        return {"ok": True, "txn": to_txn_dict(tdb)}
+        return {"ok": True, "txn": txn_to_dict(tdb)}
     raise HTTPException(status_code=404, detail="Transaction not found")
 
 @router.post("/categorize")
@@ -115,18 +120,6 @@ def get_unknown(
             continue
     return txns
 
-
-def to_txn_dict(t: Transaction) -> Dict[str, Any]:
-    return {
-        "id": t.id,
-        "date": t.date.isoformat() if t.date else "",
-        "merchant": t.merchant,
-        "description": t.description,
-        "amount": t.amount,
-        "category": t.category or "Unknown",
-        "account": getattr(t, "account", None),
-        "month": getattr(t, "month", None),
-    }
 
 
 # ------------------------ Extended operations -------------------------------
@@ -248,6 +241,7 @@ def recent_txns(limit: int = Query(20, ge=1, le=200), db: Session = Depends(get_
 # --- Bulk reclassify (apply active rules) -----------------------------------
 class ReclassifyIn(BaseModel):
     month: Optional[str] = None
+    force: bool = False  # if true, reclassify all rows in the month (not just unknowns)
 
 
 @router.post("/reclassify")
@@ -259,10 +253,26 @@ def reclassify(
     """
     Re-run categorization over transactions by applying all active rules.
     Defaults to latest month if not provided.
+    Set payload.force=true to reclassify all rows in the month (not just unknowns).
     """
     month = (month or (payload.month if payload else None) or latest_month_from_data(db))
     if not month:
         raise HTTPException(status_code=400, detail="No transactions available to determine month")
 
-    applied, skipped, details = apply_all_active_rules(db, month)
-    return {"status": "ok", "month": month, "applied": applied, "skipped": skipped, "details": details}
+    force = bool(getattr(payload, "force", False))
+    applied, skipped, details = apply_all_active_rules(db, month, force=force)
+
+    # Build a normalized preview of affected transactions (limited)
+    ids = [d.get("id") for d in (details or []) if isinstance(d, dict) and d.get("id") is not None]
+    preview_rows = []
+    if ids:
+        rows = (
+            db.query(Transaction)
+            .filter(Transaction.id.in_(ids))
+            .order_by(desc(Transaction.date), desc(Transaction.id))
+            .limit(200)
+            .all()
+        )
+        preview_rows = [txn_to_dict(t) for t in rows]
+
+    return {"status": "ok", "month": month, "applied": applied, "skipped": skipped, "details": preview_rows}
