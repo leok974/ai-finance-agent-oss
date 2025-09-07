@@ -2,6 +2,30 @@
 @tailwind components;
 @tailwind utilities;
 
+/* shadcn-style design tokens (HSL variables) */
+:root{
+  --background: 240 5% 6%;
+  --foreground: 220 13% 95%;
+  --card: 220 10% 9%;
+  --card-foreground: 220 13% 95%;
+  --popover: 220 10% 9%;
+  --popover-foreground: 220 13% 95%;
+  --primary: 221 83% 53%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 240 4% 16%;
+  --secondary-foreground: 220 13% 95%;
+  --muted: 240 4% 16%;
+  --muted-foreground: 240 5% 64%;
+  --accent: 240 4% 18%;
+  --accent-foreground: 220 13% 95%;
+  --destructive: 0 84% 60%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 240 4% 24%;
+  --input: 240 4% 24%;
+  --ring: 221 83% 53%;
+  --radius: 0.75rem;
+}
+
 :root { color-scheme: dark; }
 
 /* ---------- Global tooltip look & feel ---------- */
@@ -27,6 +51,8 @@
   .field-input {
   @apply w-full min-w-0 px-3 h-10 rounded-xl border bg-background;
   }
+  /* Generic input (legacy utility used in a few places) */
+  .input { @apply bg-background border border-border rounded-xl px-3 py-2; }
   .field-help {
     @apply text-xs opacity-70;
   }

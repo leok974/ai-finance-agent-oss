@@ -18,7 +18,6 @@ from app.schemas.rules import (
     RuleListResponse,
     TransactionSample,
 )
-from app.schemas.transactions import txn_to_dict
 from datetime import datetime, date
 # from app.schemas import RuleIn  # optional: use a separate schema for input
 
@@ -234,14 +233,14 @@ def test_rule(payload: RuleTestPayload, db: Session = Depends(get_db)):
         q = q.filter(or_(Transaction.description.ilike(like_expr), Transaction.merchant.ilike(like_expr)))
         total = q.count()
         rows = q.order_by(Transaction.date.desc(), Transaction.id.desc()).limit(5).all()
-        sample = [
-            {
-                "id": d["id"],
-                "merchant": d.get("merchant"),
-                "description": d.get("description"),
-                "date": d.get("date"),
-            }
-            for d in (txn_to_dict(t) for t in rows)
+        sample: List[TransactionSample] = [
+            TransactionSample(
+                id=int(getattr(t, "id", 0) or 0),
+                merchant=getattr(t, "merchant", None),
+                description=getattr(t, "description", None),
+                date=(getattr(t, "date", None).isoformat() if getattr(t, "date", None) else None),
+            )
+            for t in rows
         ]
         return RuleTestResponse(count=int(total), sample=sample)
     except Exception as e:
@@ -274,7 +273,7 @@ def save_train_reclass(payload: SaveTrainPayload, db: Session = Depends(get_db))
             pass
 
         # 3) Reclassify and return count
-        reclassified = txns_service.reclassify_transactions(db, payload.month, force=getattr(payload, "force", False))
+        reclassified = txns_service.reclassify_transactions(db, payload.month)
         return SaveTrainResponse(
             rule_id=str(r.id),
             display_name=getattr(r, "name", f"Rule {r.id}"),

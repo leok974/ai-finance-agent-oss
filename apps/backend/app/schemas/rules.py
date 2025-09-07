@@ -25,7 +25,6 @@ class RuleInput(BaseModel):
 class SaveTrainPayload(BaseModel):
     rule: RuleInput
     month: Optional[MonthStr] = None  # e.g., "2025-09"
-    force: bool = False
 
 
 class SaveTrainResponse(BaseModel):

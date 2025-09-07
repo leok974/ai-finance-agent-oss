@@ -2,8 +2,8 @@ import React, { useEffect, useState } from 'react'
 import Card from './Card'
 import EmptyState from './EmptyState'
 import { getUnknowns, categorizeTxn } from '@/api'
-import { getGlobalMonth } from '@/state/month'
 import { setRuleDraft } from '@/state/rulesDraft'
+import { getGlobalMonth } from '@/state/month'
 import { useOkErrToast } from '@/lib/toast-helpers'
 import { useToast } from '@/hooks/use-toast'
 import { ToastAction } from '@/components/ui/toast'
@@ -30,15 +30,16 @@ export default function UnknownsPanel({ month, onSeedRule, onChanged, refreshKey
     setError(null)
     setEmpty(false)
     try {
-      const data = await getUnknowns({ month });
-      const rows = (data as any)?.unknowns ?? [];
-      if (rows.length === 0) {
-        setEmpty(true);
-        setItems([]);
-        setResolvedMonth((data as any)?.month ?? null);
+      const data = await getUnknowns(month)
+      if (!data) {
+        setEmpty(true)
+        setItems([])
+        setResolvedMonth(null)
       } else {
-        setItems(rows);
-        setResolvedMonth((data as any)?.month ?? month ?? null);
+        const rows = Array.isArray(data) ? data : (data as any)?.unknowns ?? data ?? []
+        setItems(rows)
+        const m = (data as any)?.month
+        setResolvedMonth(typeof m === 'string' ? m : (month ?? null))
       }
     } catch (e: any) {
       setError(e?.message ?? String(e))

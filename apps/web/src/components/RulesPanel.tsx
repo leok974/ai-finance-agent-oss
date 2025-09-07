@@ -122,10 +122,11 @@ export default function RulesPanel({ refreshKey }: Props) {
   }
 
   return (
-    <div className="panel">
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-2">
-          <h2 className="text-lg font-semibold">Rules</h2>
+    <section className="card p-4">
+      {/* Header grid prevents overlap and keeps a tidy top-right Actions area */}
+      <header className="grid grid-cols-[1fr_auto] gap-3 pb-3 mb-3 border-b border-border">
+        <div className="flex items-center gap-2 min-w-0">
+          <h2 className="text-lg font-semibold shrink-0">Rules</h2>
           <Tooltip>
             <TooltipTrigger asChild>
               <span className="inline-block cursor-help">ⓘ</span>
@@ -135,42 +136,43 @@ export default function RulesPanel({ refreshKey }: Props) {
               Each rule has a matcher (like “description contains Starbucks”) and a resulting category.
             </TooltipContent>
           </Tooltip>
-        </div>
-        {/* Search + pager + actions (md+) */}
-        <div className="hidden md:flex items-center gap-2">
           <input
-            className="field-input w-56"
+            className="field-input w-[220px] sm:w-[280px] lg:w-[320px]"
             placeholder="Search rules…"
             value={q}
             onChange={(e) => { setPage(0); setQ(e.target.value); }}
           />
-          <div className="flex items-center gap-2 text-sm">
-            <button className="btn btn-sm" disabled={page===0} onClick={() => setPage(p=>Math.max(0,p-1))}>Prev</button>
-            <span>{page*limit+1}–{Math.min((page+1)*limit, total)} of {total}</span>
-            <button className="btn btn-sm" disabled={(page+1)*limit>=total} onClick={() => setPage(p=>p+1)}>Next</button>
-          </div>
-          <button
-            onClick={load}
-            className="btn btn-sm hover:bg-accent"
-            disabled={loading}
-          >
-            {loading ? 'Refreshing…' : 'Refresh'}
-          </button>
-          <button
-            type="submit"
-            form="rules-create-form"
-            className={`btn btn-sm hover:bg-accent ${!canCreate ? 'opacity-60 cursor-not-allowed' : ''}`}
-            disabled={creating || !canCreate}
-            title="Create rule with the fields below"
-          >
-            {creating ? 'Creating…' : 'Create'}
-          </button>
         </div>
-      </div>
+        <div className="flex flex-col items-end gap-2">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={load}
+              className="btn btn-sm hover:bg-accent"
+              disabled={loading}
+            >
+              {loading ? 'Refreshing…' : 'Refresh'}
+            </button>
+            <button
+              type="submit"
+              form="rules-create-form"
+              className={`btn btn-sm hover:bg-accent ${!canCreate ? 'opacity-60 cursor-not-allowed' : ''}`}
+              disabled={creating || !canCreate}
+              title="Create rule with the fields below"
+            >
+              {creating ? 'Creating…' : 'Create'}
+            </button>
+          </div>
+          <div className="flex items-center gap-2 text-xs whitespace-nowrap">
+            <button className="btn btn-ghost btn-sm" disabled={page===0} onClick={() => setPage(p=>Math.max(0,p-1))}>Prev</button>
+            <span className="opacity-70">{page*limit+1}–{Math.min((page+1)*limit, total)} of {total}</span>
+            <button className="btn btn-ghost btn-sm" disabled={(page+1)*limit>=total} onClick={() => setPage(p=>p+1)}>Next</button>
+          </div>
+        </div>
+  </header>
 
       {/* Give the form an id so the header button can submit it */}
       <form id="rules-create-form" onSubmit={onCreate} className="form-grid grid-cols-1 md:grid-cols-12">
-  <div className="field col-span-3">
+        <div className="field col-span-3">
           <div className="field-label">
             <span className="label-nowrap" title="Rule name">Rule name</span>
             <Tooltip>
@@ -187,7 +189,6 @@ export default function RulesPanel({ refreshKey }: Props) {
             onChange={(e) => setForm(f => ({ ...f, name: e.target.value }))}
             title="Short, descriptive name for the rule"
           />
-          {/* removed the old hint row to declutter */}
         </div>
         <div className="field col-span-5">
           <div className="field-label">
@@ -225,23 +226,7 @@ export default function RulesPanel({ refreshKey }: Props) {
             title="The category assigned to all matches"
           />
         </div>
-        {/* Mobile-only search + create (header has md+ controls) */}
-        <div className="col-span-1 flex items-end md:hidden gap-2">
-          <input
-            className="field-input"
-            placeholder="Search rules…"
-            value={q}
-            onChange={(e) => { setPage(0); setQ(e.target.value); }}
-            title="Search by name or category"
-          />
-          <button
-            type="submit"
-            className={`btn hover:bg-accent ${!canCreate ? 'opacity-60 cursor-not-allowed' : ''}`}
-            disabled={creating || !canCreate}
-          >
-            {creating ? 'Creating…' : 'Create'}
-          </button>
-        </div>
+  {/* Mobile actions handled in header now */}
       </form>
 
       {!rules?.length && (
@@ -249,35 +234,49 @@ export default function RulesPanel({ refreshKey }: Props) {
       )}
 
       {!!rules?.length && (
-        <div className="mt-3 space-y-2">
+        <div className="space-y-3">
           {rules.map(rule => (
-            <div key={rule.id} className="rounded-lg border border-border/40 bg-card/40 p-3">
-              <div className="flex items-center gap-2">
-                <div className="flex min-w-0 items-center gap-2">
+            <div key={rule.id} className="p-3 rounded-xl border flex items-center justify-between">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
                   <span className="font-medium truncate">{rule.display_name}</span>
-                  <span className={`text-[11px] px-2 py-0.5 rounded-full ${(rule.active ?? true) ? 'bg-emerald-600/10 text-emerald-600 border border-emerald-400/40' : 'bg-zinc-600/10 text-zinc-500 border border-zinc-500/30'} shrink-0`}>
+                  <span className={`text-xs px-2 py-0.5 rounded-full ${(rule.active ?? true) ? 'bg-emerald-600/10 text-emerald-600' : 'bg-zinc-600/10 text-zinc-500'}`}>
                     {(rule.active ?? true) ? 'Enabled' : 'Disabled'}
                   </span>
+                  {(() => {
+                    const badge = getBadgeFor({
+                      id: rule.id,
+                      name: rule.display_name,
+                      enabled: rule.active ?? true,
+                      when: {},
+                      then: { category: rule.category },
+                    } as Rule);
+                    if (!badge) return null;
+                    return (
+                      <span
+                        className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-600/10 text-blue-600"
+                        title={`Last tested ${new Date(badge.tested_at).toLocaleString()} — matched ${badge.matched_count}`}
+                      >
+                        last test: {badge.matched_count}
+                      </span>
+                    );
+                  })()}
                 </div>
-                <div className="ml-auto flex items-center gap-2">
-                  {/* keep buttons compact and always visible */}
-                  <button
-                    className="btn btn-ghost btn-sm shrink-0"
-                    onClick={() => remove({ id: rule.id, name: rule.display_name, enabled: rule.active ?? true, when: {}, then: { category: rule.category } })}
-                  >
-                    Delete
-                  </button>
-                </div>
+                {rule.category && (
+                  <div className="text-xs opacity-80 truncate">
+                    category: {rule.category}
+                  </div>
+                )}
               </div>
-              {rule.category && (
-                <div className="mt-1 text-xs opacity-70 truncate">
-                  category: {rule.category}
-                </div>
-              )}
+              <div className="flex items-center gap-2 shrink-0">
+                <button onClick={() => remove({ id: rule.id, name: rule.display_name, enabled: rule.active ?? true, when: {}, then: { category: rule.category } })} className="text-xs px-2 py-1 rounded-lg border hover:bg-destructive/10 text-destructive">
+                  Delete
+                </button>
+              </div>
             </div>
           ))}
         </div>
       )}
-    </div>
+  </section>
   );
 }

@@ -6,10 +6,6 @@ import argparse
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, Any
-import os
-import random
-import hashlib
-from sqlalchemy import func
 
 from sqlalchemy.orm import Session
 
@@ -73,33 +69,6 @@ def seed(csv_path: Path, replace: bool = False) -> int:
                 txn = _row_to_txn(row)
                 sess.add(txn)
                 added += 1
-            sess.commit()
-
-        # --- Mark a few transactions as "unknown" for demo/testing ---
-        # Choose a target month (latest present), and pick N deterministic rows within that month.
-        target_month = sess.query(func.max(Transaction.month)).scalar()
-        # Count knob via env var (default 7)
-        try:
-            desired = int(os.getenv("DEV_UNKNOWN_COUNT", "7"))
-        except Exception:
-            desired = 7
-
-        if target_month:
-            ids = [row[0] for row in sess.query(Transaction.id).filter(Transaction.month == target_month).all()]
-        else:
-            ids = [row[0] for row in sess.query(Transaction.id).all()]
-
-        if ids:
-            seed_bytes = hashlib.md5((target_month or "ALL").encode("utf-8")).digest()[:8]
-            random.seed(int.from_bytes(seed_bytes, "big"))
-            N = min(desired, len(ids))
-            for txn_id in random.sample(ids, N):
-                txn = sess.get(Transaction, txn_id)
-                if txn:
-                    txn.category = None
-                    # Guard if model lacks raw_category
-                    if hasattr(txn, "raw_category"):
-                        txn.raw_category = None
             sess.commit()
 
         return added

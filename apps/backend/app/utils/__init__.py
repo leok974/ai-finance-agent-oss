@@ -1,1 +1,1 @@
-from app.schemas.transactions import txn_to_dict
+from .txns import txn_to_dict

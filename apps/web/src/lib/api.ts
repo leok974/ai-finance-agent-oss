@@ -102,13 +102,9 @@ export const getBudgetCheck = (month?: string) => {
 }
 
 // ---------- Unknowns / Suggestions ----------
-export async function getUnknowns(params?: { month?: string }): Promise<{ month: string | null; unknowns: any[] }> {
-  const qs = params?.month ? `?month=${encodeURIComponent(params.month)}` : "";
+export async function getUnknowns(month?: string) {
+  const qs = month ? `?month=${encodeURIComponent(month)}` : "";
   return fetchJson(`/txns/unknowns${qs}`);
-}
-
-export async function reclassifyTxns(payload?: { month?: string; force?: boolean }): Promise<{ status: string; month: string; applied: number; skipped: number; details: any }> {
-  return fetchJson(`/txns/reclassify`, { method: 'POST', body: JSON.stringify(payload ?? {}) });
 }
 
 export async function getSuggestions(month?: string) {
@@ -222,22 +218,6 @@ export async function createRule(body: RuleInput): Promise<RuleCreateResponse> {
 
 // ---------- ML ----------
 export const mlSuggest = (month: string, limit=100, topk=3) => http(`/ml/suggest${q({ month, limit, topk })}`)
-
-// Optionally call backend to auto-apply ML suggestions above a confidence threshold.
-// If the backend route is not implemented, this will 404; callers should catch and fallback.
-export async function autoApplySuggestions(payload: { threshold: number; month?: string }): Promise<{
-  status?: string;
-  month?: string;
-  applied?: number;
-  skipped?: number;
-  details?: any;
-  updated?: number;
-}> {
-  return http(`/ml/suggestions/auto-apply`, {
-    method: 'POST',
-    body: JSON.stringify(payload),
-  });
-}
 // ---------- ML Train ----------
 export async function mlTrain(month?: string, passes = 1, min_samples = 25) {
   const body = { month, passes, min_samples };
@@ -274,7 +254,7 @@ export async function reclassifyAll(month?: string): Promise<{
 
 // One-click: Save → Train → Reclassify (no client-side fallback; unified endpoint is required)
 export async function saveTrainReclassify(
-  payload: { rule: RuleInput; month?: string; force?: boolean }
+  payload: { rule: RuleInput; month?: string }
 ): Promise<{ rule_id: string; display_name: string; reclassified: number }> {
   const res = await http<{ rule_id: string; display_name: string; reclassified: number }>(`/rules/save-train-reclass`, {
     method: 'POST',
