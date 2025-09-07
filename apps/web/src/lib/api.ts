@@ -222,6 +222,22 @@ export async function createRule(body: RuleInput): Promise<RuleCreateResponse> {
 
 // ---------- ML ----------
 export const mlSuggest = (month: string, limit=100, topk=3) => http(`/ml/suggest${q({ month, limit, topk })}`)
+
+// Optionally call backend to auto-apply ML suggestions above a confidence threshold.
+// If the backend route is not implemented, this will 404; callers should catch and fallback.
+export async function autoApplySuggestions(payload: { threshold: number; month?: string }): Promise<{
+  status?: string;
+  month?: string;
+  applied?: number;
+  skipped?: number;
+  details?: any;
+  updated?: number;
+}> {
+  return http(`/ml/suggestions/auto-apply`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
 // ---------- ML Train ----------
 export async function mlTrain(month?: string, passes = 1, min_samples = 25) {
   const body = { month, passes, min_samples };

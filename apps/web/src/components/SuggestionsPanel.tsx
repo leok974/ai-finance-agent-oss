@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import Card from './Card'
-import { getSuggestions, categorizeTxn, agentChat } from '@/api'
+import { getSuggestions, categorizeTxn, agentChat, autoApplySuggestions } from '@/api'
 import EmptyState from './EmptyState'
 import { useChatDock } from '../context/ChatDockContext'
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
@@ -13,7 +13,10 @@ type Suggestion = { txn_id: number; merchant?: string; description?: string; top
 
 export default function SuggestionsPanel({ month, refreshKey = 0 }: { month?: string; refreshKey?: number }) {
   const [items, setItems] = useState<Suggestion[]>([])
+  // Radio picks: txn_id -> chosen category
   const [selected, setSelected] = useState<Record<number, string>>({})
+  // Row checkboxes for bulk actions
+  const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set())
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [resolvedMonth, setResolvedMonth] = useState<string | null>(null)
@@ -67,18 +70,47 @@ export default function SuggestionsPanel({ month, refreshKey = 0 }: { month?: st
 
   useEffect(()=>{ refresh() }, [month, refreshKey])
 
-  const canApply = useMemo(()=> Object.keys(selected).length>0, [selected])
+  const canApply = useMemo(()=> selectedRows.size > 0 || Object.keys(selected).length>0, [selectedRows, selected])
 
   async function applySelected() {
-    const entries = Object.entries(selected)
-    await Promise.all(entries.map(([id,cat])=>categorizeTxn(Number(id), cat)))
-    setItems(list => list.filter(it => !(it.txn_id in selected)))
-    setSelected({})
+    // Prefer explicitly checked rows; otherwise fall back to any radio selections
+    const targetIds: number[] = selectedRows.size > 0
+      ? Array.from(selectedRows)
+      : Object.keys(selected).map(k => Number(k))
+    if (targetIds.length === 0) return
+
+    // Resolve category per row: use radio pick; else choose best suggestion by confidence
+    const toApply: Array<[number,string]> = []
+    for (const id of targetIds) {
+      const picked = selected[id]
+      if (picked) { toApply.push([id, picked]); continue }
+      const row = items.find(r => r.txn_id === id)
+      if (row && row.topk?.length) {
+        const best = [...row.topk].sort((a,b)=>b.confidence-a.confidence)[0]
+        if (best?.category) toApply.push([id, best.category])
+      }
+    }
+    if (!toApply.length) return
+
+    await Promise.all(toApply.map(([id,cat])=>categorizeTxn(Number(id), cat)))
+    const applied = new Set(toApply.map(([id])=>id))
+    setItems(list => list.filter(it => !applied.has(it.txn_id)))
+    // Clear selection state for applied rows
+    setSelectedRows(prev => {
+      const next = new Set(prev)
+      for (const id of applied) next.delete(id)
+      return next
+    })
+    setSelected(prev => {
+      const next: Record<number,string> = { ...prev }
+      for (const id of applied) delete (next as any)[id]
+      return next
+    })
     // Success toast with CTAs
-    if (entries.length > 0) {
+    if (toApply.length > 0) {
       toast({
         title: 'Suggestions applied',
-        description: `Applied ${entries.length} suggestion${entries.length === 1 ? '' : 's'}.`,
+        description: `Applied ${toApply.length} suggestion${toApply.length === 1 ? '' : 's'}.`,
         duration: 4000,
         action: (
           <div className="flex gap-2">
@@ -95,31 +127,56 @@ export default function SuggestionsPanel({ month, refreshKey = 0 }: { month?: st
   }
 
   async function autoApplyBest(threshold=0.85) {
-    const picks: Record<number,string> = {}
-    for (const it of items) {
-      const best = [...it.topk].sort((a,b)=>b.confidence-a.confidence)[0]
-      if (best && best.confidence>=threshold) picks[it.txn_id] = best.category
+    try {
+      // If backend endpoint exists, prefer server-side auto-apply to ensure consistency
+      const res = await autoApplySuggestions({ threshold, month })
+      const applied = Number((res as any)?.applied ?? (res as any)?.updated ?? 0) || 0
+      // Optimistically refresh suggestions; they should shrink
+      await refresh()
+      toast({
+        title: 'Auto-applied best suggestions',
+        description: applied > 0
+          ? `Applied ${applied} high-confidence suggestion${applied === 1 ? '' : 's'}.`
+          : 'No suggestions met the threshold.',
+        duration: 4000,
+        action: (
+          <div className="flex gap-2">
+            <ToastAction altText="View unknowns" onClick={() => scrollToId('unknowns-panel')}>
+              View unknowns
+            </ToastAction>
+            <ToastAction altText="View charts" onClick={() => scrollToId('charts-panel')}>
+              View charts
+            </ToastAction>
+          </div>
+        ),
+      })
+    } catch {
+      // Fallback to client-side auto-apply if server endpoint is absent
+      const picks: Record<number,string> = {}
+      for (const it of items) {
+        const best = [...it.topk].sort((a,b)=>b.confidence-a.confidence)[0]
+        if (best && best.confidence>=threshold) picks[it.txn_id] = best.category
+      }
+      const pairs = Object.entries(picks)
+      if (!pairs.length) return
+      await Promise.all(pairs.map(([id,cat])=>categorizeTxn(Number(id), cat)))
+      setItems(list => list.filter(it => !(it.txn_id in picks)))
+      toast({
+        title: 'Auto-applied best suggestions',
+        description: `Applied ${pairs.length} high-confidence suggestion${pairs.length === 1 ? '' : 's'}.`,
+        duration: 4000,
+        action: (
+          <div className="flex gap-2">
+            <ToastAction altText="View unknowns" onClick={() => scrollToId('unknowns-panel')}>
+              View unknowns
+            </ToastAction>
+            <ToastAction altText="View charts" onClick={() => scrollToId('charts-panel')}>
+              View charts
+            </ToastAction>
+          </div>
+        ),
+      })
     }
-    const pairs = Object.entries(picks)
-    if (!pairs.length) return
-    await Promise.all(pairs.map(([id,cat])=>categorizeTxn(Number(id), cat)))
-    setItems(list => list.filter(it => !(it.txn_id in picks)))
-    // Success toast with CTAs
-    toast({
-      title: 'Auto-applied best suggestions',
-      description: `Applied ${pairs.length} high-confidence suggestion${pairs.length === 1 ? '' : 's'}.`,
-      duration: 4000,
-      action: (
-        <div className="flex gap-2">
-          <ToastAction altText="View unknowns" onClick={() => scrollToId('unknowns-panel')}>
-            View unknowns
-          </ToastAction>
-          <ToastAction altText="View charts" onClick={() => scrollToId('charts-panel')}>
-            View charts
-          </ToastAction>
-        </div>
-      ),
-    })
   }
 
   return (
@@ -157,16 +214,31 @@ export default function SuggestionsPanel({ month, refreshKey = 0 }: { month?: st
         {items.map(it => (
           <li key={it.txn_id} className="rounded-lg border border-neutral-800 p-3 bg-neutral-900">
             <div className="flex items-start justify-between gap-4">
-              <div>
-                <div className="font-medium">{it.merchant ?? '—'}</div>
-                <div className="text-sm opacity-70">{it.description ?? ''}</div>
+              <div className="flex items-start gap-3 min-w-0">
+                <input
+                  type="checkbox"
+                  className="mt-1 accent-foreground shrink-0"
+                  checked={selectedRows.has(it.txn_id)}
+                  onChange={(e) => {
+                    setSelectedRows(prev => {
+                      const next = new Set(prev)
+                      if (e.target.checked) next.add(it.txn_id); else next.delete(it.txn_id)
+                      return next
+                    })
+                  }}
+                  aria-label={`Select transaction ${it.txn_id}`}
+                />
+                <div className="min-w-0">
+                  <div className="font-medium truncate">{it.merchant ?? '—'}</div>
+                  <div className="text-sm opacity-70 truncate">{it.description ?? ''}</div>
+                </div>
               </div>
               <div className="flex-1">
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                   {it.topk.map(opt => (
                     <label key={opt.category} className="flex items-center gap-2 rounded border border-neutral-800 p-2 bg-neutral-950">
                       <input type="radio" name={`pick-${it.txn_id}`} onChange={()=>setSelected(s=>({ ...s, [it.txn_id]: opt.category }))} />
-                      <span className="flex-1">{opt.category}</span>
+                      <span className="flex-1 truncate">{opt.category}</span>
                       <span className="text-xs opacity-70">{(opt.confidence*100).toFixed(1)}%</span>
                     </label>
                   ))}

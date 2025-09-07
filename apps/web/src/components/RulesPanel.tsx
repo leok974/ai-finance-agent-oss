@@ -170,7 +170,7 @@ export default function RulesPanel({ refreshKey }: Props) {
 
       {/* Give the form an id so the header button can submit it */}
       <form id="rules-create-form" onSubmit={onCreate} className="form-grid grid-cols-1 md:grid-cols-12">
-        <div className="field col-span-3">
+  <div className="field col-span-3">
           <div className="field-label">
             <span className="label-nowrap" title="Rule name">Rule name</span>
             <Tooltip>
@@ -187,9 +187,7 @@ export default function RulesPanel({ refreshKey }: Props) {
             onChange={(e) => setForm(f => ({ ...f, name: e.target.value }))}
             title="Short, descriptive name for the rule"
           />
-          <div className="text-xs opacity-70 mt-1">
-            Will save as: <span className="opacity-100">{derivedName}</span>
-          </div>
+          {/* removed the old hint row to declutter */}
         </div>
         <div className="field col-span-5">
           <div className="field-label">
@@ -251,45 +249,31 @@ export default function RulesPanel({ refreshKey }: Props) {
       )}
 
       {!!rules?.length && (
-        <div className="space-y-3">
+        <div className="mt-3 space-y-2">
           {rules.map(rule => (
-            <div key={rule.id} className="p-3 rounded-xl border flex items-center justify-between">
-              <div className="min-w-0">
-                <div className="flex items-center gap-2">
+            <div key={rule.id} className="rounded-lg border border-border/40 bg-card/40 p-3">
+              <div className="flex items-center gap-2">
+                <div className="flex min-w-0 items-center gap-2">
                   <span className="font-medium truncate">{rule.display_name}</span>
-                  <span className={`text-xs px-2 py-0.5 rounded-full ${(rule.active ?? true) ? 'bg-emerald-600/10 text-emerald-600' : 'bg-zinc-600/10 text-zinc-500'}`}>
+                  <span className={`text-[11px] px-2 py-0.5 rounded-full ${(rule.active ?? true) ? 'bg-emerald-600/10 text-emerald-600 border border-emerald-400/40' : 'bg-zinc-600/10 text-zinc-500 border border-zinc-500/30'} shrink-0`}>
                     {(rule.active ?? true) ? 'Enabled' : 'Disabled'}
                   </span>
-                  {(() => {
-                    const badge = getBadgeFor({
-                      id: rule.id,
-                      name: rule.display_name,
-                      enabled: rule.active ?? true,
-                      when: {},
-                      then: { category: rule.category },
-                    } as Rule);
-                    if (!badge) return null;
-                    return (
-                      <span
-                        className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-600/10 text-blue-600"
-                        title={`Last tested ${new Date(badge.tested_at).toLocaleString()} — matched ${badge.matched_count}`}
-                      >
-                        last test: {badge.matched_count}
-                      </span>
-                    );
-                  })()}
                 </div>
-                {rule.category && (
-                  <div className="text-xs opacity-80 truncate">
-                    category: {rule.category}
-                  </div>
-                )}
+                <div className="ml-auto flex items-center gap-2">
+                  {/* keep buttons compact and always visible */}
+                  <button
+                    className="btn btn-ghost btn-sm shrink-0"
+                    onClick={() => remove({ id: rule.id, name: rule.display_name, enabled: rule.active ?? true, when: {}, then: { category: rule.category } })}
+                  >
+                    Delete
+                  </button>
+                </div>
               </div>
-              <div className="flex items-center gap-2 shrink-0">
-                <button onClick={() => remove({ id: rule.id, name: rule.display_name, enabled: rule.active ?? true, when: {}, then: { category: rule.category } })} className="text-xs px-2 py-1 rounded-lg border hover:bg-destructive/10 text-destructive">
-                  Delete
-                </button>
-              </div>
+              {rule.category && (
+                <div className="mt-1 text-xs opacity-70 truncate">
+                  category: {rule.category}
+                </div>
+              )}
             </div>
           ))}
         </div>
