@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { getMetaInfo, MetaInfo } from '../lib/api';
+import { getMetaInfo, MetaInfo, getHealthz, Healthz } from '../lib/api';
 import { Info } from 'lucide-react';
 
 type RowProps = { label: string; value?: React.ReactNode };
@@ -13,6 +13,7 @@ const Row = ({ label, value }: RowProps) => (
 export default function AboutDrawer() {
   const [open, setOpen] = React.useState(false);
   const [data, setData] = React.useState<MetaInfo | null>(null);
+  const [health, setHealth] = React.useState<Healthz | null>(null);
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
@@ -20,21 +21,24 @@ export default function AboutDrawer() {
     setLoading(true);
     setError(null);
     try {
-      setData(await getMetaInfo());
+      const [m, h] = await Promise.all([getMetaInfo(), getHealthz()]);
+      setData(m);
+      setHealth(h);
     } catch (e: any) {
       setError(e?.message ?? String(e));
     } finally { setLoading(false); }
   }, []);
 
   React.useEffect(() => {
-    if (open && !data && !loading && !error) { load(); }
-  }, [open, data, loading, error, load]);
+    if (open && !data && !health && !loading && !error) { load(); }
+  }, [open, data, health, loading, error, load]);
 
-  const inSync = data?.alembic?.in_sync;
-  const dbRev = data?.alembic?.db_revision ?? null;
+  const dbRevFromHealth = health?.db_revision ?? health?.alembic?.db_revision ?? null;
+  const inSync = data?.alembic?.in_sync ?? (dbRevFromHealth ? (data?.alembic?.code_heads ?? []).includes(dbRevFromHealth) : undefined);
   const head = data?.alembic?.code_head ?? null;
   const heads = data?.alembic?.code_heads ?? [];
   const migs = data?.alembic?.recent_migrations ?? [];
+  const codeError = data?.alembic?.code_error ?? null;
 
   return (
     <>
@@ -71,6 +75,16 @@ export default function AboutDrawer() {
 
             {data && (
               <div className="space-y-4">
+                {codeError && (
+                  <div className="text-sm bg-red-500/10 text-red-300 border border-red-500/30 rounded-xl p-3">
+                    <div className="font-semibold mb-1">Alembic error</div>
+                    <code className="break-all">{codeError}</code>
+                    <div className="mt-2 text-xs opacity-80">
+                      Tip: ensure <code>apps/backend/alembic.ini</code> exists and points
+                      to <code>apps/backend/alembic</code>.
+                    </div>
+                  </div>
+                )}
                 <div className="flex items-center gap-2">
                   <span className={`inline-flex items-center gap-2 text-xs font-medium px-2 py-0.5 rounded-2xl border
                     ${inSync ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30'
@@ -82,7 +96,7 @@ export default function AboutDrawer() {
 
                 <div className="space-y-1">
                   <Row label="Engine" value={<code>{data.engine}</code>} />
-                  <Row label="DB revision" value={<code>{dbRev || '—'}</code>} />
+                  <Row label="DB revision (healthz)" value={<code>{dbRevFromHealth || '—'}</code>} />
                   <Row label="Code head" value={<code>{head || '—'}</code>} />
                   <Row label="All heads" value={<code>{heads?.join(', ') || '—'}</code>} />
                 </div>
@@ -102,10 +116,12 @@ export default function AboutDrawer() {
                           <span className="mr-2">down:</span>
                           <code>{Array.isArray(m.down_revision) ? m.down_revision.join(', ') : (m.down_revision ?? 'None')}</code>
                         </div>
-                        <div className="text-[11px] mt-1 opacity-60">
-                          <span className="mr-2">file:</span>
-                          <code>{m.module}</code>
-                        </div>
+                        {m.filename && (
+                          <div className="text-[11px] mt-1 opacity-60">
+                            <span className="mr-2">file:</span>
+                            <code>{m.filename}</code>
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>

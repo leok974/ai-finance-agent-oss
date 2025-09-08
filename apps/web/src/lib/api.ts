@@ -65,8 +65,9 @@ export type MetaInfo = {
       is_head: boolean;
       branch_labels: string[];
       message: string;
-      module: string;
+  filename?: string | null;
     }>;
+  code_error?: string | null;
   };
 };
 
