@@ -55,6 +55,14 @@ def categorize(txn_id: int, req: CategorizeRequest, db: Session = Depends(get_db
         tdb.category = req.category
         db.commit()
         db.refresh(tdb)
+        # Feedback logging (best-effort)
+        try:
+            from app.orm_models import Feedback as FeedbackORM
+            fb = FeedbackORM(txn_id=txn_id, label=req.category, source="user_change")
+            db.add(fb)
+            db.commit()
+        except Exception:
+            pass
     # Also update in-memory for compatibility
     from ..main import app
     for t in getattr(app.state, "txns", []):

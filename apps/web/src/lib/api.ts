@@ -157,6 +157,18 @@ export async function getSuggestions(month?: string) {
 // If you have explain/categorize helpers, keep them as-is
 export const categorizeTxn = (id: number, category: string) => http(`/txns/${id}/categorize`, { method: 'POST', body: JSON.stringify({ category }) })
 
+export async function sendFeedback(txnId: number, label: string, source: string = "user_change", notes?: string) {
+  try {
+    await http('/ml/feedback', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ txn_id: txnId, label, source, notes }),
+    });
+  } catch {
+    // soft ignore in UI
+  }
+}
+
 // ---------- Rules ----------
 // Strongly-typed Rules API
 export type Rule = {

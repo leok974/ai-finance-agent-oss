@@ -1,12 +1,24 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from typing import Any, Dict, List
 from app.db import get_db
-from app.orm_models import Transaction
+from app.orm_models import Transaction, Feedback
 from app.services.ml_suggest import suggest_for_unknowns
+from app.services.ml_train import incremental_update
 
 router = APIRouter()
+
+@router.get("/ml/status")
+def ml_status(db: Session = Depends(get_db)) -> Dict[str, Any]:
+    info: Dict[str, Any] = {"ok": True}
+    # Add lightweight metrics; keep resilient
+    try:
+        info["feedback_count"] = int(db.query(Feedback).count())
+    except Exception:
+        info["feedback_count"] = None
+    return info
 
 @router.get("/ml/suggest")
 def ml_suggest(
@@ -53,3 +65,45 @@ def ml_suggest(
     ]
 
     return {"month": month, "suggestions": cleaned}
+
+
+# ---------- Feedback + Incremental Update ----------
+class FeedbackIn(BaseModel):
+    txn_id: int
+    label: str
+    source: str = "user_change"
+    notes: str | None = None
+
+
+@router.post("/ml/feedback")
+def record_feedback(payload: FeedbackIn, db: Session = Depends(get_db)):
+    # 1) fetch transaction to build text feature
+    txn = db.query(Transaction).filter(Transaction.id == payload.txn_id).first()
+    if not txn:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+
+    text_parts = [txn.merchant or "", txn.description or ""]
+    # optional: include amount as text for incremental context
+    try:
+        text_parts.append(f"{float(txn.amount or 0.0):.2f}")
+    except Exception:
+        pass
+    text = " ".join([p for p in text_parts if p]).strip()
+
+    # 2) store feedback row
+    fb = Feedback(
+        txn_id=payload.txn_id,
+        label=payload.label,
+        source=payload.source,
+        notes=payload.notes,
+    )
+    db.add(fb)
+    db.commit()
+
+    # 3) best-effort incremental update
+    try:
+        upd = incremental_update([text], [payload.label])
+    except Exception as e:
+        upd = {"updated": False, "error": str(e)}
+
+    return {"ok": True, "updated": bool(upd.get("updated")), "detail": upd}

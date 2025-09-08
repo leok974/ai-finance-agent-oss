@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import Card from './Card'
 import EmptyState from './EmptyState'
-import { getUnknowns, categorizeTxn } from '@/api'
+import { getUnknowns, categorizeTxn, sendFeedback } from '@/api'
 import { setRuleDraft } from '@/state/rulesDraft'
 import { getGlobalMonth } from '@/state/month'
 import { useOkErrToast } from '@/lib/toast-helpers'
@@ -49,7 +49,9 @@ export default function UnknownsPanel({ month, onSeedRule, onChanged, refreshKey
   useEffect(()=>{ load() }, [month, refreshKey])
 
   async function quickApply(id: number, category: string) {
-    await categorizeTxn(id, category)
+  await categorizeTxn(id, category)
+  // fire-and-forget feedback logging
+  try { sendFeedback(id, category, 'user_change'); } catch {}
     setItems(s => s.filter(x => x.id !== id))
     onChanged?.()
   }

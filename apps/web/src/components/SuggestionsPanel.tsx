@@ -1,5 +1,5 @@
 import * as React from "react";
-import { getSuggestions } from "@/api";
+import { getSuggestions, categorizeTxn, sendFeedback } from "@/api";
 import InfoDot from "@/components/InfoDot";
 import { useOkErrToast } from "@/lib/toast-helpers";
 import {
@@ -10,11 +10,13 @@ import {
 } from "@/components/ui/dropdown-menu";
 import Card from "./Card";
 
+type Candidate = { label: string; confidence: number };
 type Suggestion = {
-  id: number;
-  merchant?: string;
-  description?: string;
-  confidence?: number;
+  txn_id: number;
+  merchant?: string | null;
+  description?: string | null;
+  candidates?: Candidate[]; // new backend shape
+  topk?: Candidate[];       // tolerate legacy alias
 };
 
 export default function SuggestionsPanel() {
@@ -23,14 +25,16 @@ export default function SuggestionsPanel() {
   const [month, setMonth] = React.useState<string | null>(null);
   const [selected, setSelected] = React.useState<Set<number>>(new Set());
   const [threshold, setThreshold] = React.useState<number>(0.85);
+  const [pending, setPending] = React.useState<Set<number>>(new Set());
   const { ok, err } = useOkErrToast();
 
   async function refresh() {
     setLoading(true);
     try {
-      const data = await getSuggestions(); // should return { month, suggestions }
+      const data = await getSuggestions(); // { month, suggestions }
       setMonth(data?.month ?? null);
-      setRows(data?.suggestions ?? []);
+      setRows((data?.suggestions ?? []) as Suggestion[]);
+      setSelected(new Set());
     } catch (e) {
       err("Could not fetch suggestions.", "Failed to load");
     } finally {
@@ -49,10 +53,74 @@ export default function SuggestionsPanel() {
     setSelected(next);
   };
 
-  const applySelected = () => {
+  const topCandidate = (s: Suggestion): Candidate | undefined =>
+    (Array.isArray(s.candidates) ? s.candidates : Array.isArray(s.topk) ? s.topk : [])?.[0];
+
+  const acceptOne = async (s: Suggestion, source: "accept_suggestion" | "auto_apply") => {
+    const id = s.txn_id;
+    const top = topCandidate(s);
+    if (!top) return err("No candidate to apply.", "Cannot apply");
+    const nextPending = new Set(pending); nextPending.add(id); setPending(nextPending);
+    try {
+      await categorizeTxn(id, top.label);
+      await sendFeedback(id, top.label, source);
+      // remove from UI
+      setRows((prev) => prev.filter((r) => r.txn_id !== id));
+      setSelected((prev) => { const c = new Set(prev); c.delete(id); return c; });
+      ok(`Applied: ${top.label}`, "Categorized");
+    } catch (e) {
+      err("Failed to apply suggestion.", "Action failed");
+    } finally {
+      setPending((prev) => { const c = new Set(prev); c.delete(id); return c; });
+    }
+  };
+
+  const applySelected = async () => {
     const ids = Array.from(selected);
     if (ids.length === 0) return ok("No suggestions selected.", "Nothing to apply");
-    ok(`Would apply ${ids.length} selected suggestion(s).`, "Apply selected");
+    const mapById = new Map(rows.map((r) => [r.txn_id, r] as const));
+    const targets = ids
+      .map((id) => mapById.get(id))
+      .filter(Boolean)
+      .map((s) => s as Suggestion)
+      .filter((s) => (topCandidate(s)?.confidence ?? 0) >= threshold);
+    if (targets.length === 0) return ok("No selected meet the threshold.", "Nothing to apply");
+    const pend = new Set(pending); targets.forEach((t) => pend.add(t.txn_id)); setPending(pend);
+    const results = await Promise.allSettled(targets.map((s) =>
+      (async () => {
+        const top = topCandidate(s)!; // filtered above
+        await categorizeTxn(s.txn_id, top.label);
+        await sendFeedback(s.txn_id, top.label, "accept_suggestion");
+        return s.txn_id;
+      })()
+    ));
+    const successIds = results.filter((r): r is PromiseFulfilledResult<number> => r.status === 'fulfilled').map(r => r.value);
+    const failCount = results.length - successIds.length;
+    setRows((prev) => prev.filter((r) => !successIds.includes(r.txn_id)));
+    setSelected((prev) => { const c = new Set(prev); successIds.forEach((id) => c.delete(id)); return c; });
+    setPending((prev) => { const c = new Set(prev); targets.forEach((t) => c.delete(t.txn_id)); return c; });
+    ok(`Applied ${successIds.length}${failCount ? `, ${failCount} failed` : ''}.`, "Apply selected");
+  };
+
+  const autoApply = async (minConf: number) => {
+    setThreshold(minConf);
+    const targets = rows.filter((s) => (topCandidate(s)?.confidence ?? 0) >= minConf);
+    if (targets.length === 0) return ok("No suggestions above threshold.", "Auto-apply");
+    const pend = new Set(pending); targets.forEach((t) => pend.add(t.txn_id)); setPending(pend);
+    const results = await Promise.allSettled(targets.map((s) =>
+      (async () => {
+        const top = topCandidate(s)!;
+        await categorizeTxn(s.txn_id, top.label);
+        await sendFeedback(s.txn_id, top.label, "auto_apply");
+        return s.txn_id;
+      })()
+    ));
+    const successIds = results.filter((r): r is PromiseFulfilledResult<number> => r.status === 'fulfilled').map(r => r.value);
+    const failCount = results.length - successIds.length;
+    setRows((prev) => prev.filter((r) => !successIds.includes(r.txn_id)));
+    setSelected((prev) => { const c = new Set(prev); successIds.forEach((id) => c.delete(id)); return c; });
+    setPending((prev) => { const c = new Set(prev); targets.forEach((t) => c.delete(t.txn_id)); return c; });
+    ok(`Auto-applied ${successIds.length}${failCount ? `, ${failCount} failed` : ''}.`, "Auto-apply");
   };
 
   return (
@@ -92,10 +160,7 @@ export default function SuggestionsPanel() {
                 <DropdownMenuItem
                   key={t}
                   className="justify-between"
-                  onClick={() => {
-                    setThreshold(t);
-                    ok(`Would auto-apply suggestions with confidence ≥ ${t.toFixed(2)}.`, "Auto-apply");
-                  }}
+                  onClick={() => autoApply(t)}
                 >
                   ≥ {t.toFixed(2)}
                   {t === threshold && <span className="text-xs opacity-70">current</span>}
@@ -108,31 +173,48 @@ export default function SuggestionsPanel() {
 
   {/* List */}
       <div className="space-y-2">
-        {rows.map((r, idx) => (
+        {rows.map((r, idx) => {
+          const id = r.txn_id;
+          const cand = topCandidate(r);
+          const disabled = pending.has(id);
+          return (
           <div
-            key={(r as any)?.id ?? (r as any)?.txn_id ?? `${r.merchant ?? 'm'}-${(r as any)?.date ?? 'd'}-${(r as any)?.amount ?? 'a'}-${idx}`}
+            key={id ?? `${r.merchant ?? 'm'}-${(r as any)?.date ?? 'd'}-${(r as any)?.amount ?? 'a'}-${idx}`}
             className="rounded-xl border border-[hsl(var(--border))] bg-card/60 px-3 py-2"
           >
             <div className="flex items-center gap-3">
               <input
                 type="checkbox"
                 className="shrink-0 w-4 h-4 accent-[hsl(var(--primary))]"
-                checked={selected.has(r.id)}
-                onChange={(e) => toggle(r.id, e.target.checked)}
+                checked={selected.has(id)}
+                onChange={(e) => toggle(id, e.target.checked)}
                 aria-label={`Select ${r.merchant ?? "transaction"}`}
               />
               <div className="min-w-0">
                 <div className="font-medium truncate">{r.merchant || "—"}</div>
                 <div className="text-xs opacity-70 truncate">{r.description || " "}</div>
               </div>
-              <div className="ml-auto">
-                <button className="btn btn-ghost btn-sm" title="Explain this suggestion">
-                  Explain
-                </button>
-              </div>
+              {cand && (
+                <div className="ml-auto flex items-center gap-3">
+                  <span className="text-sm">
+                    <span className="opacity-70">Suggest: </span>
+                    <span className="font-medium">{cand.label}</span>
+                    <span className="opacity-70"> · {cand.confidence.toFixed(2)}</span>
+                  </span>
+                  <button
+                    className="btn btn-sm"
+                    title="Accept suggestion"
+                    onClick={() => acceptOne(r, "accept_suggestion")}
+                    disabled={disabled}
+                  >
+                    {disabled ? "Applying…" : "Accept"}
+                  </button>
+                </div>
+              )}
             </div>
           </div>
-        ))}
+          );
+        })}
         {rows.length === 0 && (
           <div className="text-sm opacity-70 py-4 text-center">No suggestions right now.</div>
         )}
