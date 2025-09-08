@@ -11,6 +11,7 @@
   },
   "dependencies": {
   "class-variance-authority": "^0.7.0",
+    "clsx": "^2.1.1",
     "@radix-ui/react-toast": "^1.2.15",
     "@radix-ui/react-tooltip": "^1.2.8",
     "lucide-react": "^0.542.0",

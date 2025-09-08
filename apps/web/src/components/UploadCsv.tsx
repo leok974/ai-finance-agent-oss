@@ -4,6 +4,7 @@ import { useToast } from "@/hooks/use-toast";
 import { ToastAction } from "@/components/ui/toast";
 import { scrollToId } from "@/lib/scroll";
 import { useMonth } from "../context/MonthContext";
+import Card from "./Card";
 
 type UploadResult = {
   ok: boolean;
@@ -143,9 +144,9 @@ const UploadCsv: React.FC<UploadCsvProps> = ({ onUploaded, defaultReplace = true
 
   return (
     <div className={`w-full ${className ?? ""}`}>
-      <div className="rounded-2xl border border-gray-700 bg-gray-900/60 p-4 shadow-sm">
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-white">Upload Transactions CSV</h2>
+      <Card>
+        <header className="flex items-center justify-between border-b border-border pb-1">
+          <h2 className="text-lg font-semibold">Upload Transactions CSV</h2>
           <div className="flex items-center gap-3">
             <label className="inline-flex items-center gap-2 text-sm text-gray-300">
               <input
@@ -164,14 +165,14 @@ const UploadCsv: React.FC<UploadCsvProps> = ({ onUploaded, defaultReplace = true
               Reset
             </button>
           </div>
-        </div>
+        </header>
 
         <label
           onDragOver={onDrag}
           onDragLeave={onDrag}
           onDrop={onDrop}
           className={`mt-4 block cursor-pointer rounded-xl border-2 border-dashed p-6 text-center transition
-            ${dragOver ? "border-indigo-400 bg-indigo-500/10" : "border-gray-700 hover:bg-gray-800/40"}`}
+            ${dragOver ? "border-indigo-400 bg-indigo-500/10" : "border-border hover:bg-background/40"}`}
         >
           <input
             ref={inputRef}
@@ -181,11 +182,11 @@ const UploadCsv: React.FC<UploadCsvProps> = ({ onUploaded, defaultReplace = true
             onChange={onPick}
           />
           <div className="space-y-2">
-            <div className="text-sm font-medium text-gray-200">
+            <div className="text-sm font-medium">
               {file ? (
                 <>
                   Selected: <span className="text-indigo-300">{file.name}</span>{" "}
-                  <span className="text-gray-400">({prettyBytes(file.size)})</span>
+                  <span className="opacity-70">({prettyBytes(file.size)})</span>
                 </>
               ) : dragOver ? (
                 "Drop your CSV to upload"
@@ -194,7 +195,7 @@ const UploadCsv: React.FC<UploadCsvProps> = ({ onUploaded, defaultReplace = true
               )}
             </div>
             {!file && (
-              <p className="text-xs text-gray-400">
+              <p className="text-xs opacity-70">
                 Accepts <code>.csv</code> • Example: <code>transactions_sample.csv</code>
               </p>
             )}
@@ -202,8 +203,8 @@ const UploadCsv: React.FC<UploadCsvProps> = ({ onUploaded, defaultReplace = true
         </label>
 
         <div className="mt-4 flex items-center justify-between">
-          <div className="text-xs text-gray-400">
-            Endpoint: <code className="text-gray-300">/ingest?replace={String(replace)}</code> (auto-detects expense signs)
+          <div className="text-xs opacity-70">
+            Endpoint: <code className="opacity-90">/ingest?replace={String(replace)}</code> (auto-detects expense signs)
           </div>
           <button
             type="button"
@@ -244,10 +245,10 @@ const UploadCsv: React.FC<UploadCsvProps> = ({ onUploaded, defaultReplace = true
             )}
           </div>
         )}
-        <div className="mt-3 text-xs text-gray-400">
+        <div className="mt-3 text-xs opacity-70">
           Hint: If your bank exports expenses as positive numbers, check “Expenses are positive” so we’ll normalize them during import. Income stays positive.
         </div>
-      </div>
+      </Card>
     </div>
   );
 };

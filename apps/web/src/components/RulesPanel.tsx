@@ -8,6 +8,7 @@ import { scrollToId } from '@/lib/scroll';
 import { setRuleDraft } from '@/state/rulesDraft';
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { InfoDot } from './InfoDot';
+import Card from './Card';
 
 type Props = { month?: string; refreshKey?: number };
 
@@ -122,7 +123,7 @@ function RulesPanelImpl({ month, refreshKey }: Props) {
   }
 
   return (
-    <section className="card p-4">
+    <Card>
       {/* Header grid prevents overlap and keeps a tidy top-right Actions area */}
       <header className="grid grid-cols-[1fr_auto] gap-3 pb-3 mb-3 border-b border-border">
         <div className="flex items-center gap-2 min-w-0">
@@ -277,7 +278,7 @@ function RulesPanelImpl({ month, refreshKey }: Props) {
           ))}
         </div>
       )}
-  </section>
+  </Card>
   );
 }
 

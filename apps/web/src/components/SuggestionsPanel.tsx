@@ -8,6 +8,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
+import Card from "./Card";
 
 type Suggestion = {
   id: number;
@@ -55,9 +56,9 @@ export default function SuggestionsPanel() {
   };
 
   return (
-    <section className="card p-4">
+    <Card>
       {/* Header: title+tooltip left; actions pushed right */}
-      <header className="flex items-center gap-3 pb-3 mb-3 border-b border-[hsl(var(--border))]">
+      <header className="flex items-center gap-3 pb-1 mb-3 border-b border-border">
         <div className="flex items-center gap-2">
           <h3 className="text-base font-semibold">ML Suggestions</h3>
           <InfoDot title="Predicted categories with confidence. Review, select, apply or auto-apply." />
@@ -105,7 +106,7 @@ export default function SuggestionsPanel() {
         </div>
       </header>
 
-      {/* List */}
+  {/* List */}
       <div className="space-y-2">
         {rows.map((r, idx) => (
           <div
@@ -136,6 +137,6 @@ export default function SuggestionsPanel() {
           <div className="text-sm opacity-70 py-4 text-center">No suggestions right now.</div>
         )}
       </div>
-    </section>
+  </Card>
   );
 }
