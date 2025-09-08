@@ -21,7 +21,7 @@ from app.schemas.rules import (
 from datetime import datetime, date
 # from app.schemas import RuleIn  # optional: use a separate schema for input
 
-router = APIRouter()
+router = APIRouter(prefix="/rules")
 
 @router.get("/ping")
 def ping():
@@ -73,7 +73,7 @@ def map_to_orm_fields(body: CompatRuleInput) -> Dict[str, Any]:
 
 
 @router.get(
-    "",
+    "/",
     response_model=RuleListResponse,
     summary="List rules",
     description=(
@@ -152,7 +152,7 @@ def list_rules_brief(
 
 
 @router.post(
-    "",
+    "/",
     response_model=RuleCreateResponse,
     summary="Create a rule",
     description=(
@@ -174,7 +174,7 @@ def add_rule(body: CompatRuleInput = Body(...), db: Session = Depends(get_db)):
     return RuleCreateResponse(id=str(getattr(r, "id", "")), display_name=display)
 
 
-@router.delete("")
+@router.delete("/")
 def clear_rules(db: Session = Depends(get_db)):
     db.execute(delete(Rule))
     db.commit()
@@ -274,9 +274,9 @@ def save_train_reclass(payload: SaveTrainPayload, db: Session = Depends(get_db))
 
         # 3) Reclassify and return count
         reclassified = txns_service.reclassify_transactions(db, payload.month)
+        # Keep response minimal to satisfy existing tests
         return SaveTrainResponse(
             rule_id=str(r.id),
-            display_name=getattr(r, "name", f"Rule {r.id}"),
             reclassified=reclassified,
         )
     except HTTPException:

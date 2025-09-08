@@ -28,8 +28,8 @@ class SaveTrainPayload(BaseModel):
 
 
 class SaveTrainResponse(BaseModel):
+    model_config = ConfigDict(serialize_defaults=False, extra="ignore")
     rule_id: str
-    display_name: str
     reclassified: int
 
 

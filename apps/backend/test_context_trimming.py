@@ -68,7 +68,7 @@ test_context = {
         {"merchant": "Amazon", "amount": 250},
         {"merchant": "Whole Foods Market", "amount": 180}
     ] * 50,  # Make it large
-    "insights": {"trend": "spending up 15% vs last month"} * 100,  # Make it large
+    "insights": [{"trend": "spending up 15% vs last month"}] * 100,  # Make it large
     "suggestions": ["Consider budgeting for coffee expenses"] * 200,  # Make it large
     "alerts": ["High spending detected"] * 30  # Make it large
 }

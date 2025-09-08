@@ -32,7 +32,8 @@ async def ingest_csv(
 
     # Read all rows once for inference and processing
     wrapper = TextIOWrapper(file.file, encoding="utf-8")
-    reader = csv.DictReader(wrapper)
+    # Skip empty lines so a leading newline doesn't become an empty header
+    reader = csv.DictReader((line for line in wrapper if line.strip()), skipinitialspace=True)
     rows = list(reader)
 
     # Try to infer if not provided
@@ -66,20 +67,42 @@ async def ingest_csv(
         # map/parse your CSV columns here
         # robust parse and ensure month string
         try:
-            date = dt.datetime.strptime(row["date"], "%Y-%m-%d").date()
+            date_str = (row.get("date") or "").strip()
+            if not date_str:
+                continue
+            try:
+                date = dt.date.fromisoformat(date_str[:10])
+            except Exception:
+                # Try common alt formats
+                for fmt in ("%Y-%m-%d", "%m/%d/%Y", "%Y/%m/%d"):
+                    try:
+                        date = dt.datetime.strptime(date_str, fmt).date()
+                        break
+                    except Exception:
+                        date = None
+                if not date:
+                    continue
         except (ValueError, KeyError):
             continue
-            
-        raw_amt = float(row["amount"]) if row.get("amount") not in (None, "") else 0.0
-        # Use the inferred flip value to normalize amounts
-        # (internal convention: spend < 0, income > 0)
-        amount = -raw_amt if flip else raw_amt
+
+        amt_str = (row.get("amount") or "").strip()
+        raw_amt = float(amt_str) if amt_str else 0.0
+        # Normalize: expenses negative, income positive. If flip==True, only flip likely expenses.
+        # Heuristic: treat employer/paycheck/refund/reimbursement as income-like; don't flip those.
+        desc_l = (row.get("description") or row.get("memo") or "").lower()
+        merch_l = (row.get("merchant") or "").lower()
+        income_hint = any(k in desc_l or k in merch_l for k in (
+            "employer","payroll","salary","paycheck","payout","reimbursement","refund","rebate","deposit","interest","dividend"
+        )) or raw_amt >= 500.0  # large positives: likely income
+        if flip and not income_hint:
+            amount = -raw_amt
+        else:
+            amount = raw_amt
         desc = row.get("description") or row.get("memo") or ""
         merch = row.get("merchant") or None
         acct = row.get("account") or None
         raw_cat = row.get("category") or None
         month = date.strftime("%Y-%m")
-        print(f"DEBUG: Storing transaction with date={date}, month={month}")  # Add this
 
         exists = db.execute(
             select(Transaction.id).where(

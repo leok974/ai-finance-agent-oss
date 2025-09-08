@@ -83,17 +83,76 @@ def _spend_case():
 
 @router.get("/month_summary")
 def month_summary(month: str | None = Query(None, pattern=r"^\d{4}-\d{2}$"), db: Session = Depends(get_db)):
-    """Return a summary for the requested month, or latest if omitted (heuristic income/spend)."""
+    """Return a summary for the requested month, or latest if omitted (heuristic income/spend).
+    Preference order for resolving month when not provided:
+    1) If in-memory txns exist, use their latest month (onboarding/dev flows)
+    2) Else fall back to DB latest month
+    If both are empty, return a null-month payload for onboarding.
+    """
+    mem_items = None
+    try:
+        from ..main import app
+        mem_items = [t for t in getattr(app.state, "txns", []) if isinstance(t, dict)]
+    except Exception:
+        mem_items = None
+
     if not month:
-        month = _latest_month_str(db)
+        if mem_items is not None:
+            # In-memory explicitly set; if empty, treat as no transactions loaded
+            if len(mem_items) == 0:
+                return {"month": None, "total_spend": 0.0, "total_income": 0.0, "net": 0.0, "categories": []}
+            # Derive latest from in-memory and compute totals directly from in-memory
+            import datetime as dt
+            months = []
+            for t in mem_items:
+                ds = str(t.get("date", ""))
+                if not ds:
+                    continue
+                try:
+                    d = dt.date.fromisoformat(ds[:10])
+                    months.append(d.strftime("%Y-%m"))
+                except Exception:
+                    if len(ds) >= 7:
+                        months.append(ds[:7])
+            month = max(months) if months else None
+            if month:
+                # Filter items for that month
+                month_items = []
+                for t in mem_items:
+                    ds = str(t.get("date", ""))
+                    if not ds:
+                        continue
+                    try:
+                        d = dt.date.fromisoformat(ds[:10])
+                        if d.strftime("%Y-%m") == month:
+                            month_items.append(t)
+                    except Exception:
+                        if ds[:7] == month:
+                            month_items.append(t)
+                # Compute totals using sign and absolute magnitudes
+                pos = [abs(float(t.get("amount", 0.0))) for t in month_items if float(t.get("amount", 0.0)) > 0]
+                neg = [abs(float(t.get("amount", 0.0))) for t in month_items if float(t.get("amount", 0.0)) < 0]
+                total_income = float(sum(pos))
+                total_spend = float(sum(neg))
+                # categories from negative (spend) amounts
+                agg = {}
+                for t in month_items:
+                    amt = float(t.get("amount", 0.0))
+                    if amt < 0:
+                        cat = t.get("category") or "Unknown"
+                        agg[cat] = agg.get(cat, 0.0) + abs(amt)
+                category_data = [
+                    {"name": c, "amount": round(float(a), 2)} for c, a in sorted(agg.items(), key=lambda x: -x[1])
+                ]
+                return {
+                    "month": month,
+                    "total_spend": total_spend,
+                    "total_income": total_income,
+                    "net": total_income - total_spend,
+                    "categories": category_data,
+                }
         if not month:
-            # in-memory fallback for tests that only use app.state
-            try:
-                from ..main import app
-                from ..utils.dates import latest_month_from_txns
-                month = latest_month_from_txns(getattr(app.state, "txns", []))
-            except Exception:
-                month = None
+            month = _latest_month_str(db)
     if not month:
         return {"month": None, "total_spend": 0.0, "total_income": 0.0, "net": 0.0, "categories": []}
 
@@ -168,6 +227,21 @@ def month_summary(month: str | None = Query(None, pattern=r"^\d{4}-\d{2}$"), db:
             from ..main import app
             import datetime as dt
             items = [t for t in getattr(app.state, "txns", []) if isinstance(t, dict)]
+            # If no DB data and no explicit month, choose latest from in-memory
+            if not month:
+                # find latest month via dates
+                months = []
+                for t in items:
+                    date_str = str(t.get("date", ""))
+                    if not date_str:
+                        continue
+                    try:
+                        date_obj = dt.date.fromisoformat(date_str[:10])
+                        months.append(date_obj.strftime("%Y-%m"))
+                    except Exception:
+                        continue
+                if months:
+                    month = sorted(months)[-1]
             # Filter using proper date parsing instead of string slicing
             month_items = []
             for t in items:
@@ -186,6 +260,7 @@ def month_summary(month: str | None = Query(None, pattern=r"^\d{4}-\d{2}$"), db:
                 neg = [abs(float(t.get("amount", 0.0))) for t in month_items if float(t.get("amount", 0.0)) < 0]
                 total_income = float(sum(pos))
                 total_spend = float(sum(neg))
+                # debug print removed; keep logic quiet in production/tests
                 # categories from negative (spend) amounts
                 agg = {}
                 for t in month_items:

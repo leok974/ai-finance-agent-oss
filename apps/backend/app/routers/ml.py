@@ -15,8 +15,7 @@ def ml_suggest(
     month: str | None = None,
     db: Session = Depends(get_db),
 ) -> Dict[str, Any]:
-    print("[ml_suggest] START month=", month)
-    print("[ml_suggest] ROUTE FILE =", __file__)
+    # debug prints removed
     # Define "unlabeled": None, empty string, or literal "Unknown" (case-insensitive)
     unlabeled_cond = (
         (Transaction.category.is_(None)) |
@@ -32,10 +31,7 @@ def ml_suggest(
     # Compute the authoritative set of unlabeled txn IDs for this month
     unlabeled_ids = {row[0] for row in base_q.all()}
     # Optional debug: show the set of unlabeled txn IDs
-    try:
-        print("[ml_suggest] UNLABELED_IDS =", sorted(unlabeled_ids))
-    except Exception:
-        pass
+    # debug prints removed
 
     # If none, return empty immediately (this is what the test expects)
     if not unlabeled_ids:
