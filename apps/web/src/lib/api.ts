@@ -34,8 +34,44 @@ async function http<T=any>(path: string, init?: RequestInit): Promise<T> {
 }
 
 // ---------- Health ----------
-export async function getHealthz() {
-  return http<any>('/healthz');
+export type Healthz = {
+  status: 'ok' | 'degraded';
+  db_engine?: string;
+  models_ok?: boolean;
+  alembic?: {
+    db_revision?: string | null;
+    code_head?: string | null;
+    in_sync?: boolean;
+  };
+  alembic_ok?: boolean;
+  db_revision?: string | null;
+};
+
+export async function getHealthz(): Promise<Healthz> {
+  return http<Healthz>('/healthz');
+}
+
+export type MetaInfo = {
+  ok: boolean;
+  engine: string;
+  alembic: {
+    db_revision: string | null;
+    code_head: string | null;
+    code_heads: string[];
+    in_sync: boolean;
+    recent_migrations: Array<{
+      revision: string;
+      down_revision: string | null | string[];
+      is_head: boolean;
+      branch_labels: string[];
+      message: string;
+      module: string;
+    }>;
+  };
+};
+
+export async function getMetaInfo(): Promise<MetaInfo> {
+  return http<MetaInfo>('/meta/info');
 }
 
 // mapper: rename keys (camelCase -> snake_case) and allow snake_case passthrough

@@ -78,3 +78,13 @@ class RecurringSeries(Base):
     next_due: Mapped[datetime | None] = mapped_column(Date, nullable=True)
     sample_txn_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("transactions.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+# --- NEW: Feedback -----------------------------------------------------------
+class Feedback(Base):
+    __tablename__ = "feedback"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    txn_id: Mapped[int] = mapped_column(Integer, index=True, nullable=False)
+    label: Mapped[str] = mapped_column(String(128), nullable=False)
+    source: Mapped[str] = mapped_column(String(64), nullable=False, server_default="user_change")  # user_change | accept_suggestion | rule_apply
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)

@@ -28,3 +28,10 @@ class ChatRequest(BaseModel):
 
 class CategorizeRequest(BaseModel):
     category: str
+
+# --- NEW: Feedback input schema ---------------------------------------------
+class FeedbackIn(BaseModel):
+    txn_id: int
+    label: str
+    source: str = "user_change"  # user_change | accept_suggestion | rule_apply
+    notes: str | None = None

@@ -4,6 +4,7 @@ from .db import Base, engine
 from sqlalchemy import inspect
 from fastapi.middleware.cors import CORSMiddleware
 from .routers import ingest, txns, rules, ml, report, budget, alerts, insights, agent, explain
+from .routers import meta
 from app.routers import agent_tools_transactions as agent_tools_txn
 from app.routers import agent_tools_budget as agent_tools_budget
 from app.routers import agent_tools_insights as agent_tools_insights
@@ -52,7 +53,7 @@ origins = [
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,          # exact origins with scheme + port
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
     allow_credentials=True,         # required if cookies/auth are used
     allow_methods=["*"],            # allow all methods in dev
     allow_headers=["*"],            # allow all headers in dev
@@ -92,6 +93,7 @@ app.include_router(agent_tools_rules.router)
 app.include_router(rules_crud_router.router)
 app.include_router(rules_apply_all_router.router)
 app.include_router(meta_router.router)
+app.include_router(meta.router)
 
 # Mount health router at root so /healthz is available at top-level
 app.include_router(health_router.router)  # exposes GET /healthz

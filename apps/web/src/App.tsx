@@ -8,6 +8,8 @@ import { AgentResultRenderer } from "./components/AgentResultRenderers";
 import { useOkErrToast } from "@/lib/toast-helpers";
 // import RulesPanel from "./components/RulesPanel";
 import { getAlerts, getMonthSummary, getMonthMerchants, getMonthFlows, agentTools, meta, resolveLatestMonthHybrid, getHealthz } from './lib/api'
+import DbRevBadge from './components/DbRevBadge';
+import AboutDrawer from './components/AboutDrawer';
 import RulesPanel from "./components/RulesPanel";
 import ChatDock from "./components/ChatDock";
 import { ChatDockProvider } from "./context/ChatDockContext";
@@ -32,6 +34,8 @@ const App: React.FC = () => {
   const [empty, setEmpty] = useState<boolean>(false)
   const [bannerDismissed, setBannerDismissed] = useState<boolean>(false)
   const booted = useRef(false)
+  const [dbRev, setDbRev] = useState<string | null>(null);
+  const [inSync, setInSync] = useState<boolean | undefined>(undefined);
 
   // Initialize month once
   useEffect(() => {
@@ -63,16 +67,18 @@ const App: React.FC = () => {
     ]);
   }, [month]);
 
-  // Log DB health once after CORS/DB are good (boot complete)
+  // Log DB health once after CORS/DB are good (boot complete) and capture db revision
   useEffect(() => {
     let alive = true;
     (async () => {
       try {
         const h = await getHealthz();
         if (!alive) return;
-        const db = h?.db_engine || h?.db_backend || 'unknown-db';
-        const mig = h?.alembic_ok ?? h?.migrations_ok ?? h?.alembic?.in_sync ?? 'unknown';
-        const models = h?.models_ok ?? h?.db?.models_ok ?? 'unknown';
+  const db = h?.db_engine || 'unknown-db';
+  const mig = h?.alembic_ok ?? h?.alembic?.in_sync ?? 'unknown';
+  const models = h?.models_ok ?? 'unknown';
+        setDbRev((h as any)?.db_revision ?? (h as any)?.alembic?.db_revision ?? null);
+        setInSync((h as any)?.alembic_ok ?? (h as any)?.alembic?.in_sync);
         console.log(`[db] ${db} loaded | alembic_ok=${String(mig)} | models_ok=${String(models)}`);
       } catch (e) {
         console.warn('[db] healthz failed:', e);
@@ -120,13 +126,15 @@ const App: React.FC = () => {
         <header className="flex items-center justify-between">
           <h1 className="text-3xl font-bold">Finance Agent</h1>
           <div className="flex items-center gap-3">
+            <DbRevBadge dbRevision={dbRev ?? undefined} inSync={inSync} />
+            <AboutDrawer />
             <input type="month" className="bg-neutral-900 border border-neutral-800 rounded px-3 py-2" value={month} onChange={e=>{ setMonth(e.target.value); setGlobalMonth(e.target.value); }} />
             <button className="btn btn-sm hover:bg-accent" onClick={()=>setRefreshKey(k=>k+1)}>Refresh</button>
           </div>
         </header>
 
         {!bannerDismissed && empty && (
-          <TopEmptyBanner onDismiss={() => setBannerDismissed(true)} />
+          <TopEmptyBanner dbRev={dbRev ?? undefined} inSync={inSync} onDismiss={() => setBannerDismissed(true)} />
         )}
 
         {/* Upload CSV */}
