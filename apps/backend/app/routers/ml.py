@@ -6,9 +6,29 @@ from typing import Any, Dict, List
 from app.db import get_db
 from app.orm_models import Transaction, Feedback
 from app.services.ml_suggest import suggest_for_unknowns
-from app.services.ml_train import incremental_update
+from app.services.ml_train import incremental_update, train_on_db
 
 router = APIRouter()
+
+class TrainParams(BaseModel):
+    min_samples: int | None = 6
+    test_size: float | None = 0.2
+    month: str | None = None
+
+@router.post("/ml/train")
+def train_model(params: TrainParams, db: Session = Depends(get_db)) -> Dict[str, Any]:
+    try:
+        result = train_on_db(
+            db=db,
+            month=params.month,
+            min_samples=params.min_samples if params.min_samples is not None else 6,
+            test_size=params.test_size if params.test_size is not None else 0.2,
+        )
+        # ok = True for successful training or informative skips
+        ok = bool(result.get("status") in {"ok", "skipped"})
+        return {"ok": ok, **result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/ml/status")
 def ml_status(db: Session = Depends(get_db)) -> Dict[str, Any]:
