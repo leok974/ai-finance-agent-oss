@@ -21,7 +21,7 @@ from app.schemas.rules import (
 from datetime import datetime, date
 # from app.schemas import RuleIn  # optional: use a separate schema for input
 
-router = APIRouter(prefix="/rules")
+router = APIRouter(prefix="/rules", tags=["rules"])
 
 @router.get("/ping")
 def ping():
@@ -119,6 +119,23 @@ def list_rules(
             active=bool(getattr(r, "active", True)),
         ))
     return RuleListResponse(items=items, total=int(total), limit=int(limit), offset=int(offset))
+
+
+# Alias binding to exact /rules (no trailing slash) with the same behavior
+@router.get(
+    "",
+    response_model=RuleListResponse,
+    summary="List rules (alias)",
+    description="Alias of GET /rules/ that binds to /rules without trailing slash.",
+)
+def list_rules_alias(
+    active: Optional[bool] = Query(default=None),
+    q: Optional[str] = Query(default=None, description="Text search (ILIKE) across pattern, merchant, description, category"),
+    limit: int = Query(default=50, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+) -> RuleListResponse:
+    return list_rules(active=active, q=q, limit=limit, offset=offset, db=db)
 
 
 @router.get(

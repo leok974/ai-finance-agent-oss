@@ -8,6 +8,8 @@ import json, urllib.request
 
 from app.db import get_db
 from app.orm_models import Transaction
+from app.config import settings
+from sqlalchemy.engine import make_url
 
 router = APIRouter(tags=["health"])
 
@@ -93,8 +95,18 @@ def healthz(db: Session = Depends(get_db)):
 
     alembic = _alembic_status(db)
     status = "ok" if ok and models_ok and alembic["in_sync"] else "degraded"
+    # DB engine string without sensitive details
+    try:
+        url = make_url(settings.DATABASE_URL)
+        db_engine = f"{url.get_backend_name()}+{url.get_driver_name()}"
+    except Exception:
+        db_engine = None
     return {
         "status": status,
         "db": {"reachable": ok, "models_ok": models_ok},
         "alembic": alembic,
+        # Convenience shorthand fields for UI logs
+        "db_engine": db_engine,
+        "models_ok": models_ok,
+        "alembic_ok": bool(alembic.get("in_sync")),
     }

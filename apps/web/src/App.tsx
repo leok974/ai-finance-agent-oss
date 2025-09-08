@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useCallback, useEffect } from "react";
+import React, { useMemo, useState, useCallback, useEffect, useRef } from "react";
 import { MonthContext } from "./context/MonthContext";
 import UploadCsv from "./components/UploadCsv";
 import UnknownsPanel from "./components/UnknownsPanel";
@@ -7,7 +7,7 @@ import RuleTesterPanel from "./components/RuleTesterPanel";
 import { AgentResultRenderer } from "./components/AgentResultRenderers";
 import { useOkErrToast } from "@/lib/toast-helpers";
 // import RulesPanel from "./components/RulesPanel";
-import { getAlerts, getMonthSummary, getMonthMerchants, getMonthFlows, agentTools, meta, resolveLatestMonthHybrid } from './lib/api'
+import { getAlerts, getMonthSummary, getMonthMerchants, getMonthFlows, agentTools, meta, resolveLatestMonthHybrid, getHealthz } from './lib/api'
 import RulesPanel from "./components/RulesPanel";
 import ChatDock from "./components/ChatDock";
 import { ChatDockProvider } from "./context/ChatDockContext";
@@ -31,9 +31,12 @@ const App: React.FC = () => {
   const [alerts, setAlerts] = useState<any>(null)
   const [empty, setEmpty] = useState<boolean>(false)
   const [bannerDismissed, setBannerDismissed] = useState<boolean>(false)
+  const booted = useRef(false)
 
   // Initialize month once
   useEffect(() => {
+    if (booted.current) return; // guard re-run in dev (StrictMode)
+    booted.current = true;
     (async () => {
       console.info("[boot] resolving month…");
       const m = (await resolveLatestMonthHybrid())
@@ -41,7 +44,6 @@ const App: React.FC = () => {
              const now = new Date();
              return `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}`;
            })();
-      
       console.info("[boot] resolved month =", m);
       setMonth(m);
       setReady(true);
@@ -49,9 +51,9 @@ const App: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Load dashboard data whenever month is set
+  // Load dashboard data whenever month changes
   useEffect(() => {
-    if (!ready || !month) return;
+    if (!month) return;
     console.info("[boot] loading dashboards for month", month);
     void Promise.allSettled([
       agentTools.chartsSummary({ month }),
@@ -59,7 +61,25 @@ const App: React.FC = () => {
       agentTools.chartsFlows({ month }),
       agentTools.chartsSpendingTrends({ month, months_back: 6 }),
     ]);
-  }, [ready, month]);
+  }, [month]);
+
+  // Log DB health once after CORS/DB are good (boot complete)
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const h = await getHealthz();
+        if (!alive) return;
+        const db = h?.db_engine || h?.db_backend || 'unknown-db';
+        const mig = h?.alembic_ok ?? h?.migrations_ok ?? h?.alembic?.in_sync ?? 'unknown';
+        const models = h?.models_ok ?? h?.db?.models_ok ?? 'unknown';
+        console.log(`[db] ${db} loaded | alembic_ok=${String(mig)} | models_ok=${String(models)}`);
+      } catch (e) {
+        console.warn('[db] healthz failed:', e);
+      }
+    })();
+    return () => { alive = false; };
+  }, []);
 
   // Load insights and alerts separately for state management
   useEffect(()=>{ (async()=>{
@@ -122,7 +142,7 @@ const App: React.FC = () => {
         {/* Main grid */}
         <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
           <UnknownsPanel month={month} refreshKey={refreshKey} />
-          <SuggestionsPanel month={month} refreshKey={refreshKey} />
+          <SuggestionsPanel />
         </div>
 
         {/* Rules + Tester */}

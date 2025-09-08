@@ -4,11 +4,11 @@
       context: ./apps/backend
       dockerfile: Dockerfile
     environment:
-      - OPENAI_BASE_URL=${OPENAI_BASE_URL}
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - MODEL=${MODEL}
-      - DEV_ALLOW_NO_LLM=${DEV_ALLOW_NO_LLM}
       - DATABASE_URL=postgresql+psycopg://myuser:mypassword@postgres:5432/finance
+      - OPENAI_BASE_URL=http://host.docker.internal:11434/v1
+      - OPENAI_API_KEY=ollama
+      - MODEL=gpt-oss:20b
+      - DEV_ALLOW_NO_LLM=1
     ports:
       - "8000:8000"
     volumes:

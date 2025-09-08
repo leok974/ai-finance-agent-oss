@@ -9,9 +9,9 @@ import { setRuleDraft } from '@/state/rulesDraft';
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { InfoDot } from './InfoDot';
 
-type Props = { refreshKey?: number };
+type Props = { month?: string; refreshKey?: number };
 
-export default function RulesPanel({ refreshKey }: Props) {
+function RulesPanelImpl({ month, refreshKey }: Props) {
   const { ok, err } = useOkErrToast();
   const { toast } = useToast();
   const [rules, setRules] = useState<RuleListItem[]>([]);
@@ -280,3 +280,5 @@ export default function RulesPanel({ refreshKey }: Props) {
   </section>
   );
 }
+
+export default React.memo<Props>(RulesPanelImpl);

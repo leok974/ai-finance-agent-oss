@@ -44,12 +44,18 @@ def _create_tables_dev():
         # Ignore in dev if engine misconfigured
         pass
 
+# Allow Vite dev origins explicitly (browser CORS)
+origins = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # consider tightening in prod
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=origins,          # exact origins with scheme + port
+    allow_credentials=True,         # required if cookies/auth are used
+    allow_methods=["*"],            # allow all methods in dev
+    allow_headers=["*"],            # allow all headers in dev
 )
 
 # Legacy in-memory stores (kept for compatibility; safe to remove if unused)
@@ -69,7 +75,7 @@ async def _shutdown_save_state():
 # Routers
 app.include_router(ingest.router, prefix="")
 app.include_router(txns.router, prefix="/txns", tags=["txns"])
-app.include_router(rules.router, prefix="/rules", tags=["rules"])
+app.include_router(rules.router)
 app.include_router(ml.router)
 app.include_router(report.router, prefix="", tags=["report"])
 app.include_router(budget.router, prefix="/budget", tags=["budget"])

@@ -107,8 +107,11 @@ export default function SuggestionsPanel() {
 
       {/* List */}
       <div className="space-y-2">
-        {rows.map((r) => (
-          <div key={r.id} className="rounded-xl border border-[hsl(var(--border))] bg-card/60 px-3 py-2">
+        {rows.map((r, idx) => (
+          <div
+            key={(r as any)?.id ?? (r as any)?.txn_id ?? `${r.merchant ?? 'm'}-${(r as any)?.date ?? 'd'}-${(r as any)?.amount ?? 'a'}-${idx}`}
+            className="rounded-xl border border-[hsl(var(--border))] bg-card/60 px-3 py-2"
+          >
             <div className="flex items-center gap-3">
               <input
                 type="checkbox"

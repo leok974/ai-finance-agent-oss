@@ -33,6 +33,11 @@ async function http<T=any>(path: string, init?: RequestInit): Promise<T> {
   return ct.includes('application/json') ? res.json() : (await res.text() as any);
 }
 
+// ---------- Health ----------
+export async function getHealthz() {
+  return http<any>('/healthz');
+}
+
 // mapper: rename keys (camelCase -> snake_case) and allow snake_case passthrough
 const mapKeys = <T extends object>(src: any, pairs: Record<string, string>) => {
   const o: any = {};
