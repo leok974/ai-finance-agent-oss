@@ -134,7 +134,7 @@ const App: React.FC = () => {
             <AboutDrawer />
             <input type="month" className="bg-neutral-900 border border-neutral-800 rounded px-3 py-2" value={month} onChange={e=>{ setMonth(e.target.value); setGlobalMonth(e.target.value); }} />
             <button className="btn btn-sm hover:bg-accent" onClick={()=>setRefreshKey(k=>k+1)}>Refresh</button>
-            <a href="/rules/suggestions" className="btn btn-ghost btn-sm" title="Open persistent Rule Suggestions">Suggestions</a>
+            <a href="#rule-suggestions" className="btn btn-ghost btn-sm" title="Jump to persistent Rule Suggestions">Suggestions</a>
           </div>
         </header>
 
@@ -159,7 +159,9 @@ const App: React.FC = () => {
         </div>
 
         {/* Persistent rule suggestions table */}
-        <RuleSuggestionsPersistentPanel />
+        <div id="rule-suggestions">
+          <RuleSuggestionsPersistentPanel />
+        </div>
 
         {/* Rules + Tester */}
         <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
