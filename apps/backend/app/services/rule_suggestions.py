@@ -11,8 +11,8 @@ from app.models import RuleSuggestion, Feedback, Transaction, Rule  # type: igno
 
 
 # Thresholds for promoting a candidate into a persistent suggestion
-MIN_SUPPORT = 3
-MIN_POSITIVE = 0.8
+MIN_SUPPORT = int(os.getenv("RULE_SUGGESTION_MIN_SUPPORT", "3"))
+MIN_POSITIVE = float(os.getenv("RULE_SUGGESTION_MIN_POSITIVE", "0.8"))
 def _read_window_days_from_env() -> Optional[int]:
     """Read RULE_SUGGESTION_WINDOW_DAYS from env; default 30; <=0/none disables."""
     raw = os.getenv("RULE_SUGGESTION_WINDOW_DAYS", "30")
@@ -57,67 +57,60 @@ def _as_aware_utc(dt: datetime) -> datetime:
     return dt.astimezone(timezone.utc)
 
 def compute_metrics(db: Session, merchant_norm: str, category: str) -> Optional[Tuple[int, float, datetime]]:
-    """
-    Compute (accepts, positive_rate, last_seen) using Python-side counting.
+    """Compute support, positive_rate, and last_seen.
 
-    - Join Feedback -> Transaction so we can canonicalize txn.merchant in Python.
-    - Match rows where canonicalize_merchant(txn.merchant) == merchant_norm and
-      lower(label) == category.lower().
-    - accepts = count of Feedback.source == "accept" among matched rows
-    - total = count of Feedback.source in {"accept","reject"} among matched rows; if no rejects stored, total == accepts
-    - last_seen = max(created_at) among matched rows; fallback to now if none
-    Applies an optional time window (WINDOW_DAYS) to feedback based on created_at.
+    SQL side:
+      - Join Feedback -> Transaction
+      - Filter by Feedback.label (category) and optional created_at cutoff
+
+    Python side:
+      - Canonicalize Transaction.merchant and compare to merchant_norm
+      - Count Feedback.source values ("accept" and "reject")
     """
-    rows = (
+    wd = _current_window_days()
+    cutoff: Optional[datetime] = None
+    if wd is not None and int(wd) > 0:
+        cutoff = datetime.now(timezone.utc) - timedelta(days=int(wd))
+
+    q = (
         db.query(Feedback, Transaction)
         .join(Transaction, Feedback.txn_id == Transaction.id)
-        .all()
+        .filter(func.lower(Feedback.label) == category.lower())
     )
+    if cutoff is not None:
+        # Inclusive by day: treat any feedback on the cutoff day as in-window
+        q = q.filter(func.date(Feedback.created_at) >= cutoff.date())
+
+    rows = q.all()
+    if not rows:
+        return None
 
     accepts = 0
     total = 0
     label_matches = 0
-    last_seen: datetime | None = None
-    cat_lower = (category or "").strip().lower()
-    now = datetime.now(timezone.utc)
-    cutoff_date = None
-    wd = _current_window_days()
-    if wd is not None:
-        cutoff_date = (now - timedelta(days=wd)).date()
-
+    last_seen: Optional[datetime] = None
     for fb, txn in rows:
         mnorm = canonicalize_merchant((getattr(txn, "merchant", None) or "").strip())
         if mnorm != merchant_norm:
             continue
-        if (getattr(fb, "label", "") or "").strip().lower() != cat_lower:
-            continue
-
-        # If created_at is missing, treat as very old; normalize to aware UTC
-        ts_raw = getattr(fb, "created_at", None) or datetime.fromtimestamp(0, tz=timezone.utc)
-        ts = _as_aware_utc(ts_raw)
-        # apply window filter if enabled: compare by date, inclusive at boundary
-        if cutoff_date is not None and ts.date() < cutoff_date:
-            continue
-
-        # Track label matches (in-window only) for fallback behavior
+        # Count any label match for fallback behavior
         label_matches += 1
-
         src = (getattr(fb, "source", "") or "").strip().lower()
         if src in ("accept", "reject"):
             total += 1
         if src == "accept":
             accepts += 1
-
-        last_seen = max(last_seen or ts, ts)
+        ts = getattr(fb, "created_at", None)
+        if ts is not None:
+            last_seen = max(last_seen or ts, ts)
 
     if total == 0:
-        # Fallback: when no explicit accept/reject stored, treat all matches as accepts
         if label_matches == 0:
             return None
         accepts = label_matches
         total = label_matches
-    rate = accepts / total if total else 1.0
-    return accepts, rate, (last_seen or now)
+    rate = accepts / total if total else 0.0
+    return accepts, rate, (last_seen or datetime.now(timezone.utc))
 
 
 def _has_in_window_feedback(db: Session, merchant_norm: str, category: str) -> bool:

@@ -92,7 +92,8 @@ class Feedback(Base):
     txn_id: Mapped[int] = mapped_column(Integer, ForeignKey("transactions.id"), index=True, nullable=False)
     label: Mapped[str] = mapped_column(String(128), nullable=False)
     source: Mapped[str] = mapped_column(String(64), nullable=False, server_default="user_change")  # user_change | accept_suggestion | rule_apply
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    # Enforce NOT NULL with server default at DB level for reliable windowing
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Relationship back to transaction
     txn: Mapped["Transaction"] = relationship("Transaction", back_populates="feedbacks")
