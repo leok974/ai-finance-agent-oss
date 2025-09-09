@@ -30,6 +30,8 @@ export default function SuggestionsPanel() {
   const [threshold, setThreshold] = React.useState<number>(0.85);
   const [pending, setPending] = React.useState<Set<number>>(new Set());
   const { ok, err } = (useOkErrToast as any)?.() ?? { ok: console.log, err: console.error };
+  const errRef = React.useRef(err);
+  React.useEffect(() => { errRef.current = err; }, [err]);
   const [learned, setLearned] = React.useState<Record<number, boolean>>({});
   const loadingRef = useRef(false);
 
@@ -43,19 +45,22 @@ export default function SuggestionsPanel() {
       setRows((data?.suggestions ?? []) as Suggestion[]);
       setSelected(new Set());
     } catch (e) {
-      err("Could not fetch suggestions.", "Failed to load");
+      // use ref to avoid re-creating callback and effect loops
+      errRef.current?.("Could not fetch suggestions.", "Failed to load");
     } finally {
       loadingRef.current = false;
       setLoading(false);
     }
-  }, [err]);
+  }, []);
 
   // Coalesced refresh to batch rapid apply actions across this tab
   const scheduleSuggestionsRefresh = useCoalescedRefresh('suggestions-refresh', () => refresh(), 450);
 
   React.useEffect(() => {
+    // run once on mount
     refresh();
-  }, [refresh]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const toggle = (id: number, on: boolean) => {
     const next = new Set(selected);
