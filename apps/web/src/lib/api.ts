@@ -352,6 +352,23 @@ export async function createRule(body: RuleInput): Promise<RuleCreateResponse> {
 
 // ---------- ML ----------
 export const mlSuggest = (month: string, limit=100, topk=3) => http(`/ml/suggest${q({ month, limit, topk })}`)
+
+// ---------- Rule Suggestions (persistent) ----------
+export type RuleSuggestion = {
+  id: number;
+  merchant_norm: string;
+  category: string;
+  support: number;
+  positive_rate: number;
+  last_seen: string | null;
+  created_at: string | null;
+};
+export async function listRuleSuggestions(params: { merchant_norm?: string; category?: string; limit?: number; offset?: number } = {}) {
+  const qs = q(params as any);
+  return http<RuleSuggestion[]>(`/rules/suggestions${qs}`);
+}
+export const acceptRuleSuggestion = (id: number) => http<{ ok: boolean; rule_id: number }>(`/rules/suggestions/${id}/accept`, { method: 'POST' });
+export const dismissRuleSuggestion = (id: number) => http<{ ok: boolean }>(`/rules/suggestions/${id}/dismiss`, { method: 'POST' });
 // ---------- ML Train ----------
 export async function mlTrain(month?: string, passes = 1, min_samples = 25) {
   const body = { month, passes, min_samples };
