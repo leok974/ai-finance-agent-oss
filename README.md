@@ -118,24 +118,12 @@ In the web UI, go to **CSV Ingest** and upload `transactions_sample.csv` from `a
 
 This branch (UI-update) focuses on UI/UX refinements and stability: unified toasts (single Toaster), actionable CTA toasts with smooth scroll to anchors, shared scroll helper, and removal of deprecated insights summary usage.
 
-## 🛠️ Features Added
-
-### 🧪 **Hermetic Testing System**
 Complete test coverage with zero external dependencies:
-- **🔒 Fully Mocked**: No real LLM calls or external services required
 - **⚡ Lightning Fast**: Tests run in seconds instead of minutes
 - **🎯 CI/CD Ready**: Works in any environment without API keys
 - **📋 Comprehensive Coverage**: 15+ test scenarios covering all functionality
-
-```bash
-# Run all hermetic tests
-cd apps/backend
 pytest tests/test_agent_chat.py -v
 
-# All tests are hermetic - no OPENAI_API_KEY needed!
-```
-
-### Frontend
 
 **Global Month Auto-Run**
 - On UI startup, fetches `/agent/tools/meta/latest_month`.
