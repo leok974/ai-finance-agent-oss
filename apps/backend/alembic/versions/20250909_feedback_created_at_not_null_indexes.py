@@ -35,11 +35,15 @@ def upgrade() -> None:
         server_default=default_expr,
     )
 
-    # 3) Helpful indexes
-    with op.batch_alter_table("feedback", schema=None) as b:
-        b.create_index("ix_feedback_created_at", ["created_at"], unique=False)
-    with op.batch_alter_table("transactions", schema=None) as b:
-        b.create_index("ix_transactions_date", ["date"], unique=False)
+    # 3) Helpful indexes (guarded if they already exist)
+    inspector = sa.inspect(conn)
+    existing_feedback_indexes = {ix["name"] for ix in inspector.get_indexes("feedback")}
+    existing_txn_indexes = {ix["name"] for ix in inspector.get_indexes("transactions")}
+
+    if "ix_feedback_created_at" not in existing_feedback_indexes:
+        op.create_index("ix_feedback_created_at", "feedback", ["created_at"], unique=False)
+    if "ix_transactions_date" not in existing_txn_indexes:
+        op.create_index("ix_transactions_date", "transactions", ["date"], unique=False)
 
 
 def downgrade() -> None:
