@@ -4,7 +4,7 @@ from sqlalchemy import select, update
 from io import TextIOWrapper
 import csv, datetime as dt
 from ..db import get_db
-from app.orm_models import Transaction
+from app.transactions import Transaction
 from app.services.ingest_utils import detect_positive_expense_format
 
 router = APIRouter(prefix="/ingest", tags=["ingest"])

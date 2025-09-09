@@ -7,7 +7,7 @@ from pydantic import BaseModel, ConfigDict
 from app.orm_models import Rule
 from app.services.rules_apply import latest_month_from_data, apply_all_active_rules
 from app.services import rules_service, ml_train_service, txns_service
-from app.orm_models import Transaction
+from app.transactions import Transaction
 from app.schemas.rules import (
     SaveTrainPayload,
     SaveTrainResponse,

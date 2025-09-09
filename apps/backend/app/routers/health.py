@@ -8,7 +8,7 @@ import os
 import json, urllib.request
 
 from app.db import get_db
-from app.orm_models import Transaction
+from app.transactions import Transaction
 from app.config import settings
 from sqlalchemy.engine import make_url
 

@@ -5,7 +5,7 @@ from sqlalchemy import func, case, desc
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.orm_models import Transaction
+from app.transactions import Transaction
 from app.services.insights_expanded import build_expanded_insights
 
 router = APIRouter(prefix="/agent/tools/insights", tags=["agent-tools:insights"])

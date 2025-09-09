@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import desc
 
 from app.db import get_db
-from app.orm_models import Transaction
+from app.transactions import Transaction
 
 # Import existing agent tools endpoints
 from app.routers import agent_tools_charts, agent_tools_budget, agent_tools_insights 

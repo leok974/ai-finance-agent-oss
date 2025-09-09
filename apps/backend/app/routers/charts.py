@@ -3,7 +3,7 @@ from datetime import date as _date
 from sqlalchemy import select, func, case, or_, and_
 from sqlalchemy.orm import Session
 from app.db import get_db
-from app.orm_models import Transaction
+from app.transactions import Transaction
 
 router = APIRouter()
 
@@ -260,7 +260,7 @@ def month_summary(month: str | None = Query(None, pattern=r"^\d{4}-\d{2}$"), db:
                 neg = [abs(float(t.get("amount", 0.0))) for t in month_items if float(t.get("amount", 0.0)) < 0]
                 total_income = float(sum(pos))
                 total_spend = float(sum(neg))
-                # debug print removed; keep logic quiet in production/tests
+                # keep logic quiet in production/tests
                 # categories from negative (spend) amounts
                 agg = {}
                 for t in month_items:

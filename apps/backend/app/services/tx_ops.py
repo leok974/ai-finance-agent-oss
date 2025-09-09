@@ -1,6 +1,7 @@
 from decimal import Decimal
 from sqlalchemy.orm import Session
-from app.orm_models import Transaction, TransferLink, TransactionSplit
+from app.transactions import Transaction
+from app.orm_models import TransferLink, TransactionSplit
 
 def link_transfer(db: Session, txn_out_id: int, txn_in_id: int) -> TransferLink:
     out = db.query(Transaction).get(txn_out_id)

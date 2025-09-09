@@ -2,7 +2,8 @@ from collections import defaultdict
 from datetime import date, timedelta
 from typing import Iterable, List, Tuple
 from sqlalchemy.orm import Session
-from app.orm_models import Transaction, RecurringSeries
+from app.transactions import Transaction
+from app.orm_models import RecurringSeries
 
 def _infer_cadence(sorted_dates: List[date]) -> str:
     if len(sorted_dates) < 3:

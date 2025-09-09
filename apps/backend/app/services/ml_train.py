@@ -26,7 +26,7 @@ def _ensure_dirs() -> None:
 
 def _fetch_labeled_rows(db: Session, month: Optional[str]) -> List[Dict[str, Any]]:
     try:
-        from app.orm_models import Transaction  # type: ignore
+        from app.transactions import Transaction  # type: ignore
         q = (
             db.query(Transaction)
             .filter(Transaction.category.isnot(None))

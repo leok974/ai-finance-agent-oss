@@ -1,21 +1,28 @@
 import pytest
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
+import uuid
 
-from app.models.transaction import Transaction
+from app.transactions import Transaction
+
 
 def _mk_txn(db, merchant="Starbucks", category="Coffee"):
+    today = datetime.now(timezone.utc).date()
+    unique_suffix = uuid.uuid4().hex[:8]
+    desc = f"{merchant} test-{unique_suffix}"
+
     row = Transaction(
-        date=datetime.now(timezone.utc).date(),
+        date=today,
         merchant=merchant,
-        description=merchant,
+        description=desc,          # unique per test run
         amount=-5.0,
         category=None,
         raw_category=None,
         account="test",
-        month="2025-09",
+        month=today.strftime("%Y-%m"),
     )
     db.add(row)
     db.flush()
+    db.commit()  # visibility across the overridden get_db
     return row
 
 

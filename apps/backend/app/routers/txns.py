@@ -8,7 +8,7 @@ from sqlalchemy import desc
 from sqlalchemy import text
 from sqlalchemy import func
 from ..models import Txn, CategorizeRequest
-from app.orm_models import Transaction
+from app.transactions import Transaction
 from ..utils.dates import latest_month_from_txns
 from ..utils.state import save_state
 import datetime as dt

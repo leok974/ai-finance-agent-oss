@@ -1,10 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 from sqlalchemy import func, text
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Literal
 from app.db import get_db
-from app.orm_models import Transaction, Feedback
+from app.transactions import Transaction
+from app.orm_models import Feedback
 from app.services.ml_suggest import suggest_for_unknowns
 from app.services import rule_suggestions
 from app.services.ml_train import incremental_update, train_on_db
@@ -34,6 +35,14 @@ class TrainParams(BaseModel):
     min_samples: int | None = 6
     test_size: float | None = 0.2
     month: str | None = None
+
+
+# Typed feedback for suggestion acceptance/rejection
+class FeedbackInSuggest(BaseModel):
+    txn_id: int = Field(..., description="Transaction id to which feedback applies")
+    merchant: Optional[str] = Field(None, description="Merchant name override (defaults to txn.merchant)")
+    category: str = Field(..., min_length=1)
+    action: Literal["accept", "reject"]
 
 @router.post("/ml/train")
 def train_model(params: TrainParams, db: Session = Depends(get_db)) -> Dict[str, Any]:
@@ -169,7 +178,6 @@ def ml_suggest(
     month: str | None = None,
     db: Session = Depends(get_db),
 ) -> Dict[str, Any]:
-    # debug prints removed
     # Define "unlabeled": None, empty string, or literal "Unknown" (case-insensitive)
     unlabeled_cond = (
         (Transaction.category.is_(None)) |
@@ -184,8 +192,7 @@ def ml_suggest(
 
     # Compute the authoritative set of unlabeled txn IDs for this month
     unlabeled_ids = {row[0] for row in base_q.all()}
-    # Optional debug: show the set of unlabeled txn IDs
-    # debug prints removed
+    # Note: keep output quiet in production/tests
 
     # If none, return empty immediately (this is what the test expects)
     if not unlabeled_ids:
@@ -211,10 +218,10 @@ def ml_suggest(
 
 # ---------- Feedback + Incremental Update ----------
 class FeedbackIn(BaseModel):
-    txn_id: int
-    label: str
-    source: str = "user_change"
-    notes: str | None = None
+    txn_id: int = Field(..., description="Transaction id to which feedback applies")
+    merchant: Optional[str] = Field(None, description="Merchant name override (defaults to txn.merchant)")
+    category: str = Field(..., min_length=1)
+    action: Literal["accept", "reject"]
 
 class FeedbackByIdIn(BaseModel):
     id: int  # DB primary key
@@ -224,61 +231,40 @@ class FeedbackByIdIn(BaseModel):
 
 
 @router.post("/ml/feedback")
-def record_feedback(payload: FeedbackIn, db: Session = Depends(get_db)):
-    # 1) fetch transaction by DB id or external txn_id (raw SQL)
-    row = _fetch_txn_row(db, payload.txn_id)
-    if not row:
+def record_feedback(fb: FeedbackIn, db: Session = Depends(get_db)):
+    # Fetch ORM transaction by DB id
+    txn = db.query(Transaction).filter(Transaction.id == fb.txn_id).first()
+    if not txn:
         raise HTTPException(status_code=404, detail="Transaction not found")
 
-    # Build the columns expected by the preprocessor (ColumnTransformer):
-    # text: concatenated textual fields; num0/num1: numeric features
-    amt = float(row.get("amount") or 0.0)
-    sample = {
-        "text": " ".join([
-            (row.get("merchant") or ""),
-            (row.get("description") or ""),
-            f"{amt:.2f}",
-        ]).strip(),
-        "num0": amt,
-        "num1": abs(amt),
-    }
-
-    # 2) store feedback row (use DB primary key id)
-    db.execute(
-        text("insert into feedback (txn_id, label, source, notes) values (:tid, :label, :source, :notes)"),
-        {"tid": row["id"], "label": payload.label, "source": payload.source, "notes": payload.notes or ""},
+    row = Feedback(
+        txn_id=txn.id,
+    label=fb.category,
+    source=fb.action,  # store exact action for DB-agnostic metrics
+        notes=None,
     )
-    db.commit()
-
-    # 3) best-effort incremental update
+    db.add(row)
+    db.flush()
     try:
-        from app.services.ml_train_service import incremental_update_rows
-        upd = incremental_update_rows([sample], [payload.label])
-    except Exception as e:
-        upd = {"updated": False, "error": str(e)}
-
-    # If the label isn't in the model yet, return a friendly action hint
-    if upd.get("reason") == "label_not_in_model":
-        return {
-            "ok": True,
-            "updated": False,
-            "detail": upd,
-            "action": {
-                "type": "retrain_needed",
-                "message": f"Label '{payload.label}' is not in the model yet. Categorize at least one txn as '{payload.label}' then run /ml/train once.",
-                "train_example": {"min_samples": 1, "test_size": 0.0},
-            },
-        }
-
-    # Evaluate for a persistent rule suggestion (best-effort)
-    try:
-        # canonicalize via service using the real merchant from txn row
-        mnorm = rule_suggestions.canonicalize_merchant(row.get("merchant"))
-        rule_suggestions.evaluate_candidate(db, mnorm, payload.label)
+        db.refresh(row)  # populate server defaults like created_at
     except Exception:
         pass
 
-    return {"ok": True, "updated": bool(upd.get("updated")), "detail": upd}
+    # If this was an accept, evaluate for rule suggestion
+    if fb.action == "accept":
+        try:
+            # Prefer the canonicalized merchant from the actual transaction for stable matching
+            mnorm = rule_suggestions.canonicalize_merchant(txn.merchant or fb.merchant)
+            sugg = rule_suggestions.evaluate_candidate(db, mnorm, fb.category)
+            if sugg:
+                db.commit()
+                return {"ok": True, "id": row.id, "suggestion_id": sugg.id}
+        except Exception as e:
+            # non-fatal
+            print(f"[feedback] evaluate_candidate failed: {e}")
+
+    db.commit()
+    return {"ok": True, "id": row.id}
 
 @router.post("/ml/feedback/by_id")
 def record_feedback_by_id(payload: FeedbackByIdIn, db: Session = Depends(get_db)):

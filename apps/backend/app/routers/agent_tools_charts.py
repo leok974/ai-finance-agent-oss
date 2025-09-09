@@ -5,7 +5,7 @@ from sqlalchemy import func, case, desc, asc
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.orm_models import Transaction
+from app.transactions import Transaction
 
 router = APIRouter(prefix="/agent/tools/charts", tags=["agent-tools:charts"])
 
