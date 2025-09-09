@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronUp, Wrench } from "lucide-react";
-import { agentTools, agentChat, getAgentModels, type AgentChatRequest, type AgentChatResponse, type AgentModelsResponse, type ChatMessage } from "../lib/api";
+import { agentTools, agentChat, getAgentModels, type AgentChatRequest, type AgentChatResponse, type AgentModelsResponse, type ChatMessage, mlSelftest } from "../lib/api";
+import { useOkErrToast } from "../lib/toast-helpers";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { ToolKey, ToolSpec, ToolRunState } from "../types/agentTools";
@@ -131,6 +132,10 @@ export default function ChatDock() {
   const [showTools, setShowTools] = useState<boolean>(true);
   const [activePreset, setActivePreset] = useState<ToolPresetKey>('insights_expanded');
   const [toolPayload, setToolPayload] = useState<string>(() => JSON.stringify(TOOL_PRESETS['insights_expanded'].defaultPayload ?? {}, null, 2));
+  // ML selftest UI state
+  const { ok, err } = useOkErrToast?.() ?? { ok: console.log, err: console.error } as any;
+  const [selftestBusy, setSelftestBusy] = useState(false);
+  const [selftestNote, setSelftestNote] = useState<string | null>(null);
 
   // --- feature flags to forcibly hide legacy UI ---
   const ENABLE_TOPBAR_TOOL_BUTTONS = false;   // keep a single “Agent tools” toggle
@@ -934,8 +939,48 @@ export default function ChatDock() {
             <button type="button" onClick={(e) => runBudgetCheck(e as any)} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50">Budget check</button>
             <button type="button" onClick={(e) => runAlerts(e as any)} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50">Alerts</button>
             <button type="button" onClick={(e) => runSearchTransactions(e as any)} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50">Search transactions…</button>
+            <button
+              type="button"
+              disabled={selftestBusy}
+              className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50"
+              title="Run an end-to-end incremental learning smoke test"
+              onClick={async () => {
+                try {
+                  setSelftestBusy(true);
+                  setSelftestNote(null);
+                  const t0 = performance.now();
+                  const res = await mlSelftest();
+                  const dt = Math.round(performance.now() - t0);
+                  const bumped = !!res?.mtime_bumped;
+                  const label = res?.label_used ?? '—';
+                  const usedId = res?.used_txn_id ?? '—';
+                  const classesAfter = Array.isArray(res?.classes_after) ? res.classes_after.join(', ') : '—';
+                  const msg = bumped
+                    ? `Selftest OK in ${dt}ms — label=${label}, txn=${usedId}, classes=[${classesAfter}]`
+                    : `Selftest ran but model timestamp didn’t change.`;
+                  setSelftestNote(
+                    bumped
+                      ? `mtime: ${(res?.mtime_before ?? '∅')} → ${(res?.mtime_after ?? '∅')}`
+                      : `no mtime bump; reason: ${res?.reason ?? 'unknown'}`
+                  );
+                  (bumped ? ok : err)(msg);
+                } catch (e: any) {
+                  err(`Selftest failed: ${e?.message ?? String(e)}`);
+                  setSelftestNote('request failed');
+                } finally {
+                  setSelftestBusy(false);
+                  window.setTimeout(() => setSelftestNote(null), 4500);
+                }
+              }}
+            >
+              {selftestBusy ? 'Running ML Selftest…' : 'Run ML Selftest'}
+            </button>
           </div>
           <div className="text-[11px] opacity-60">Tip: Hold Alt to run without context.</div>
+
+          {selftestNote && (
+            <div className="text-[11px] text-neutral-400 mt-1">{selftestNote}</div>
+          )}
 
           {ENABLE_LEGACY_TOOL_FORM ? (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">

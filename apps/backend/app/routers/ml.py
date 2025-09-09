@@ -75,67 +75,90 @@ def ml_status(db: Session = Depends(get_db)) -> Dict[str, Any]:
 
 @router.post("/ml/selftest")
 def ml_selftest(db: Session = Depends(get_db)) -> Dict[str, Any]:
-    """E2E smoke test for incremental update.
-    Picks a safe label (existing if present; otherwise creates 'SelfTest') and updates the model
-    using a minimal synthetic row matching the preprocessor schema.
-    Returns whether the model file mtime bumped and classes before/after.
+    """
+    E2E smoke test for incremental learning:
+      - Ensure model has 'Coffee' class (train if missing)
+      - Pick a real txn (prefer coffee-like)
+      - Build feature dict {text,num0,num1}
+      - Incrementally update to label 'Coffee'
+      - Verify model mtime bumped and status sane
     """
     import os, time
-    try:
-        import joblib
-    except Exception:
-        raise HTTPException(status_code=500, detail="joblib not available")
+    # 0) Read current status (classes + feedback_count)
+    before = ml_status(db)
+    classes = before.get("classes") or []
 
-    path = latest_model_path()
-    if not os.path.exists(path):
-        raise HTTPException(status_code=404, detail="No trained model found; run /ml/train first")
+    # 1) Ensure model is trained and includes 'Coffee'
+    if not classes or "Coffee" not in classes:
+        try:
+            # attempt a quick train pass
+            train_on_db(db=db, month=None, min_samples=6, test_size=0.2)
+            time.sleep(0.1)
+        except Exception:
+            # best-effort; we'll validate below
+            pass
+        before = ml_status(db)
+        classes = before.get("classes") or []
+        if "Coffee" not in classes:
+            return {
+                "ok": False,
+                "updated": False,
+                "reason": "coffee_missing_after_train",
+                "classes_after_train": classes,
+            }
 
-    # Observe pre-update state
-    try:
-        pipe = joblib.load(path)
-        steps = getattr(pipe, "named_steps", {}) or {}
-        clf = steps.get("clf")
-        before_classes = list(getattr(clf, "classes_", []) or []) if clf is not None else []
-    except Exception:
-        before_classes = []
+    model_path = latest_model_path()
+    mtime_before = os.path.getmtime(model_path) if os.path.exists(model_path) else None
 
-    mtime_before = os.path.getmtime(path)
+    # 2) Pick a transaction (prefer something coffee-like)
+    txn = (
+        db.query(Transaction)
+        .filter(
+            (Transaction.merchant.ilike("%starbucks%")) | (Transaction.description.ilike("%coffee%"))
+        )
+        .order_by(Transaction.id.desc())
+        .first()
+    ) or db.query(Transaction).order_by(Transaction.id.desc()).first()
+    if not txn:
+        return {"ok": False, "updated": False, "reason": "no_transactions"}
 
-    # Prepare a simple synthetic row consistent with ColumnTransformer expectations
-    amt = 1.23
-    sample = {
-        "text": f"SELFTEST merchant sample {amt:.2f}",
-        "num0": amt,
-        "num1": abs(amt),
-    }
-    # Choose a label that's guaranteed to be accepted
-    test_label = before_classes[0] if before_classes else "SelfTest"
+    # 3) Build features aligned to preprocessor
+    amt = float(getattr(txn, "amount", 0.0) or 0.0)
+    text = f"{txn.merchant or ''} {txn.description or ''}".strip()
+    row = {"text": text, "num0": amt, "num1": abs(amt)}
 
-    upd = incremental_update_rows([sample], [test_label])
+    # 4) Incremental update toward 'Coffee'
+    upd = incremental_update_rows([row], ["Coffee"]) or {}
+    updated_classes = upd.get("classes") or []
 
-    # Ensure filesystem timestamp has a chance to change
-    time.sleep(0.05)
-    mtime_after = os.path.getmtime(path)
+    # 5) Re-check status and model timestamp
+    time.sleep(0.15)
+    after = ml_status(db)
+    mtime_after = os.path.getmtime(model_path) if os.path.exists(model_path) else None
 
-    # Read back classes after update
-    try:
-        pipe2 = joblib.load(path)
-        steps2 = getattr(pipe2, "named_steps", {}) or {}
-        clf2 = steps2.get("clf")
-        after_classes = list(getattr(clf2, "classes_", []) or []) if clf2 is not None else []
-    except Exception:
-        after_classes = []
+    mtime_bumped = (
+        (mtime_before is None and mtime_after is not None)
+        or (
+            isinstance(mtime_before, float)
+            and isinstance(mtime_after, float)
+            and mtime_after > mtime_before
+        )
+    )
 
     return {
-        "ok": True,
-        "updated": bool(upd.get("updated")),
-        "reason": upd.get("reason"),
-        "label_used": test_label,
+        "ok": bool(mtime_bumped and ("Coffee" in ((after.get("classes") or updated_classes or [])))) ,
+        "updated": mtime_bumped,
+        "reason": None if mtime_bumped else "mtime_not_changed",
+        "used_txn_id": txn.id,
+        "label_used": "Coffee",
         "mtime_before": mtime_before,
         "mtime_after": mtime_after,
-        "mtime_bumped": mtime_after > mtime_before,
-        "classes_before": sorted(before_classes),
-        "classes_after": sorted(after_classes),
+        "mtime_bumped": mtime_bumped,
+        "classes_before": classes,
+        "classes_after": after.get("classes") or updated_classes,
+        "feedback_count_before": before.get("feedback_count"),
+        "feedback_count_after": after.get("feedback_count"),
+        "model_path": model_path,
     }
 
 @router.get("/ml/suggest")

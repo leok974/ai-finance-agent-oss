@@ -426,6 +426,11 @@ export async function agentStatusOk(): Promise<boolean> {
   }
 }
 
+// ---------- ML: selftest ----------
+export async function mlSelftest(): Promise<any> {
+  return http('/ml/selftest', { method: 'POST' });
+}
+
 // ---------- CSV ingest ----------
 // web/src/lib/api.ts
 export async function uploadCsv(file: File, replace = true, expensesArePositive?: boolean) {
