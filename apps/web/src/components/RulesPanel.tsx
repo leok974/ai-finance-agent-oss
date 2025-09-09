@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { getRules, deleteRule, type Rule, type RuleInput, type RuleListItem } from '@/api';
+import { getRules, deleteRule, type Rule, type RuleInput, type RuleListItem, fetchRuleSuggestConfig, type RuleSuggestConfig } from '@/api';
 import { addRule } from '@/state/rules';
 import { useOkErrToast } from '@/lib/toast-helpers';
 import { useToast } from '@/hooks/use-toast';
@@ -22,6 +22,7 @@ function RulesPanelImpl({ month, refreshKey }: Props) {
   const [page, setPage] = useState(0);
   const [total, setTotal] = useState(0);
   const limit = 20;
+  const [cfg, setCfg] = useState<RuleSuggestConfig | null>(null);
   const [form, setForm] = useState<RuleInput>({
     name: '',
     enabled: true,
@@ -51,6 +52,7 @@ function RulesPanelImpl({ month, refreshKey }: Props) {
   }
 
   useEffect(() => { load(); }, [q, page]);
+  useEffect(() => { fetchRuleSuggestConfig().then(setCfg).catch(() => {}); }, []);
   useEffect(() => {
     if (typeof refreshKey !== 'undefined') {
       load();
@@ -163,6 +165,11 @@ function RulesPanelImpl({ month, refreshKey }: Props) {
               {creating ? 'Creating…' : 'Create'}
             </button>
           </div>
+          {cfg && (
+            <div className="text-xs opacity-70">
+              based on last {cfg.window_days ?? '∞'} days of feedback
+            </div>
+          )}
           <div className="flex items-center gap-2 text-xs whitespace-nowrap">
             <button className="btn btn-ghost btn-sm" disabled={page===0} onClick={() => setPage(p=>Math.max(0,p-1))}>Prev</button>
             <span className="opacity-70">{page*limit+1}–{Math.min((page+1)*limit, total)} of {total}</span>
