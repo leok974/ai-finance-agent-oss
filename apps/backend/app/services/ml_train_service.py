@@ -1,6 +1,7 @@
 from __future__ import annotations
 import joblib, numpy as np
 from pathlib import Path
+import os
 from typing import List, Optional, Dict, Any
 import pandas as pd
 from sqlalchemy.orm import Session
@@ -8,19 +9,27 @@ from sqlalchemy.orm import Session
 from app.services.ml_train import train_on_db
 
 
-MODEL_PATH = Path(__file__).resolve().parents[1] / "data" / "models" / "latest.joblib"
+MODELS_DIR = Path(__file__).resolve().parents[1] / "data" / "models"
+LATEST = MODELS_DIR / "latest.joblib"
 
 
 def _load_pipeline():
-    if not MODEL_PATH.exists():
-        raise FileNotFoundError(f"No model at {MODEL_PATH}")
-    return joblib.load(MODEL_PATH)
+    if not LATEST.exists():
+        raise FileNotFoundError(f"No model at {LATEST}")
+    return joblib.load(LATEST)
 
 
 def _save_pipeline(pipe) -> None:
-    tmp = MODEL_PATH.with_suffix(".tmp.joblib")
+    # Ensure target dir exists
+    os.makedirs(MODELS_DIR, exist_ok=True)
+    tmp = LATEST.with_suffix(".tmp.joblib")
     joblib.dump(pipe, tmp)
-    tmp.replace(MODEL_PATH)
+    tmp.replace(LATEST)
+
+
+def latest_model_path() -> str:
+    """Return absolute path to latest joblib (string) for easy JSON/reporting."""
+    return str(LATEST)
 
 
 def _featurize(pipe, texts: List[str]):

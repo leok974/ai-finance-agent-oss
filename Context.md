@@ -65,6 +65,13 @@ Recent updates (Sep 8, 2025)
 - Health: added `getHealthz()` client and one-time boot log `[db] <engine> loaded | alembic_ok=<...> | models_ok=<...>`.
 - Backend `/healthz`: adds `db_engine`, `alembic_ok` (mirrors `alembic.in_sync`), and `models_ok` at top-level while keeping `db` and `alembic` objects.
 
+ML pipeline updates (Sep 2025)
+- Row-aware incremental updates: feedback now passes a row dict to match the ColumnTransformer preprocessor (`pre` step) with columns `{ text, num0, num1 }`.
+- Safer partial_fit: pass `classes=` only on the very first incremental update (when classifier has no `classes_`). Subsequent updates reject unseen labels with `reason: label_not_in_model` and include `missing_labels` + `known_classes`.
+- `/ml/status` exposes current `classes` and `feedback_count` to help UI surface allowed labels.
+- `/ml/feedback` returns an action hint when the label isn’t yet in the model.
+- `/ml/selftest` provides an E2E incremental update smoke test that writes a synthetic row `{ text, num0, num1 }`, then reports model mtime bump and classes before/after.
+
 ⚙️ Backend Routers & Services
 
 Routers (apps/backend/app/routers/):
@@ -85,7 +92,7 @@ Services (apps/backend/app/services/):
 Highlights
 - rules.py: list/create/delete rules, test rule, save-train-reclass
 - txns.py: unknowns, categorize, transfer/splits/recurring
-- ml.py: /ml/suggest cleaned output
+- ml.py: /ml/suggest cleaned output; `/ml/feedback` builds `{text,num0,num1}` and uses row-aware incremental update; `/ml/status` returns `classes`; `/ml/selftest` validates incremental update and persistence.
 - rules_service.py: maps input → ORM, persists rule with computed display_name
 
 📡 API Exports (api.ts)

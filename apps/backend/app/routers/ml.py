@@ -7,6 +7,7 @@ from app.db import get_db
 from app.orm_models import Transaction, Feedback
 from app.services.ml_suggest import suggest_for_unknowns
 from app.services.ml_train import incremental_update, train_on_db
+from app.services.ml_train_service import incremental_update_rows, latest_model_path
 
 router = APIRouter()
 
@@ -71,6 +72,71 @@ def ml_status(db: Session = Depends(get_db)) -> Dict[str, Any]:
     except Exception:
         info["classes"] = []
     return info
+
+@router.post("/ml/selftest")
+def ml_selftest(db: Session = Depends(get_db)) -> Dict[str, Any]:
+    """E2E smoke test for incremental update.
+    Picks a safe label (existing if present; otherwise creates 'SelfTest') and updates the model
+    using a minimal synthetic row matching the preprocessor schema.
+    Returns whether the model file mtime bumped and classes before/after.
+    """
+    import os, time
+    try:
+        import joblib
+    except Exception:
+        raise HTTPException(status_code=500, detail="joblib not available")
+
+    path = latest_model_path()
+    if not os.path.exists(path):
+        raise HTTPException(status_code=404, detail="No trained model found; run /ml/train first")
+
+    # Observe pre-update state
+    try:
+        pipe = joblib.load(path)
+        steps = getattr(pipe, "named_steps", {}) or {}
+        clf = steps.get("clf")
+        before_classes = list(getattr(clf, "classes_", []) or []) if clf is not None else []
+    except Exception:
+        before_classes = []
+
+    mtime_before = os.path.getmtime(path)
+
+    # Prepare a simple synthetic row consistent with ColumnTransformer expectations
+    amt = 1.23
+    sample = {
+        "text": f"SELFTEST merchant sample {amt:.2f}",
+        "num0": amt,
+        "num1": abs(amt),
+    }
+    # Choose a label that's guaranteed to be accepted
+    test_label = before_classes[0] if before_classes else "SelfTest"
+
+    upd = incremental_update_rows([sample], [test_label])
+
+    # Ensure filesystem timestamp has a chance to change
+    time.sleep(0.05)
+    mtime_after = os.path.getmtime(path)
+
+    # Read back classes after update
+    try:
+        pipe2 = joblib.load(path)
+        steps2 = getattr(pipe2, "named_steps", {}) or {}
+        clf2 = steps2.get("clf")
+        after_classes = list(getattr(clf2, "classes_", []) or []) if clf2 is not None else []
+    except Exception:
+        after_classes = []
+
+    return {
+        "ok": True,
+        "updated": bool(upd.get("updated")),
+        "reason": upd.get("reason"),
+        "label_used": test_label,
+        "mtime_before": mtime_before,
+        "mtime_after": mtime_after,
+        "mtime_bumped": mtime_after > mtime_before,
+        "classes_before": sorted(before_classes),
+        "classes_after": sorted(after_classes),
+    }
 
 @router.get("/ml/suggest")
 def ml_suggest(
