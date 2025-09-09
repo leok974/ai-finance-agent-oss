@@ -95,7 +95,7 @@ export default function UnknownsPanel({ month, onSeedRule, onChanged, refreshKey
     await categorizeTxn(id, category)
     // Attempt ML feedback; show transient "learned" badge on success
     try {
-      await mlFeedback({ txn_id: id, label: category, source: 'ui' })
+      await mlFeedback({ txn_id: id, category, action: 'accept' })
       setLearned(prev => ({ ...prev, [id]: true }))
       setTimeout(() => {
         setLearned(prev => {

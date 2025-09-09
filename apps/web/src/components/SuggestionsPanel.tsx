@@ -74,7 +74,7 @@ export default function SuggestionsPanel() {
     const nextPending = new Set(pending); nextPending.add(id); setPending(nextPending);
     try {
       await categorizeTxn(id, top.label);
-      await mlFeedback({ txn_id: id, label: top.label, source });
+  await mlFeedback({ txn_id: id, category: top.label, action: 'accept' });
       // Show transient learned badge
       setLearned(prev => ({ ...prev, [id]: true }));
       setTimeout(() => {
@@ -112,7 +112,7 @@ export default function SuggestionsPanel() {
       (async () => {
         const top = topCandidate(s)!; // filtered above
         await categorizeTxn(s.txn_id, top.label);
-        await mlFeedback({ txn_id: s.txn_id, label: top.label, source: "accept_suggestion" });
+  await mlFeedback({ txn_id: s.txn_id, category: top.label, action: 'accept' });
         // mark learned
         setLearned(prev => ({ ...prev, [s.txn_id]: true }));
         setTimeout(() => {
@@ -144,7 +144,7 @@ export default function SuggestionsPanel() {
       (async () => {
         const top = topCandidate(s)!;
         await categorizeTxn(s.txn_id, top.label);
-        await mlFeedback({ txn_id: s.txn_id, label: top.label, source: "auto_apply" });
+  await mlFeedback({ txn_id: s.txn_id, category: top.label, action: 'accept' });
         // mark learned
         setLearned(prev => ({ ...prev, [s.txn_id]: true }));
         setTimeout(() => {

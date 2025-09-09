@@ -225,25 +225,27 @@ export async function getSuggestions(month?: string) {
 export const categorizeTxn = (id: number, category: string) => http(`/txns/${id}/categorize`, { method: 'POST', body: JSON.stringify({ category }) })
 
 // ---- ML feedback (incremental learning) ----
-export async function mlFeedback(payload: {
+// New ML feedback shape aligned to backend
+export type FeedbackIn = {
   txn_id: number;
-  label: string;
-  source?: string;
-  notes?: string;
-}) {
-  return http('/ml/feedback', {
-    method: 'POST',
-    body: JSON.stringify(payload),
-    headers: { 'Content-Type': 'application/json' },
-  });
+  merchant?: string;
+  category: string;
+  action: "accept" | "reject";
+};
+export async function mlFeedback(body: FeedbackIn) {
+  return http<{ ok: boolean; id: number; suggestion_id?: number }>(
+    '/ml/feedback',
+    {
+      method: 'POST',
+      body: JSON.stringify(body),
+      headers: { 'Content-Type': 'application/json' },
+    }
+  );
 }
+// Legacy helper retained as no-op wrapper if still referenced elsewhere
 export async function sendFeedback(txnId: number, label: string, source: string = "user_change", notes?: string) {
   try {
-    await http('/ml/feedback', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ txn_id: txnId, label, source, notes }),
-    });
+    await mlFeedback({ txn_id: txnId, category: label, action: 'accept' });
   } catch {
     // soft ignore in UI
   }
