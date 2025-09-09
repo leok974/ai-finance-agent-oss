@@ -37,13 +37,15 @@ export function useRuleSuggestions(initial: Query = {}) {
   }, [query.merchant_norm, query.category, query.limit, query.offset, refreshNonce]);
 
   const accept = useCallback(async (id: number) => {
-    await acceptRuleSuggestion(id);
+    const res = await acceptRuleSuggestion(id);
     refresh();
+    return res; // { ok, rule_id }
   }, [refresh]);
 
   const dismiss = useCallback(async (id: number) => {
-    await dismissRuleSuggestion(id);
+    const res = await dismissRuleSuggestion(id);
     refresh();
+    return res; // { ok }
   }, [refresh]);
 
   return { items, loading, error, query, setFilter, setQuery, refresh, accept, dismiss };

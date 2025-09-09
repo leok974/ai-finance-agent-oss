@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import Card from "./Card";
 import { useRuleSuggestions } from "@/hooks/useRuleSuggestions";
 import { useOkErrToast } from "@/lib/toast-helpers";
@@ -12,6 +12,12 @@ export default function RuleSuggestionsPersistentPanel() {
   const [merchantFilter, setMerchantFilter] = useState(query.merchant_norm ?? "");
   const [categoryFilter, setCategoryFilter] = useState(query.category ?? "");
   const { ok, err } = (useOkErrToast as any)?.() ?? { ok: console.log, err: console.error };
+  const [busyIds, setBusyIds] = useState<Set<number>>(new Set());
+  const addBusy = (id: number) => setBusyIds(prev => new Set(prev).add(id));
+  const removeBusy = (id: number) => setBusyIds(prev => { const n = new Set(prev); n.delete(id); return n; });
+
+  // derive a local map for quick lookups if needed (optional)
+  const busyMap = useMemo(() => busyIds, [busyIds]);
 
   return (
     <Card>
@@ -83,26 +89,32 @@ export default function RuleSuggestionsPersistentPanel() {
                     <div className="flex gap-2">
                       <button
                         className="btn btn-sm"
+                        disabled={busyMap.has(s.id)}
                         onClick={async () => {
+                          addBusy(s.id);
                           try {
-                            await accept(s.id);
-                            ok("Accepted", `${s.merchant_norm} → ${s.category}`);
+                            const res = await accept(s.id);
+                            ok("Rule created", `${s.merchant_norm} → ${s.category}  ${res?.rule_id ? `(rule #${res.rule_id})` : ''}`.trim());
+                            // Optimistic remove: locally hide the row (rely on refresh in hook too)
+                            // Note: keeping UI simple; underlying hook refresh will reconcile
                           } catch (e: any) {
                             err("Failed to accept", e?.message ?? String(e));
-                          }
+                          } finally { removeBusy(s.id); }
                         }}
                       >
                         Accept → Rule
                       </button>
                       <button
                         className="btn btn-ghost btn-sm"
+                        disabled={busyMap.has(s.id)}
                         onClick={async () => {
+                          addBusy(s.id);
                           try {
                             await dismiss(s.id);
                             ok("Dismissed", `${s.merchant_norm} → ${s.category}`);
                           } catch (e: any) {
                             err("Failed to dismiss", e?.message ?? String(e));
-                          }
+                          } finally { removeBusy(s.id); }
                         }}
                       >
                         Dismiss
