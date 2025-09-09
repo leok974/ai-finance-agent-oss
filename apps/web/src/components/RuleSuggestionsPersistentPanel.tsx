@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import Card from "./Card";
 import { useRuleSuggestions } from "@/hooks/useRuleSuggestions";
+import { useOkErrToast } from "@/lib/toast-helpers";
 
 function fmtPct(n: number) {
   return `${(n * 100).toFixed(0)}%`;
@@ -10,6 +11,7 @@ export default function RuleSuggestionsPersistentPanel() {
   const { items, loading, error, query, setFilter, accept, dismiss } = useRuleSuggestions({ limit: 50 });
   const [merchantFilter, setMerchantFilter] = useState(query.merchant_norm ?? "");
   const [categoryFilter, setCategoryFilter] = useState(query.category ?? "");
+  const { ok, err } = (useOkErrToast as any)?.() ?? { ok: console.log, err: console.error };
 
   return (
     <Card>
@@ -79,8 +81,32 @@ export default function RuleSuggestionsPersistentPanel() {
                   <td className="px-3 py-2 border-b align-top">{s.last_seen ? new Date(s.last_seen).toLocaleString() : "—"}</td>
                   <td className="px-3 py-2 border-b align-top">
                     <div className="flex gap-2">
-                      <button className="btn btn-sm" onClick={async () => { await accept(s.id); }}>Accept → Rule</button>
-                      <button className="btn btn-ghost btn-sm" onClick={async () => { await dismiss(s.id); }}>Dismiss</button>
+                      <button
+                        className="btn btn-sm"
+                        onClick={async () => {
+                          try {
+                            await accept(s.id);
+                            ok("Accepted", `${s.merchant_norm} → ${s.category}`);
+                          } catch (e: any) {
+                            err("Failed to accept", e?.message ?? String(e));
+                          }
+                        }}
+                      >
+                        Accept → Rule
+                      </button>
+                      <button
+                        className="btn btn-ghost btn-sm"
+                        onClick={async () => {
+                          try {
+                            await dismiss(s.id);
+                            ok("Dismissed", `${s.merchant_norm} → ${s.category}`);
+                          } catch (e: any) {
+                            err("Failed to dismiss", e?.message ?? String(e));
+                          }
+                        }}
+                      >
+                        Dismiss
+                      </button>
                     </div>
                   </td>
                 </tr>

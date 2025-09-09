@@ -3,7 +3,8 @@ from sqlalchemy.orm import Session
 from app.db import get_db
 from app.transactions import Transaction
 from typing import Optional
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date
+from uuid import uuid4
 from app.orm_models import Feedback
 from app.services.rule_suggestions import evaluate_candidate, canonicalize_merchant
 
@@ -83,3 +84,42 @@ def uncategorize(
         r.category = None
     db.commit()
     return {"ok": True, "updated": len(rows)}
+
+
+@router.post("/seed-unknowns")
+def seed_unknowns(
+    count: int = Body(5, embed=True),
+    month: Optional[str] = Body(None, embed=True),  # "YYYY-MM"
+    merchant: Optional[str] = Body(None, embed=True),
+    amount: float = Body(-5.0, embed=True),
+    db: Session = Depends(get_db),
+):
+    """Create/ensure `count` uncategorized transactions for ML Suggestions."""
+    if month is None:
+        month = datetime.now(timezone.utc).strftime("%Y-%m")
+
+    # try to find existing uncategorized first
+    existing = (
+        db.query(Transaction)
+        .filter(Transaction.category == None)  # noqa: E711
+        .filter(Transaction.month == month)
+        .limit(int(count))
+        .all()
+    )
+    created = 0
+    while len(existing) + created < int(count):
+        d = datetime.now(timezone.utc).date()
+        tx = Transaction(
+            date=d,
+            merchant=merchant or "Demo Merchant",
+            description=f"demo-{uuid4().hex[:6]}",
+            amount=amount,
+            category=None,
+            raw_category=None,
+            account="dev",
+            month=month,
+        )
+        db.add(tx)
+        created += 1
+    db.commit()
+    return {"ok": True, "month": month, "existing": len(existing), "created": created}
