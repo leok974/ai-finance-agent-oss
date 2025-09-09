@@ -1,7 +1,8 @@
 from sqlalchemy import String, Integer, Float, Date, DateTime, Text, UniqueConstraint, func, Numeric, ForeignKey, Boolean, Index
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column, relationship, synonym, validates
 from app.db import Base
 from datetime import datetime, date
+from app.utils.text import canonicalize_merchant
 
 class Transaction(Base):
     __tablename__ = "transactions"
@@ -16,13 +17,27 @@ class Transaction(Base):
     month: Mapped[str] = mapped_column(String(7), index=True)  # YYYY-MM
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
-    __table_args__ = (UniqueConstraint("date", "amount", "description", name="uq_txn_dedup"),)
+    # NEW: SQL-side canonical merchant (indexed)
+    merchant_canonical: Mapped[str | None] = mapped_column(String(256), index=True, nullable=True)
+
+    __table_args__ = (
+        UniqueConstraint("date", "amount", "description", name="uq_txn_dedup"),
+    )
     # Relationship: one-to-many feedbacks
     feedbacks: Mapped[list["Feedback"]] = relationship(
         "Feedback",
         back_populates="txn",
         cascade="all, delete-orphan",
     )
+
+    @validates("merchant")
+    def _on_merchant_set(self, key, value):
+        # Keep canonical in sync with merchant
+        try:
+            self.merchant_canonical = canonicalize_merchant(value)
+        except Exception:
+            self.merchant_canonical = None
+        return value
 
 class RuleORM(Base):
     __tablename__ = "rules"
@@ -97,6 +112,9 @@ class Feedback(Base):
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Relationship back to transaction
     txn: Mapped["Transaction"] = relationship("Transaction", back_populates="feedbacks")
+    # Alias for historical references: some service code may refer to fb.action
+    # Keep the primary column name 'source'; 'action' is a read/write synonym.
+    action = synonym("source")
 
 # --- NEW: RuleSuggestion -----------------------------------------------------
 class RuleSuggestion(Base):

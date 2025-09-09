@@ -64,6 +64,9 @@ def preview_rule_matches(
     only_uncategorized: bool,
     sample_limit: int = 10,
 ) -> Tuple[int, List[Dict[str, Any]]]:
+    # Note: Keep UI preview/backfill consistent by passing the same window_days value
+    # to both /rules/preview and /rules/{id}/backfill. The same base/window/when
+    # filters are applied in both functions below.
     ri = normalize_rule_input(rule_input)
     q = _q_base(db, only_uncategorized)
     q = _q_window(q, _cutoff(window_days))
@@ -92,6 +95,7 @@ def backfill_rule_apply(
     dry_run: bool,
     limit: Optional[int] = None,
 ) -> Dict[str, Any]:
+    # See comment in preview_rule_matches: windowing and filters mirror preview.
     ri = normalize_rule_input(rule_input)
     new_cat = ri.get("then", {}).get("category")
     assert new_cat, "then.category required"

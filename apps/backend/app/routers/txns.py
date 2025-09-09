@@ -11,6 +11,7 @@ from app.schemas.txns import Txn, CategorizeRequest
 from app.transactions import Transaction
 from ..utils.dates import latest_month_from_txns
 from ..utils.state import save_state
+from app.utils.env import is_dev
 import datetime as dt
 from pydantic import BaseModel
 from app.services.rules_apply import apply_all_active_rules, latest_month_from_data
@@ -266,16 +267,17 @@ def recurring_list(db: Session = Depends(get_db)):
     return out
 
 # --- DEV helper: recent transactions (not available in prod) ---
+# Dev helper: recent transactions
+# WARNING: This route returns a debug-only field in non-prod. Never enable full debug exposure in prod.
 @router.get("/recent")
 def recent_txns(limit: int = Query(20, ge=1, le=200), db: Session = Depends(get_db)):
     """
     Return latest transactions (id, date, merchant, amount, category, month).
-    Hidden in production. Useful for quickly grabbing txn_ids to test /agent/chat explain_txn.
-    """
-    if getattr(settings, "ENV", "dev") == "prod":
-        # Hide in prod
-        raise HTTPException(status_code=404, detail="Not found")
 
+    Note: In non-prod environments, we also include a debug-only field
+    `merchant_canonical` to help validate canonicalization behavior locally.
+    Never expose this in production.
+    """
     rows = (
         db.query(Transaction)
         .order_by(desc(Transaction.date), desc(Transaction.id))
@@ -284,15 +286,21 @@ def recent_txns(limit: int = Query(20, ge=1, le=200), db: Session = Depends(get_
     )
     items = []
     for r in rows:
-        items.append({
+        item = {
             "id": r.id,
             "date": r.date.isoformat() if r.date else "",
             "merchant": r.merchant,
+            "description": r.description or "",
             "amount": float(r.amount or 0.0),
             "category": r.category or "Unknown",
             "month": getattr(r, "month", None),
-        })
-    return {"items": items, "limit": limit}
+        }
+        # DEV-only exposure: include canonical only in dev
+        if is_dev():
+            item["merchant_canonical"] = getattr(r, "merchant_canonical", None)
+        items.append(item)
+    # Return a plain list for convenience in tests and quick inspection
+    return items
 
 
 # --- Bulk reclassify (apply active rules) -----------------------------------

@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Tuple, List, Dict, Any
+import logging
 
 from sqlalchemy.orm import Session
 from sqlalchemy import func, or_
@@ -77,6 +78,10 @@ def compute_metrics(db: Session, merchant_norm: str, category: str) -> Optional[
         .join(Transaction, Feedback.txn_id == Transaction.id)
         .filter(func.lower(Feedback.label) == category.lower())
     )
+    # Prefer stored canonical if available; fallback to Python canonicalization below
+    use_sql_canon = hasattr(Transaction, "merchant_canonical")
+    if use_sql_canon:
+        q = q.filter(func.lower(getattr(Transaction, "merchant_canonical")) == merchant_norm.lower())
     if cutoff is not None:
         # Inclusive by day: treat any feedback on the cutoff day as in-window
         q = q.filter(func.date(Feedback.created_at) >= cutoff.date())
@@ -90,9 +95,10 @@ def compute_metrics(db: Session, merchant_norm: str, category: str) -> Optional[
     label_matches = 0
     last_seen: Optional[datetime] = None
     for fb, txn in rows:
-        mnorm = canonicalize_merchant((getattr(txn, "merchant", None) or "").strip())
-        if mnorm != merchant_norm:
-            continue
+        if not use_sql_canon:
+            mnorm = canonicalize_merchant((getattr(txn, "merchant", None) or "").strip())
+            if mnorm != merchant_norm:
+                continue
         # Count any label match for fallback behavior
         label_matches += 1
         src = (getattr(fb, "source", "") or "").strip().lower()
@@ -170,6 +176,19 @@ def upsert_suggestion(
         row.positive_rate = positive_rate
         row.last_seen = last_seen
     db.flush()
+    try:
+        logging.getLogger(__name__).info(
+            "rule_suggestion.upsert",
+            extra={
+                "merchant": merchant_norm,
+                "category": category,
+                "support": support_count,
+                "positive_rate": float(positive_rate or 0.0),
+                "last_seen": (last_seen.isoformat() if last_seen else None),
+            },
+        )
+    except Exception:
+        pass
     return row
 
 
