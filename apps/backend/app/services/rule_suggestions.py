@@ -25,14 +25,18 @@ def _read_window_days_from_env() -> Optional[int]:
     except Exception:
         return 30
 
-# Windowing days; set to None to disable
+# Windowing days constant for import-time visibility (tests may assert default)
 WINDOW_DAYS: Optional[int] = _read_window_days_from_env()
+
+def _current_window_days() -> Optional[int]:
+    """Read window from env each call to avoid stale module state after reloads in tests."""
+    return _read_window_days_from_env()
 
 def get_config() -> Dict[str, Any]:
     return {
         "min_support": MIN_SUPPORT,
         "min_positive": MIN_POSITIVE,
-        "window_days": WINDOW_DAYS,
+    "window_days": _current_window_days(),
     }
 
 
@@ -46,6 +50,11 @@ def canonicalize_merchant(name: str | None) -> str:
     out = " ".join(out.split())
     return out
 
+def _as_aware_utc(dt: datetime) -> datetime:
+    """Ensure datetime is timezone-aware in UTC for safe comparisons."""
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
 
 def compute_metrics(db: Session, merchant_norm: str, category: str) -> Optional[Tuple[int, float, datetime]]:
     """
@@ -71,9 +80,10 @@ def compute_metrics(db: Session, merchant_norm: str, category: str) -> Optional[
     last_seen: datetime | None = None
     cat_lower = (category or "").strip().lower()
     now = datetime.now(timezone.utc)
-    cutoff: Optional[datetime] = None
-    if WINDOW_DAYS is not None:
-        cutoff = now - timedelta(days=WINDOW_DAYS)
+    cutoff_date = None
+    wd = _current_window_days()
+    if wd is not None:
+        cutoff_date = (now - timedelta(days=wd)).date()
 
     for fb, txn in rows:
         mnorm = canonicalize_merchant((getattr(txn, "merchant", None) or "").strip())
@@ -81,7 +91,15 @@ def compute_metrics(db: Session, merchant_norm: str, category: str) -> Optional[
             continue
         if (getattr(fb, "label", "") or "").strip().lower() != cat_lower:
             continue
-        # Track label matches regardless of source for fallback behavior
+
+        # If created_at is missing, treat as very old; normalize to aware UTC
+        ts_raw = getattr(fb, "created_at", None) or datetime.fromtimestamp(0, tz=timezone.utc)
+        ts = _as_aware_utc(ts_raw)
+        # apply window filter if enabled: compare by date, inclusive at boundary
+        if cutoff_date is not None and ts.date() < cutoff_date:
+            continue
+
+        # Track label matches (in-window only) for fallback behavior
         label_matches += 1
 
         src = (getattr(fb, "source", "") or "").strip().lower()
@@ -90,10 +108,6 @@ def compute_metrics(db: Session, merchant_norm: str, category: str) -> Optional[
         if src == "accept":
             accepts += 1
 
-        ts = getattr(fb, "created_at", None) or now
-        # apply window filter if enabled
-        if cutoff is not None and ts < cutoff:
-            continue
         last_seen = max(last_seen or ts, ts)
 
     if total == 0:
@@ -104,6 +118,34 @@ def compute_metrics(db: Session, merchant_norm: str, category: str) -> Optional[
         total = label_matches
     rate = accepts / total if total else 1.0
     return accepts, rate, (last_seen or now)
+
+
+def _has_in_window_feedback(db: Session, merchant_norm: str, category: str) -> bool:
+    """Fast check: is there at least one feedback row within the active window
+    for this merchant/category pair? Used to avoid suggestions based only on old data.
+    """
+    wd = _current_window_days()
+    if wd is None:
+        return True
+    now = datetime.now(timezone.utc)
+    cutoff_date = (now - timedelta(days=int(wd))).date()
+    rows = (
+        db.query(Feedback, Transaction)
+        .join(Transaction, Feedback.txn_id == Transaction.id)
+        .all()
+    )
+    cat_lower = (category or "").strip().lower()
+    for fb, txn in rows:
+        mnorm = canonicalize_merchant((getattr(txn, "merchant", None) or "").strip())
+        if mnorm != merchant_norm:
+            continue
+        if (getattr(fb, "label", "") or "").strip().lower() != cat_lower:
+            continue
+        ts_raw = getattr(fb, "created_at", None) or datetime.fromtimestamp(0, tz=timezone.utc)
+        ts = _as_aware_utc(ts_raw)
+        if ts.date() >= cutoff_date:
+            return True
+    return False
 
 
 def upsert_suggestion(
@@ -144,6 +186,16 @@ def evaluate_candidate(db: Session, merchant_norm: str, category: str) -> Option
     if not metrics:
         return None
     support_count, rate, last_seen = metrics
+    # If all feedback is outside the window, do not suggest
+    if not _has_in_window_feedback(db, merchant_norm, category):
+        return None
+    # Safety gate: if windowing is enabled, require last_seen to be within the window
+    wd = _current_window_days()
+    if wd is not None:
+        now = datetime.now(timezone.utc)
+        cutoff_date = (now - timedelta(days=int(wd))).date()
+        if last_seen.date() < cutoff_date:
+            return None
     if support_count < MIN_SUPPORT or rate < MIN_POSITIVE:
         return None
 

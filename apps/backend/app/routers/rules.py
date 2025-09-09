@@ -20,7 +20,7 @@ from app.schemas.rules import (
 )
 from datetime import datetime, date
 import app.services.rule_suggestions as rs
-# from app.schemas import RuleIn  # optional: use a separate schema for input
+from app.services.rules_preview import preview_rule_matches, backfill_rule_apply, normalize_rule_input
 
 router = APIRouter(prefix="/rules", tags=["rules"])
 @router.get("/suggestions/config")
@@ -305,3 +305,35 @@ def save_train_reclass(payload: SaveTrainPayload, db: Session = Depends(get_db))
         raise
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Save/train/reclass failed: {e}")
+
+@router.post("/preview")
+def preview_rule(
+    payload: Dict[str, Any],
+    window_days: Optional[int] = Query(default=None, description="Number of days to look back (inclusive)"),
+    only_uncategorized: bool = Query(default=True, description="Match only uncategorized txns (None/empty/'Unknown')"),
+    sample_limit: int = Query(default=10, ge=1, le=100, description="Max sample rows to return"),
+    db: Session = Depends(get_db),
+):
+    total, samples = preview_rule_matches(db, payload, window_days, only_uncategorized, sample_limit)
+    return {"matches_count": total, "sample_txns": samples}
+
+@router.post("/{rule_id}/backfill")
+def backfill_rule(
+    rule_id: int,
+    params: Dict[str, Any],
+    window_days: Optional[int] = Query(default=None, description="Number of days to look back (inclusive)"),
+    only_uncategorized: bool = Query(default=True, description="Match only uncategorized txns (None/empty/'Unknown')"),
+    dry_run: bool = Query(default=False, description="If true, do not persist changes"),
+    limit: Optional[int] = Query(default=None, ge=1, le=10000, description="Optional maximum rows to process"),
+    db: Session = Depends(get_db),
+):
+    rule: Rule = db.query(Rule).get(rule_id)  # type: ignore
+    if not rule:
+        raise HTTPException(status_code=404, detail="Rule not found")
+    rule_input = (
+        params
+        if ("when" in params or "pattern" in params)
+        else {"when": {"target": getattr(rule, "target", "description"), "pattern": getattr(rule, "pattern", "")}, "then": {"category": getattr(rule, "category", None)}}
+    )
+    result = backfill_rule_apply(db, rule_input, window_days, only_uncategorized, dry_run, limit)
+    return {"ok": True, "dry_run": dry_run, **result}
