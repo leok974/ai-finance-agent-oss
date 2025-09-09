@@ -29,6 +29,7 @@ export default function SuggestionsPanel() {
   const [selected, setSelected] = React.useState<Set<number>>(new Set());
   const [threshold, setThreshold] = React.useState<number>(0.85);
   const [pending, setPending] = React.useState<Set<number>>(new Set());
+  const [bulkBusy, setBulkBusy] = React.useState(false);
   const { ok, err } = (useOkErrToast as any)?.() ?? { ok: console.log, err: console.error };
   const errRef = React.useRef(err);
   React.useEffect(() => { errRef.current = err; }, [err]);
@@ -105,20 +106,22 @@ export default function SuggestionsPanel() {
   scheduleSuggestionsRefresh();
   };
 
-  const applySelected = async () => {
+  const applySelected = async ({ force = true }: { force?: boolean } = {}) => {
     const ids = Array.from(selected);
-    if (ids.length === 0) return ok("No suggestions selected.", "Nothing to apply");
+    if (ids.length === 0) return err("No rows selected", "Select some suggestions first.");
     const mapById = new Map(rows.map((r) => [r.txn_id, r] as const));
-    const targets = ids
+    const chosen = ids
       .map((id) => mapById.get(id))
       .filter(Boolean)
-      .map((s) => s as Suggestion)
-      .filter((s) => (topCandidate(s)?.confidence ?? 0) >= threshold);
-    if (targets.length === 0) return ok("No selected meet the threshold.", "Nothing to apply");
+      .map((s) => s as Suggestion);
+    const targets = force ? chosen : chosen.filter((s) => (topCandidate(s)?.confidence ?? 0) >= threshold);
+    const skippedCount = force ? 0 : (chosen.length - targets.length);
+    if (targets.length === 0) return err("Nothing to apply", `${skippedCount} skipped, 0 applied`);
+    setBulkBusy(true);
     const pend = new Set(pending); targets.forEach((t) => pend.add(t.txn_id)); setPending(pend);
     const results = await Promise.allSettled(targets.map((s) =>
       (async () => {
-        const top = topCandidate(s)!; // filtered above
+  const top = topCandidate(s)!; // filtered above
   await categorizeTxn(s.txn_id, top.label);
   await mlFeedback({ txn_id: s.txn_id, merchant: s.merchant ?? '', category: top.label, action: 'accept' });
         // mark learned
@@ -133,12 +136,19 @@ export default function SuggestionsPanel() {
         return s.txn_id;
       })()
     ));
-    const successIds = results.filter((r): r is PromiseFulfilledResult<number> => r.status === 'fulfilled').map(r => r.value);
-    const failCount = results.length - successIds.length;
+  const successIds = results.filter((r): r is PromiseFulfilledResult<number> => r.status === 'fulfilled').map(r => r.value);
+  const failCount = results.length - successIds.length;
     setRows((prev) => prev.filter((r) => !successIds.includes(r.txn_id)));
     setSelected((prev) => { const c = new Set(prev); successIds.forEach((id) => c.delete(id)); return c; });
     setPending((prev) => { const c = new Set(prev); targets.forEach((t) => c.delete(t.txn_id)); return c; });
-  ok(`Applied ${successIds.length}${failCount ? `, ${failCount} failed` : ''}.`, "Apply selected");
+    const okCount = successIds.length;
+    if (okCount) {
+      ok(`Applied ${okCount} ${okCount === 1 ? 'item' : 'items'}`, skippedCount || failCount ? `${skippedCount} skipped, ${failCount} failed` : 'All succeeded');
+    }
+    if (!okCount && (skippedCount || failCount)) {
+      err('Nothing applied', `${skippedCount} skipped, ${failCount} failed`);
+    }
+    setBulkBusy(false);
   // Refresh once after batch apply
   scheduleSuggestionsRefresh();
   };
@@ -196,10 +206,11 @@ export default function SuggestionsPanel() {
           </button>
           <button
             className="btn btn-sm"
-            onClick={applySelected}
+            onClick={() => applySelected({ force: true })}
             title="Apply checked suggestions"
+            disabled={bulkBusy}
           >
-            Apply selected
+            {bulkBusy ? 'Applying…' : `Apply selected${selected.size ? ` (${selected.size})` : ''}`}
           </button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
