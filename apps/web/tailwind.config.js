@@ -6,6 +6,16 @@ export default {
   content: ['./index.html','./src/**/*.{ts,tsx,js,jsx}'],
   theme: {
     extend: {
+      keyframes: {
+        fadeSlideUp: {
+          '0%':   { opacity: '1', transform: 'translateY(0)' },
+          '80%':  { opacity: '1', transform: 'translateY(0)' },
+          '100%': { opacity: '0', transform: 'translateY(-6px)' },
+        },
+      },
+      animation: {
+        'fade-slide-up': 'fadeSlideUp 4.5s forwards',
+      },
       colors: {
         border: 'hsl(var(--border))',
         input: 'hsl(var(--input))',

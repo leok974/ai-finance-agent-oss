@@ -15,6 +15,8 @@ import ChatDock from "./components/ChatDock";
 import { ChatDockProvider } from "./context/ChatDockContext";
 import ChartsPanel from "./components/ChartsPanel";
 import TopEmptyBanner from "./components/TopEmptyBanner";
+import MLStatusCard from "./components/MLStatusCard";
+import NetActivityBlip from "@/components/NetActivityBlip";
 // import AgentChat from "./components/AgentChat"; // legacy chat bubble disabled
 import { setGlobalMonth } from "./state/month";
 import { Providers } from "@/components/Providers";
@@ -120,6 +122,7 @@ const App: React.FC = () => {
     <MonthContext.Provider value={{ month, setMonth }}>
       <Providers>
       <ChatDockProvider>
+  <NetActivityBlip />
       <div className="min-h-screen bg-gray-50 text-gray-900 p-6 dark:bg-gray-950 dark:text-gray-100">
         <div className="relative">
           <div className="mx-auto max-w-6xl space-y-6">
@@ -157,6 +160,12 @@ const App: React.FC = () => {
         <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
           <RulesPanel refreshKey={refreshKey} />
           <RuleTesterPanel onChanged={() => setRefreshKey((k) => k + 1)} />
+          </div>
+
+          {/* Status / Recent (right-side style) */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="hidden md:block" />
+            <MLStatusCard />
           </div>
           <ChatDock />
         </div>

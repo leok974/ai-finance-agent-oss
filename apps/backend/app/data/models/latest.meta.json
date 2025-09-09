@@ -1,7 +1,7 @@
 {
-  "model_path": "/app/app/data/models/model_20250909T011431Z.joblib",
+  "model_path": "/app/app/data/models/model_20250909T030243Z.joblib",
   "latest_path": "/app/app/data/models/latest.joblib",
-  "trained_at": "20250909T011431Z",
+  "trained_at": "20250909T030243Z",
   "month": null,
   "labeled_count": 9,
   "classes": [

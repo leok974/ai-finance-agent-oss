@@ -148,3 +148,17 @@ body { @apply bg-neutral-950 text-neutral-100; }
   color: var(--accent-warn);
   border-radius: 9999px; padding: .125rem .5rem; font-size: .75rem;
 }
+
+/* Tailwind utility: fade-out animation for transient badges/notes */
+@layer utilities {
+  @keyframes fadeOut {
+    0% { opacity: 1; }
+    80% { opacity: 1; }
+    100% { opacity: 0; }
+  }
+  .animate-fade-out {
+    animation: fadeOut 4.5s forwards;
+  }
+}
+
+

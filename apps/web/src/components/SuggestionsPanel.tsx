@@ -1,5 +1,6 @@
 import * as React from "react";
-import { getSuggestions, categorizeTxn, sendFeedback } from "@/api";
+import { getSuggestions, categorizeTxn, mlFeedback } from "@/api";
+import { useCoalescedRefresh } from "@/utils/refreshBus";
 import InfoDot from "@/components/InfoDot";
 import { useOkErrToast } from "@/lib/toast-helpers";
 import {
@@ -9,6 +10,7 @@ import {
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
 import Card from "./Card";
+import LearnedBadge from "./LearnedBadge";
 
 type Candidate = { label: string; confidence: number };
 type Suggestion = {
@@ -26,9 +28,10 @@ export default function SuggestionsPanel() {
   const [selected, setSelected] = React.useState<Set<number>>(new Set());
   const [threshold, setThreshold] = React.useState<number>(0.85);
   const [pending, setPending] = React.useState<Set<number>>(new Set());
-  const { ok, err } = useOkErrToast();
+  const { ok, err } = (useOkErrToast as any)?.() ?? { ok: console.log, err: console.error };
+  const [learned, setLearned] = React.useState<Record<number, boolean>>({});
 
-  async function refresh() {
+  const refresh = React.useCallback(async () => {
     setLoading(true);
     try {
       const data = await getSuggestions(); // { month, suggestions }
@@ -40,11 +43,14 @@ export default function SuggestionsPanel() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [err]);
+
+  // Coalesced refresh to batch rapid apply actions across this tab
+  const scheduleSuggestionsRefresh = useCoalescedRefresh('suggestions-refresh', () => refresh(), 450);
 
   React.useEffect(() => {
     refresh();
-  }, []);
+  }, [refresh]);
 
   const toggle = (id: number, on: boolean) => {
     const next = new Set(selected);
@@ -63,7 +69,16 @@ export default function SuggestionsPanel() {
     const nextPending = new Set(pending); nextPending.add(id); setPending(nextPending);
     try {
       await categorizeTxn(id, top.label);
-      await sendFeedback(id, top.label, source);
+      await mlFeedback({ txn_id: id, label: top.label, source });
+      // Show transient learned badge
+      setLearned(prev => ({ ...prev, [id]: true }));
+      setTimeout(() => {
+        setLearned(prev => {
+          const next = { ...prev };
+          delete next[id];
+          return next;
+        });
+      }, 4500);
       // remove from UI
       setRows((prev) => prev.filter((r) => r.txn_id !== id));
       setSelected((prev) => { const c = new Set(prev); c.delete(id); return c; });
@@ -73,6 +88,8 @@ export default function SuggestionsPanel() {
     } finally {
       setPending((prev) => { const c = new Set(prev); c.delete(id); return c; });
     }
+  // Trigger a batched refresh after local UI updates
+  scheduleSuggestionsRefresh();
   };
 
   const applySelected = async () => {
@@ -90,7 +107,16 @@ export default function SuggestionsPanel() {
       (async () => {
         const top = topCandidate(s)!; // filtered above
         await categorizeTxn(s.txn_id, top.label);
-        await sendFeedback(s.txn_id, top.label, "accept_suggestion");
+        await mlFeedback({ txn_id: s.txn_id, label: top.label, source: "accept_suggestion" });
+        // mark learned
+        setLearned(prev => ({ ...prev, [s.txn_id]: true }));
+        setTimeout(() => {
+          setLearned(prev => {
+            const next = { ...prev };
+            delete next[s.txn_id];
+            return next;
+          });
+        }, 4500);
         return s.txn_id;
       })()
     ));
@@ -99,7 +125,9 @@ export default function SuggestionsPanel() {
     setRows((prev) => prev.filter((r) => !successIds.includes(r.txn_id)));
     setSelected((prev) => { const c = new Set(prev); successIds.forEach((id) => c.delete(id)); return c; });
     setPending((prev) => { const c = new Set(prev); targets.forEach((t) => c.delete(t.txn_id)); return c; });
-    ok(`Applied ${successIds.length}${failCount ? `, ${failCount} failed` : ''}.`, "Apply selected");
+  ok(`Applied ${successIds.length}${failCount ? `, ${failCount} failed` : ''}.`, "Apply selected");
+  // Refresh once after batch apply
+  scheduleSuggestionsRefresh();
   };
 
   const autoApply = async (minConf: number) => {
@@ -111,7 +139,16 @@ export default function SuggestionsPanel() {
       (async () => {
         const top = topCandidate(s)!;
         await categorizeTxn(s.txn_id, top.label);
-        await sendFeedback(s.txn_id, top.label, "auto_apply");
+        await mlFeedback({ txn_id: s.txn_id, label: top.label, source: "auto_apply" });
+        // mark learned
+        setLearned(prev => ({ ...prev, [s.txn_id]: true }));
+        setTimeout(() => {
+          setLearned(prev => {
+            const next = { ...prev };
+            delete next[s.txn_id];
+            return next;
+          });
+        }, 4500);
         return s.txn_id;
       })()
     ));
@@ -120,7 +157,9 @@ export default function SuggestionsPanel() {
     setRows((prev) => prev.filter((r) => !successIds.includes(r.txn_id)));
     setSelected((prev) => { const c = new Set(prev); successIds.forEach((id) => c.delete(id)); return c; });
     setPending((prev) => { const c = new Set(prev); targets.forEach((t) => c.delete(t.txn_id)); return c; });
-    ok(`Auto-applied ${successIds.length}${failCount ? `, ${failCount} failed` : ''}.`, "Auto-apply");
+  ok(`Auto-applied ${successIds.length}${failCount ? `, ${failCount} failed` : ''}.`, "Auto-apply");
+  // Refresh once after auto-apply
+  scheduleSuggestionsRefresh();
   };
 
   return (
@@ -209,6 +248,7 @@ export default function SuggestionsPanel() {
                   >
                     {disabled ? "Applying…" : "Accept"}
                   </button>
+                  {learned[id] && <LearnedBadge />}
                 </div>
               )}
             </div>

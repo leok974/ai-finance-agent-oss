@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronUp, Wrench } from "lucide-react";
 import { agentTools, agentChat, getAgentModels, type AgentChatRequest, type AgentChatResponse, type AgentModelsResponse, type ChatMessage, mlSelftest } from "../lib/api";
 import { useOkErrToast } from "../lib/toast-helpers";
+import RestoredBadge from "./RestoredBadge";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { ToolKey, ToolSpec, ToolRunState } from "../types/agentTools";
@@ -11,6 +12,11 @@ import { useMonth } from "../context/MonthContext";
 import { useChatDock } from "../context/ChatDockContext";
 import { exportThreadAsJSON, exportThreadAsMarkdown } from "../utils/chatExport";
 import { chatStore, type BasicMsg } from "../utils/chatStore";
+import {
+  snapshot as chatSnapshot,
+  restoreFromSnapshot as chatRestoreFromSnapshot,
+  discardSnapshot as chatDiscardSnapshot,
+} from "../utils/chatStore";
 
 // ---- Chat message types, storage keys, versioning (outside component) ----
 type MsgRole = 'user' | 'assistant';
@@ -136,6 +142,12 @@ export default function ChatDock() {
   const { ok, err } = useOkErrToast?.() ?? { ok: console.log, err: console.error } as any;
   const [selftestBusy, setSelftestBusy] = useState(false);
   const [selftestNote, setSelftestNote] = useState<string | null>(null);
+  // Undo snackbar (animated) for destructive actions like Clear
+  const [undoVisible, setUndoVisible] = React.useState(false);
+  const [undoClosing, setUndoClosing] = React.useState(false);
+  const [undoMsg, setUndoMsg] = React.useState<string>("Cleared");
+  const undoActionRef = React.useRef<null | (() => void)>(null);
+  const [restoredVisible, setRestoredVisible] = React.useState(false);
 
   // --- feature flags to forcibly hide legacy UI ---
   const ENABLE_TOPBAR_TOOL_BUTTONS = false;   // keep a single “Agent tools” toggle
@@ -207,6 +219,20 @@ export default function ChatDock() {
     return () => { if (syncTimerRef.current) window.clearTimeout(syncTimerRef.current); };
   }, []);
 
+  // If chat was restored very recently (in this tab), briefly show a Restored badge
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem('chat:restored_at');
+      if (!raw) return;
+      const t = Number(raw);
+      if (Number.isFinite(t) && Date.now() - t < 30_000) {
+        setRestoredVisible(true);
+        window.setTimeout(() => setRestoredVisible(false), 4500);
+      }
+      sessionStorage.removeItem('chat:restored_at');
+    } catch {}
+  }, []);
+
   // --- helpers for timestamps & day dividers ---
   const pad = (n: number) => String(n).padStart(2, "0");
   const toDayKey = (ms: number) => {
@@ -265,10 +291,25 @@ export default function ChatDock() {
     return out;
   }, [uiMessages]);
 
+  // Helper to show the Undo snackbar with exit animation.
+  function showUndo(msg: string, onUndo?: () => void) {
+    setUndoMsg(msg);
+    undoActionRef.current = onUndo ?? null;
+    setUndoClosing(false);
+    setUndoVisible(true);
+    // Auto-close after 5s, then animate out for 4.5s
+    window.setTimeout(() => {
+      setUndoClosing(true); // triggers animate-fade-slide-up
+      window.setTimeout(() => setUndoVisible(false), 4500);
+    }, 5000);
+  }
+
   function appendUser(text: string) {
     const ts = Date.now();
     setUiMessages(cur => [...cur, { role: 'user', text, ts }]); // optimistic UI
     chatStore.append({ role: 'user', content: text, createdAt: ts });
+  // If a snapshot exists from a recent Clear, discard it once new chat starts
+  try { chatDiscardSnapshot(); } catch { /* ignore */ }
   }
 
   function appendAssistant(text: string, meta?: any) {
@@ -276,6 +317,8 @@ export default function ChatDock() {
     setUiMessages(cur => [...cur, { role: 'assistant', text, ts }]); // optimistic UI
     // Persist minimal assistant message to cross-tab store
     chatStore.append({ role: 'assistant', content: text, createdAt: ts });
+  // Discard any stale snapshot after conversation continues
+  try { chatDiscardSnapshot(); } catch { /* ignore */ }
     // Keep most recent response metadata in memory for current tab rendering
     setChatResp({
       reply: text,
@@ -288,49 +331,51 @@ export default function ChatDock() {
 
   // History toggle (reads directly from messages)
   const [historyOpen, setHistoryOpen] = useState<boolean>(false);
-  // Undo snackbar state and timer for Clear
-  const [undoSnack, setUndoSnack] = useState<{ visible: boolean; data: BasicMsg[]; timer: number | null }>({ visible: false, data: [], timer: null });
-  const clearUndoTimer = React.useCallback(() => {
-    if (undoSnack.timer) {
-      window.clearTimeout(undoSnack.timer);
-    }
-  }, [undoSnack.timer]);
 
-  // Clear history handler (with Undo)
+  // Clear history handler (with snapshot + animated Undo)
   const handleClearHistory = React.useCallback(() => {
-    const prev = chatStore.get();
-    if (!prev?.length) return;
+    const existing = chatStore.get();
+    if (!existing?.length) return;
     try {
       const ok = window.confirm('Clear chat history across tabs?');
       if (!ok) return;
     } catch { /* ignore */ }
-  chatStore.clear();
-  // ensure immediate local update without waiting for broadcast
-  setUiMessages([]);
-    // start undo window
-    clearUndoTimer();
-    const t = window.setTimeout(() => {
-      setUndoSnack({ visible: false, data: [], timer: null });
-    }, 5000);
-    setUndoSnack({ visible: true, data: prev, timer: t });
-  }, [clearUndoTimer]);
+    // 1) take snapshot for undo
+    const snap = chatSnapshot();
+    // 2) clear store and local UI
+    try {
+      chatStore.clear();
+      setUiMessages([]);
+    } catch (e) { /* ignore */ }
+    // 3) offer undo that restores snapshot via chatStore
+    showUndo('Chat cleared', () => {
+      const res = chatRestoreFromSnapshot();
+      if (res.ok) {
+        try {
+          const restored = chatStore.get() || [];
+          const mapped = (restored || []).map(b => ({
+            role: (b.role === 'assistant' ? 'assistant' : 'user') as MsgRole,
+            text: String(b.content || ''),
+            ts: Number(b.createdAt) || Date.now(),
+          }));
+          setUiMessages(mapped);
+        } catch { /* ignore */ }
+  try { sessionStorage.setItem('chat:restored_at', String(Date.now())); } catch {}
+  setRestoredVisible(true);
+  window.setTimeout(() => setRestoredVisible(false), 4500);
+        try { /* optional: clear snapshot explicitly if needed */ chatDiscardSnapshot(); } catch {}
+      }
+      // close snackbar shortly after click
+      setUndoClosing(true);
+      window.setTimeout(() => setUndoVisible(false), 800);
+    });
+  }, []);
 
   const mapBasicToMsg = React.useCallback((arr: BasicMsg[]): Msg[] => {
     return (arr || []).map(b => ({ role: (b.role === 'assistant' ? 'assistant' : 'user') as MsgRole, text: String(b.content || ''), ts: Number(b.createdAt) || Date.now() }));
   }, []);
 
-  const handleUndoClear = React.useCallback(() => {
-    clearUndoTimer();
-    if (undoSnack.data?.length) {
-  chatStore.set(undoSnack.data);
-  setUiMessages(mapBasicToMsg(undoSnack.data));
-    }
-    setUndoSnack({ visible: false, data: [], timer: null });
-  }, [undoSnack.data, clearUndoTimer, mapBasicToMsg]);
-
-  React.useEffect(() => {
-    return () => { clearUndoTimer(); };
-  }, [clearUndoTimer]);
+  // no-op cleanup needed for new snackbar timers (scoped to showUndo)
   
   // Auto-run state for debounced month changes
   const isAutoRunning = useRef(false);
@@ -808,16 +853,19 @@ export default function ChatDock() {
 
   return (
     <div
-      className="fixed z-[70] w-[min(760px,calc(100vw-2rem))] max-h-[80vh] rounded-2xl border border-neutral-700 shadow-xl bg-neutral-900/95 backdrop-blur p-4 flex flex-col min-h-[320px]"
+      className="fixed z-[70] w-[min(760px,calc(100vw-2rem))] max-h-[80vh] rounded-2xl border border-neutral-700 shadow-xl bg-neutral-900/95 backdrop-blur p-4 flex flex-col min-h-[320px] relative"
       style={{ right: pos.x, bottom: pos.y }}
     >
       <div
-        className="flex items-center gap-2 mb-2 select-none"
+        className="flex items-center justify-between mb-2 select-none border-b border-border pb-1"
         style={{ cursor: "grab" }}
         onPointerDown={startHeaderDrag}
       >
-        <div className="text-sm text-neutral-300">Agent Tools</div>
-  <div className="ml-auto flex items-center gap-2">
+        <div className="flex items-center gap-2">
+          <div className="text-sm text-neutral-300">Agent Tools</div>
+          {restoredVisible && <RestoredBadge />}
+        </div>
+        <div className="flex items-center gap-2">
           {/* Export */}
           <button
             type="button"
@@ -1040,27 +1088,33 @@ export default function ChatDock() {
         <div id="chatdock-scroll-anchor" ref={bottomRef} />
       </div>
 
-      {/* Undo snackbar for Clear action */}
-      {undoSnack.visible && (
-        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[80]">
-          <div className="flex items-center gap-3 rounded-xl border border-neutral-700 bg-neutral-900/95 px-4 py-2 shadow-lg">
-            <div className="text-xs">Chat cleared.</div>
-            <button
-              type="button"
-              onClick={handleUndoClear}
-              className="rounded-lg border border-neutral-700 px-2 py-1 text-xs hover:bg-neutral-800"
-            >
-              Undo
-            </button>
-            <button
-              type="button"
-              onClick={() => setUndoSnack({ visible: false, data: [], timer: null })}
-              className="text-xs opacity-70 hover:opacity-100"
-              title="Dismiss"
-            >
-              Dismiss
-            </button>
-          </div>
+      {/* === Undo Snackbar === */}
+      {undoVisible && (
+        <div
+          className={[
+            "fixed bottom-4 right-4 z-50",
+            "card bg-card border border-border rounded-2xl shadow-lg",
+            "px-3 py-2 text-sm flex items-center gap-3",
+            undoClosing ? "animate-fade-slide-up" : ""
+          ].join(" ")}
+          role="status"
+          aria-live="polite"
+        >
+          <span className="opacity-85">{undoMsg}</span>
+          <button
+            className="px-2 py-1 text-xs rounded-lg border border-border hover:opacity-90"
+            onClick={() => {
+              if (undoActionRef.current) {
+                undoActionRef.current();
+              } else {
+                // graceful dismiss if no action wired
+                setUndoClosing(true);
+                window.setTimeout(() => setUndoVisible(false), 800);
+              }
+            }}
+          >
+            Undo
+          </button>
         </div>
       )}
 

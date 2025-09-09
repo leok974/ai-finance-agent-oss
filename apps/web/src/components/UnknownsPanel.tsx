@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react'
 import Card from './Card'
 import EmptyState from './EmptyState'
-import { getUnknowns, categorizeTxn, sendFeedback } from '@/api'
+import { getUnknowns, categorizeTxn, mlFeedback } from '@/api'
+import { useCoalescedRefresh } from '@/utils/refreshBus'
 import { setRuleDraft } from '@/state/rulesDraft'
 import { getGlobalMonth } from '@/state/month'
 import { useOkErrToast } from '@/lib/toast-helpers'
@@ -10,6 +11,7 @@ import { ToastAction } from '@/components/ui/toast'
 import { scrollToId } from '@/lib/scroll'
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 import { InfoDot } from './InfoDot'
+import LearnedBadge from './LearnedBadge'
 
 export default function UnknownsPanel({ month, onSeedRule, onChanged, refreshKey }: {
   month?: string
@@ -22,10 +24,11 @@ export default function UnknownsPanel({ month, onSeedRule, onChanged, refreshKey
   const [error, setError] = useState<string | null>(null)
   const [empty, setEmpty] = useState(false)
   const [resolvedMonth, setResolvedMonth] = useState<string | null>(null)
-  const { err } = useOkErrToast()
+  const { ok, err } = (useOkErrToast as any)?.() ?? { ok: console.log, err: console.error }
   const { toast } = useToast()
+  const [learned, setLearned] = useState<Record<number, boolean>>({})
 
-  async function load() {
+  const load = React.useCallback(async () => {
     setLoading(true)
     setError(null)
     setEmpty(false)
@@ -45,15 +48,36 @@ export default function UnknownsPanel({ month, onSeedRule, onChanged, refreshKey
       setError(e?.message ?? String(e))
       err('Could not fetch uncategorized transactions.', 'Failed to load')
     } finally { setLoading(false) }
-  }
-  useEffect(()=>{ load() }, [month, refreshKey])
+  }, [month, err])
+
+  // Simple refresh wrapper and a debounced variant for batching quick applies
+  const refresh = React.useCallback(() => { void load() }, [load])
+  // One shared timer for all unknowns refresh requests across this tab
+  const scheduleUnknownsRefresh = useCoalescedRefresh('unknowns-refresh', () => refresh(), 450)
+
+  useEffect(()=>{ load() }, [month, refreshKey, load])
 
   async function quickApply(id: number, category: string) {
-  await categorizeTxn(id, category)
-  // fire-and-forget feedback logging
-  try { sendFeedback(id, category, 'user_change'); } catch {}
+    await categorizeTxn(id, category)
+    // Attempt ML feedback; show transient "learned" badge on success
+    try {
+      await mlFeedback({ txn_id: id, label: category, source: 'ui' })
+      setLearned(prev => ({ ...prev, [id]: true }))
+      setTimeout(() => {
+        setLearned(prev => {
+          const next = { ...prev }
+          delete next[id]
+          return next
+        })
+      }, 4500)
+    } catch (e: any) {
+      err(`ML feedback failed (${e?.message ?? String(e)}). DB updated.`)
+    }
     setItems(s => s.filter(x => x.id !== id))
     onChanged?.()
+  ok?.(`Set category → ${category}`)
+  // Batch multiple quick applies into a single reload (coalesced by key)
+  scheduleUnknownsRefresh()
   }
 
   function seedRuleFromRow(row: any) {
@@ -122,7 +146,7 @@ export default function UnknownsPanel({ month, onSeedRule, onChanged, refreshKey
                 <div className="font-mono">{typeof tx.amount === 'number' ? `$${tx.amount.toFixed(2)}` : tx.amount}</div>
               </div>
             </div>
-            <div className="mt-2 flex gap-2">
+            <div className="mt-2 flex items-center gap-2">
               <Tooltip>
                 <TooltipTrigger asChild>
                   <button
@@ -142,6 +166,7 @@ export default function UnknownsPanel({ month, onSeedRule, onChanged, refreshKey
                   Apply {c}
                 </button>
               ))}
+              {learned[tx.id] && <LearnedBadge />}
             </div>
           </li>
         ))}
@@ -150,3 +175,11 @@ export default function UnknownsPanel({ month, onSeedRule, onChanged, refreshKey
     </div>
   )
 }
+
+// If you support bulk apply somewhere, prefer this pattern to batch network work and refresh once:
+// for (const { id, cat } of items) {
+//   await categorizeTxn(id, cat)
+//   await mlFeedback({ txn_id: id, label: cat, source: 'bulk' }).catch(() => {})
+// }
+// ok(`Applied ${items.length} changes`)
+// scheduleUnknownsRefresh()

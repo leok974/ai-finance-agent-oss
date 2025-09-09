@@ -157,6 +157,19 @@ export async function getSuggestions(month?: string) {
 // If you have explain/categorize helpers, keep them as-is
 export const categorizeTxn = (id: number, category: string) => http(`/txns/${id}/categorize`, { method: 'POST', body: JSON.stringify({ category }) })
 
+// ---- ML feedback (incremental learning) ----
+export async function mlFeedback(payload: {
+  txn_id: number;
+  label: string;
+  source?: string;
+  notes?: string;
+}) {
+  return http('/ml/feedback', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+    headers: { 'Content-Type': 'application/json' },
+  });
+}
 export async function sendFeedback(txnId: number, label: string, source: string = "user_change", notes?: string) {
   try {
     await http('/ml/feedback', {
@@ -429,6 +442,21 @@ export async function agentStatusOk(): Promise<boolean> {
 // ---------- ML: selftest ----------
 export async function mlSelftest(): Promise<any> {
   return http('/ml/selftest', { method: 'POST' });
+}
+
+// ---- De-dupe ml/status requests to avoid floods/overlaps ----
+let _mlStatusInflight: Promise<any> | null = null;
+export async function getMlStatus(): Promise<{
+  classes?: string[];
+  feedback_count?: number;
+  updated_at?: string | null;
+  details?: any;
+}> {
+  if (_mlStatusInflight) return _mlStatusInflight;
+  _mlStatusInflight = http('/ml/status')
+    .catch((e) => { throw e; })
+    .finally(() => { _mlStatusInflight = null; });
+  return _mlStatusInflight;
 }
 
 // ---------- CSV ingest ----------

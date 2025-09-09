@@ -73,3 +73,48 @@ export const chatStore = {
     notify();
   },
 };
+
+// --- Undo snapshot support ---
+const CHAT_UNDO_KEY = 'chatStore:undo';
+
+export function snapshot(): { t: number; count: number } {
+  try {
+    const msgs = read();
+    const t = Date.now();
+    const payload = JSON.stringify({ t, msgs });
+    localStorage.setItem(CHAT_UNDO_KEY, payload);
+    return { t, count: msgs.length };
+  } catch {
+    return { t: Date.now(), count: 0 };
+  }
+}
+
+export function hasSnapshot(): boolean {
+  try {
+    return !!localStorage.getItem(CHAT_UNDO_KEY);
+  } catch {
+    return false;
+  }
+}
+
+export function restoreFromSnapshot(): { ok: boolean; count: number } {
+  try {
+    const raw = localStorage.getItem(CHAT_UNDO_KEY);
+    if (!raw) return { ok: false, count: 0 };
+    const parsed = JSON.parse(raw);
+    const msgs = Array.isArray(parsed?.msgs) ? (parsed.msgs as BasicMsg[]) : null;
+    if (!msgs) return { ok: false, count: 0 };
+    // Use chatStore.set to broadcast and notify listeners across tabs
+    chatStore.set(msgs);
+    localStorage.removeItem(CHAT_UNDO_KEY);
+    return { ok: true, count: msgs.length };
+  } catch {
+    return { ok: false, count: 0 };
+  }
+}
+
+export function discardSnapshot(): void {
+  try {
+    localStorage.removeItem(CHAT_UNDO_KEY);
+  } catch { /* ignore */ }
+}
