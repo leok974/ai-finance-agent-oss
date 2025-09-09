@@ -1,7 +1,7 @@
-import React, { useEffect, useState, useRef } from 'react'
+import React, { useState } from 'react'
 import Card from './Card'
 import EmptyState from './EmptyState'
-import { getUnknowns, categorizeTxn, mlFeedback } from '@/api'
+import { categorizeTxn, mlFeedback } from '@/api'
 import { useCoalescedRefresh } from '@/utils/refreshBus'
 import { setRuleDraft } from '@/state/rulesDraft'
 import { getGlobalMonth } from '@/state/month'
@@ -12,6 +12,7 @@ import { scrollToId } from '@/lib/scroll'
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 import { InfoDot } from './InfoDot'
 import LearnedBadge from './LearnedBadge'
+import { useUnknowns } from '@/hooks/useUnknowns'
 
 export default function UnknownsPanel({ month, onSeedRule, onChanged, refreshKey }: {
   month?: string
@@ -19,77 +20,12 @@ export default function UnknownsPanel({ month, onSeedRule, onChanged, refreshKey
   onChanged?: () => void
   refreshKey?: number
 }) {
-  const [items, setItems] = useState<any[]>([])
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [empty, setEmpty] = useState(false)
-  const [resolvedMonth, setResolvedMonth] = useState<string | null>(null)
+  const { items, loading, error, currentMonth, refresh } = useUnknowns(month)
   const { ok, err } = (useOkErrToast as any)?.() ?? { ok: console.log, err: console.error }
   const { toast } = useToast()
   const [learned, setLearned] = useState<Record<number, boolean>>({})
-  const loadingRef = useRef(false)
-
-  const load = React.useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    setEmpty(false)
-    try {
-      const data = await getUnknowns(month)
-      if (!data) {
-        setEmpty(true)
-        setItems([])
-        setResolvedMonth(null)
-      } else {
-        const rows = Array.isArray(data) ? data : (data as any)?.unknowns ?? data ?? []
-        setItems(rows)
-        const m = (data as any)?.month
-        setResolvedMonth(typeof m === 'string' ? m : (month ?? null))
-      }
-    } catch (e: any) {
-      setError(e?.message ?? String(e))
-      err('Could not fetch uncategorized transactions.', 'Failed to load')
-    } finally { setLoading(false) }
-  }, [month, err])
-
-  // Simple refresh wrapper and a debounced variant for batching quick applies
-  const refresh = React.useCallback(() => { void load() }, [load])
   // One shared timer for all unknowns refresh requests across this tab
   const scheduleUnknownsRefresh = useCoalescedRefresh('unknowns-refresh', () => refresh(), 450)
-
-  useEffect(() => {
-    if (!month) return;
-    let cancelled = false;
-    if (loadingRef.current) return; // prevent overlap
-    loadingRef.current = true;
-    setLoading(true);
-    setError(null);
-    setEmpty(false);
-    (async () => {
-      try {
-        const data = await getUnknowns(month);
-        if (cancelled) return;
-        if (!data) {
-          setEmpty(true);
-          setItems([]);
-          setResolvedMonth(null);
-        } else {
-          const rows = Array.isArray(data) ? data : (data as any)?.unknowns ?? data ?? [];
-          setItems(rows);
-          const m = (data as any)?.month;
-          setResolvedMonth(typeof m === 'string' ? m : (month ?? null));
-        }
-      } catch (e: any) {
-        if (!cancelled) {
-          setError(e?.message ?? String(e));
-          err('Could not fetch uncategorized transactions.', 'Failed to load');
-        }
-      } finally {
-        loadingRef.current = false;
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [month, refreshKey])
 
   async function quickApply(id: number, category: string) {
     await categorizeTxn(id, category)
@@ -107,7 +43,9 @@ export default function UnknownsPanel({ month, onSeedRule, onChanged, refreshKey
     } catch (e: any) {
       err(`ML feedback failed (${e?.message ?? String(e)}). DB updated.`)
     }
-    setItems(s => s.filter(x => x.id !== id))
+  // Optimistically remove the row
+  // items comes from the hook; since we can't mutate it here, trigger a refresh
+  refresh()
     onChanged?.()
   ok?.(`Set category → ${category}`)
   // Batch multiple quick applies into a single reload (coalesced by key)
@@ -144,13 +82,13 @@ export default function UnknownsPanel({ month, onSeedRule, onChanged, refreshKey
     })
   }
 
-  const titleMonth = (resolvedMonth ?? month) ? `— ${resolvedMonth ?? month}` : '— (latest)'
+  const titleMonth = (currentMonth ?? month) ? `— ${currentMonth ?? month}` : '— (latest)'
   return (
       <div id="unknowns-panel">
         <Card title={`Unknowns ${titleMonth}`}>
       {loading && <div className="opacity-70">Loading…</div>}
-      {error && !empty && <div className="text-sm text-rose-300">{error}</div>}
-      {empty && !error && (
+      {!loading && error && <div className="text-sm text-rose-300">{error}</div>}
+      {!loading && !error && items.length === 0 && (
         <EmptyState title="No transactions yet" note="Upload a CSV to view and categorize unknowns." />
       )}
       <div className="flex items-center justify-between mb-2 text-sm font-medium">
