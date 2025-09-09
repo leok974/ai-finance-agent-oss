@@ -12,7 +12,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision: str = "20250909_add_rule_suggestions"
-down_revision: Union[str, Sequence[str], None] = "20250908_merge_feedback_and_62bc5ef49a22"
+down_revision: Union[str, Sequence[str], None] = "0099b510f0cc"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
@@ -33,12 +33,15 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(["applied_rule_id"], ["rules.id"], name="fk_rule_suggestions_rule", use_alter=True, initially=None),
         sa.UniqueConstraint("merchant_norm", "category", name="ix_rule_suggestions_unique_pair"),
     )
-    op.create_index(op.f("ix_rule_suggestions_merchant_norm"), "rule_suggestions", ["merchant_norm"], unique=False)
-    op.create_index(op.f("ix_rule_suggestions_category"), "rule_suggestions", ["category"], unique=False)
+    # Use batch mode for index operations (better cross-backend behavior)
+    with op.batch_alter_table("rule_suggestions", schema=None) as batch_op:
+        batch_op.create_index(op.f("ix_rule_suggestions_merchant_norm"), ["merchant_norm"], unique=False)
+        batch_op.create_index(op.f("ix_rule_suggestions_category"), ["category"], unique=False)
 
 
 def downgrade() -> None:
     """Downgrade schema: drop rule_suggestions table and indexes."""
-    op.drop_index(op.f("ix_rule_suggestions_category"), table_name="rule_suggestions")
-    op.drop_index(op.f("ix_rule_suggestions_merchant_norm"), table_name="rule_suggestions")
+    with op.batch_alter_table("rule_suggestions", schema=None) as batch_op:
+        batch_op.drop_index(op.f("ix_rule_suggestions_category"))
+        batch_op.drop_index(op.f("ix_rule_suggestions_merchant_norm"))
     op.drop_table("rule_suggestions")

@@ -47,9 +47,11 @@ def run_migrations_online():
         poolclass=pool.NullPool,
     )
     with connectable.connect() as connection:
+        is_sqlite = connection.dialect.name == "sqlite"
         context.configure(
             connection=connection,
             target_metadata=target_metadata,
+            render_as_batch=is_sqlite,
             compare_type=True,
             compare_server_default=True,
         )

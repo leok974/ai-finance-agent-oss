@@ -26,14 +26,15 @@ def upgrade() -> None:
         sa.Column("account", sa.String(length=128)),
         sa.Column("month", sa.String(length=7), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+    sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+    sa.UniqueConstraint("date", "amount", "description", name="uq_txn_dedup"),
     )
     op.create_index("ix_transactions_date", "transactions", ["date"])
     op.create_index("ix_transactions_merchant", "transactions", ["merchant"])
     op.create_index("ix_transactions_category", "transactions", ["category"])
     op.create_index("ix_transactions_account", "transactions", ["account"])
     op.create_index("ix_transactions_month", "transactions", ["month"])
-    op.create_unique_constraint("uq_txn_dedup", "transactions", ["date", "amount", "description"])
+    # uq_txn_dedup declared inside transactions create_table above
 
     op.create_table(
         "rules",

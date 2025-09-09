@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Optional
 from app.db import get_db
 from app.orm_models import Transaction, Feedback
 from app.services.ml_suggest import suggest_for_unknowns
+from app.services import rule_suggestions
 from app.services.ml_train import incremental_update, train_on_db
 from app.services.ml_train_service import incremental_update_rows, latest_model_path
 
@@ -268,6 +269,14 @@ def record_feedback(payload: FeedbackIn, db: Session = Depends(get_db)):
                 "train_example": {"min_samples": 1, "test_size": 0.0},
             },
         }
+
+    # Evaluate for a persistent rule suggestion (best-effort)
+    try:
+        # canonicalize via service using the real merchant from txn row
+        mnorm = rule_suggestions.canonicalize_merchant(row.get("merchant"))
+        rule_suggestions.evaluate_candidate(db, mnorm, payload.label)
+    except Exception:
+        pass
 
     return {"ok": True, "updated": bool(upd.get("updated")), "detail": upd}
 
