@@ -14,6 +14,7 @@ from app.routers import agent_tools_rules_crud as rules_crud_router
 from app.routers import agent_tools_rules_apply_all as rules_apply_all_router
 from app.routers import agent_tools_meta as meta_router
 from .routers import charts
+from .routers import rule_suggestions as rule_suggestions_router
 from .routers import health as health_router
 from .utils.state import load_state, save_state
 import logging
@@ -94,6 +95,7 @@ app.include_router(rules_crud_router.router)
 app.include_router(rules_apply_all_router.router)
 app.include_router(meta_router.router)
 app.include_router(meta.router)
+app.include_router(rule_suggestions_router.router)
 
 # Mount health router at root so /healthz is available at top-level
 app.include_router(health_router.router)  # exposes GET /healthz
