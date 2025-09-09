@@ -19,9 +19,14 @@ from app.schemas.rules import (
     TransactionSample,
 )
 from datetime import datetime, date
+import app.services.rule_suggestions as rs
 # from app.schemas import RuleIn  # optional: use a separate schema for input
 
 router = APIRouter(prefix="/rules", tags=["rules"])
+@router.get("/suggestions/config")
+def rules_suggestions_config():
+    # Read from module each call to reflect env + reloads
+    return rs.get_config()
 
 @router.get("/ping")
 def ping():

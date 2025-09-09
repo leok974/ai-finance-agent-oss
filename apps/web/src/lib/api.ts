@@ -221,6 +221,14 @@ export async function getSuggestions(month?: string) {
   return fetchJson(`/ml/suggest${qs}`);
 }
 
+// Rule Suggestions config (thresholds + window)
+export type RuleSuggestConfig = {
+  min_support: number;
+  min_positive: number;
+  window_days: number | null;
+};
+export const fetchRuleSuggestConfig = () => http<RuleSuggestConfig>(`/rules/suggestions/config`);
+
 // If you have explain/categorize helpers, keep them as-is
 export const categorizeTxn = (id: number, category: string) => http(`/txns/${id}/categorize`, { method: 'POST', body: JSON.stringify({ category }) })
 

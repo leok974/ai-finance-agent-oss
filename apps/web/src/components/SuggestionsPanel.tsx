@@ -1,6 +1,6 @@
 import * as React from "react";
 import { useRef } from "react";
-import { getSuggestions, categorizeTxn, mlFeedback } from "@/api";
+import { getSuggestions, categorizeTxn, mlFeedback, fetchRuleSuggestConfig, type RuleSuggestConfig } from "@/api";
 import { useCoalescedRefresh } from "@/utils/refreshBus";
 import InfoDot from "@/components/InfoDot";
 import { useOkErrToast } from "@/lib/toast-helpers";
@@ -30,6 +30,7 @@ export default function SuggestionsPanel() {
   const [threshold, setThreshold] = React.useState<number>(0.85);
   const [pending, setPending] = React.useState<Set<number>>(new Set());
   const [bulkBusy, setBulkBusy] = React.useState(false);
+  const [cfg, setCfg] = React.useState<RuleSuggestConfig | null>(null);
   const { ok, err } = (useOkErrToast as any)?.() ?? { ok: console.log, err: console.error };
   const errRef = React.useRef(err);
   React.useEffect(() => { errRef.current = err; }, [err]);
@@ -60,6 +61,7 @@ export default function SuggestionsPanel() {
   React.useEffect(() => {
     // run once on mount
     refresh();
+  fetchRuleSuggestConfig().then(setCfg).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -195,6 +197,11 @@ export default function SuggestionsPanel() {
           {month && <span className="text-sm opacity-70">— {month}</span>}
         </div>
         <div className="ml-auto flex items-center gap-2">
+          {cfg && (
+            <span className="text-xs opacity-70 mr-2">
+              based on last {cfg.window_days ?? "∞"} days of feedback
+            </span>
+          )}
           <button
             className="btn btn-ghost btn-sm"
             onClick={refresh}

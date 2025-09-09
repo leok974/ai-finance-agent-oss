@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Tuple, List, Dict, Any
 
@@ -12,9 +13,27 @@ from app.orm_models import RuleSuggestion, Feedback, Transaction, Rule  # type: 
 # Thresholds for promoting a candidate into a persistent suggestion
 MIN_SUPPORT = 3
 MIN_POSITIVE = 0.8
-# In step 2, disable windowing to avoid NULL created_at issues in tests.
-# We'll re-enable with a migration that guarantees created_at defaults.
-WINDOW_DAYS = None
+def _read_window_days_from_env() -> Optional[int]:
+    """Read RULE_SUGGESTION_WINDOW_DAYS from env; default 30; <=0/none disables."""
+    raw = os.getenv("RULE_SUGGESTION_WINDOW_DAYS", "30")
+    try:
+        sval = (raw or "").strip().lower()
+        if sval in {"", "none", "null"}:
+            return None
+        ival = int(sval)
+        return None if ival <= 0 else ival
+    except Exception:
+        return 30
+
+# Windowing days; set to None to disable
+WINDOW_DAYS: Optional[int] = _read_window_days_from_env()
+
+def get_config() -> Dict[str, Any]:
+    return {
+        "min_support": MIN_SUPPORT,
+        "min_positive": MIN_POSITIVE,
+        "window_days": WINDOW_DAYS,
+    }
 
 
 def canonicalize_merchant(name: str | None) -> str:
@@ -38,7 +57,7 @@ def compute_metrics(db: Session, merchant_norm: str, category: str) -> Optional[
     - accepts = count of Feedback.source == "accept" among matched rows
     - total = count of Feedback.source in {"accept","reject"} among matched rows; if no rejects stored, total == accepts
     - last_seen = max(created_at) among matched rows; fallback to now if none
-    Windowing is disabled for Step 2.
+    Applies an optional time window (WINDOW_DAYS) to feedback based on created_at.
     """
     rows = (
         db.query(Feedback, Transaction)
@@ -51,6 +70,10 @@ def compute_metrics(db: Session, merchant_norm: str, category: str) -> Optional[
     label_matches = 0
     last_seen: datetime | None = None
     cat_lower = (category or "").strip().lower()
+    now = datetime.now(timezone.utc)
+    cutoff: Optional[datetime] = None
+    if WINDOW_DAYS is not None:
+        cutoff = now - timedelta(days=WINDOW_DAYS)
 
     for fb, txn in rows:
         mnorm = canonicalize_merchant((getattr(txn, "merchant", None) or "").strip())
@@ -67,9 +90,11 @@ def compute_metrics(db: Session, merchant_norm: str, category: str) -> Optional[
         if src == "accept":
             accepts += 1
 
-        ts = getattr(fb, "created_at", None)
-        if ts is not None:
-            last_seen = max(last_seen or ts, ts)
+        ts = getattr(fb, "created_at", None) or now
+        # apply window filter if enabled
+        if cutoff is not None and ts < cutoff:
+            continue
+        last_seen = max(last_seen or ts, ts)
 
     if total == 0:
         # Fallback: when no explicit accept/reject stored, treat all matches as accepts
@@ -78,7 +103,7 @@ def compute_metrics(db: Session, merchant_norm: str, category: str) -> Optional[
         accepts = label_matches
         total = label_matches
     rate = accepts / total if total else 1.0
-    return accepts, rate, (last_seen or datetime.now(timezone.utc))
+    return accepts, rate, (last_seen or now)
 
 
 def upsert_suggestion(
