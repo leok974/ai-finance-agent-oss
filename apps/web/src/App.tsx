@@ -20,6 +20,7 @@ import NetActivityBlip from "@/components/NetActivityBlip";
 // import AgentChat from "./components/AgentChat"; // legacy chat bubble disabled
 import { setGlobalMonth } from "./state/month";
 import { Providers } from "@/components/Providers";
+import RuleSuggestionsPersistentPanel from "@/components/RuleSuggestionsPersistentPanel";
 
 // Log frontend version info
 console.info("[Web] branch=", __WEB_BRANCH__, "commit=", __WEB_COMMIT__);
@@ -133,6 +134,7 @@ const App: React.FC = () => {
             <AboutDrawer />
             <input type="month" className="bg-neutral-900 border border-neutral-800 rounded px-3 py-2" value={month} onChange={e=>{ setMonth(e.target.value); setGlobalMonth(e.target.value); }} />
             <button className="btn btn-sm hover:bg-accent" onClick={()=>setRefreshKey(k=>k+1)}>Refresh</button>
+            <a href="/rules/suggestions" className="btn btn-ghost btn-sm" title="Open persistent Rule Suggestions">Suggestions</a>
           </div>
         </header>
 
@@ -155,6 +157,9 @@ const App: React.FC = () => {
           <UnknownsPanel month={month} refreshKey={refreshKey} />
           <SuggestionsPanel />
         </div>
+
+        {/* Persistent rule suggestions table */}
+        <RuleSuggestionsPersistentPanel />
 
         {/* Rules + Tester */}
         <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
