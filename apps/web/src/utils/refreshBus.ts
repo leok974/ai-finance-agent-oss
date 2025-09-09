@@ -2,21 +2,22 @@ import * as React from 'react';
 
 // Coalesces many "refresh soon" requests under the same key into one call.
 // Each key gets a single timer; the latest fn is executed when it fires.
-type Fn = () => void | Promise<void>;
+type Fn = () => void;
 
 const timers = new Map<string, ReturnType<typeof setTimeout>>();
 const fns = new Map<string, Fn>();
+const pendingCounts = new Map<string, number>(); // track how many requests merged
 
 // --- simple listeners for dev blips ---
-type Listener = (key: string) => void;
+type Listener = (key: string, count: number) => void;
 const listeners = new Set<Listener>();
 export function onRefreshFire(fn: Listener) {
   listeners.add(fn);
   return () => listeners.delete(fn);
 }
-function emit(key: string) {
+function emit(key: string, count: number) {
   for (const l of listeners) {
-    try { l(key); } catch {}
+    try { l(key, count); } catch {}
   }
 }
 
@@ -28,13 +29,18 @@ export function coalesceRefresh(key: string, fn: Fn, wait = 450) {
   const existing = timers.get(key);
   if (existing) clearTimeout(existing);
 
+  // bump how many requests we’re coalescing for this key
+  pendingCounts.set(key, (pendingCounts.get(key) ?? 0) + 1);
+
   const t = setTimeout(() => {
     timers.delete(key);
     const toRun = fns.get(key);
+    const count = pendingCounts.get(key) ?? 1;
+    pendingCounts.delete(key);
     if (toRun) {
-      try { void toRun(); } finally { fns.delete(key); }
+      try { toRun(); } finally { fns.delete(key); }
     }
-    emit(key); // notify listeners for dev blips
+    emit(key, count); // notify listeners for dev blips with count
   }, wait);
 
   timers.set(key, t);
@@ -45,6 +51,7 @@ export function cancelCoalesced(key: string) {
   if (t) clearTimeout(t);
   timers.delete(key);
   fns.delete(key);
+  pendingCounts.delete(key);
 }
 
 // React hook for a stable scheduler you can call: schedule()
