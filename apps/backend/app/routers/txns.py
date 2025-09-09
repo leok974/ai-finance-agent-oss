@@ -5,6 +5,8 @@ from sqlalchemy import select
 from app.db import get_db
 from app.config import settings
 from sqlalchemy import desc
+from sqlalchemy import text
+from sqlalchemy import func
 from ..models import Txn, CategorizeRequest
 from app.orm_models import Transaction
 from ..utils.dates import latest_month_from_txns
@@ -27,22 +29,61 @@ def month_of(date_str: str) -> str:
         return date_str[:7] if len(date_str) >= 7 else ""
 
 @router.get("/unknowns")
-def get_unknowns(month: Optional[str] = None) -> Dict[str, Any]:
+def get_unknowns(month: Optional[str] = None, db: Session = Depends(get_db)) -> Dict[str, Any]:
     """
-    Return unknown (uncategorized) transactions for the given month.
-    If `month` is omitted, default to the latest month present in memory.
+    Return unknown (uncategorized) transactions for the given month using DB ids.
+    If `month` is omitted, try to default from DB; fall back to in-memory state.
     Response shape matches the web client: {"month": "...", "unknowns": [Txn, ...]}.
     """
+    # Prefer DB-backed unknowns to ensure real ids
+    try:
+        if not month:
+            # try to derive latest month from DB
+            m = latest_month_from_data(db)
+            if m:
+                month = m
+        if month:
+            unlabeled = (
+                (Transaction.category.is_(None)) |
+                (func.trim(Transaction.category) == "") |
+                (func.lower(Transaction.category) == "unknown")
+            )
+            rows = (
+                db.query(Transaction)
+                .filter(Transaction.month == month)
+                .filter(unlabeled)
+                .order_by(desc(Transaction.date), desc(Transaction.id))
+                .all()
+            )
+            unknowns: List[Txn] = []
+            for r in rows:
+                try:
+                    unknowns.append(
+                        Txn(
+                            id=r.id,
+                            date=r.date.isoformat() if r.date else "",
+                            merchant=r.merchant or "",
+                            description=r.description or "",
+                            amount=float(r.amount or 0.0),
+                            category=(r.category or "Unknown"),
+                        )
+                    )
+                except Exception:
+                    continue
+            return {"month": month, "unknowns": unknowns}
+    except Exception:
+        # fall through to in-memory fallback
+        pass
+
+    # Fallback: in-memory list if DB path not available
     from ..main import app
     items = getattr(app.state, "txns", [])
     if not items:
         return {"month": None, "unknowns": []}
-
     if not month:
         month = latest_month_from_txns(items)
         if not month:
             return {"month": None, "unknowns": []}
-
     month_items = [t for t in items if month_of(t.get("date", "")) == month]
     unknowns = [Txn(**t) for t in month_items if (t.get("category") or "Unknown") == "Unknown"]
     return {"month": month, "unknowns": unknowns}
@@ -55,11 +96,12 @@ def categorize(txn_id: int, req: CategorizeRequest, db: Session = Depends(get_db
         tdb.category = req.category
         db.commit()
         db.refresh(tdb)
-        # Feedback logging (best-effort)
+        # Feedback logging (best-effort): raw SQL to ensure training signal is captured
         try:
-            from app.orm_models import Feedback as FeedbackORM
-            fb = FeedbackORM(txn_id=txn_id, label=req.category, source="user_change")
-            db.add(fb)
+            db.execute(
+                text("insert into feedback (txn_id, label, source, notes) values (:tid, :label, 'user_change', '')"),
+                {"tid": tdb.id, "label": req.category},
+            )
             db.commit()
         except Exception:
             pass

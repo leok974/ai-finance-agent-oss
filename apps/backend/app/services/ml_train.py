@@ -256,16 +256,37 @@ def incremental_update(texts: List[str], labels: List[str]) -> Dict[str, Any]:
     if not hasattr(clf, "partial_fit"):
         return {"updated": False, "reason": "classifier_has_no_partial_fit"}
 
-    # Classes: reuse existing if present, else from incoming labels
-    classes_ = getattr(clf, "classes_", None)
-    if classes_ is None:
+    # Determine whether this is the first call (no classes_ yet)
+    existing_classes = getattr(clf, "classes_", None)
+    is_first_fit = existing_classes is None
+    if is_first_fit:
+        # On first fit, compute classes from provided labels
         classes_ = np.array(sorted(list(set(labels))))
+        if classes_.size == 0:
+            return {"updated": False, "reason": "no_labels_to_initialize_classes"}
+        labels_to_use = labels
+        texts_to_use = texts
+    else:
+        # If model is already initialized, ensure ALL incoming labels are known; otherwise reject with hint.
+        known = set(existing_classes.tolist()) if hasattr(existing_classes, "tolist") else set(existing_classes)
+        new_labels = sorted(list(set(labels) - known))
+        if new_labels:
+            return {
+                "updated": False,
+                "reason": "label_not_in_model",
+                "missing_labels": new_labels,
+                "known_classes": sorted(list(known)),
+            }
+        labels_to_use = labels
+        texts_to_use = texts
 
     # Build a minimal DataFrame to satisfy the pipeline's preprocessor
     # Our pipeline expects columns: text, num0, num1
-    n = len(texts)
+    # Use only the subset we kept (or all when first fit)
+    tx = texts_to_use
+    n = len(tx)
     X_df = pd.DataFrame({
-        "text": texts,
+        "text": tx,
         "num0": np.zeros(n, dtype=float),
         "num1": np.zeros(n, dtype=float),
     })
@@ -288,7 +309,11 @@ def incremental_update(texts: List[str], labels: List[str]) -> Dict[str, Any]:
             pass
 
     # Update classifier incrementally
-    clf.partial_fit(Xt, labels, classes=classes_)
+    if is_first_fit:
+        clf.partial_fit(Xt, labels_to_use, classes=classes_)
+    else:
+        # Do not pass classes once the classifier is initialized
+        clf.partial_fit(Xt, labels_to_use)
     _save_pipeline(pipe)
     try:
         out_classes = list(getattr(clf, "classes_", classes_))

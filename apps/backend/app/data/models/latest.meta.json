@@ -1,10 +1,11 @@
 {
-  "model_path": "C:\\ai-finance-agent-oss\\apps\\backend\\app\\data\\models\\model_20250904T012618Z.joblib",
-  "latest_path": "C:\\ai-finance-agent-oss\\apps\\backend\\app\\data\\models\\latest.joblib",
-  "trained_at": "20250904T012618Z",
+  "model_path": "/app/app/data/models/model_20250909T011431Z.joblib",
+  "latest_path": "/app/app/data/models/latest.joblib",
+  "trained_at": "20250909T011431Z",
   "month": null,
-  "labeled_count": 8,
+  "labeled_count": 9,
   "classes": [
+    "Coffee",
     "Groceries",
     "Shopping",
     "Subscriptions",
