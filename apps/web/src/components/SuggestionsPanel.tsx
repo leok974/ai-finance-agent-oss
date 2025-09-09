@@ -92,7 +92,10 @@ export default function SuggestionsPanel() {
       // remove from UI
       setRows((prev) => prev.filter((r) => r.txn_id !== id));
       setSelected((prev) => { const c = new Set(prev); c.delete(id); return c; });
-      ok(`Applied: ${top.label}`, "Categorized");
+      ok(
+        `Applied ${top.label}`,
+        `Transaction ${id} from ${s.merchant ?? "—"} categorized`
+      );
     } catch (e) {
       err("Failed to apply suggestion.", "Action failed");
     } finally {
