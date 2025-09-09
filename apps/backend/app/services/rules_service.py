@@ -2,7 +2,7 @@ from __future__ import annotations
 from typing import Any, Dict
 from sqlalchemy.orm import Session
 
-from app.orm_models import Rule
+from app.models import Rule
 
 
 def _map_to_fields(rule_input: Any) -> Dict[str, Any]:

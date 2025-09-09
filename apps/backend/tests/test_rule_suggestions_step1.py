@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
-from app.orm_models import Feedback, Transaction
+from app.models import Feedback, Transaction
 from app.services.rule_suggestions import (
     canonicalize_merchant,
     compute_metrics,

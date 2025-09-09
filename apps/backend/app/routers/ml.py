@@ -5,7 +5,7 @@ from sqlalchemy import func, text
 from typing import Any, Dict, List, Optional, Literal
 from app.db import get_db
 from app.transactions import Transaction
-from app.orm_models import Feedback
+from app.models import Feedback
 from app.services.ml_suggest import suggest_for_unknowns
 from app.services import rule_suggestions
 from app.services.ml_train import incremental_update, train_on_db

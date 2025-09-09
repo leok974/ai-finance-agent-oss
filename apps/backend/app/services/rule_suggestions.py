@@ -7,7 +7,7 @@ from typing import Optional, Tuple, List, Dict, Any
 from sqlalchemy.orm import Session
 from sqlalchemy import func, or_
 
-from app.orm_models import RuleSuggestion, Feedback, Transaction, Rule  # type: ignore
+from app.models import RuleSuggestion, Feedback, Transaction, Rule  # type: ignore
 
 
 # Thresholds for promoting a candidate into a persistent suggestion

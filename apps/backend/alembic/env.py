@@ -9,7 +9,7 @@ if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
 
 from app.db import Base
-import app.orm_models  # noqa: F401  # register ORM tables
+import app.models  # noqa: F401  # register ORM tables via unified surface
 
 # NEW: pull the URL from your app settings/environment
 try:

@@ -1,7 +1,7 @@
 # apps/backend/tests/test_rule_suggestions_window.py
 from datetime import datetime, timedelta, timezone
 from app.transactions import Transaction
-from app.models.feedback import Feedback
+from app.models import Feedback
 from app.services.rule_suggestions import (
     evaluate_candidate,
     canonicalize_merchant,

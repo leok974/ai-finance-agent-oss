@@ -1,5 +1,5 @@
 from sqlalchemy import String, Integer, Float, Date, DateTime, Text, UniqueConstraint, func, Numeric, ForeignKey, Boolean, Index
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db import Base
 from datetime import datetime, date
 
@@ -17,6 +17,12 @@ class Transaction(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
     __table_args__ = (UniqueConstraint("date", "amount", "description", name="uq_txn_dedup"),)
+    # Relationship: one-to-many feedbacks
+    feedbacks: Mapped[list["Feedback"]] = relationship(
+        "Feedback",
+        back_populates="txn",
+        cascade="all, delete-orphan",
+    )
 
 class RuleORM(Base):
     __tablename__ = "rules"
@@ -83,11 +89,13 @@ class RecurringSeries(Base):
 class Feedback(Base):
     __tablename__ = "feedback"
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    txn_id: Mapped[int] = mapped_column(Integer, index=True, nullable=False)
+    txn_id: Mapped[int] = mapped_column(Integer, ForeignKey("transactions.id"), index=True, nullable=False)
     label: Mapped[str] = mapped_column(String(128), nullable=False)
     source: Mapped[str] = mapped_column(String(64), nullable=False, server_default="user_change")  # user_change | accept_suggestion | rule_apply
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Relationship back to transaction
+    txn: Mapped["Transaction"] = relationship("Transaction", back_populates="feedbacks")
 
 # --- NEW: RuleSuggestion -----------------------------------------------------
 class RuleSuggestion(Base):

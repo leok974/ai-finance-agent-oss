@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import select, delete, and_, or_, func
 from app.db import get_db
 from pydantic import BaseModel, ConfigDict
-from app.orm_models import Rule
+from app.models import Rule
 from app.services.rules_apply import latest_month_from_data, apply_all_active_rules
 from app.services import rules_service, ml_train_service, txns_service
 from app.transactions import Transaction

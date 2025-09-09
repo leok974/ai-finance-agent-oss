@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import or_, and_
 from typing import Iterable, Optional, Tuple, Dict, Any, List
 from app.transactions import Transaction
-from app.orm_models import Rule
+from app.models import Rule
 
 UNLABELED_VALUES = ("", "Unknown")
 
