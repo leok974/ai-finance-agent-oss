@@ -15,6 +15,8 @@ from app.routers import agent_tools_rules_apply_all as rules_apply_all_router
 from app.routers import agent_tools_meta as meta_router
 from .routers import charts
 from .routers import rule_suggestions as rule_suggestions_router
+from .routers import transactions as transactions_router
+from .routers import dev as dev_router
 from .routers import health as health_router
 from .utils.state import load_state, save_state
 import logging
@@ -28,7 +30,13 @@ try:
 except Exception:
     pass
 
-app = FastAPI(title="AI Finance Agent", version="0.1.0")
+app = FastAPI(
+    title="AI Finance Agent",
+    version="0.1.0",
+    openapi_url="/openapi.json",
+    docs_url="/docs",
+    redoc_url="/redoc",
+)
 
 @app.get("/ping")
 def root_ping():
@@ -86,6 +94,8 @@ app.include_router(insights.router, prefix="/insights", tags=["insights"])
 app.include_router(agent.router, prefix="/agent", tags=["agent"])
 app.include_router(explain.router, prefix="/txns", tags=["explain"])
 app.include_router(charts.router, prefix="/charts", tags=["charts"]) 
+app.include_router(transactions_router.router)
+app.include_router(dev_router.router)
 app.include_router(agent_tools_txn.router)
 app.include_router(agent_tools_budget.router)
 app.include_router(agent_tools_insights.router)
