@@ -66,3 +66,28 @@ export function useCoalescedRefresh(key: string, fn: Fn, wait = 450) {
   React.useEffect(() => () => cancelCoalesced(key), [key]);
   return schedule;
 }
+
+// ---- Simple global trigger/subscribe (legacy-style) ----
+// Provides a basic coalesced refresh without keys.
+let _simpleTimer: ReturnType<typeof setTimeout> | null = null;
+let _simpleQueued = false;
+const _simpleListeners = new Set<() => void>();
+
+export function triggerRefresh(delay = 450) {
+  _simpleQueued = true;
+  if (_simpleTimer) return; // already scheduled
+  _simpleTimer = setTimeout(() => {
+    if (_simpleQueued) {
+      for (const fn of _simpleListeners) {
+        try { fn(); } catch {}
+      }
+      _simpleQueued = false;
+    }
+    _simpleTimer = null;
+  }, delay);
+}
+
+export function onRefresh(fn: () => void) {
+  _simpleListeners.add(fn);
+  return () => _simpleListeners.delete(fn);
+}

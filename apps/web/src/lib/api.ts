@@ -2,6 +2,41 @@
 export const API_BASE = (import.meta as any)?.env?.VITE_API_BASE
   || (typeof window !== "undefined" && window.location?.port === "5173" ? "http://127.0.0.1:8000" : "");
 
+// ---------------------------
+// Global fetch guards
+// ---------------------------
+type CacheEntry = { t: number; p: Promise<any> };
+const CACHE_TTL_MS = 5000; // 5s shared cache across panels
+const responseCache = new Map<string, CacheEntry>();
+const inflight = new Map<string, Promise<any>>();
+
+// Simple request limiter (queue) to prevent stampedes
+const MAX_CONCURRENCY = 4;
+let active = 0;
+const reqQueue: Array<() => void> = [];
+function runOrQueue(fn: () => void) {
+  if (active < MAX_CONCURRENCY) {
+    active++;
+    fn();
+  } else {
+    reqQueue.push(fn);
+  }
+}
+function done() {
+  active = Math.max(0, active - 1);
+  const next = reqQueue.shift();
+  if (next) {
+    active++;
+    next();
+  }
+}
+
+function keyFromInit(url: string, init?: RequestInit) {
+  const method = (init?.method || "GET").toUpperCase();
+  const body = typeof init?.body === "string" ? (init!.body as string) : "";
+  return `${method} ${url} ${body}`;
+}
+
 function q(params: Record<string, any>) {
   const usp = new URLSearchParams()
   Object.entries(params).forEach(([k, v]) => {
@@ -94,24 +129,56 @@ export const getAlerts = (month?: string) =>
 export const downloadReportCsv = (month: string) => window.open(`${API_BASE || ""}/report_csv${q({ month })}`,'_blank')
 
 // ---------- Charts ----------
-async function fetchJson(path: string, init?: RequestInit) {
+export async function fetchJson(path: string, init?: RequestInit) {
   const url = API_BASE ? `${API_BASE}${path}` : path;
-  const res = await fetch(url, init);
-  const text = await res.text();
-  const ctype = res.headers.get("content-type") || "";
-  if (!res.ok) {
-    if (res.status === 400 && /No transactions loaded/i.test(text)) {
-      // allow panels to render gracefully when backend has no data yet
-      return null;
-    }
-    throw new Error(text || `${url} failed: ${res.status}`);
+  const key = keyFromInit(url, init);
+
+  // Pause network work when tab is hidden (prevents background waterfalls)
+  if (typeof document !== "undefined" && (document as any).hidden) {
+    await new Promise<void>((resolve) => {
+      const onVis = () => {
+        if (!(document as any).hidden) {
+          document.removeEventListener("visibilitychange", onVis as any);
+          resolve();
+        }
+      };
+      document.addEventListener("visibilitychange", onVis as any, { once: true } as any);
+    });
   }
-  if (!ctype.includes("application/json")) {
-    throw new Error(`Expected JSON, got: ${ctype}`);
-  }
-  try { return JSON.parse(text || "null"); } catch {
-    throw new Error(`Invalid JSON from ${url}: ${text.slice(0, 120)}`);
-  }
+
+  // Cached recent response?
+  const now = Date.now();
+  const hit = responseCache.get(key);
+  if (hit && now - hit.t < CACHE_TTL_MS) return hit.p;
+
+  // De-dupe identical in-flight requests
+  if (inflight.has(key)) return inflight.get(key)!;
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 30_000); // 30s hard timeout
+  const merged: RequestInit = { ...init, signal: controller.signal };
+
+  const p = new Promise<any>((resolve, reject) => {
+    runOrQueue(async () => {
+      try {
+        const res = await fetch(url, merged);
+        if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+        const json = res.status === 204 ? null : await res.json();
+        resolve(json);
+      } catch (e) {
+        reject(e);
+      } finally {
+        clearTimeout(timeout);
+        inflight.delete(key);
+        responseCache.set(key, { t: Date.now(), p });
+        done();
+      }
+    });
+  });
+
+  inflight.set(key, p);
+  responseCache.set(key, { t: now, p });
+  return p;
 }
 
 export async function getMonthSummary(month?: string) {

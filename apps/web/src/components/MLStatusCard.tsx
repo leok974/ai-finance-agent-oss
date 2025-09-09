@@ -46,22 +46,15 @@ export default function MLStatusCard() {
   const scheduleMlStatusRefresh = useCoalescedRefresh('ml-status-refresh', () => load({ skipIfBusy: false }), 500);
 
   React.useEffect(() => {
-    // Initial fetch
-    load();
-    // Single interval with guards; pauses on hidden tab
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current as any);
-      intervalRef.current = null;
-    }
-    intervalRef.current = setInterval(() => load({ skipIfBusy: true }), 8000);
-    const onVis = () => { if (!document.hidden) load({ skipIfBusy: true }); };
+    let id: any = null;
+    const tick = () => load({ skipIfBusy: true });
+    const start = () => { if (id) return; id = setInterval(tick, 6000); tick(); };
+    const stop = () => { if (id) clearInterval(id); id = null; };
+    const onVis = () => (document.hidden ? stop() : start());
     document.addEventListener('visibilitychange', onVis);
-    return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current as any);
-      intervalRef.current = null;
-      document.removeEventListener('visibilitychange', onVis);
-    };
-  }, []); // IMPORTANT: empty deps -> one interval only
+    onVis(); // start if visible immediately
+    return () => { document.removeEventListener('visibilitychange', onVis); stop(); };
+  }, []);
 
   async function runSelftest() {
     try {

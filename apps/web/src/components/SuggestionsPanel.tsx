@@ -1,4 +1,5 @@
 import * as React from "react";
+import { useRef } from "react";
 import { getSuggestions, categorizeTxn, mlFeedback } from "@/api";
 import { useCoalescedRefresh } from "@/utils/refreshBus";
 import InfoDot from "@/components/InfoDot";
@@ -30,8 +31,11 @@ export default function SuggestionsPanel() {
   const [pending, setPending] = React.useState<Set<number>>(new Set());
   const { ok, err } = (useOkErrToast as any)?.() ?? { ok: console.log, err: console.error };
   const [learned, setLearned] = React.useState<Record<number, boolean>>({});
+  const loadingRef = useRef(false);
 
   const refresh = React.useCallback(async () => {
+    if (loadingRef.current) return; // prevent overlap
+    loadingRef.current = true;
     setLoading(true);
     try {
       const data = await getSuggestions(); // { month, suggestions }
@@ -41,6 +45,7 @@ export default function SuggestionsPanel() {
     } catch (e) {
       err("Could not fetch suggestions.", "Failed to load");
     } finally {
+      loadingRef.current = false;
       setLoading(false);
     }
   }, [err]);

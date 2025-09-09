@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState, useRef } from 'react'
 import Card from './Card'
 import EmptyState from './EmptyState'
 import { getUnknowns, categorizeTxn, mlFeedback } from '@/api'
@@ -27,6 +27,7 @@ export default function UnknownsPanel({ month, onSeedRule, onChanged, refreshKey
   const { ok, err } = (useOkErrToast as any)?.() ?? { ok: console.log, err: console.error }
   const { toast } = useToast()
   const [learned, setLearned] = useState<Record<number, boolean>>({})
+  const loadingRef = useRef(false)
 
   const load = React.useCallback(async () => {
     setLoading(true)
@@ -55,7 +56,40 @@ export default function UnknownsPanel({ month, onSeedRule, onChanged, refreshKey
   // One shared timer for all unknowns refresh requests across this tab
   const scheduleUnknownsRefresh = useCoalescedRefresh('unknowns-refresh', () => refresh(), 450)
 
-  useEffect(()=>{ load() }, [month, refreshKey, load])
+  useEffect(() => {
+    if (!month) return;
+    let cancelled = false;
+    if (loadingRef.current) return; // prevent overlap
+    loadingRef.current = true;
+    setLoading(true);
+    setError(null);
+    setEmpty(false);
+    (async () => {
+      try {
+        const data = await getUnknowns(month);
+        if (cancelled) return;
+        if (!data) {
+          setEmpty(true);
+          setItems([]);
+          setResolvedMonth(null);
+        } else {
+          const rows = Array.isArray(data) ? data : (data as any)?.unknowns ?? data ?? [];
+          setItems(rows);
+          const m = (data as any)?.month;
+          setResolvedMonth(typeof m === 'string' ? m : (month ?? null));
+        }
+      } catch (e: any) {
+        if (!cancelled) {
+          setError(e?.message ?? String(e));
+          err('Could not fetch uncategorized transactions.', 'Failed to load');
+        }
+      } finally {
+        loadingRef.current = false;
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [month, refreshKey])
 
   async function quickApply(id: number, category: string) {
     await categorizeTxn(id, category)
