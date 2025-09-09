@@ -1,4 +1,4 @@
-from sqlalchemy import String, Integer, Float, Date, DateTime, Text, UniqueConstraint, func, Numeric, ForeignKey, Boolean
+from sqlalchemy import String, Integer, Float, Date, DateTime, Text, UniqueConstraint, func, Numeric, ForeignKey, Boolean, Index
 from sqlalchemy.orm import Mapped, mapped_column
 from app.db import Base
 from datetime import datetime, date
@@ -88,3 +88,21 @@ class Feedback(Base):
     source: Mapped[str] = mapped_column(String(64), nullable=False, server_default="user_change")  # user_change | accept_suggestion | rule_apply
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+# --- NEW: RuleSuggestion -----------------------------------------------------
+class RuleSuggestion(Base):
+    __tablename__ = "rule_suggestions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    merchant_norm: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    category: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    support_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    positive_rate: Mapped[float] = mapped_column(Float, nullable=False, server_default="0")
+    last_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    cooldown_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    ignored: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="0")
+    applied_rule_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("rules.id"), nullable=True)
+
+    __table_args__ = (
+        Index("ix_rule_suggestions_unique_pair", "merchant_norm", "category", unique=True),
+    )

@@ -3,7 +3,7 @@ from typing import Any, Dict, List, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import func, desc
 from app.utils.state import latest_month as _latest_month
-from app.models import Transaction, Rule  # adjust imports to your models
+from app.orm_models import Transaction, Rule  # use SQLAlchemy models
 
 def ctx_latest_month(db: Session) -> Optional[str]:
     return _latest_month(db)
