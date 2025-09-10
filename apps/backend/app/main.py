@@ -54,18 +54,19 @@ def _create_tables_dev():
         # Ignore in dev if engine misconfigured
         pass
 
-# Allow Vite dev origins explicitly (browser CORS)
-origins = [
+# Allow Vite dev origins explicitly (browser CORS) and expose filename header
+DEV_ORIGINS = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
 ]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
-    allow_credentials=True,         # required if cookies/auth are used
-    allow_methods=["*"],            # allow all methods in dev
-    allow_headers=["*"],            # allow all headers in dev
+    allow_origins=DEV_ORIGINS,   # In dev, allow both hosts used by the web app
+    allow_credentials=False,     # no cookies; simplifies CORS
+    allow_methods=["*"],
+    allow_headers=["*"],
+    expose_headers=["Content-Disposition"],  # allow frontend to read filename
 )
 
 # Legacy in-memory stores (kept for compatibility; safe to remove if unused)

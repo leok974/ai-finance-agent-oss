@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import Card from "./Card";
+import ExportMenu from "./ExportMenu";
 import EmptyState from "./EmptyState";
 import * as RC from "recharts";
 import {
@@ -98,7 +99,7 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
           <EmptyState title="No transactions yet" note="Once you upload, charts will populate automatically." />
         </div>
       )}
-  <Card title={`Overview — ${resolvedMonth}`}>
+  <Card title={`Overview — ${resolvedMonth}`} right={<ExportMenu month={resolvedMonth} />}>
         {loading && <p className="text-sm text-gray-400">Loading charts…</p>}
         {error && !empty && <p className="text-sm text-rose-300">Error: {error}</p>}
         {!loading && !error && summary && (

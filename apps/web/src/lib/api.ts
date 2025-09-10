@@ -774,3 +774,30 @@ export async function resolveLatestMonthHybrid(): Promise<string | null> {
 
   return null;
 }
+
+// === Reports (Excel/PDF) ===
+function parseDispositionFilename(disposition: string | null) {
+  if (!disposition) return null;
+  const m = /filename="([^"]+)"/i.exec(disposition);
+  return m?.[1] ?? null;
+}
+
+export async function downloadReportExcel(month?: string) {
+  const path = "/report/excel" + (month ? `?month=${encodeURIComponent(month)}` : "");
+  const url = API_BASE ? `${API_BASE}${path}` : path;
+  const res = await fetch(url, { method: "GET" });
+  if (!res.ok) throw new Error(`Excel export failed: ${res.status}`);
+  const blob = await res.blob();
+  const filename = parseDispositionFilename(res.headers.get("Content-Disposition")) || "finance_report.xlsx";
+  return { blob, filename };
+}
+
+export async function downloadReportPdf(month?: string) {
+  const path = "/report/pdf" + (month ? `?month=${encodeURIComponent(month)}` : "");
+  const url = API_BASE ? `${API_BASE}${path}` : path;
+  const res = await fetch(url, { method: "GET" });
+  if (!res.ok) throw new Error(`PDF export failed: ${res.status}`);
+  const blob = await res.blob();
+  const filename = parseDispositionFilename(res.headers.get("Content-Disposition")) || "finance_report.pdf";
+  return { blob, filename };
+}
