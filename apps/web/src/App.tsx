@@ -125,7 +125,8 @@ const App: React.FC = () => {
       <ChatDockProvider>
   <NetActivityBlip />
       <div className="min-h-screen bg-gray-50 text-gray-900 p-6 dark:bg-gray-950 dark:text-gray-100">
-        <div className="relative">
+  {/* Ensure this container is relative so ChatDock (absolute) positions within it */}
+  <div className="relative">
           <div className="mx-auto max-w-6xl space-y-6">
         <header className="flex items-center justify-between">
           <h1 className="text-3xl font-bold">Finance Agent</h1>

@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { ChevronUp, Wrench } from "lucide-react";
 import { agentTools, agentChat, getAgentModels, type AgentChatRequest, type AgentChatResponse, type AgentModelsResponse, type ChatMessage, mlSelftest } from "../lib/api";
 import { useOkErrToast } from "../lib/toast-helpers";
@@ -11,23 +12,28 @@ import ErrorBoundary from "./ErrorBoundary";
 import { useMonth } from "../context/MonthContext";
 import { useChatDock } from "../context/ChatDockContext";
 import { exportThreadAsJSON, exportThreadAsMarkdown } from "../utils/chatExport";
-import { chatStore, type BasicMsg } from "../utils/chatStore";
-import {
-  snapshot as chatSnapshot,
-  restoreFromSnapshot as chatRestoreFromSnapshot,
-  discardSnapshot as chatDiscardSnapshot,
-} from "../utils/chatStore";
+import { chatStore, type BasicMsg, snapshot as chatSnapshot, restoreFromSnapshot as chatRestoreFromSnapshot, discardSnapshot as chatDiscardSnapshot } from "../utils/chatStore";
+// --- layout constants (right/bottom anchored) ---
+const MARGIN = 24;     // default bottom-right margin
+const BUBBLE = 48;     // bubble size (px)
+const PANEL_W_GUESS = 640;
+const PANEL_H_GUESS = 420;
 
-// ---- Chat message types, storage keys, versioning (outside component) ----
+// Local message types
 type MsgRole = 'user' | 'assistant';
 type Msg = { role: MsgRole; text: string; ts: number; meta?: any };
 
-const CHAT_STORAGE_VER = 'v1';
-const CHAT_STORE_KEY = `fa.chat.${CHAT_STORAGE_VER}`;
-const MODEL_STORE_KEY = 'fa.model';
-
-// sessionStorage-based load/save removed in favor of chatStore (localStorage + BroadcastChannel)
-
+// Clamp right/bottom within viewport using element size
+function clampRB(next: { right: number; bottom: number }, w: number, h: number) {
+  const min = 8;
+  const maxRight = Math.max(min, window.innerWidth  - min - w);
+  const maxBottom= Math.max(min, window.innerHeight - min - h);
+  return {
+    right: Math.min(Math.max(min, next.right), maxRight),
+    bottom: Math.min(Math.max(min, next.bottom), maxBottom),
+  };
+}
+// Tool groups/specs for legacy form defaults and lookups
 const TOOL_GROUPS: Array<{ label: string; items: ToolSpec[] }> = [
   {
     label: "Insights",
@@ -56,14 +62,14 @@ const TOOL_GROUPS: Array<{ label: string; items: ToolSpec[] }> = [
       { key: "charts.summary",   label: "Charts: Summary",         path: "/agent/tools/charts/summary",          examplePayload: { month: undefined } },
       { key: "charts.merchants", label: "Charts: Top Merchants",   path: "/agent/tools/charts/merchants",        examplePayload: { month: undefined, limit: 10 } },
       { key: "charts.flows",     label: "Charts: Flows",           path: "/agent/tools/charts/flows",            examplePayload: { month: undefined } },
-  { key: "charts.trends",    label: "Charts: Spending Trends", path: "/agent/tools/charts/spending_trends",  examplePayload: { month: undefined, months_back: 6 } },
+      { key: "charts.trends",    label: "Charts: Spending Trends", path: "/agent/tools/charts/spending_trends",  examplePayload: { month: undefined, months_back: 6 } },
     ],
   },
   {
     label: "Rules",
     items: [
       { key: "rules.test",     label: "Rules: Test",      path: "/agent/tools/rules/test",      examplePayload: { month: undefined, rule: { merchant: "Starbucks", category: "Dining out" } } },
-      { key: "rules.apply",    label: "Rules: Apply",     path: "/agent/tools/rules/apply",     examplePayload: { month: undefined, onlyUnlabeled: true, rule: { merchant: "Starbucks", category: "Dining out" } } },
+      { key: "rules.apply",    label: "Rules: Apply",     path: "/agent/tools/rules/apply",     examplePayload: { month: undefined, onlyIfUnlabeled: true, rule: { merchant: "Starbucks", category: "Dining out" } } },
       { key: "rules.apply_all",label: "Rules: Apply All", path: "/agent/tools/rules/apply_all", examplePayload: { month: undefined } },
     ],
   },
@@ -109,10 +115,10 @@ export default function ChatDock() {
   const { month } = useMonth();
   const chat = useChatDock();
   const [open, setOpen] = React.useState<boolean>(false);
-  const [pos, setPos] = React.useState<{x:number;y:number}>(() => {
-    const raw = localStorage.getItem("chatdock_pos");
-    return raw ? JSON.parse(raw) : { x: 24, y: 24 };
-  });
+  // one shared right/bottom position for bubble and panel (no persistence)
+  const [rb, setRb] = React.useState<{ right: number; bottom: number }>(() => ({ right: MARGIN, bottom: MARGIN }));
+  const panelRef = useRef<HTMLDivElement | null>(null);
+  const clickGuard = useRef(false);
 
   const [tool, setTool] = React.useState<ToolKey>("insights.expanded");
   const spec = React.useMemo(() => findSpec(tool), [tool]);
@@ -383,11 +389,34 @@ export default function ChatDock() {
 
   // stop saving/restoring "open"; clean any legacy value once
   React.useEffect(() => { localStorage.removeItem("chatdock_open"); }, []);
-  React.useEffect(() => { localStorage.setItem("chatdock_pos", JSON.stringify(pos)); }, [pos]);
+  // no persistence for positions
+  // keep coords sane on resize
+  useEffect(() => {
+    const onResize = () => {
+    const rect = panelRef.current?.getBoundingClientRect();
+    const w = rect?.width ?? (open ? PANEL_W_GUESS : BUBBLE);
+    const h = rect?.height ?? (open ? PANEL_H_GUESS : BUBBLE);
+    setRb(prev => clampRB(prev, w, h));
+    };
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, [open]);
   // fetch models (best-effort)
   React.useEffect(() => { (async () => {
     try { const info = await getAgentModels(); setModelsInfo(info || null); } catch { /* ignore */ }
   })(); }, []);
+
+  // When opening the panel, immediately clamp rb to the actual panel size
+  useEffect(() => {
+    if (!open) return;
+    // wait for layout to settle then measure and clamp
+    requestAnimationFrame(() => {
+      const rect = panelRef.current?.getBoundingClientRect();
+      const w = rect?.width ?? PANEL_W_GUESS;
+      const h = rect?.height ?? PANEL_H_GUESS;
+      setRb(prev => clampRB(prev, w, h));
+    });
+  }, [open]);
 
   // Load saved model (per-tab)
   useEffect(() => {
@@ -783,89 +812,63 @@ export default function ChatDock() {
     };
   }, [month, monthReady, tool, insertContext, run, lastRunForTool]); // runs every time month changes
 
-  // unified FAB click-or-drag handler (opens on click, drags on movement)
-  const startFabDrag = React.useCallback((e: React.PointerEvent) => {
+  // Unified right/bottom anchored drag (used by bubble and panel header)
+  const startDragRB = React.useCallback((e: React.PointerEvent, w: number, h: number, onClick?: () => void) => {
     const startX = e.clientX;
     const startY = e.clientY;
-    const startPos = { ...pos };
+    const start = { ...rb };
     let moved = false;
-
     const el = e.currentTarget as HTMLElement;
     el.setPointerCapture?.(e.pointerId);
-
     const onMove = (ev: PointerEvent) => {
       const dx = ev.clientX - startX;
       const dy = ev.clientY - startY;
       if (Math.abs(dx) + Math.abs(dy) > 3) moved = true;
-      if (moved) {
-        setPos({
-          x: Math.max(8, startPos.x - dx), // using right/bottom anchors
-          y: Math.max(8, startPos.y - dy),
-        });
-      }
+      const next = { right: start.right - dx, bottom: start.bottom - dy };
+      setRb(clampRB(next, w, h));
     };
-
     const onUp = (_ev: PointerEvent) => {
       el.releasePointerCapture?.(e.pointerId);
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
-      if (!moved) setOpen(true);
-    };
-
-    window.addEventListener("pointermove", onMove);
-    window.addEventListener("pointerup", onUp);
-  }, [pos, setPos, setOpen]);
-
-  // header drag handler (drag only, no click-to-open)
-  const startHeaderDrag = React.useCallback((e: React.PointerEvent) => {
-    const startX = e.clientX;
-    const startY = e.clientY;
-    const startPos = { ...pos };
-    const el = e.currentTarget as HTMLElement;
-    el.setPointerCapture?.(e.pointerId);
-    const onMove = (ev: PointerEvent) => {
-      const dx = ev.clientX - startX;
-      const dy = ev.clientY - startY;
-      setPos({ x: Math.max(8, startPos.x - dx), y: Math.max(8, startPos.y - dy) });
-    };
-    const onUp = () => {
-      el.releasePointerCapture?.(e.pointerId);
-      window.removeEventListener("pointermove", onMove);
-      window.removeEventListener("pointerup", onUp);
+      if (!moved && onClick) onClick();
     };
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
-  }, [pos]);
+  }, [rb]);
 
-  // collapsed bubble (FAB)
-  if (!open) {
-    return (
-      <div
-        className="fixed z-[70] rounded-full shadow-lg bg-black text-white w-12 h-12 flex items-center justify-center hover:opacity-90 select-none"
-        style={{ right: pos.x, bottom: pos.y, cursor: "grab" }}
-        onPointerDown={startFabDrag}
-        title="Open Agent Tools (Ctrl+Shift+K)"
-      >
-  💬
-      </div>
-    );
-  }
-
-  return (
+  const bubbleEl = (
     <div
-      className="fixed z-[70] w-[min(760px,calc(100vw-2rem))] max-h-[80vh] rounded-2xl border border-neutral-700 shadow-xl bg-neutral-900/95 backdrop-blur p-4 flex flex-col min-h-[320px] relative"
-      style={{ right: pos.x, bottom: pos.y }}
+  className="fixed z-[80] rounded-full shadow-lg bg-black text-white w-12 h-12 flex items-center justify-center hover:opacity-90 select-none"
+  style={{ right: rb.right, bottom: rb.bottom, cursor: "grab", position: 'fixed' as const }}
+      onPointerDown={(e) => startDragRB(e, BUBBLE, BUBBLE, () => setOpen(true))}
+      title="Open Agent Tools (Ctrl+Shift+K)"
+    >
+      💬
+    </div>
+  );
+
+  const panelEl = open && (
+    <div
+      ref={panelRef}
+  className="fixed z-[70] w-[min(760px,calc(100vw-2rem))] max-h-[80vh] rounded-2xl border border-neutral-700 shadow-xl bg-neutral-900/95 backdrop-blur p-4 flex flex-col min-h-[320px]"
+  style={{ right: rb.right, bottom: rb.bottom, position: 'fixed' as const }}
     >
       <div
         className="flex items-center justify-between mb-2 select-none border-b border-border pb-1"
         style={{ cursor: "grab" }}
-        onPointerDown={startHeaderDrag}
+        onPointerDown={(e) => {
+          const rect = panelRef.current?.getBoundingClientRect();
+          const w = rect?.width ?? PANEL_W_GUESS;
+          const h = rect?.height ?? PANEL_H_GUESS;
+          startDragRB(e, w, h);
+        }}
       >
         <div className="flex items-center gap-2">
           <div className="text-sm text-neutral-300">Agent Tools</div>
           {restoredVisible && <RestoredBadge />}
         </div>
-        <div className="flex items-center gap-2">
+  <div className="flex items-center gap-2">
           {/* Export */}
           <button
             type="button"
@@ -909,6 +912,15 @@ export default function ChatDock() {
             title="Show recent messages"
           >
             {historyOpen ? 'Hide history' : 'History'}
+          </button>
+          <button
+            type="button"
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => { e.stopPropagation(); setRb({ right: MARGIN, bottom: MARGIN }); }}
+            className="text-xs px-2 py-1 border rounded-md hover:bg-muted"
+            title="Reset to bottom-right"
+          >
+            Reset
           </button>
           <button
             type="button"
@@ -1088,7 +1100,7 @@ export default function ChatDock() {
         <div id="chatdock-scroll-anchor" ref={bottomRef} />
       </div>
 
-      {/* === Undo Snackbar === */}
+  {/* Undo Snackbar (fixed) stays as-is */}
       {undoVisible && (
         <div
           className={[
@@ -1140,4 +1152,7 @@ export default function ChatDock() {
       </div>
     </div>
   );
+
+  // Render via portal; show bubble when closed, panel when open
+  return createPortal(<>{open ? panelEl : bubbleEl}</>, document.body);
 }
