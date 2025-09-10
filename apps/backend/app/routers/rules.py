@@ -37,6 +37,7 @@ from app.utils.state import (
 )
 from datetime import datetime as _dt
 from pydantic import Field as _Field
+from app.services.rule_suggestions_store import list_persisted as _db_list_persisted, upsert_from_mined as _db_upsert_from_mined, set_status as _db_set_status, clear_non_new as _db_clear_non_new
 
 router = APIRouter(prefix="/rules", tags=["rules"])
 @router.get("/suggestions/config")
@@ -488,37 +489,7 @@ class PersistedSuggestion(BaseModel):
 class PersistedListResp(BaseModel):
     suggestions: List[PersistedSuggestion]
 
-def _ensure_persisted_from_mined(db: Session, window_days: int, min_count: int, max_results: int):
-    """
-    Auto-import mined suggestions if the persisted store is empty.
-    De-dupes by (merchant, category). Updates counts/window_days on re-run.
-    """
-    global PERSISTED_SUGGESTIONS_SEQ
-    mined = mine_suggestions(db, window_days=window_days, min_count=min_count, max_results=max_results)
-    now = _dt.utcnow().isoformat()
-    for s in mined:
-        key = _sugg_key(s["merchant"], s["category"])
-        if key in PERSISTED_SUGGESTIONS_IDX:
-            sid = PERSISTED_SUGGESTIONS_IDX[key]
-            obj = PERSISTED_SUGGESTIONS.get(sid, {})
-            obj["count"] = s.get("count", obj.get("count"))
-            obj["window_days"] = s.get("window_days", obj.get("window_days"))
-            obj["updated_at"] = now
-            PERSISTED_SUGGESTIONS[sid] = obj
-        else:
-            sid = PERSISTED_SUGGESTIONS_SEQ
-            PERSISTED_SUGGESTIONS_SEQ += 1
-            PERSISTED_SUGGESTIONS[sid] = {
-                "id": sid,
-                "merchant": s["merchant"],
-                "category": s["category"],
-                "status": "new",
-                "count": s.get("count"),
-                "window_days": s.get("window_days"),
-                "created_at": now,
-                "updated_at": now,
-            }
-            PERSISTED_SUGGESTIONS_IDX[key] = sid
+AUTOFILL_FROM_MINED = True
 
 @router.get("/suggestions/persistent", response_model=PersistedListResp)
 def list_persisted_suggestions_stub(
@@ -528,50 +499,30 @@ def list_persisted_suggestions_stub(
     autofill: bool = Query(True, description="If true and list is empty, auto-import from mined suggestions"),
     db: Session = Depends(get_db),
 ):
-    if autofill and not PERSISTED_SUGGESTIONS:
-        _ensure_persisted_from_mined(db, window_days, min_count, max_results)
-    payload = sorted(
-        PERSISTED_SUGGESTIONS.values(),
-        key=lambda x: (x.get("status") != "new", -(x.get("count") or 0), x.get("merchant", "").lower()),
-    )
+    if AUTOFILL_FROM_MINED and autofill:
+        _db_upsert_from_mined(db, window_days, min_count, max_results)
+    payload = _db_list_persisted(db)
     return {"suggestions": payload}
 
-@router.post("/suggestions/{sid}/accept")
-def accept_persisted_suggestion_stub(sid: int, db: Session = Depends(get_db)):
-    # Try DB-backed suggestion first (keeps existing tests working)
-    try:
-        rid = accept_persisted_suggestion(db, sid)
-        if rid:
-            return {"ok": True, "rule_id": rid}
-    except Exception:
-        pass
-    # Fallback: in-memory stub
-    obj = PERSISTED_SUGGESTIONS.get(sid)
-    if not obj:
-        raise HTTPException(status_code=404, detail="Suggestion not found")
-    obj["status"] = "accepted"
-    obj["updated_at"] = _dt.utcnow().isoformat()
-    return {"ok": True, "id": sid, "status": "accepted"}
 
-@router.post("/suggestions/{sid}/dismiss")
-def dismiss_persisted_suggestion_stub(sid: int, db: Session = Depends(get_db)):
-    # Try DB-backed suggestion first
+@router.post("/suggestions/{sid}/accept", response_model=PersistedSuggestion)
+def accept_persisted_suggestion_db(sid: int, db: Session = Depends(get_db)):
     try:
-        ok = dismiss_persisted_suggestion(db, sid)
-        if ok:
-            return {"ok": True}
-    except Exception:
-        pass
-    # Fallback: in-memory stub
-    obj = PERSISTED_SUGGESTIONS.get(sid)
-    if not obj:
+        return _db_set_status(db, sid, "accepted")
+    except ValueError:
         raise HTTPException(status_code=404, detail="Suggestion not found")
-    obj["status"] = "dismissed"
-    obj["updated_at"] = _dt.utcnow().isoformat()
-    return {"ok": True, "id": sid, "status": "dismissed"}
+
+
+@router.post("/suggestions/{sid}/dismiss", response_model=PersistedSuggestion)
+def dismiss_persisted_suggestion_db(sid: int, db: Session = Depends(get_db)):
+    try:
+        return _db_set_status(db, sid, "dismissed")
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Suggestion not found")
+
 
 @router.post("/suggestions/persistent/refresh", response_model=PersistedListResp)
-def refresh_persisted_suggestions_stub(
+def refresh_persisted_suggestions_db(
     window_days: int = Query(60, ge=7, le=180),
     min_count: int = Query(3, ge=2, le=20),
     max_results: int = Query(25, ge=1, le=100),
@@ -579,15 +530,6 @@ def refresh_persisted_suggestions_stub(
     db: Session = Depends(get_db),
 ):
     if clear_non_new:
-        to_delete = [sid for sid, obj in list(PERSISTED_SUGGESTIONS.items()) if obj.get("status") != "new"]
-        for sid in to_delete:
-            key = _sugg_key(PERSISTED_SUGGESTIONS[sid]["merchant"], PERSISTED_SUGGESTIONS[sid]["category"])
-            PERSISTED_SUGGESTIONS.pop(sid, None)
-            PERSISTED_SUGGESTIONS_IDX.pop(key, None)
-
-    _ensure_persisted_from_mined(db, window_days, min_count, max_results)
-    payload = sorted(
-        PERSISTED_SUGGESTIONS.values(),
-        key=lambda x: (x.get("status") != "new", -(x.get("count") or 0), x.get("merchant", "").lower()),
-    )
-    return {"suggestions": payload}
+        _db_clear_non_new(db)
+    _db_upsert_from_mined(db, window_days, min_count, max_results)
+    return {"suggestions": _db_list_persisted(db)}

@@ -1,4 +1,4 @@
-from sqlalchemy import String, Integer, Float, Date, DateTime, Text, UniqueConstraint, func, Numeric, ForeignKey, Boolean, Index
+from sqlalchemy import String, Integer, Float, Date, DateTime, Text, UniqueConstraint, func, Numeric, ForeignKey, Boolean, Index, JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship, synonym, validates
 from app.db import Base
 from datetime import datetime, date
@@ -156,3 +156,58 @@ class Budget(Base):
     effective_from: Mapped[date] = mapped_column(Date, nullable=False, server_default=func.current_date())
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+
+# --- NEW: DB-backed persisted suggestions (separate table) -----------------
+class RuleSuggestionPersisted(Base):
+    __tablename__ = "rule_suggestions_persisted"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    merchant: Mapped[str] = mapped_column(String(255), nullable=False)
+    category: Mapped[str] = mapped_column(String(255), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, server_default="new", index=True)  # new|accepted|dismissed
+    count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    window_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+    __table_args__ = (
+        UniqueConstraint("merchant", "category", name="ux_rule_suggestions_persisted_merchant_category"),
+    )
+
+# --- NEW: AnomalyIgnore (DB-backed ignores) -------------------------------
+class AnomalyIgnore(Base):
+    __tablename__ = "anomaly_ignores"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    category: Mapped[str] = mapped_column(String(255), nullable=False, index=True, unique=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+# --- NEW: RuleSuggestionIgnore (merchant/category pairs) -------------------
+class RuleSuggestionIgnore(Base):
+    __tablename__ = "rule_suggestion_ignores"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    merchant: Mapped[str] = mapped_column(String(255), nullable=False)
+    category: Mapped[str] = mapped_column(String(255), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    __table_args__ = (
+        UniqueConstraint("merchant", "category", name="ux_rule_suggestion_ignores_merchant_category"),
+    )
+
+
+# NOTE: Avoid defining a second mapper for the existing 'rule_suggestions' table
+# with a different schema to prevent conflicts with RuleSuggestion above.
+# If a persisted store with this schema is needed, prefer a new table name
+# (e.g., 'rule_suggestions_persisted') and add a migration accordingly.
+
+
+# --- NEW: RuleBackfillRun (audit of backfills) -----------------------------
+class RuleBackfillRun(Base):
+    __tablename__ = "rule_backfill_runs"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    rule_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    filters_json: Mapped[dict] = mapped_column(JSON, nullable=False)
+    matched: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    updated: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    dry_run: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="0")
+    actor: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

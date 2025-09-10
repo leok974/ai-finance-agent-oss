@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from app.db import get_db
 from app.transactions import Transaction
 from app.services.insights_anomalies import compute_anomalies
-from app.utils.state import ANOMALY_IGNORES
+from app.services.anomaly_ignores_store import list_ignores as ai_list, add_ignore as ai_add, remove_ignore as ai_remove
 
 router = APIRouter(prefix="/insights", tags=["insights"])
 
@@ -71,7 +71,7 @@ def get_anomalies(
     month: str | None = Query(None, description="Override anchor month YYYY-MM"),
     db: Session = Depends(get_db),
 ):
-    """Respects the global in-memory ignore list (reset on restart)."""
+    ignores = ai_list(db)
     return compute_anomalies(
         db,
         months=months,
@@ -79,7 +79,7 @@ def get_anomalies(
         threshold_pct=threshold_pct,
         max_results=max_results,
         target_month=month,
-        ignore_categories=sorted(ANOMALY_IGNORES),
+        ignore_categories=ignores,
     )
 
 
@@ -90,14 +90,10 @@ class IgnoreListResp(BaseModel):
 @router.post(
     "/anomalies/ignore/{category}",
     response_model=IgnoreListResp,
-    summary="Ignore a category for anomaly surfacing (in-memory)"
+    summary="Ignore a category for anomaly surfacing (persisted)"
 )
-def add_anomaly_ignore(category: str = Path(..., min_length=1)):
-    """Add category to the in-memory anomalies ignore list (not persisted)."""
-    cat = category.strip()
-    if cat:
-        ANOMALY_IGNORES.add(cat)
-    return {"ignored": sorted(ANOMALY_IGNORES)}
+def add_anomaly_ignore(category: str = Path(..., min_length=1), db: Session = Depends(get_db)):
+    return {"ignored": ai_add(db, category)}
 
 
 @router.get(
@@ -105,8 +101,8 @@ def add_anomaly_ignore(category: str = Path(..., min_length=1)):
     response_model=IgnoreListResp,
     summary="List ignored categories for anomalies"
 )
-def list_anomaly_ignores():
-    return {"ignored": sorted(ANOMALY_IGNORES)}
+def list_anomaly_ignores(db: Session = Depends(get_db)):
+    return {"ignored": ai_list(db)}
 
 
 @router.delete(
@@ -114,7 +110,5 @@ def list_anomaly_ignores():
     response_model=IgnoreListResp,
     summary="Remove category from anomaly ignore list"
 )
-def remove_anomaly_ignore(category: str = Path(..., min_length=1)):
-    cat = category.strip()
-    ANOMALY_IGNORES.discard(cat)
-    return {"ignored": sorted(ANOMALY_IGNORES)}
+def remove_anomaly_ignore(category: str = Path(..., min_length=1), db: Session = Depends(get_db)):
+    return {"ignored": ai_remove(db, category)}

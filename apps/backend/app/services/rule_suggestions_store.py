@@ -1,0 +1,64 @@
+from datetime import datetime
+from typing import List, Dict
+from sqlalchemy.orm import Session
+from sqlalchemy import and_
+from app.orm_models import RuleSuggestionPersisted as RSP
+from app.services.rule_suggestions import mine_suggestions
+
+def list_persisted(db: Session) -> List[Dict]:
+    rows = db.query(RSP).order_by(RSP.status.desc(), RSP.updated_at.desc()).all()
+    return [to_dict(r) for r in rows]
+
+def to_dict(r: RSP) -> Dict:
+    return {
+        "id": r.id,
+        "merchant": r.merchant,
+        "category": r.category,
+        "status": r.status,
+        "count": r.count,
+        "window_days": r.window_days,
+        "created_at": r.created_at.isoformat() if r.created_at else None,
+        "updated_at": r.updated_at.isoformat() if r.updated_at else None,
+    }
+
+def upsert_from_mined(db: Session, window_days: int, min_count: int, max_results: int) -> int:
+    mined = mine_suggestions(db, window_days=window_days, min_count=min_count, max_results=max_results)
+    now = datetime.utcnow()
+    updated = 0
+    for s in mined:
+        obj = db.query(RSP).filter(and_(RSP.merchant == s["merchant"], RSP.category == s["category"])).one_or_none()
+        if obj:
+            # update metadata but keep status
+            obj.count = s.get("count")
+            obj.window_days = s.get("window_days")
+            obj.updated_at = now
+        else:
+            obj = RSP(
+                merchant=s["merchant"],
+                category=s["category"],
+                status="new",
+                count=s.get("count"),
+                window_days=s.get("window_days"),
+                created_at=now,
+                updated_at=now,
+            )
+            db.add(obj)
+        updated += 1
+    db.commit()
+    return updated
+
+def set_status(db: Session, sid: int, status: str) -> Dict:
+    obj = db.query(RSP).filter(RSP.id == sid).one_or_none()
+    if not obj:
+        raise ValueError("not_found")
+    obj.status = status
+    obj.updated_at = datetime.utcnow()
+    db.commit(); db.refresh(obj)
+    return to_dict(obj)
+
+def clear_non_new(db: Session) -> int:
+    rows = db.query(RSP).filter(RSP.status != "new").all()
+    n = len(rows)
+    for r in rows: db.delete(r)
+    db.commit()
+    return n

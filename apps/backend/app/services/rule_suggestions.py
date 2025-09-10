@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.orm_models import Transaction, Rule, Feedback
 from app.orm_models import RuleSuggestion
+from app.orm_models import RuleSuggestionIgnore as _RSI
 from app.utils.text import canonicalize_merchant as _canonicalize
 
 
@@ -227,6 +228,12 @@ def mine_suggestions(
     if not rows:
         return []
 
+    # DB-backed ignored pairs
+    try:
+        ignored_pairs: Set[Tuple[str, str]] = set(db.query(_RSI.merchant, _RSI.category).all())
+    except Exception:
+        ignored_pairs = set()
+
     def _base_canon(s: str) -> str:
         parts = [p for p in (s or "").split() if not p.isdigit()]
         return " ".join(parts) or s
@@ -248,6 +255,8 @@ def mine_suggestions(
         if base_mcanon.lower() in exc_m or category.lower() in exc_c:
             continue
         if (base_mcanon, category) in active_pairs:
+            continue
+        if (base_mcanon, category) in ignored_pairs:
             continue
 
         sample_rows = (
@@ -271,7 +280,7 @@ def mine_suggestions(
         recent_date = db.query(func.max(Transaction.date)).scalar()
         month_key = f"{recent_date.year:04d}-{recent_date.month:02d}" if recent_date else None
 
-    suggestions.append(
+        suggestions.append(
             Suggestion(
                 merchant=base_mcanon,
                 category=category,
