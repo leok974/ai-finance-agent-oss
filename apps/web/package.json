@@ -10,10 +10,11 @@
     "smoke:backend": "powershell -ExecutionPolicy Bypass -File ../backend/app/scripts/smoke-backend.ps1"
   },
   "dependencies": {
-  "class-variance-authority": "^0.7.0",
-    "clsx": "^2.1.1",
+    "@radix-ui/react-popover": "^1.1.15",
     "@radix-ui/react-toast": "^1.2.15",
     "@radix-ui/react-tooltip": "^1.2.8",
+    "class-variance-authority": "^0.7.0",
+    "clsx": "^2.1.1",
     "lucide-react": "^0.542.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
@@ -28,6 +29,7 @@
     "autoprefixer": "^10.4.20",
     "postcss": "^8.4.41",
     "tailwindcss": "^3.4.10",
+    "tailwindcss-animate": "^1.0.7",
     "typescript": "^5.4.0",
     "vite": "^5.4.2"
   }

@@ -1,3 +1,4 @@
+export { saveAs } from "./save";
 export function downloadBlob(filename: string, mime: string, data: BlobPart) {
   const blob = new Blob([data], { type: mime });
   const url = URL.createObjectURL(blob);

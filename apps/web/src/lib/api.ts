@@ -782,20 +782,32 @@ function parseDispositionFilename(disposition: string | null) {
   return m?.[1] ?? null;
 }
 
-export async function downloadReportExcel(month?: string) {
-  const path = "/report/excel" + (month ? `?month=${encodeURIComponent(month)}` : "");
-  const url = API_BASE ? `${API_BASE}${path}` : path;
-  const res = await fetch(url, { method: "GET" });
+export async function downloadReportExcel(
+  month?: string,
+  includeTransactions: boolean = true,
+  opts?: { start?: string; end?: string; splitAlpha?: boolean }
+) {
+  const base = (import.meta as any)?.env?.VITE_API_BASE || API_BASE || "";
+  const url = new URL("/report/excel", base);
+  if (month) url.searchParams.set("month", month);
+  if (opts?.start) url.searchParams.set("start", opts.start);
+  if (opts?.end) url.searchParams.set("end", opts.end);
+  url.searchParams.set("include_transactions", String(includeTransactions));
+  if (opts?.splitAlpha) url.searchParams.set("split_transactions_alpha", String(!!opts.splitAlpha));
+  const res = await fetch(url.toString(), { method: "GET" });
   if (!res.ok) throw new Error(`Excel export failed: ${res.status}`);
   const blob = await res.blob();
   const filename = parseDispositionFilename(res.headers.get("Content-Disposition")) || "finance_report.xlsx";
   return { blob, filename };
 }
 
-export async function downloadReportPdf(month?: string) {
-  const path = "/report/pdf" + (month ? `?month=${encodeURIComponent(month)}` : "");
-  const url = API_BASE ? `${API_BASE}${path}` : path;
-  const res = await fetch(url, { method: "GET" });
+export async function downloadReportPdf(month?: string, opts?: { start?: string; end?: string }) {
+  const base = (import.meta as any)?.env?.VITE_API_BASE || API_BASE || "";
+  const url = new URL("/report/pdf", base);
+  if (month) url.searchParams.set("month", month);
+  if (opts?.start) url.searchParams.set("start", opts.start);
+  if (opts?.end) url.searchParams.set("end", opts.end);
+  const res = await fetch(url.toString(), { method: "GET" });
   if (!res.ok) throw new Error(`PDF export failed: ${res.status}`);
   const blob = await res.blob();
   const filename = parseDispositionFilename(res.headers.get("Content-Disposition")) || "finance_report.pdf";

@@ -68,3 +68,20 @@ def test_report_pdf_endpoint_available_or_graceful(client, db_session):
     else:
         assert r.status_code == 503
         assert "reportlab" in (r.json().get("detail", "").lower())
+
+
+def test_report_excel_include_transactions_toggle(client, db_session):
+    month = "2024-04"
+    _add_sample_month(db_session, month)
+
+    # Without transactions sheet
+    r1 = client.get(f"/report/excel?month={month}&include_transactions=false")
+    assert r1.status_code == 200
+    assert r1.headers.get("content-type") == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    assert r1.content[:2] == b"PK"
+
+    # With transactions sheet (default)
+    r2 = client.get(f"/report/excel?month={month}")
+    assert r2.status_code == 200
+    assert r2.headers.get("content-type") == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    assert r2.content[:2] == b"PK"
