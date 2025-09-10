@@ -16,3 +16,10 @@ dist/
 # Editor
 .idea/
 .vscode/
+
+# Local databases
+*.db
+*.sqlite
+*.sqlite3
+*.db-wal
+*.db-shm

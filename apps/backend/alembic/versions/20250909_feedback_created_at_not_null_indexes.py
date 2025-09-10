@@ -24,16 +24,16 @@ def upgrade() -> None:
     # 1) Backfill NULLs to current timestamp
     conn.execute(text("UPDATE feedback SET created_at = CURRENT_TIMESTAMP WHERE created_at IS NULL"))
 
-    # 2) Enforce NOT NULL + default
+    # 2) Enforce NOT NULL + default (SQLite-safe via batch)
     dialect = conn.engine.dialect.name
-    default_expr = sa.text("CURRENT_TIMESTAMP") if dialect == "sqlite" else sa.text("now()")
-    op.alter_column(
-        "feedback",
-        "created_at",
-        existing_type=sa.DateTime(timezone=True),
-        nullable=False,
-        server_default=default_expr,
-    )
+    default_expr = sa.text("(CURRENT_TIMESTAMP)") if dialect == "sqlite" else sa.text("now()")
+    with op.batch_alter_table("feedback", schema=None) as b:
+        b.alter_column(
+            "created_at",
+            existing_type=sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=default_expr,
+        )
 
     # 3) Helpful indexes (guarded if they already exist)
     inspector = sa.inspect(conn)

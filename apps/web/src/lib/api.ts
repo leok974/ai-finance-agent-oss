@@ -858,3 +858,42 @@ export async function txnsQueryCsv(
   const filename = parseDispositionFilename(res.headers.get("Content-Disposition")) || "txns_query.csv";
   return { blob, filename };
 }
+
+// ---------- Budget Recommendations ----------
+export type BudgetRecommendation = {
+  category: string;
+  median: number;
+  p75: number;
+  avg: number;
+  sample_size: number;
+  current_month?: number | null;
+  over_p75?: boolean | null;
+};
+
+export type BudgetRecommendationsResp = {
+  months: number;
+  recommendations: BudgetRecommendation[];
+};
+
+export const getBudgetRecommendations = (
+  months = 6,
+  opts?: { include_current?: boolean; include_only_over_p75?: boolean; include?: string[]; exclude?: string[] }
+) => {
+  const params = new URLSearchParams();
+  params.set("months", String(months));
+  if (opts?.include_current !== undefined) params.set("include_current", String(!!opts.include_current));
+  if (opts?.include_only_over_p75) params.set("include_only_over_p75", "true");
+  if (opts?.include?.length) params.set("include", opts.include.join(","));
+  if (opts?.exclude?.length) params.set("exclude", opts.exclude.join(","));
+  return http<BudgetRecommendationsResp>(`/budget/recommendations?${params.toString()}`);
+};
+
+export type ApplyBudgetsReq = {
+  strategy: "median" | "p75" | "median_plus_10";
+  categories_include?: string[] | null;
+  categories_exclude?: string[] | null;
+  months?: number;
+};
+export type ApplyBudgetsResp = { ok: boolean; applied: Array<{ category: string; amount: number }> };
+export const applyBudgets = (req: ApplyBudgetsReq) =>
+  http<ApplyBudgetsResp>(`/budget/apply`, { method: "POST", body: JSON.stringify(req) });

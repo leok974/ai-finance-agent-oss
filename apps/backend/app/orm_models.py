@@ -144,3 +144,15 @@ class RuleSuggestion(Base):
     __table_args__ = (
         Index("ix_rule_suggestions_unique_pair", "merchant_norm", "category", unique=True),
     )
+
+# --- NEW: Budget -------------------------------------------------------------
+class Budget(Base):
+    __tablename__ = "budgets"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    category: Mapped[str] = mapped_column(String, nullable=False, index=True, unique=True)
+    amount: Mapped[float] = mapped_column(Float, nullable=False)
+    # Simple global budget per category (v1). If we want month-scoped later,
+    # add: month = mapped_column(String, index=True) and UniqueConstraint("category", "month")
+    effective_from: Mapped[date] = mapped_column(Date, nullable=False, server_default=func.current_date())
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())

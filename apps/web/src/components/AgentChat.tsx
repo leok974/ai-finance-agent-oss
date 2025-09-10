@@ -1,5 +1,5 @@
 import React from "react";
-import { agentChat, getAgentModels, type AgentChatRequest, type AgentChatResponse, type AgentModelsResponse, type ChatMessage, txnsQueryCsv } from "../lib/api";
+import { agentChat, getAgentModels, type AgentChatRequest, type AgentChatResponse, type AgentModelsResponse, type ChatMessage, txnsQueryCsv, applyBudgets, downloadReportPdf } from "../lib/api";
 
 interface ExtendedMessage extends ChatMessage {
   meta?: {
@@ -30,7 +30,7 @@ function modeLabel(mode?: string) {
   if (mode === 'nl_txns') return 'Transactions';
   if (mode.startsWith('charts.')) return 'Charts';
   if (mode === 'report.link') return 'Report';
-  if (mode === 'budgets.read') return 'Budgets';
+  if (mode === 'budgets.read' || mode === 'budgets.recommendations') return 'Budgets';
   return undefined;
 }
 
@@ -117,7 +117,7 @@ export default function AgentChat() {
         setMessages([...next, msg1, msg2]);
       } else {
         const mode = (resp as any).mode as string | undefined;
-        if (mode && ["charts.summary","charts.flows","charts.merchants","charts.categories","report.link","budgets.read"].includes(mode)) {
+  if (mode && ["charts.summary","charts.flows","charts.merchants","charts.categories","report.link","budgets.read","budgets.recommendations"].includes(mode)) {
           const groundedMsg: ExtendedMessage = {
             role: "assistant",
             content: ((resp as any).message || resp.reply),
@@ -251,6 +251,38 @@ export default function AgentChat() {
                         >
                           Download CSV
                         </button>
+                      ) : null}
+                      {m.meta?.mode === 'budgets.recommendations' ? (
+                        <>
+                          <button
+                            className="ml-2 text-[11px] px-2 py-0.5 rounded-md bg-white text-black hover:opacity-90"
+                            title="Apply budgets (median)"
+                            onClick={async () => {
+                              try {
+                                await applyBudgets({ strategy: 'median' });
+                                alert('Applied budgets (median).');
+                              } catch (err: any) {
+                                alert(`Apply budgets failed: ${err?.message || String(err)}`);
+                              }
+                            }}
+                          >
+                            Apply budgets
+                          </button>
+                          <button
+                            className="ml-2 text-[11px] px-2 py-0.5 rounded-md border border-neutral-700 hover:bg-neutral-900"
+                            title="Export PDF report"
+                            onClick={async () => {
+                              try {
+                                const { blob, filename } = await downloadReportPdf();
+                                saveBlob(blob, filename || 'finance_report.pdf');
+                              } catch (err: any) {
+                                alert(`PDF export failed: ${err?.message || String(err)}`);
+                              }
+                            }}
+                          >
+                            Export PDF
+                          </button>
+                        </>
                       ) : null}
                     </div>
                   ) : null}

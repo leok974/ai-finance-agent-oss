@@ -92,8 +92,37 @@ def _window_months(db: Session, months: int) -> Tuple[date, date, List[str]]:
 
     return start_date, end_date, keys
 
+def _current_month_bounds(db: Session) -> tuple[date, date] | None:
+    max_dt = db.query(func.max(Transaction.date)).scalar()
+    if not max_dt:
+        return None
+    start = date(max_dt.year, max_dt.month, 1)
+    end = date(max_dt.year + (1 if max_dt.month == 12 else 0), (1 if max_dt.month == 12 else max_dt.month + 1), 1)
+    return (start, end)
 
-def compute_recommendations(db: Session, months: int = 6, min_samples: int = 2) -> List[Dict[str, Any]]:
+
+def _category_current_spend(db: Session) -> dict[str, float]:
+    bounds = _current_month_bounds(db)
+    if not bounds:
+        return {}
+    start, end = bounds
+    rows = (
+        db.query(Transaction.category, func.sum(func.abs(Transaction.amount)))
+        .filter(
+            Transaction.date >= start,
+            Transaction.date < end,
+            Transaction.category.isnot(None),
+            Transaction.category != "",
+            Transaction.category != "Unknown",
+            Transaction.amount < 0,
+        )
+        .group_by(Transaction.category)
+        .all()
+    )
+    return {cat: float(total or 0.0) for cat, total in rows}
+
+
+def compute_recommendations(db: Session, months: int = 6, min_samples: int = 2, include_current: bool = True) -> List[Dict[str, Any]]:
     """
     Look at the last N full months; compute per-category monthly spend totals
     and derive median (p50), p75, and average (mean) as recommended caps.
@@ -133,6 +162,7 @@ def compute_recommendations(db: Session, months: int = 6, min_samples: int = 2) 
         category_month_totals[category][key] += _abs_spend(amt)
 
     # Convert each category's month totals → list for stats
+    current = _category_current_spend(db) if include_current else {}
     recommendations: List[Dict[str, Any]] = []
     for category, month_map in category_month_totals.items():
         samples = sorted(month_map.values())
@@ -142,15 +172,17 @@ def compute_recommendations(db: Session, months: int = 6, min_samples: int = 2) 
         median = _quantile(samples, 0.5)
         p75 = _quantile(samples, 0.75)
         avg = sum(samples) / len(samples)
-        recommendations.append(
-            {
-                "category": category,
-                "median": round(median, 2),
-                "p75": round(p75, 2),
-                "avg": round(avg, 2),
-                "sample_size": len(samples),
-            }
-        )
+        cur = current.get(category, 0.0)
+        over = cur > p75 if include_current else None
+        recommendations.append({
+            "category": category,
+            "median": round(median, 2),
+            "p75": round(p75, 2),
+            "avg": round(avg, 2),
+            "sample_size": len(samples),
+            "current_month": round(cur, 2) if include_current else None,
+            "over_p75": bool(over) if include_current else None,
+        })
 
     # Stable sort: highest median first, then p75 desc, then alpha
     recommendations.sort(key=lambda r: (-r["median"], -r["p75"], r["category"].lower()))
