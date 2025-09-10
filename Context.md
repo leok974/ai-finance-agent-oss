@@ -1,3 +1,40 @@
+# Update — 2025-09-10
+
+## ✳️ Recent updates (Sep 10, 2025)
+
+Backend (deterministic routing + tools)
+- Unified chat routing prioritizes deterministic tools before LLM, using a conservative detector:
+  - services/agent_tools.py: added route_to_tool(...) to handle modes: nl_txns, charts.summary/flows/merchants/categories, report.link, budgets.read.
+  - services/agent_detect.py (new): detect_txn_query(), infer_flow(), summarize_txn_result(), try_llm_rephrase_summary().
+  - routers/agent.py: captures last user msg early; short-circuits to route_to_tool or nl_txns when detected; keeps LLM fallback.
+- Charts and report links:
+  - charts.* modes return normalized data via charts_data helpers.
+  - report.link builds /report/excel or /report/pdf URLs with resolved filters.
+
+Frontend (grounded UI + CSV in chat)
+- AgentChat.tsx: shows a small “grounded” badge and a tool mode chip (Transactions/Charts/Report/Budgets) on deterministic replies.
+- Inline “Download CSV” button appears when mode=nl_txns and intent=list. It calls txnsQueryCsv(q, filters) and saves the file (uses a small saveBlob helper).
+- Renders filter chips (month/start/end/window/flow first, then others). Tooltip via title attributes.
+- index.css: added .chat-badge-grounded styling.
+- lib/api.ts: AgentChat types reflect optional mode/summary/rephrased/nlq.
+
+Tests
+- apps/backend/tests/:
+  - test_agent_chat_routing.py: sanity check that generic prompts do not short-circuit; preserves requested model.
+  - test_agent_chat_nl_txns.py: verifies NL txn queries short-circuit, return structured result and sensible totals.
+  - test_agent_chat_tools.py: routes to tools (nl_txns/report.link) when appropriate.
+
+Status
+- Backend tests: PASS (with expected skips). Frontend build: PASS.
+- Deterministic routing is conservative to avoid intercepting generic prompts.
+
+Notes / next
+- Optional: richer grounded renderers for charts in AgentChat.
+
+---
+
+<!-- Previous snapshot retained below -->
+
 📸 Finance Agent Repo Snapshot (Copilot Dump)
 ✅ Checklist Coverage
 
@@ -337,4 +374,3 @@ apps/web/
 ---
 
 ✅ **Status:** Exports (Excel/PDF) fully working, with categories + custom ranges, split toggle, busy/error handling, polished UI. Tests all green.
- (See <attachments> above for file contents. You may not need to search or read the file again.)
