@@ -1,10 +1,14 @@
-from fastapi import APIRouter, Query, Depends
+from fastapi import APIRouter, Query, Depends, Path
+from typing import Literal
+from pydantic import BaseModel, Field
 from sqlalchemy import select, func
 from sqlalchemy.orm import Session
 from app.db import get_db
 from app.transactions import Transaction
+from app.services.insights_anomalies import compute_anomalies
+from app.utils.state import ANOMALY_IGNORES
 
-router = APIRouter()
+router = APIRouter(prefix="/insights", tags=["insights"])
 
 
 @router.get("")
@@ -38,3 +42,79 @@ def insights(month: str | None = Query(None), db: Session = Depends(get_db)):
             {"merchant": m or "(unknown)", "sum": float(s or 0)} for (m, s) in rows
         ],
     }
+
+
+class AnomalyModel(BaseModel):
+    category: str = Field(..., example="Groceries")
+    current: float = Field(..., description="Current month spend magnitude", example=700.0)
+    median: float = Field(..., description="Median of prior months", example=400.0)
+    pct_from_median: float = Field(..., description="(current - median) / median", example=0.75)
+    sample_size: int = Field(..., description="Historical months used", example=5)
+    direction: Literal["high","low"] = Field(..., example="high")
+
+
+class AnomaliesResp(BaseModel):
+    month: str | None = Field(None, example="2025-09")
+    anomalies: list[AnomalyModel] = Field(default_factory=list)
+
+
+@router.get(
+    "/anomalies",
+    response_model=AnomaliesResp,
+    summary="Flag categories with unusual current-month spend"
+)
+def get_anomalies(
+    months: int = Query(6, ge=3, le=24, description="History window", example=6),
+    min_spend_current: float = Query(50.0, ge=0, description="Ignore very small categories", example=50.0),
+    threshold_pct: float = Query(0.4, ge=0.05, le=5.0, description="|% from median| to flag", example=0.4),
+    max_results: int = Query(8, ge=1, le=50, description="Return top-N by deviation", example=6),
+    month: str | None = Query(None, description="Override anchor month YYYY-MM"),
+    db: Session = Depends(get_db),
+):
+    """Respects the global in-memory ignore list (reset on restart)."""
+    return compute_anomalies(
+        db,
+        months=months,
+        min_spend_current=min_spend_current,
+        threshold_pct=threshold_pct,
+        max_results=max_results,
+        target_month=month,
+        ignore_categories=sorted(ANOMALY_IGNORES),
+    )
+
+
+class IgnoreListResp(BaseModel):
+    ignored: list[str] = Field(default_factory=list, example=["Groceries","Transport"])
+
+
+@router.post(
+    "/anomalies/ignore/{category}",
+    response_model=IgnoreListResp,
+    summary="Ignore a category for anomaly surfacing (in-memory)"
+)
+def add_anomaly_ignore(category: str = Path(..., min_length=1)):
+    """Add category to the in-memory anomalies ignore list (not persisted)."""
+    cat = category.strip()
+    if cat:
+        ANOMALY_IGNORES.add(cat)
+    return {"ignored": sorted(ANOMALY_IGNORES)}
+
+
+@router.get(
+    "/anomalies/ignore",
+    response_model=IgnoreListResp,
+    summary="List ignored categories for anomalies"
+)
+def list_anomaly_ignores():
+    return {"ignored": sorted(ANOMALY_IGNORES)}
+
+
+@router.delete(
+    "/anomalies/ignore/{category}",
+    response_model=IgnoreListResp,
+    summary="Remove category from anomaly ignore list"
+)
+def remove_anomaly_ignore(category: str = Path(..., min_length=1)):
+    cat = category.strip()
+    ANOMALY_IGNORES.discard(cat)
+    return {"ignored": sorted(ANOMALY_IGNORES)}

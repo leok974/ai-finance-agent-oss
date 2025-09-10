@@ -100,6 +100,21 @@ def db_session():
     The existing `client` fixture can use its own override; this is just
     for direct DB writes in tests (e.g., creating a Transaction row).
     """
+    # Ensure clean slate per test to avoid cross-test contamination
+    try:
+        app_db.Base.metadata.drop_all(bind=app_db.engine)
+    except Exception:
+        pass
+    app_db.Base.metadata.create_all(bind=app_db.engine)
+
+    # Also clear any in-memory overlays/state between tests
+    try:
+        from app.utils.state import ANOMALY_IGNORES, TEMP_BUDGETS
+        ANOMALY_IGNORES.clear()
+        TEMP_BUDGETS.clear()
+    except Exception:
+        pass
+
     # Use module attribute so it picks up monkeypatch from _force_sqlite_for_all_tests
     db = app_db.SessionLocal()
     try:

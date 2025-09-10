@@ -39,6 +39,8 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
   const [trends, setTrends] = useState<any | null>(null);
   const [empty, setEmpty] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [monthsWindow, setMonthsWindow] = useState<number>(6);
 
   // resolvedMonth prefers server-returned month, falls back to prop
   const resolvedMonth = summary?.month ?? month;
@@ -83,6 +85,23 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
       alive = false;
     };
   }, [month, refreshKey]);
+
+  // Optional: allow opening a specific category chart from AgentChat
+  useEffect(() => {
+    function onOpenChart(e: Event) {
+      const { category, months } = (e as CustomEvent).detail || {};
+      if (category) {
+        try {
+          setSelectedCategory(String(category));
+          setMonthsWindow(Number(months ?? 6));
+          // Scroll to this panel's root
+          document.getElementById('charts-panel')?.scrollIntoView?.({ behavior: 'smooth' });
+        } catch {}
+      }
+    }
+    window.addEventListener('open-category-chart', onOpenChart as any);
+    return () => window.removeEventListener('open-category-chart', onOpenChart as any);
+  }, []);
 
   const categoriesData = useMemo(() => summary?.categories ?? [], [summary]);
   const merchantsData = useMemo(() => merchants?.merchants ?? [], [merchants]);

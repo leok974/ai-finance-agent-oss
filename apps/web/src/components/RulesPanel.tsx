@@ -9,6 +9,8 @@ import { setRuleDraft } from '@/state/rulesDraft';
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { InfoDot } from './InfoDot';
 import Card from './Card';
+import { setBudget, deleteBudget } from '@/lib/api';
+import { showToast } from '@/lib/toast-helpers';
 
 type Props = { month?: string; refreshKey?: number };
 
@@ -29,6 +31,8 @@ function RulesPanelImpl({ month, refreshKey }: Props) {
     when: { description_like: '' },
     then: { category: '' },
   });
+  const [editingId, setEditingId] = useState<string | number | null>(null);
+  const [editAmount, setEditAmount] = useState<string>('');
 
   // Derived values for UX and validation
   const { like, category, derivedName, canCreate } = useMemo(() => {
@@ -41,7 +45,7 @@ function RulesPanelImpl({ month, refreshKey }: Props) {
   async function load() {
     setLoading(true);
     try {
-  const res = await getRules({ q: q || undefined, limit, offset: page * limit });
+      const res = await getRules({ q: q || undefined, limit, offset: page * limit });
       setRules(Array.isArray(res.items) ? res.items : []);
       setTotal(Number(res.total || 0));
     } catch (e) {
@@ -63,10 +67,10 @@ function RulesPanelImpl({ month, refreshKey }: Props) {
     e.preventDefault();
     setCreating(true);
     try {
-  const like = String((form as any)?.when?.description_like || '').trim();
+      const like = String((form as any)?.when?.description_like || '').trim();
       const category = (form?.then?.category || '').trim() || 'Uncategorized';
       const name = (form?.name || '').trim() || `${like || 'Any'} → ${category}`;
-  const res = await addRule({ name, enabled: true, when: { description_like: like }, then: { category } } as any);
+      const res = await addRule({ name, enabled: true, when: { description_like: like }, then: { category } } as any);
       // Seed Rule Tester with what you just created
       setRuleDraft({
         name: (res as any)?.display_name || name,
@@ -74,7 +78,7 @@ function RulesPanelImpl({ month, refreshKey }: Props) {
         then: { category },
       });
       setForm({ name: '', enabled: true, when: { description_like: '' }, then: { category: '' } });
-  load();
+      load();
       // Use raw toast so we can attach actions
       toast({
         title: 'Rule created',
@@ -121,6 +125,51 @@ function RulesPanelImpl({ month, refreshKey }: Props) {
       return cache[key] as { matched_count: number; tested_at: string } | undefined;
     } catch {
       return undefined;
+    }
+  }
+
+  function parseAmountFromDescription(desc?: string | null) {
+    if (!desc) return undefined;
+    const m = /\$([\d.,]+)/.exec(desc);
+    return m ? Number(m[1].replace(/,/g, '')) : undefined;
+  }
+  async function saveBudgetInline(category: string) {
+    const amt = Number(editAmount);
+    if (!Number.isFinite(amt) || amt <= 0) {
+      showToast?.('Enter a valid amount > 0', { type: 'error' });
+      return;
+    }
+    try {
+      const r = await setBudget(category, amt);
+      showToast?.(`Saved ${category} = $${r.budget.amount.toFixed(2)}`, { type: 'success' });
+      setEditingId(null);
+      await load();
+    } catch (e: any) {
+      showToast?.(e?.message ?? 'Failed to save', { type: 'error' });
+    }
+  }
+
+  async function removeBudget(category: string) {
+    try {
+      const r = await deleteBudget(category);
+      const { category: cat, amount } = r.deleted;
+      showToast?.(`Deleted budget for ${cat}`, {
+        type: 'success',
+        actionLabel: 'Undo',
+        onAction: async () => {
+          try {
+            await setBudget(cat, amount);
+            showToast?.(`Restored ${cat} = $${amount.toFixed(2)}`, { type: 'success' });
+            await load();
+          } catch (e: any) {
+            showToast?.(e?.message ?? 'Failed to restore', { type: 'error' });
+          }
+        },
+      });
+      setEditingId(null);
+      await load();
+    } catch (e: any) {
+      showToast?.(e?.message ?? 'Failed to delete budget', { type: 'error' });
     }
   }
 
@@ -243,55 +292,72 @@ function RulesPanelImpl({ month, refreshKey }: Props) {
 
       {!!rules?.length && (
         <div className="space-y-3">
-          {rules.map(rule => (
-            <div key={rule.id} className="p-3 rounded-xl border flex items-center justify-between">
-              <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="font-medium truncate">{rule.display_name}</span>
-                  {((rule as any).kind === 'budget' || String(rule.id).startsWith('budget:')) && (
-                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400">
-                      Budget
+          {rules.map(rule => {
+            const isBudget = ((rule as any).kind === 'budget' || String(rule.id).startsWith('budget:'));
+            const category = (rule as any).category as string | undefined;
+            const amountFromDesc = typeof (rule as any).amount === 'number' ? (rule as any).amount : parseAmountFromDescription((rule as any).description);
+            return (
+              <div key={rule.id} className="p-3 rounded-xl border flex items-center justify-between">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium truncate">{rule.display_name}</span>
+                    {isBudget && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400">Budget</span>
+                    )}
+                    <span className={`text-xs px-2 py-0.5 rounded-full ${(rule.active ?? true) ? 'bg-emerald-600/10 text-emerald-600' : 'bg-zinc-600/10 text-zinc-500'}`}>
+                      {(rule.active ?? true) ? 'Enabled' : 'Disabled'}
                     </span>
-                  )}
-                  <span className={`text-xs px-2 py-0.5 rounded-full ${(rule.active ?? true) ? 'bg-emerald-600/10 text-emerald-600' : 'bg-zinc-600/10 text-zinc-500'}`}>
-                    {(rule.active ?? true) ? 'Enabled' : 'Disabled'}
-                  </span>
-                  {(() => {
-                    const badge = getBadgeFor({
-                      id: rule.id,
-                      name: rule.display_name,
-                      enabled: rule.active ?? true,
-                      when: {},
-                      then: { category: rule.category },
-                    } as Rule);
-                    if (!badge) return null;
-                    return (
-                      <span
-                        className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-600/10 text-blue-600"
-                        title={`Last tested ${new Date(badge.tested_at).toLocaleString()} — matched ${badge.matched_count}`}
-                      >
-                        last test: {badge.matched_count}
-                      </span>
-                    );
-                  })()}
+                  </div>
+                  <div className="text-xs opacity-80 truncate">
+                    {((rule as any).description) ? (
+                      <span>{(rule as any).description}</span>
+                    ) : (
+                      rule.category ? <span>category: {rule.category}</span> : null
+                    )}
+                  </div>
                 </div>
-                <div className="text-xs opacity-80 truncate">
-                  {((rule as any).description) ? (
-                    <span>{(rule as any).description}</span>
+                <div className="flex items-center gap-2 shrink-0">
+                  {isBudget && category ? (
+                    editingId === rule.id ? (
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="number"
+                          min={0.01}
+                          step="0.01"
+                          value={editAmount}
+                          onChange={(e) => setEditAmount(e.target.value)}
+                          className="w-28 rounded-md border border-border bg-card px-2 py-1 text-sm"
+                        />
+                        <button className="rounded-md border border-border px-2 py-1 text-xs" onClick={() => saveBudgetInline(category)}>Save</button>
+                        <button className="rounded-md border border-border px-2 py-1 text-xs" onClick={() => setEditingId(null)}>Cancel</button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm opacity-80">Cap:&nbsp;{typeof amountFromDesc === 'number' ? `$${amountFromDesc.toFixed(2)}` : '—'}</span>
+                        <button
+                          className="rounded-md border border-border px-2 py-1 text-xs"
+                          onClick={() => {
+                            setEditingId(rule.id);
+                            setEditAmount(typeof amountFromDesc === 'number' ? String(amountFromDesc.toFixed(2)) : '');
+                          }}
+                          title="Edit budget cap"
+                        >
+                          Edit
+                        </button>
+                        <button className="rounded-md border border-border px-2 py-1 text-xs" onClick={() => removeBudget(category)} title="Delete budget">
+                          Clear
+                        </button>
+                      </div>
+                    )
                   ) : (
-                    rule.category ? <span>category: {rule.category}</span> : null
+                    <button onClick={() => remove({ id: rule.id, name: rule.display_name, enabled: rule.active ?? true, when: {}, then: { category: rule.category } })} className="text-xs px-2 py-1 rounded-lg border hover:bg-destructive/10 text-destructive">
+                      Delete
+                    </button>
                   )}
                 </div>
               </div>
-              <div className="flex items-center gap-2 shrink-0">
-                {((rule as any).kind === 'budget' || String(rule.id).startsWith('budget:')) ? null : (
-                  <button onClick={() => remove({ id: rule.id, name: rule.display_name, enabled: rule.active ?? true, when: {}, then: { category: rule.category } })} className="text-xs px-2 py-1 rounded-lg border hover:bg-destructive/10 text-destructive">
-                    Delete
-                  </button>
-                )}
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
   </Card>

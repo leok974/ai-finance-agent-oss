@@ -1,7 +1,8 @@
 from __future__ import annotations
 import json
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Set, Tuple
+from datetime import date
 
 STORE_DIR = Path(__file__).resolve().parent.parent / "data" / "store"
 STORE_DIR.mkdir(parents=True, exist_ok=True)
@@ -35,3 +36,18 @@ def save_state(app) -> None:
     _write_json(TXNS_PATH, getattr(app.state, "txns", []))
     _write_json(LABELS_PATH, getattr(app.state, "user_labels", []))
     _write_json(RULES_PATH, getattr(app.state, "rules", []))
+
+# ---------------------------------------------------------------------------
+# Ephemeral overlays/state used by certain endpoints and agent flows
+# ---------------------------------------------------------------------------
+
+# Temp budgets are scoped to a month key "YYYY-MM" to avoid stale carryover.
+# Map: (month_key, category) -> amount
+TEMP_BUDGETS: Dict[Tuple[str, str], float] = {}
+
+# Categories to ignore for anomaly surfacing (global until cleared)
+ANOMALY_IGNORES: Set[str] = set()
+
+def current_month_key(today: date | None = None) -> str:
+    d = today or date.today()
+    return f"{d.year:04d}-{d.month:02d}"

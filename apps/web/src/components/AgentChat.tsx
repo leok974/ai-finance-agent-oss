@@ -1,5 +1,6 @@
 import React from "react";
-import { agentChat, getAgentModels, type AgentChatRequest, type AgentChatResponse, type AgentModelsResponse, type ChatMessage, txnsQueryCsv, applyBudgets, downloadReportPdf } from "../lib/api";
+import { agentChat, getAgentModels, type AgentChatRequest, type AgentChatResponse, type AgentModelsResponse, type ChatMessage, txnsQueryCsv, applyBudgets, downloadReportPdf, type Anomaly, clearTempBudget, unignoreAnomaly } from "../lib/api";
+import { showToast } from "@/lib/toast-helpers";
 
 interface ExtendedMessage extends ChatMessage {
   meta?: {
@@ -11,6 +12,9 @@ interface ExtendedMessage extends ChatMessage {
     filters?: Record<string, any> | undefined;
     q?: string;        // original NL query text
     intent?: string;   // nl_txns intent (e.g., list)
+  // insights.anomalies payload (inline render)
+  anomalies?: Anomaly[];
+  anomaliesMonth?: string | null;
   };
 }
 
@@ -29,6 +33,7 @@ function modeLabel(mode?: string) {
   if (!mode) return undefined;
   if (mode === 'nl_txns') return 'Transactions';
   if (mode.startsWith('charts.')) return 'Charts';
+  if (mode.startsWith('insights.')) return 'Insights';
   if (mode === 'report.link') return 'Report';
   if (mode === 'budgets.read' || mode === 'budgets.recommendations') return 'Budgets';
   return undefined;
@@ -43,6 +48,23 @@ export default function AgentChat() {
   const [advancedOpen, setAdvancedOpen] = React.useState(false);
   const [modelsInfo, setModelsInfo] = React.useState<AgentModelsResponse | null>(null);
   const [selectedModel, setSelectedModel] = React.useState<string>(""); // empty => use server default
+
+  // add state to track a single in-flight action
+  const [busyAction, setBusyAction] = React.useState<string | null>(null);
+
+  // tiny helper to run an async action with auto-disable + error logging
+  async function runAction(key: string, fn: () => Promise<void>) {
+    if (busyAction) return; // prevent parallel runs; switch to a Set for multi if desired
+    setBusyAction(key);
+    try {
+      await fn();
+    } catch (e: any) {
+      // keep this no-op (console) so callers can decide how to display errors
+      console.error(e);
+    } finally {
+      setBusyAction(null);
+    }
+  }
 
   // Persist selected model per tab session
   React.useEffect(() => {
@@ -117,7 +139,27 @@ export default function AgentChat() {
         setMessages([...next, msg1, msg2]);
       } else {
         const mode = (resp as any).mode as string | undefined;
-  if (mode && ["charts.summary","charts.flows","charts.merchants","charts.categories","report.link","budgets.read","budgets.recommendations"].includes(mode)) {
+        // Special: inline anomalies rendering
+        if (mode === 'insights.anomalies') {
+          const result = (resp as any)?.result || {};
+          const anomalies: Anomaly[] = Array.isArray(result?.anomalies) ? result.anomalies : [];
+          const anomaliesMonth: string | null = (result?.month as string | undefined) ?? (resp as any)?.used_context?.month ?? null;
+          const groundedMsg: ExtendedMessage = {
+            role: "assistant",
+            content: ((resp as any).message || resp.reply || 'Unusual spending categories detected.'),
+            meta: {
+              citations: resp.citations,
+              ctxMonth: resp.used_context?.month,
+              trace: resp.tool_trace,
+              model: resp.model,
+              mode,
+              filters: (resp as any).filters,
+              anomalies,
+              anomaliesMonth,
+            }
+          };
+          setMessages([...next, groundedMsg]);
+  } else if (mode && ["charts.summary","charts.flows","charts.merchants","charts.categories","charts.category","report.link","budgets.read","budgets.recommendations","budgets.temp","insights.anomalies.ignore"].includes(mode)) {
           const groundedMsg: ExtendedMessage = {
             role: "assistant",
             content: ((resp as any).message || resp.reply),
@@ -231,6 +273,19 @@ export default function AgentChat() {
                           {k}: {String(v)}
                         </span>
                       ))}
+                      {m.meta?.mode === 'insights.anomalies' ? (
+                        <button
+                          className="ml-2 text-[11px] px-2 py-0.5 rounded-md border border-neutral-700 hover:bg-neutral-900"
+                          title="Open Insights"
+                          onClick={() => {
+                            try {
+                              window.scrollTo({ top: 0, behavior: 'smooth' });
+                            } catch {}
+                          }}
+                        >
+                          Open Insights
+                        </button>
+                      ) : null}
                       {m.meta?.mode === 'nl_txns' && m.meta.intent === 'list' && m.meta.q ? (
                         <button
                           className="ml-2 text-[11px] px-2 py-0.5 rounded-md bg-white text-black hover:opacity-90"
@@ -251,6 +306,71 @@ export default function AgentChat() {
                         >
                           Download CSV
                         </button>
+                      ) : null}
+                      {m.meta?.mode === 'charts.category' && (m.meta.filters as any)?.category ? (
+                        (() => {
+                          const cat = String((m.meta!.filters as any).category);
+                          const months = Number((m.meta!.filters as any).months ?? 6);
+                          const actionKey = `charts.category:${cat}`;
+                          const label = busyAction === actionKey ? 'Opening…' : 'Open full chart';
+                          const disabled = !!busyAction && busyAction !== actionKey;
+                          return (
+                            <button
+                              className="ml-2 text-[11px] px-2 py-0.5 rounded-md border border-neutral-700 hover:bg-neutral-900 disabled:opacity-60"
+                              title="Open full chart"
+                              disabled={disabled}
+                              onClick={() => runAction(actionKey, async () => {
+                                window.dispatchEvent(new CustomEvent('open-category-chart', { detail: { category: cat, months } }));
+                              })}
+                            >
+                              {label}
+                            </button>
+                          );
+                        })()
+                      ) : null}
+                      {m.meta?.mode === 'budgets.temp' && (m.meta.filters as any)?.category ? (
+                        (() => {
+                          const cat = String((m.meta!.filters as any).category);
+                          const month = (m.meta!.filters as any)?.month as string | undefined;
+                          const actionKey = `budgets.temp.undo:${cat}`;
+                          const label = busyAction === actionKey ? 'Undoing…' : 'Undo temp budget';
+                          const disabled = !!busyAction && busyAction !== actionKey;
+                          return (
+                            <button
+                              className="ml-2 text-[11px] px-2 py-0.5 rounded-md border border-neutral-700 hover:bg-neutral-900 disabled:opacity-60"
+                              title="Undo temp budget"
+                              disabled={disabled}
+                              onClick={() => runAction(actionKey, async () => {
+                                const r = await clearTempBudget(cat, month);
+                                const amt = r?.deleted?.amount ?? 0;
+                                showToast?.(`Removed temporary budget for ${cat}${amt ? ` ($${Number(amt).toFixed(2)})` : ''}`,{ type: 'success' });
+                              })}
+                            >
+                              {label}
+                            </button>
+                          );
+                        })()
+                      ) : null}
+                      {m.meta?.mode === 'insights.anomalies.ignore' && (m.meta.filters as any)?.category ? (
+                        (() => {
+                          const cat = String((m.meta!.filters as any).category);
+                          const actionKey = `anomalies.unignore:${cat}`;
+                          const label = busyAction === actionKey ? 'Reinstating…' : 'Undo ignore';
+                          const disabled = !!busyAction && busyAction !== actionKey;
+                          return (
+                            <button
+                              className="ml-2 text-[11px] px-2 py-0.5 rounded-md border border-neutral-700 hover:bg-neutral-900 disabled:opacity-60"
+                              title="Undo ignore"
+                              disabled={disabled}
+                              onClick={() => runAction(actionKey, async () => {
+                                await unignoreAnomaly(cat);
+                                showToast?.(`Unignored ${cat} for anomalies`, { type: 'success' });
+                              })}
+                            >
+                              {label}
+                            </button>
+                          );
+                        })()
                       ) : null}
                       {m.meta?.mode === 'budgets.recommendations' ? (
                         <>
@@ -294,6 +414,34 @@ export default function AgentChat() {
                       </pre>
                     </details>
                   ) : null}
+                </div>
+              ) : null}
+              {/* Inline renderer for anomalies result */}
+              {m.role === 'assistant' && m.meta?.mode === 'insights.anomalies' && (m.meta?.anomalies?.length ?? 0) > 0 ? (
+                <div className="mt-2 text-xs">
+                  {m.meta?.anomaliesMonth ? (
+                    <div className="mb-1 opacity-70">{m.meta.anomaliesMonth}</div>
+                  ) : null}
+                  <ul className="space-y-1">
+                    {m.meta.anomalies!.map((a) => {
+                      const pct = Math.round((a as any).pct_from_median * 100);
+                      const badge = (a as any).direction === 'high' ? 'bg-yellow-500/20' : 'bg-cyan-500/20';
+                      return (
+                        <li key={(a as any).category} className="flex items-center justify-between border-t border-neutral-700/50 py-1 first:border-t-0">
+                          <div className="flex items-center gap-2">
+                            <span className={`text-[10px] px-1.5 py-0.5 rounded ${badge}`}>
+                              {(a as any).direction === 'high' ? 'High' : 'Low'}
+                            </span>
+                            <span className="font-medium">{(a as any).category}</span>
+                          </div>
+                          <div className="opacity-80">
+                            ${Number((a as any).current).toFixed(2)} <span className="opacity-60">vs</span> ${Number((a as any).median).toFixed(2)}
+                            <span className="ml-2">{pct > 0 ? `+${pct}%` : `${pct}%`}</span>
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
                 </div>
               ) : null}
             </div>

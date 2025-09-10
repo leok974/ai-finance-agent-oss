@@ -902,3 +902,51 @@ export type ApplyBudgetsResp = {
 };
 export const applyBudgets = (req: ApplyBudgetsReq) =>
   http<ApplyBudgetsResp>(`/budget/apply`, { method: "POST", body: JSON.stringify(req) });
+
+// Set a single budget cap (upsert)
+export const setBudget = (category: string, amount: number) =>
+  http<{ ok: boolean; budget: { category: string; amount: number; updated_at?: string | null } }>(
+    "/budget/set",
+    {
+      method: "POST",
+      body: JSON.stringify({ category, amount }),
+      headers: { "Content-Type": "application/json" },
+    }
+  );
+
+export const deleteBudget = (category: string) =>
+  http<{ ok: boolean; deleted: { category: string; amount: number } }>(
+    `/budget/${encodeURIComponent(category)}`,
+    { method: "DELETE" }
+  );
+
+// Clear a temporary budget overlay for a given month/category
+export const clearTempBudget = (category: string, month?: string) =>
+  http<{ ok: boolean; deleted: { month: string; category: string; amount: number; existed: boolean } }>(
+    `/budgets/temp/${encodeURIComponent(category)}${month ? `?month=${encodeURIComponent(month)}` : ""}`,
+    { method: "DELETE" }
+  );
+
+// ---------- Anomalies ----------
+export type Anomaly = {
+  category: string;
+  current: number;
+  median: number;
+  pct_from_median: number; // +0.42 => +42%
+  sample_size: number;
+  direction: "high" | "low";
+};
+export const getAnomalies = (params?: { months?: number; min?: number; threshold?: number; max?: number; month?: string }) => {
+  const p = new URLSearchParams();
+  if (params?.months) p.set("months", String(params.months));
+  if (params?.min != null) p.set("min_spend_current", String(params.min));
+  if (params?.threshold != null) p.set("threshold_pct", String(params.threshold));
+  if (params?.max) p.set("max_results", String(params.max));
+  if (params?.month) p.set("month", String(params.month));
+  const qs = p.toString();
+  return http<{ month: string | null; anomalies: Anomaly[] }>(`/insights/anomalies${qs ? `?${qs}` : ''}`);
+};
+
+// Remove a category from the anomalies ignore list
+export const unignoreAnomaly = (category: string) =>
+  http<{ ignored: string[] }>(`/insights/anomalies/ignore/${encodeURIComponent(category)}`, { method: "DELETE" });

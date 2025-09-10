@@ -21,6 +21,7 @@ import NetActivityBlip from "@/components/NetActivityBlip";
 import { setGlobalMonth } from "./state/month";
 import { Providers } from "@/components/Providers";
 import RuleSuggestionsPersistentPanel from "@/components/RuleSuggestionsPersistentPanel";
+import InsightsAnomaliesCard from "./components/InsightsAnomaliesCard";
 
 // Log frontend version info
 console.info("[Web] branch=", __WEB_BRANCH__, "commit=", __WEB_COMMIT__);
@@ -148,6 +149,8 @@ const App: React.FC = () => {
 
         {/* Insights */}
         {insights && <AgentResultRenderer tool="insights.expanded" data={insights} />}
+        {/* Anomalies quick card */}
+        <InsightsAnomaliesCard />
   {/* Agent chat box (legacy) — disabled; use ChatDock instead */}
   {/* <AgentChat /> */}
   {/* ChartsPanel now requires month; always pass the selected month */}

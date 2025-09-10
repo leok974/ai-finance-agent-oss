@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, HTTPException
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.db import get_db
@@ -9,6 +10,7 @@ from app.services.charts_data import (
     get_month_flows as srv_get_month_flows,
     get_spending_trends as srv_get_spending_trends,
 )
+from app.services.charts_data import get_category_timeseries
 
 router = APIRouter()
 
@@ -81,3 +83,41 @@ def month_flows(month: str | None = Query(None, pattern=r"^\d{4}-\d{2}$"), db: S
 @router.get("/spending_trends")
 def spending_trends(months: int = Query(6, ge=1, le=24), db: Session = Depends(get_db)):
     return srv_get_spending_trends(db, months)
+
+
+class CategoryPoint(BaseModel):
+    month: str = Field(..., description='Month key "YYYY-MM"', example="2025-09")
+    amount: float = Field(..., description="Total expense magnitude for this month")
+
+
+class CategorySeriesResp(BaseModel):
+    category: str = Field(..., description="Category name", example="Groceries")
+    months: int = Field(..., ge=1, le=36, description="Lookback window in months", example=6)
+    series: list[CategoryPoint] = Field(default_factory=list, description="Time series")
+
+    class Config:
+        json_schema_extra = {
+            "examples": [{
+                "category":"Groceries","months":6,
+                "series":[{"month":"2025-04","amount":420.0},{"month":"2025-05","amount":390.0}]
+            }]
+        }
+
+
+@router.get(
+    "/category",
+    response_model=CategorySeriesResp,
+    summary="Category time series (expenses only)"
+)
+def chart_category(
+    category: str = Query(..., min_length=1, description="Category to chart", example="Groceries"),
+    months: int = Query(6, ge=1, le=36, description="Months of history to include", example=6),
+    db: Session = Depends(get_db),
+):
+    """
+    Sums **expense magnitudes** (amount < 0 → abs) per month. Income & transfers excluded.
+    """
+    data = get_category_timeseries(db, category=category, months=months)
+    if data is None:
+        raise HTTPException(status_code=404, detail="Category not found or no data")
+    return {"category": category, "months": months, "series": data}

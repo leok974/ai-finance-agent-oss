@@ -296,6 +296,22 @@ POST `/agent/tools/charts/spending_trends`
 Notes
 - Charts endpoints require a month (or months list for trends). The UI injects the selected month automatically.
 
+## Overlays & Insights (dev notes)
+
+- Temporary budgets (`/budgets/temp`):
+  - Overlays that do not persist to the DB. Process-level only.
+  - Useful for “try it out” flows (e.g., Median + 25%).
+  - If you want overlays to affect reads, merge them in the read path later.
+
+- Anomaly ignores:
+  - Global, process-level ignore set used by `/insights/anomalies`.
+  - Not persisted; restarting the app resets it.
+  - Persist later by backing with a table or simple on-disk store.
+
+- Category chart semantics (`/charts/category`):
+  - Returns monthly sums of expense magnitudes (only `amount < 0`, using `abs`).
+  - Income/transfers are excluded from the series.
+
 ## Dev tips
 - Windows PowerShell: activate venv with `.venv\Scripts\Activate.ps1`.
 - Optional backend smoke check script lives under `apps/backend/app/scripts/smoke-backend.ps1` (used by the web smoke script).

@@ -140,6 +140,41 @@ def try_llm_rephrase_summary(user_text: str, res: Dict[str, Any], summary: str) 
     except Exception:
         return None
 
+    # Compose a tightly scoped prompt to avoid data drift
+    slim = {
+        "intent": res.get("intent"),
+        "filters": res.get("filters"),
+        "result_preview": res.get("result")[:5] if isinstance(res.get("result"), list) else res.get("result"),
+    }
+    system = (
+        "You will rephrase a financial summary that is already CORRECT.\n"
+        "Rules:\n"
+        "1) DO NOT change any numbers, totals, counts, or date ranges.\n"
+        "2) Keep to one short, clear sentence.\n"
+        "3) You may smooth wording but keep figures exact.\n"
+        "4) If a range appears, include the same range intact.\n"
+        "5) If listing top items, mention up to 3 in same order and amounts.\n"
+        "6) Never invent data beyond the provided JSON."
+    )
+    user = (
+        f"User text: {user_text}\n"
+        f"Deterministic summary: {summary}\n"
+        f"Structured (JSON):\n{__import__('json').dumps(slim, ensure_ascii=False)}"
+    )
+    try:
+        reply, _trace = llm_mod.call_local_llm(
+            model=getattr(settings, "DEFAULT_LLM_MODEL", "gpt-oss:20b"),
+            messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
+            temperature=0.1,
+            top_p=0.9,
+        )
+        text = (reply or "").strip()
+        if not text or len(text) > 300:
+            return None
+        return text
+    except Exception:
+        return None
+
 
 # ---------------- Budget detectors ----------------
 def detect_budget_recommendation(text: str) -> bool:
@@ -174,36 +209,130 @@ def extract_months_or_default(text: str, default: int = 6) -> int:
         pass
     return int(default)
 
-    slim = {
-        "intent": res.get("intent"),
-        "filters": res.get("filters"),
-        "result_preview": res.get("result")[:5] if isinstance(res.get("result"), list) else res.get("result"),
-    }
-    system = (
-        "You will rephrase a financial summary that is already CORRECT.\n"
-        "Rules:\n"
-        "1) DO NOT change any numbers, totals, counts, or date ranges.\n"
-        "2) Keep to one short, clear sentence.\n"
-        "3) You may smooth wording but keep figures exact.\n"
-        "4) If a range appears, include the same range intact.\n"
-        "5) If listing top items, mention up to 3 in same order and amounts.\n"
-        "6) Never invent data beyond the provided JSON."
-    )
-    user = (
-        f"User text: {user_text}\n"
-        f"Deterministic summary: {summary}\n"
-        f"Structured (JSON):\n{__import__('json').dumps(slim, ensure_ascii=False)}"
-    )
-    try:
-        reply, _trace = llm_mod.call_local_llm(
-            model=getattr(settings, "DEFAULT_LLM_MODEL", "gpt-oss:20b"),
-            messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
-            temperature=0.1,
-            top_p=0.9,
-        )
-        text = (reply or "").strip()
-        if not text or len(text) > 300:
-            return None
-        return text
-    except Exception:
-        return None
+
+# ---------------- Anomalies detector ----------------
+class Detector:
+    """
+    Lightweight intent detector for agent routing.
+    Provides explicit anomaly detection with parameter extraction.
+    """
+
+    # Existing detectors could be added as methods later as needed.
+
+    def detect_anomalies(self, text: str) -> bool:
+        t = (text or "").lower()
+        keys = [
+            "anomal",        # anomaly, anomalies, anomalous
+            "unusual",
+            "spike", "spiking",
+            "weird", "odd",
+            "outlier", "outliers",
+            "surge", "dip",
+        ]
+        return any(k in t for k in keys)
+
+    def extract_anomaly_params(
+        self,
+        text: str,
+        *,
+        default_months: int = 6,
+        default_min: float = 50.0,
+        default_threshold: float = 0.4,
+        default_max: int = 8,
+    ) -> dict:
+        """
+        Very light NLP: pull ints/floats if they look like 'last 12 months' or 'threshold 30%'.
+        Fall back to sensible defaults.
+        """
+        t = (text or "").lower()
+        months = default_months
+        threshold = default_threshold
+        min_amt = default_min
+        max_results = default_max
+
+        import re
+        m = re.search(r"(?:last\s+)?(\d{1,2})\s+months?", t)
+        if m:
+            months = max(3, min(24, int(m.group(1))))
+        m = re.search(r"threshold\s+(\d{1,3})\s*%?", t)
+        if m:
+            threshold = max(0.05, min(5.0, float(m.group(1)) / 100.0))
+        m = re.search(r"min(?:imum)?\s+(\d+(?:\.\d+)?)", t)
+        if m:
+            min_amt = float(m.group(1))
+        m = re.search(r"top\s+(\d{1,2})", t)
+        if m:
+            max_results = max(1, min(50, int(m.group(1))))
+        return {"months": months, "min": min_amt, "threshold": threshold, "max": max_results}
+
+    # ---- New detectors ----------------------------------------------------
+    def detect_open_category_chart(self, text: str) -> bool:
+        t = (text or "").lower()
+        return any(k in t for k in ["category chart", "chart for", "open chart", "category trend", "timeseries", "time series"]) and not self.detect_anomalies(text)
+
+    def extract_chart_params(self, text: str, *, default_months: int = 6) -> dict:
+        t = (text or "").strip()
+        months = extract_months_or_default(t, default=default_months)
+        # naive category capture: text after 'for' or before 'chart'
+        cat = None
+        m = _re.search(r"(?:for\s+)([A-Za-z][A-Za-z &/+-]+?)(?=\s+(?:over|for|to|in|last|this|these|next|of)\b|\s*$)", t, _re.IGNORECASE)
+        if m:
+            cat = m.group(1).strip().rstrip(".?!").title()
+        else:
+            m2 = _re.search(r"^(?:show|open)?\s*([A-Za-z][A-Za-z &/+-]+)\s+chart", t, _re.IGNORECASE)
+            if m2:
+                cat = m2.group(1).strip().title()
+        return {"category": cat, "months": months}
+
+    def detect_temp_budget(self, text: str) -> bool:
+        t = (text or "").lower()
+        # require 'temp' or 'temporary' plus 'budget' to avoid collisions
+        return ("budget" in t) and any(k in t for k in ["temp", "temporary"]) and not self.detect_anomalies(text)
+
+    def extract_temp_budget_params(self, text: str) -> dict:
+        t = (text or "").strip()
+        # category: after 'for' or before 'to'
+        cat = None
+        m = _re.search(r"for\s+([A-Za-z][A-Za-z &/+-]+?)(?:\s+to\b|\s*$)", t, _re.IGNORECASE)
+        if m:
+            cat = m.group(1).strip().rstrip(".?!").title()
+        # amount: $500 or 500
+        amt = None
+        m2 = _re.search(r"\$?\s*(\d+(?:\.\d{1,2})?)\b", t)
+        if m2:
+            try:
+                amt = float(m2.group(1))
+            except Exception:
+                pass
+        # month: detect 'this month' or explicit 'in <Month YYYY>' parsed upstream
+        when = None
+        if _re.search(r"this\s+month", t, _re.IGNORECASE):
+            when = "this"
+        return {"category": cat, "amount": amt, "when": when}
+
+    def detect_anomaly_ignore(self, text: str) -> bool:
+        t = (text or "").lower()
+        return any(k in t for k in ["ignore", "hide"]) and any(k in t for k in ["anomaly", "anomalies"]) 
+
+    def extract_anomaly_ignore_params(self, text: str) -> dict:
+        t = (text or "").strip()
+        # patterns: 'ignore Transport anomalies', 'hide anomalies for Groceries'
+        cat = None
+        m = _re.search(r"(?:ignore|hide)\s+([A-Za-z][A-Za-z &/+-]+?)\s+anomal", t, _re.IGNORECASE)
+        if m:
+            cat = m.group(1).strip().title()
+        else:
+            m2 = _re.search(r"anomal(?:y|ies)\s+for\s+([A-Za-z][A-Za-z &/+-]+)", t, _re.IGNORECASE)
+            if m2:
+                cat = m2.group(1).strip().title()
+        return {"category": cat}
+
+
+# Optional thin wrappers if code elsewhere expects module-level functions
+def detect_anomalies(text: str) -> bool:
+    return Detector().detect_anomalies(text)
+
+
+def extract_anomaly_params(text: str, **kwargs) -> dict:
+    return Detector().extract_anomaly_params(text, **kwargs)
+

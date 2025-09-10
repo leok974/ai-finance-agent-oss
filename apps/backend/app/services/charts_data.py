@@ -239,3 +239,55 @@ def get_spending_trends(db: Session, months: int = 6) -> Dict[str, Any]:
         trends.append({"month": m, "spending": s, "income": i, "net": round(i - s, 2)})
     trends = list(reversed(trends))
     return {"months": months, "trends": trends}
+
+
+# --- Category timeseries (single category) -----------------------------------
+def get_category_timeseries(db: Session, category: str, months: int = 6):
+    """
+    Build a per-month time series for a single category over the last N months.
+
+    Semantics:
+    - Sums expense magnitudes only (amount < 0 → abs(amount)).
+    - Income and transfers are excluded.
+    - Returns a list of { month: 'YYYY-MM', amount: number } sorted ascending by month.
+    """
+    # find max date
+    max_dt = db.execute(select(func.max(Transaction.date))).scalar()
+    if not max_dt:
+        return None
+    # compute earliest month start
+    y, m = max_dt.year, max_dt.month
+    ey, em = y, m
+    for _ in range(months - 1):
+        em -= 1
+        if em <= 0:
+            em += 12
+            ey -= 1
+    earliest = _date(ey, em, 1)
+    # window end is first day of next month
+    nm_y, nm_m = (y + 1, 1) if m == 12 else (y, m + 1)
+    end = _date(nm_y, nm_m, 1)
+
+    # Dialect-specific month key
+    from sqlalchemy import text
+    if db.bind and getattr(db.bind.dialect, "name", "") == "sqlite":
+        ym = func.strftime("%Y-%m", Transaction.date)
+    else:
+        # Prefer ANSI via to_char on Postgres
+        ym = func.to_char(Transaction.date, "YYYY-MM")
+
+    rows = (
+        db.execute(
+            select(ym.label("ym"), func.sum(func.abs(Transaction.amount)).label("amt"))
+            .where(
+                Transaction.date >= earliest,
+                Transaction.date < end,
+                Transaction.category == category,
+                Transaction.amount < 0,
+            )
+            .group_by(ym)
+            .order_by(ym.asc())
+        ).all()
+    )
+    series = [{"month": k, "amount": float(v or 0.0)} for k, v in rows]
+    return series

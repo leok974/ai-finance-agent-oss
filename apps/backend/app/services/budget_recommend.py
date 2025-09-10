@@ -52,19 +52,11 @@ def _is_expense_row(amount: Optional[float], category: Optional[str]) -> bool:
     return False
 
 
-def _window_months(db: Session, months: int) -> Tuple[date, date, List[str]]:
-    """
-    Determine [start_date, end_date] spanning the last `months` FULL months,
-    ending at the max(Transaction.date) available.
-    Returns (start_date, end_date, month_keys_inclusive_ordered).
-    """
-    max_dt = db.query(func.max(Transaction.date)).scalar()
+def _window_from_max(max_dt: date, months: int) -> Tuple[date, date, List[str]]:
+    """Build [start_date, end_date) and ordered YYYY-MM keys from a max date."""
     if not max_dt:
-        # No data; return empty window
         today = date.today()
         return today, today, []
-
-    # Build a list of year-month pairs from max_dt back `months-1`
     y, m = max_dt.year, max_dt.month
     keys: List[str] = []
     for i in range(months):
@@ -74,22 +66,11 @@ def _window_months(db: Session, months: int) -> Tuple[date, date, List[str]]:
             mm += 12
             yy -= 1
         keys.append(f"{yy:04d}-{mm:02d}")
-    keys = list(reversed(keys))  # chronological
-
-    # Compute start/end as first day of first month → last day of last month
-    first_key = keys[0]
-    last_key = keys[-1]
-    start_y, start_m = map(int, first_key.split("-"))
-    end_y, end_m = map(int, last_key.split("-"))
-
-    # first day
+    keys = list(reversed(keys))
+    start_y, start_m = map(int, keys[0].split("-"))
+    end_y, end_m = map(int, keys[-1].split("-"))
     start_date = date(start_y, start_m, 1)
-    # last day of month trick: next month first day minus one
-    if end_m == 12:
-        end_date = date(end_y + 1, 1, 1)
-    else:
-        end_date = date(end_y, end_m + 1, 1)
-
+    end_date = date(end_y + (1 if end_m == 12 else 0), (1 if end_m == 12 else end_m + 1), 1)
     return start_date, end_date, keys
 
 def _current_month_bounds(db: Session) -> tuple[date, date] | None:
@@ -132,17 +113,29 @@ def compute_recommendations(db: Session, months: int = 6, min_samples: int = 2, 
     Returns: [{category, median, p75, avg, sample_size}]
     """
     months = max(3, min(24, int(months)))
-    start_date, end_date, _ = _window_months(db, months)
-    if not _:
+    # Determine window based on latest EXPENSE row (negative amount, non-Unknown)
+    max_dt = (
+        db.query(func.max(Transaction.date))
+        .filter(
+            Transaction.amount < 0,
+            Transaction.category.isnot(None),
+            Transaction.category != "",
+            Transaction.category != "Unknown",
+        )
+        .scalar()
+    )
+    if not max_dt:
         return []
+    start_date, end_date, _keys = _window_from_max(max_dt, months)
 
-    # Pull candidate rows in window; rely on sign to exclude income
+    # Pull candidate expense rows in window
     rows = (
         db.query(Transaction.category, Transaction.date, Transaction.amount)
         .filter(
             and_(
                 Transaction.date >= start_date,
                 Transaction.date < end_date,
+                Transaction.amount < 0,
                 Transaction.category.isnot(None),
                 Transaction.category != "",
                 Transaction.category != "Unknown",

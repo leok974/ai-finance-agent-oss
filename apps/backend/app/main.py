@@ -91,8 +91,13 @@ app.include_router(rules.router)
 app.include_router(ml.router)
 app.include_router(report.router, prefix="", tags=["report"])
 app.include_router(budget.router, prefix="/budget", tags=["budget"])
+# Also mount /budgets for temp overlay endpoints
+try:
+    app.include_router(budget.temp_router)
+except Exception:
+    pass
 app.include_router(alerts.router, prefix="/alerts", tags=["alerts"])
-app.include_router(insights.router, prefix="/insights", tags=["insights"])
+app.include_router(insights.router)
 app.include_router(agent.router, prefix="/agent", tags=["agent"])
 app.include_router(explain.router, prefix="/txns", tags=["explain"])
 app.include_router(charts.router, prefix="/charts", tags=["charts"]) 
