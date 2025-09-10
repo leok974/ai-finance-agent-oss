@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ChevronUp, Wrench } from "lucide-react";
-import { agentTools, agentChat, getAgentModels, type AgentChatRequest, type AgentChatResponse, type AgentModelsResponse, type ChatMessage, mlSelftest, txnsQuery, type TxnQueryResult } from "../lib/api";
+import { agentTools, agentChat, getAgentModels, type AgentChatRequest, type AgentChatResponse, type AgentModelsResponse, type ChatMessage, mlSelftest, txnsQuery, txnsQueryCsv, type TxnQueryResult } from "../lib/api";
+import { saveAs } from "../utils/save";
 import { useOkErrToast } from "../lib/toast-helpers";
 import RestoredBadge from "./RestoredBadge";
 import ReactMarkdown from "react-markdown";
@@ -1007,8 +1008,13 @@ export default function ChatDock() {
                   const q = window.prompt("Ask about your transactions (e.g., 'Starbucks last month over $10', 'top 5 merchants this month', 'how much on groceries in July?')");
                   if (!q) return;
                   setBusy(true);
+                  // Ask if they want CSV export as well for list-y queries
                   const res = await txnsQuery(q);
-                  appendAssistant(formatTxnQueryResult(q, res));
+                  let text = formatTxnQueryResult(q, res);
+                  if (res.intent === "list") {
+                    text += "\n\nTip: Click the 'Export NL result (CSV)' button to download these rows.";
+                  }
+                  appendAssistant(text);
                 } catch (err: any) {
                   appendAssistant(`**NL Transactions Query failed:** ${err?.message || String(err)}`);
                 } finally {
@@ -1019,6 +1025,28 @@ export default function ChatDock() {
               className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50"
             >
               Search transactions (NL)
+            </button>
+            <button
+              type="button"
+              onClick={async () => {
+                try {
+                  const q = window.prompt("Export CSV for which NL query?\nFor example: 'groceries last month', 'starbucks since 2024-01-01 over $10'");
+                  if (!q) return;
+                  setBusy(true);
+                  const { blob, filename } = await txnsQueryCsv(q);
+                  saveAs(blob, filename || "txns_query.csv");
+                  appendAssistant(`Exported CSV for NL query: ${q}`);
+                } catch (err: any) {
+                  appendAssistant(`**CSV export failed:** ${err?.message || String(err)}`);
+                } finally {
+                  setBusy(false);
+                }
+              }}
+              disabled={busy}
+              className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50"
+              title="Download CSV of NL transactions query"
+            >
+              Export NL result (CSV)
             </button>
             <button
               type="button"
@@ -1192,9 +1220,19 @@ function formatTxnQueryResult(q: string, res: TxnQueryResult): string {
     const lines = res.result.map((r, i) => `${i + 1}. ${r.category ?? "(Uncategorized)"} — $${r.spend.toFixed(2)}`).join("\n");
     return `**NL Query:** ${q}${windowStr}\n**Top categories:**\n${lines}`;
   }
+  if (res.intent === "average") {
+    return `**NL Query:** ${q}${windowStr}\n**Average (abs):** $${res.result.average_abs.toFixed(2)}`;
+  }
+  if (res.intent === "by_day" || res.intent === "by_week" || res.intent === "by_month") {
+    const label = res.intent.replace("by_", "By ");
+    const lines = (res.result as any[]).map((p: any) => `• ${p.bucket}: $${Number(p.spend || 0).toFixed(2)}`).join("\n");
+    return `**NL Query:** ${q}${windowStr}\n**${label}:**\n${lines}`;
+  }
   // list
   const items = Array.isArray((res as any).result) ? (res as any).result : [];
-  const lines = items.map((r: any) => `• ${r.date} — ${r.merchant ?? "(Unknown)"} — ${r.category ?? "(Uncategorized)"} — $${Math.abs(Number(r.amount || 0)).toFixed(2)}`).join("\n");
-  const lim = (res as any)?.filters?.limit ?? 50;
-  return `**NL Query:** ${q}${windowStr}\n**Matches (max ${lim}):**\n${lines || "_No matches_"}`;
+  const lim = (res as any)?.filters?.page_size ?? (res as any)?.filters?.limit ?? 50;
+  if (!items.length) return `**NL Query:** ${q}${windowStr}\n_No matches_`;
+  const header = `| Date | Merchant | Category | Amount |\n|---|---|---:|---:|`;
+  const rows = items.map((r: any) => `| ${r.date} | ${r.merchant ?? "(Unknown)"} | ${r.category ?? "(Uncategorized)"} | $${Math.abs(Number(r.amount || 0)).toFixed(2)} |`).join("\n");
+  return `**NL Query:** ${q}${windowStr}\n**Matches (showing up to ${lim}):**\n${header}\n${rows}`;
 }

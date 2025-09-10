@@ -147,13 +147,17 @@ def get_month_summary(db: Session, month: str) -> Dict[str, Any]:
 
 
 def get_month_merchants(db: Session, month: str, limit: int = 10) -> Dict[str, Any]:
-    """Fast SQL GROUP BY over canonical merchant; expenses only as positive magnitudes."""
+    """
+    Fast SQL GROUP BY over canonical merchant; expenses only as positive magnitudes.
+    Display name preserves raw merchant casing by selecting a representative raw value.
+    """
     start, end = month_bounds(month)
     spend_abs = func.sum(func.abs(Transaction.amount)).label("amount")
     cnt = func.count().label("n")
     rows = db.execute(
         select(
-            Transaction.merchant_canonical.label("merchant"),
+            # Preserve display casing: pick a representative raw merchant for the group
+            func.min(Transaction.merchant).label("merchant"),
             spend_abs,
             cnt,
         )

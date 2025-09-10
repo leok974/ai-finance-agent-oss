@@ -62,9 +62,9 @@ def parse_nl_query(q: str, today: Optional[date] = None) -> NLQuery:
         intent = "sum"
     if re.search(r"\b(count|how many|number of)\b", q_low):
         intent = "count"
-    if re.search(r"\btop (?:merchant|merchants)\b", q_low):
+    if re.search(r"\btop\s+(?:\d{1,3}\s*)?(?:merchant|merchants)\b", q_low):
         intent = "top_merchants"
-    if re.search(r"\btop (?:category|categories)\b", q_low):
+    if re.search(r"\btop\s+(?:\d{1,3}\s*)?(?:category|categories)\b", q_low):
         intent = "top_categories"
 
     # --- quick time windows
@@ -73,6 +73,50 @@ def parse_nl_query(q: str, today: Optional[date] = None) -> NLQuery:
         start, end = _last_month_bounds(today)
     elif "this month" in q_low:
         start, end = _this_month_bounds(today)
+
+    # --- extra intents
+    if re.search(r"\baverage|avg\b", q_low):
+        intent = "average"
+    if re.search(r"\bby (day|daily)\b", q_low):
+        intent = "by_day"
+    if re.search(r"\bby (week|weekly)\b", q_low):
+        intent = "by_week"
+    if re.search(r"\bby (month|monthly)\b", q_low):
+        intent = "by_month"
+
+    # quick windows: MTD, YTD, WTD, since <date>, last N <units>
+    if "mtd" in q_low:
+        start = today.replace(day=1)
+        end = today
+    if "ytd" in q_low:
+        start = date(today.year, 1, 1)
+        end = today
+    if "wtd" in q_low:
+        # Monday as week start
+        start = today - timedelta(days=today.weekday())
+        end = today
+    m = re.search(r"since\s+(\d{4}-\d{2}-\d{2})", q_low)
+    if m:
+        start = datetime.strptime(m.group(1), "%Y-%m-%d").date()
+        end = today
+
+    m = re.search(r"last\s+(\d{1,3})\s*(day|days|week|weeks|month|months)", q_low)
+    if m:
+        n = int(m.group(1))
+        unit = m.group(2)
+        if "day" in unit:
+            start = today - timedelta(days=n)
+        elif "week" in unit:
+            start = today - timedelta(weeks=n)
+        elif "month" in unit:
+            # rough month delta
+            start_year = today.year
+            start_month = today.month - n
+            while start_month <= 0:
+                start_month += 12
+                start_year -= 1
+            start = _month_bounds(start_year, start_month)[0]
+        end = today
 
     # in <Month> [Year]
     m = re.search(r"in\s+([a-zA-Z]+)\s*(\d{4})?", q_low)
@@ -205,6 +249,46 @@ def run_txn_query(db: Session, nlq: NLQuery) -> Dict[str, Any]:
         cnt = q.count()
         return {"intent": "count", "filters": _filters_dump(nlq), "result": {"count": cnt}}
 
+    if nlq.intent == "average":
+        q = db.query(func.avg(func.abs(Transaction.amount)))
+        if q_filters:
+            q = q.filter(*q_filters)
+        avg_ = q.scalar() or 0.0
+        return {"intent": "average", "filters": _filters_dump(nlq), "result": {"average_abs": float(avg_)}}
+
+    # small helper to build series aggregations by a group expression
+    def _series(group_expr, label_name: str):
+        amt = func.sum(func.abs(Transaction.amount)).label("spend")
+        q2 = db.query(group_expr.label(label_name), amt)
+        if q_filters:
+            q2 = q2.filter(*q_filters)
+        rows = q2.group_by(group_expr).order_by(group_expr.asc()).all()
+        return [{"bucket": getattr(r, label_name), "spend": float(getattr(r, "spend", 0) or 0)} for r in rows]
+
+    if nlq.intent == "by_day":
+        # Use SQLite strftime when available, else date() for portability
+        dialect = getattr(getattr(db, "bind", None), "dialect", None)
+        is_sqlite = bool(dialect and getattr(dialect, "name", "") == "sqlite")
+        group = func.strftime("%Y-%m-%d", Transaction.date) if is_sqlite else func.date(Transaction.date)
+        return {"intent": "by_day", "filters": _filters_dump(nlq), "result": _series(group, "day")}
+
+    if nlq.intent == "by_week":
+        dialect = getattr(getattr(db, "bind", None), "dialect", None)
+        is_sqlite = bool(dialect and getattr(dialect, "name", "") == "sqlite")
+        if is_sqlite:
+            # Week number (Monday first) in SQLite
+            group = func.strftime("%Y-W%W", Transaction.date)
+        else:
+            # ISO week in Postgres
+            group = func.to_char(Transaction.date, 'IYYY-"W"IW')
+        return {"intent": "by_week", "filters": _filters_dump(nlq), "result": _series(group, "week")}
+
+    if nlq.intent == "by_month":
+        dialect = getattr(getattr(db, "bind", None), "dialect", None)
+        is_sqlite = bool(dialect and getattr(dialect, "name", "") == "sqlite")
+        group = func.strftime("%Y-%m", Transaction.date) if is_sqlite else func.to_char(Transaction.date, "YYYY-MM")
+        return {"intent": "by_month", "filters": _filters_dump(nlq), "result": _series(group, "month")}
+
     if nlq.intent == "top_merchants":
         merchant_col = func.coalesce(Transaction.merchant_canonical, Transaction.merchant).label("merchant")
         spend_col = func.sum(func.abs(Transaction.amount)).label("spend")
@@ -250,8 +334,16 @@ def run_txn_query(db: Session, nlq: NLQuery) -> Dict[str, Any]:
     q = db.query(Transaction)
     if q_filters:
         q = q.filter(*q_filters)
-    items = q.order_by(Transaction.date.desc()).limit(nlq.limit).all()
-    return {"intent": "list", "filters": _filters_dump(nlq), "result": [_txn_dump(t) for t in items]}
+    # pagination
+    page = getattr(nlq, "page", 1) if hasattr(nlq, "page") else 1
+    page_size = getattr(nlq, "page_size", nlq.limit) if hasattr(nlq, "page_size") else nlq.limit
+    items = (q.order_by(Transaction.date.desc())
+               .offset((page - 1) * page_size)
+               .limit(page_size)
+               .all())
+    filters_dump = _filters_dump(nlq)
+    filters_dump.update({"page": page, "page_size": page_size})
+    return {"intent": "list", "filters": filters_dump, "result": [_txn_dump(t) for t in items]}
 
 def _txn_dump(t: Transaction) -> Dict[str, Any]:
     return {

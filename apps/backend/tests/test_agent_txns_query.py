@@ -44,3 +44,57 @@ def test_list_with_amount_filter(client, db_session):
     data = r.json()
     assert data["intent"] == "list"
     assert any(abs(row["amount"]) >= 40 for row in data["result"])
+
+
+def test_average_in_month(client, db_session):
+    db = db_session
+    seed(db)
+    r = client.post("/agent/txns_query", json={"q": "average in August 2025"})
+    assert r.status_code == 200
+    data = r.json()
+    assert data["intent"] == "average"
+    assert isinstance(data["result"].get("average_abs"), (int, float))
+
+
+def test_by_month_series_since(client, db_session):
+    db = db_session
+    seed(db)
+    r = client.post("/agent/txns_query", json={"q": "by month since 2025-08-01"})
+    assert r.status_code == 200
+    data = r.json()
+    assert data["intent"] == "by_month"
+    buckets = [row["bucket"] for row in data["result"]]
+    # should include August 2025
+    assert any(b.startswith("2025-08") for b in buckets)
+
+
+def test_csv_export_endpoint(client, db_session):
+    db = db_session
+    seed(db)
+    r = client.post("/agent/txns_query/csv", json={"q": "Starbucks in August 2025"})
+    assert r.status_code == 200
+    ct = r.headers.get("content-type", "")
+    disp = r.headers.get("content-disposition", "")
+    assert "text/csv" in ct
+    assert "txns_query.csv" in disp
+    body = r.content.decode("utf-8")
+    # header row expected
+    assert body.splitlines()[0].startswith("id,date,merchant,category,amount,description,merchant_canonical")
+
+
+def test_average_mtd(client, db_session, monkeypatch):
+    # Freeze today to 2025-08-20 so MTD includes our seeded rows
+    from datetime import date as _date
+    class _FakeDate(_date):
+        @classmethod
+        def today(cls):
+            return cls(2025, 8, 20)
+    monkeypatch.setattr("app.services.txns_nl_query.date", _FakeDate)
+
+    db = db_session
+    seed(db)
+    r = client.post("/agent/txns_query", json={"q": "average mtd"})
+    assert r.status_code == 200
+    data = r.json()
+    assert data["intent"] == "average"
+    assert isinstance(data["result"].get("average_abs"), (int, float))

@@ -820,6 +820,10 @@ export type TxnQueryResult =
   | { intent: "count"; filters: any; result: { count: number }; meta?: any }
   | { intent: "top_merchants"; filters: any; result: { merchant: string; spend: number }[]; meta?: any }
   | { intent: "top_categories"; filters: any; result: { category: string; spend: number }[]; meta?: any }
+  | { intent: "average"; filters: any; result: { average_abs: number }; meta?: any }
+  | { intent: "by_day"; filters: any; result: { bucket: string; spend: number }[]; meta?: any }
+  | { intent: "by_week"; filters: any; result: { bucket: string; spend: number }[]; meta?: any }
+  | { intent: "by_month"; filters: any; result: { bucket: string; spend: number }[]; meta?: any }
   | { intent: "list"; filters: any; result: any[]; meta?: any };
 
 export async function txnsQuery(q: string, opts?: { start?: string; end?: string; limit?: number }): Promise<TxnQueryResult> {
@@ -828,4 +832,19 @@ export async function txnsQuery(q: string, opts?: { start?: string; end?: string
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ q, ...opts }),
   });
+}
+
+// Download CSV for an NL transactions query. Server forces list intent and caps size.
+export async function txnsQueryCsv(q: string, opts?: { start?: string; end?: string; page_size?: number }): Promise<{ blob: Blob; filename: string }> {
+  const base = (import.meta as any)?.env?.VITE_API_BASE || API_BASE || "";
+  const url = new URL("/agent/txns_query/csv", base);
+  const res = await fetch(url.toString(), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ q, ...opts }),
+  });
+  if (!res.ok) throw new Error(`CSV export failed: ${res.status} ${res.statusText}`);
+  const blob = await res.blob();
+  const filename = parseDispositionFilename(res.headers.get("Content-Disposition")) || "txns_query.csv";
+  return { blob, filename };
 }
