@@ -894,6 +894,11 @@ export type ApplyBudgetsReq = {
   categories_exclude?: string[] | null;
   months?: number;
 };
-export type ApplyBudgetsResp = { ok: boolean; applied: Array<{ category: string; amount: number }> };
+export type ApplyBudgetsResp = {
+  ok: boolean;
+  applied: Array<{ category: string; amount: number }>;
+  applied_count: number;
+  applied_total: number;
+};
 export const applyBudgets = (req: ApplyBudgetsReq) =>
   http<ApplyBudgetsResp>(`/budget/apply`, { method: "POST", body: JSON.stringify(req) });

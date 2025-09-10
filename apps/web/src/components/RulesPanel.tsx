@@ -248,6 +248,11 @@ function RulesPanelImpl({ month, refreshKey }: Props) {
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
                   <span className="font-medium truncate">{rule.display_name}</span>
+                  {((rule as any).kind === 'budget' || String(rule.id).startsWith('budget:')) && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400">
+                      Budget
+                    </span>
+                  )}
                   <span className={`text-xs px-2 py-0.5 rounded-full ${(rule.active ?? true) ? 'bg-emerald-600/10 text-emerald-600' : 'bg-zinc-600/10 text-zinc-500'}`}>
                     {(rule.active ?? true) ? 'Enabled' : 'Disabled'}
                   </span>
@@ -270,16 +275,20 @@ function RulesPanelImpl({ month, refreshKey }: Props) {
                     );
                   })()}
                 </div>
-                {rule.category && (
-                  <div className="text-xs opacity-80 truncate">
-                    category: {rule.category}
-                  </div>
-                )}
+                <div className="text-xs opacity-80 truncate">
+                  {((rule as any).description) ? (
+                    <span>{(rule as any).description}</span>
+                  ) : (
+                    rule.category ? <span>category: {rule.category}</span> : null
+                  )}
+                </div>
               </div>
               <div className="flex items-center gap-2 shrink-0">
-                <button onClick={() => remove({ id: rule.id, name: rule.display_name, enabled: rule.active ?? true, when: {}, then: { category: rule.category } })} className="text-xs px-2 py-1 rounded-lg border hover:bg-destructive/10 text-destructive">
-                  Delete
-                </button>
+                {((rule as any).kind === 'budget' || String(rule.id).startsWith('budget:')) ? null : (
+                  <button onClick={() => remove({ id: rule.id, name: rule.display_name, enabled: rule.active ?? true, when: {}, then: { category: rule.category } })} className="text-xs px-2 py-1 rounded-lg border hover:bg-destructive/10 text-destructive">
+                    Delete
+                  </button>
+                )}
               </div>
             </div>
           ))}

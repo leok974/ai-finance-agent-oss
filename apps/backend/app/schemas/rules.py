@@ -39,8 +39,12 @@ class RuleCreateResponse(BaseModel):
 
 
 class RuleListItem(BaseModel):
-    id: int
+    # Support string IDs for virtual items (e.g., "budget:Groceries")
+    id: str | int
     display_name: str
+    # Optional extra fields to annotate special kinds like budgets
+    kind: Optional[str] = None
+    description: Optional[str] = None
     category: Optional[str] = None
     active: Optional[bool] = True
 

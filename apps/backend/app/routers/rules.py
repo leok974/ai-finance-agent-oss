@@ -21,6 +21,7 @@ from app.schemas.rules import (
 from datetime import datetime, date
 import app.services.rule_suggestions as rs
 from app.services.rules_preview import preview_rule_matches, backfill_rule_apply, normalize_rule_input
+from app.services.rules_budget import list_budget_rules
 
 router = APIRouter(prefix="/rules", tags=["rules"])
 @router.get("/suggestions/config")
@@ -123,6 +124,18 @@ def list_rules(
             category=getattr(r, "category", None),
             active=bool(getattr(r, "active", True)),
         ))
+
+    # Optionally merge budget caps as virtual rules at the end when requesting the first page
+    if offset == 0:
+        for b in list_budget_rules(db):
+            items.append(RuleListItem(
+                id=b["id"],
+                display_name=b.get("display_name") or b.get("name") or f"Budget: {b.get('category')}",
+                kind="budget",
+                description=b.get("description"),
+                category=b.get("category"),
+                active=True,
+            ))
     return RuleListResponse(items=items, total=int(total), limit=int(limit), offset=int(offset))
 
 

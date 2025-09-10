@@ -130,4 +130,11 @@ def apply_budgets(payload: ApplyReq, db: Session = Depends(get_db)):
             db.add(Budget(category=cat, amount=amount))
     db.commit()
 
-    return {"ok": True, "applied": [{"category": c, "amount": a} for c, a in picked]}
+    applied = [{"category": c, "amount": a} for c, a in picked]
+    total = round(sum(a for _, a in picked), 2) if picked else 0.0
+    return {
+        "ok": True,
+        "applied": applied,
+        "applied_count": len(applied),
+        "applied_total": total,
+    }
