@@ -231,6 +231,12 @@ def run_txn_query(db: Session, nlq: NLQuery) -> Dict[str, Any]:
         filters.append(func.abs(Transaction.amount) >= nlq.min_amount)
     if nlq.max_amount is not None:
         filters.append(func.abs(Transaction.amount) <= nlq.max_amount)
+    # flow: expenses (negatives) / income (positives)
+    flow = getattr(nlq, "flow", None)
+    if flow == "expenses":
+        filters.append(Transaction.amount < 0)
+    elif flow == "income":
+        filters.append(Transaction.amount > 0)
 
     # build base filter list once, then reuse
     q_filters = filters  # already a list

@@ -5,9 +5,8 @@ import { agentTools, agentChat, getAgentModels, type AgentChatRequest, type Agen
 import { saveAs } from "../utils/save";
 import { useOkErrToast } from "../lib/toast-helpers";
 import RestoredBadge from "./RestoredBadge";
-import ReactMarkdown from "react-markdown";
-import rehypeRaw from "rehype-raw";
 import remarkGfm from "remark-gfm";
+import Markdown from "./Markdown";
 import type { ToolKey, ToolSpec, ToolRunState } from "../types/agentTools";
 import { AgentResultRenderer } from "./AgentResultRenderers";
 import ErrorBoundary from "./ErrorBoundary";
@@ -142,6 +141,9 @@ export default function ChatDock() {
   const listRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const syncTimerRef = useRef<number | null>(null);
+  // Persist the last successful NL query + resolved filters so we can export without re-prompting
+  type LastNlq = { q: string; flow?: "expenses"|"income"|"all"; filters?: any; intent?: string };
+  const lastNlqRef = useRef<LastNlq | null>(null);
   // NEW: Tiny tools panel state
   const [showTools, setShowTools] = useState<boolean>(true);
   const [activePreset, setActivePreset] = useState<ToolPresetKey>('insights_expanded');
@@ -274,9 +276,7 @@ export default function ChatDock() {
           <div className={m.role === 'user' ? 'text-primary' : ''}>
             <div className="prose prose-invert max-w-none">
               {m.role === 'assistant' ? (
-                <div className="chat-markdown">
-                  <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]}>{m.text}</ReactMarkdown>
-                </div>
+                <div className="chat-markdown"><Markdown>{m.text}</Markdown></div>
               ) : (
                 <>{m.text}</>
               )}
@@ -789,23 +789,7 @@ export default function ChatDock() {
     } finally { setBusy(false); }
   }, [busy, selectedModel, handleAgentResponse]);
 
-  const runSearchTransactions = React.useCallback(async (ev?: React.MouseEvent) => {
-    if (busy) return;
-    const q = window.prompt('Search transactions (merchant/amount/note):', '');
-    if (q == null || q.trim() === '') return;
-    setBusy(true);
-    try {
-      appendUser(`Search transactions: ${q.trim()}`);
-      const req: AgentChatRequest = {
-        messages: [{ role: 'user', content: `Search my transactions: ${q.trim()}` }],
-        intent: 'general',
-        context: getContext(ev),
-        ...(selectedModel ? { model: selectedModel } : {})
-      };
-      const resp = await agentChat(req);
-      handleAgentResponse(resp);
-    } finally { setBusy(false); }
-  }, [busy, selectedModel, handleAgentResponse]);
+  // Removed legacy non-NL search tool in favor of NL query
 
   // (inline quick tool buttons removed; using top-bar runners instead)
 
@@ -1028,22 +1012,29 @@ export default function ChatDock() {
             <button type="button" onClick={(e) => runInsightsExpanded(e as any)} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50">Insights: Expanded</button>
             <button type="button" onClick={(e) => runBudgetCheck(e as any)} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50">Budget check</button>
             <button type="button" onClick={(e) => runAlerts(e as any)} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50">Alerts</button>
-            <button type="button" onClick={(e) => runSearchTransactions(e as any)} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50">Search transactions…</button>
+            {/* Legacy non-NL search removed */}
             <button
               type="button"
               onClick={async (e) => {
                 e.preventDefault();
+                if (busy) return;
                 try {
-                  const q = window.prompt("Ask about your transactions (e.g., 'Starbucks last month over $10', 'top 5 merchants this month', 'how much on groceries in July?')");
+                  const tips = "Tips: MTD, YTD, WTD, last N months/weeks/days, since YYYY-MM-DD";
+                  const q = window.prompt(
+                    `Ask about your transactions:\n- "Starbucks last month over $10"\n- "top 5 merchants MTD"\n- "how much on groceries in July?"\n\n${tips}`
+                  );
                   if (!q) return;
                   setBusy(true);
-                  // Ask if they want CSV export as well for list-y queries
-                  const res = await txnsQuery(q);
+                  const flowChoice = window.prompt('Flow filter? Type one of: "expenses", "income", "all" (or leave blank for all)');
+                  const flow = (flowChoice === "expenses" || flowChoice === "income" || flowChoice === "all") ? flowChoice : undefined;
+                  const res = await txnsQuery(q, { flow, page: 1, page_size: 50 });
                   let text = formatTxnQueryResult(q, res);
-                  if (res.intent === "list") {
-                    text += "\n\nTip: Click the 'Export NL result (CSV)' button to download these rows.";
+                  if ((res as any)?.intent === "list") {
+                    text += "\n\nTip: Use the 'Export CSV (last NL query)' button to download these rows.";
                   }
                   appendAssistant(text);
+                  // Persist for quick CSV export and paging (store resolved filters so export matches exactly)
+                  lastNlqRef.current = { q, flow, filters: (res as any)?.filters ?? {}, intent: (res as any)?.intent };
                 } catch (err: any) {
                   appendAssistant(`**NL Transactions Query failed:** ${err?.message || String(err)}`);
                 } finally {
@@ -1058,13 +1049,23 @@ export default function ChatDock() {
             <button
               type="button"
               onClick={async () => {
+                if (busy) return;
                 try {
-                  const q = window.prompt("Export CSV for which NL query?\nFor example: 'groceries last month', 'starbucks since 2024-01-01 over $10'");
-                  if (!q) return;
                   setBusy(true);
-                  const { blob, filename } = await txnsQueryCsv(q);
+                  const last = lastNlqRef.current;
+                  if (!last) {
+                    window.alert("No previous NL query found. Run a query first.");
+                    return;
+                  }
+                  const { q, flow, filters } = last;
+                  const { blob, filename } = await txnsQueryCsv(q, {
+                    start: filters?.start,
+                    end: filters?.end,
+                    page_size: Math.max(100, Math.min(1000, filters?.page_size || filters?.limit || 200)),
+                    ...(flow ? { flow } as any : {})
+                  });
                   saveAs(blob, filename || "txns_query.csv");
-                  appendAssistant(`Exported CSV for NL query: ${q}`);
+                  appendAssistant(`Exported CSV for last NL query: ${q}`);
                 } catch (err: any) {
                   appendAssistant(`**CSV export failed:** ${err?.message || String(err)}`);
                 } finally {
@@ -1073,9 +1074,78 @@ export default function ChatDock() {
               }}
               disabled={busy}
               className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50"
-              title="Download CSV of NL transactions query"
+              title="Download CSV of the last NL transactions query"
             >
-              Export NL result (CSV)
+              Export CSV (last NL query)
+            </button>
+            {/* Prev/Next paging for last NL list results */}
+            <button
+              type="button"
+              onClick={async () => {
+                if (busy) return;
+                const last = lastNlqRef.current;
+                if (!last) { window.alert("No previous NL query found."); return; }
+                if ((last.intent || '').toLowerCase() !== 'list') { window.alert("Paging applies to list results only."); return; }
+                try {
+                  setBusy(true);
+                  const page = Math.max(1, Number(last.filters?.page || 1) - 1);
+                  const page_size = Number(last.filters?.page_size || 50);
+                  const res = await txnsQuery(last.q, {
+                    start: last.filters?.start,
+                    end: last.filters?.end,
+                    page, page_size,
+                    ...(last.flow ? { flow: last.flow as any } : {}),
+                  });
+                  appendAssistant(formatTxnQueryResult(last.q, res));
+                  lastNlqRef.current = {
+                    q: last.q,
+                    flow: last.flow,
+                    filters: (res as any)?.filters ?? { ...(last.filters || {}), page, page_size },
+                    intent: (res as any)?.intent,
+                  };
+                } catch (err: any) {
+                  appendAssistant(`**Page failed:** ${err?.message || String(err)}`);
+                } finally { setBusy(false); }
+              }}
+              disabled={busy || !lastNlqRef.current || (lastNlqRef.current?.intent || '').toLowerCase() !== 'list' || Number((lastNlqRef.current?.filters || {}).page || 1) <= 1}
+              className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50"
+              title="Previous page of last NL list"
+            >
+              ◀ Prev page (NL)
+            </button>
+            <button
+              type="button"
+              onClick={async () => {
+                if (busy) return;
+                const last = lastNlqRef.current;
+                if (!last) { window.alert("No previous NL query found."); return; }
+                if ((last.intent || '').toLowerCase() !== 'list') { window.alert("Paging applies to list results only."); return; }
+                try {
+                  setBusy(true);
+                  const page = Math.max(1, Number(last.filters?.page || 1) + 1);
+                  const page_size = Number(last.filters?.page_size || 50);
+                  const res = await txnsQuery(last.q, {
+                    start: last.filters?.start,
+                    end: last.filters?.end,
+                    page, page_size,
+                    ...(last.flow ? { flow: last.flow as any } : {}),
+                  });
+                  appendAssistant(formatTxnQueryResult(last.q, res));
+                  lastNlqRef.current = {
+                    q: last.q,
+                    flow: last.flow,
+                    filters: (res as any)?.filters ?? { ...(last.filters || {}), page, page_size },
+                    intent: (res as any)?.intent,
+                  };
+                } catch (err: any) {
+                  appendAssistant(`**Page failed:** ${err?.message || String(err)}`);
+                } finally { setBusy(false); }
+              }}
+              disabled={busy || !lastNlqRef.current || (lastNlqRef.current?.intent || '').toLowerCase() !== 'list'}
+              className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50"
+              title="Next page of last NL list"
+            >
+              Next page (NL) ▶
             </button>
             <button
               type="button"

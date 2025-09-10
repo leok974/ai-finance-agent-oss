@@ -826,7 +826,10 @@ export type TxnQueryResult =
   | { intent: "by_month"; filters: any; result: { bucket: string; spend: number }[]; meta?: any }
   | { intent: "list"; filters: any; result: any[]; meta?: any };
 
-export async function txnsQuery(q: string, opts?: { start?: string; end?: string; limit?: number }): Promise<TxnQueryResult> {
+export async function txnsQuery(
+  q: string,
+  opts?: { start?: string; end?: string; limit?: number; page?: number; page_size?: number; flow?: 'expenses'|'income'|'all' }
+): Promise<TxnQueryResult> {
   return http<TxnQueryResult>("/agent/txns_query", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -835,7 +838,10 @@ export async function txnsQuery(q: string, opts?: { start?: string; end?: string
 }
 
 // Download CSV for an NL transactions query. Server forces list intent and caps size.
-export async function txnsQueryCsv(q: string, opts?: { start?: string; end?: string; page_size?: number }): Promise<{ blob: Blob; filename: string }> {
+export async function txnsQueryCsv(
+  q: string,
+  opts?: { start?: string; end?: string; page_size?: number; flow?: 'expenses'|'income'|'all' }
+): Promise<{ blob: Blob; filename: string }> {
   const base = (import.meta as any)?.env?.VITE_API_BASE || API_BASE || "";
   const url = new URL("/agent/txns_query/csv", base);
   const res = await fetch(url.toString(), {

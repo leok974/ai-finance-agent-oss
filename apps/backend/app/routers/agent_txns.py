@@ -14,8 +14,9 @@ class TxnQueryIn(BaseModel):
     limit: Optional[int] = Field(None, ge=1, le=500, description="Max items (defaults by intent)")
     start: Optional[str] = Field(None, description="Override start (YYYY-MM-DD)")
     end: Optional[str] = Field(None, description="Override end (YYYY-MM-DD)")
-    page: Optional[int] = Field(1, ge=1, description="Page number for list pagination")
-    page_size: Optional[int] = Field(50, ge=1, le=200, description="Page size for list pagination")
+    page: Optional[int] = Field(1, ge=1, description="Page number for list results")
+    page_size: Optional[int] = Field(50, ge=1, le=200, description="Items per page for list results")
+    flow: Optional[str] = Field(None, description="expenses | income | all (filter by sign)")
 
 # Friendly example hints when NL query is low-signal
 HINTS = [
@@ -24,6 +25,7 @@ HINTS = [
     'Starbucks between 2025-08-01 and 2025-08-31',
     'groceries over $40 since 2025-07-01',
     'by month last 3 months',
+    'average spend WTD',
 ]
 
 def _is_low_signal(nlq: NLQuery) -> bool:
@@ -42,6 +44,8 @@ def txns_query(payload: TxnQueryIn, db: Session = Depends(get_db)) -> Dict[str, 
         setattr(nlq, "page", payload.page)
     if payload.page_size:
         setattr(nlq, "page_size", payload.page_size)
+    if payload.flow in ("expenses", "income", "all"):
+        setattr(nlq, "flow", payload.flow)
     # explicit overrides
     from datetime import datetime
     if payload.start:
