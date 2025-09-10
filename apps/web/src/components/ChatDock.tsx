@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ChevronUp, Wrench } from "lucide-react";
-import { agentTools, agentChat, getAgentModels, type AgentChatRequest, type AgentChatResponse, type AgentModelsResponse, type ChatMessage, mlSelftest } from "../lib/api";
+import { agentTools, agentChat, getAgentModels, type AgentChatRequest, type AgentChatResponse, type AgentModelsResponse, type ChatMessage, mlSelftest, txnsQuery, type TxnQueryResult } from "../lib/api";
 import { useOkErrToast } from "../lib/toast-helpers";
 import RestoredBadge from "./RestoredBadge";
 import ReactMarkdown from "react-markdown";
@@ -1001,6 +1001,27 @@ export default function ChatDock() {
             <button type="button" onClick={(e) => runSearchTransactions(e as any)} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50">Search transactions…</button>
             <button
               type="button"
+              onClick={async (e) => {
+                e.preventDefault();
+                try {
+                  const q = window.prompt("Ask about your transactions (e.g., 'Starbucks last month over $10', 'top 5 merchants this month', 'how much on groceries in July?')");
+                  if (!q) return;
+                  setBusy(true);
+                  const res = await txnsQuery(q);
+                  appendAssistant(formatTxnQueryResult(q, res));
+                } catch (err: any) {
+                  appendAssistant(`**NL Transactions Query failed:** ${err?.message || String(err)}`);
+                } finally {
+                  setBusy(false);
+                }
+              }}
+              disabled={busy}
+              className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50"
+            >
+              Search transactions (NL)
+            </button>
+            <button
+              type="button"
               disabled={selftestBusy}
               className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50"
               title="Run an end-to-end incremental learning smoke test"
@@ -1155,4 +1176,25 @@ export default function ChatDock() {
 
   // Render via portal; show bubble when closed, panel when open
   return createPortal(<>{open ? panelEl : bubbleEl}</>, document.body);
+}
+
+// Helper: format NL transaction query result for chat rendering
+function formatTxnQueryResult(q: string, res: TxnQueryResult): string {
+  const f: any = (res as any).filters || {};
+  const windowStr = f.start && f.end ? `\n• Range: ${f.start} → ${f.end}` : "";
+  if (res.intent === "sum") return `**NL Query:** ${q}\n**Total (abs):** $${res.result.total_abs.toFixed(2)}${windowStr}`;
+  if (res.intent === "count") return `**NL Query:** ${q}\n**Count:** ${res.result.count}${windowStr}`;
+  if (res.intent === "top_merchants") {
+    const lines = res.result.map((r, i) => `${i + 1}. ${r.merchant ?? "(Unknown)"} — $${r.spend.toFixed(2)}`).join("\n");
+    return `**NL Query:** ${q}${windowStr}\n**Top merchants:**\n${lines}`;
+  }
+  if (res.intent === "top_categories") {
+    const lines = res.result.map((r, i) => `${i + 1}. ${r.category ?? "(Uncategorized)"} — $${r.spend.toFixed(2)}`).join("\n");
+    return `**NL Query:** ${q}${windowStr}\n**Top categories:**\n${lines}`;
+  }
+  // list
+  const items = Array.isArray((res as any).result) ? (res as any).result : [];
+  const lines = items.map((r: any) => `• ${r.date} — ${r.merchant ?? "(Unknown)"} — ${r.category ?? "(Uncategorized)"} — $${Math.abs(Number(r.amount || 0)).toFixed(2)}`).join("\n");
+  const lim = (res as any)?.filters?.limit ?? 50;
+  return `**NL Query:** ${q}${windowStr}\n**Matches (max ${lim}):**\n${lines || "_No matches_"}`;
 }

@@ -14,6 +14,7 @@ from app.routers import agent_tools_rules_crud as rules_crud_router
 from app.routers import agent_tools_rules_apply_all as rules_apply_all_router
 from app.routers import agent_tools_meta as meta_router
 from .routers import charts
+from app.routers import agent_txns  # NEW
 from .routers import rule_suggestions as rule_suggestions_router
 from .routers import transactions as transactions_router
 from .routers import dev as dev_router
@@ -107,6 +108,7 @@ app.include_router(rules_apply_all_router.router)
 app.include_router(meta_router.router)
 app.include_router(meta.router)
 app.include_router(rule_suggestions_router.router)
+app.include_router(agent_txns.router)  # NEW
 
 # Mount health router at root so /healthz is available at top-level
 app.include_router(health_router.router)  # exposes GET /healthz

@@ -55,7 +55,14 @@ export default function DateRangePicker({ value, onChange, align = "end" }: Prop
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button variant="ghost" className="rounded-xl px-3">{label}</Button>
+        <Button
+          variant="secondary"
+          className="rounded-full h-7 px-3 text-xs"
+          aria-label={label}
+        >
+          <span className="mr-2 inline-block h-2 w-2 rounded-full bg-emerald-500" />
+          {label}
+        </Button>
       </PopoverTrigger>
       <PopoverContent align={align} className="w-[280px] p-3 space-y-3">
         <div className="space-y-2">

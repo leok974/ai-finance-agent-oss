@@ -187,321 +187,154 @@ Backend
 - apps/backend/.env.example:
   - DATABASE_URL=sqlite:///./data/finance.db
 - config.py: defaults
-- health.py (/healthz):
-  - status: "ok" | "degraded"
-  - db: { reachable: boolean, models_ok: boolean }
-  - alembic: { db_revision, code_head, in_sync }
-  - db_engine: string (backend+driver)
-  - alembic_ok: boolean (same as alembic.in_sync)
-  - models_ok: boolean (top-level convenience)
-📸 Finance Agent Repo Snapshot (Copilot Dump)
-✅ Checklist Coverage
+update 📸 Finance Agent Snapshot — 2025-09-09
 
- Frontend apps/web/src structure (components, UI primitives, index.css, tailwind config)
+## 🔧 Backend
 
- Backend routers & services (rules, txns, ml, rules_service)
+### New / Changed Files
 
- api.ts exports & signatures
+* **requirements.txt**
+  Added: `reportlab>=4.2.2`, `XlsxWriter>=3.2.0`
 
- RulesPanel.tsx signature/export
+* **services/charts_data.py** (new)
 
- docker-compose services & ports
+  * Shared helpers: `get_month_summary`, `get_month_merchants`, `get_month_flows`, `get_spending_trends`
+  * Optimized SQL GROUP BY for merchants & categories
+  * New: `get_month_categories` (spend by category)
+  * New: `resolve_window(month, start, end)` to unify month vs. custom ranges
 
- .env / config values for VITE_API_BASE and DB/API URLs
+* **services/report_export.py** (new)
 
-🖥 Frontend Structure (apps/web/src)
+  * **Excel (`build_excel_bytes`)**: Sheets → Summary, Categories, TopMerchants, Flows, Trends, Transactions (optionally split A–M/N–Z)
+  * **PDF (`build_pdf_bytes`)**: Sections → Summary, Top Merchants, Top Categories, Flows line
 
-Root src
+* **routers/report.py** (extended)
 
-api.ts (re-exports from lib/api)
+  * Keeps legacy `/report`
+  * Added:
 
-App.tsx
+    * `GET /report/excel` → XLSX (supports month, start/end, include_transactions, split_txns_alpha)
+    * `GET /report/pdf` → PDF (supports month, start/end)
+  * Auto-resolves latest month if no params
+  * 404 if no data; 503 if ReportLab not installed
+  * Filenames reflect month or range
 
-index.css
+* **routers/charts.py**
 
-main.tsx
+  * Refactored to only use `charts_data.py` helpers (no duplicated heuristics)
 
-styles.css
+### Schema / DB
 
-context/, hooks/, lib/, state/, types/, utils/, vite-env.d.ts
-
-lib/
-
-api.ts
-
-money.ts, scroll.ts, toast-helpers.ts, utils.ts
-
-components/
-
-AgentChat.tsx
-
-AgentResultRenderers.tsx
-
-BudgetsPanel.tsx
-
-Card.tsx
-
-ChartsPanel.tsx
-
-ChatDock.tsx
-
-EmptyState.tsx
-
-ErrorBoundary.tsx
-
-InfoDot.tsx
-
-InsightsCard.tsx
-
-Providers.tsx
-
-ReportRangePanel.tsx
-
-RulesPanel.tsx
-
-RuleTesterPanel.tsx
-
-SuggestionsPanel.tsx
-
-Toast.tsx
-
-TopEmptyBanner.tsx
-
-UnknownsPanel.tsx
-
-UploadCsv.tsx
-
-components/ui/
-
-dropdown-menu.tsx
-
-tooltip.tsx
-
-toast.tsx
-
-toaster.tsx
-
-Styles
-
-index.css → HSL token theme + utility classes
-
-tailwind.config.js → extends HSL colors; animate plugin
-
-Focus Files
-
-RulesPanel.tsx, RuleTesterPanel.tsx, SuggestionsPanel.tsx, UnknownsPanel.tsx, Card.tsx
-
-UI primitives (tooltip.tsx, dropdown-menu.tsx)
-
-⚙️ Backend Routers & Services
-
-Routers (apps/backend/app/routers/):
-
-rules.py
-
-txns.py
-
-ml.py
-
-others: charts.py, ingest.py, alerts.py, budget.py, explain.py, health.py, insights.py, report.py
-
-Services (apps/backend/app/services/):
-
-rules_service.py
-
-rules_engine.py
-
-rules_apply.py
-
-txns_service.py, tx_ops.js
-
-ingest_utils.py, ingest_csv.py
-
-ml_suggest.py, ml_train.py, ml_train_service.py
-
-insights_expanded.py, explain.py, recurring.py, context.py, llm.py
-
-Highlights
-
-rules.py: list/create/delete rules, test rule, save-train-reclass
-
-txns.py: unknowns, categorize, transfer/splits/recurring
-
-ml.py: /ml/suggest cleaned output
-
-rules_service.py: maps input → ORM, persists rule with computed display_name
-
-📡 API Exports (api.ts)
-
-Core
-
-http<T>(path: string, init?: RequestInit): Promise<T>
-fetchJson(path: string, init?: RequestInit): Promise<any | null>
-
-
-Charts
-
-getMonthSummary(month?: string)
-
-getMonthMerchants(month?: string)
-
-getMonthFlows(month?: string)
-
-getSpendingTrends(months = 6)
-
-Budgets
-
-budgetCheck(month?: string)
-
-getBudgetCheck(month?: string)
-
-Unknowns / Suggestions
-
-getUnknowns(month?: string): Promise<{ month: string|null; unknowns: any[] }>
-
-getSuggestions(month?: string): Promise<{ month?: string; suggestions: any[] }>
-
-Rules
-
-type Rule = { id: number; name: string; enabled: boolean; when: object; then: { category?: string } }
-type RuleInput = Omit<Rule, 'id'|'created_at'|'updated_at'>
-type RuleListItem = { id: number; display_name: string; category?: string; active?: boolean }
-type GetRulesParams = { active?: boolean; q?: string; limit?: number; offset?: number }
-
-getRules(params?: GetRulesParams): Promise<{ items: RuleListItem[]; total: number; limit: number; offset: number }>
-listRules = getRules
-deleteRule(id: number): Promise<any>
-createRule(body: RuleInput): Promise<{ id: string; display_name: string }>
-testRule(payload: { rule: RuleInput; month?: string }): Promise<{ count: number; sample: any[]; month?: string }>
-
-
-ML
-
-mlSuggest(month: string, limit=100, topk=3)
-
-mlTrain(month?: string, passes=1, min_samples=25)
-
-trainModel(params?: { min_samples?: number; test_size?: number })
-
-saveTrainReclassify(payload: { rule: RuleInput; month?: string })
-
-Agent / Explain
-
-agentChat(...)
-
-getAgentModels()
-
-agentStatus()
-
-agentStatusOk()
-
-explainTxnForChat(txnId: string | number)
-
-CSV ingest
-
-uploadCsv(file: File, replace = true, expensesArePositive?: boolean)
-
-Txn ops
-
-reclassifyAll(month?: string)
-
-categorizeTxn(id: number, category: string)
-
-📋 RulesPanel.tsx
-type Props = { refreshKey?: number }
-export default function RulesPanel({ refreshKey }: Props) { ... }
-
-
-Only refreshKey prop declared.
-
-Not wrapped in memo or forwardRef.
-
-🐳 docker-compose.yml (services/ports)
-
-backend
-
-build: apps/backend/Dockerfile
-
-ports: 8000:8000
-
-env: DATABASE_URL=postgresql+psycopg://myuser:mypassword@postgres:5432/finance
-
-command: uvicorn app.main:app --reload
-
-volumes: ./apps/backend:/app
-
-depends_on: postgres
-
-web
-
-build: apps/web/Dockerfile
-
-ports: 5173:5173
-
-command: ["pnpm","dev","--host"]
-
-volumes: ./apps/web:/app
-
-postgres
-
-image: postgres:16
-
-ports: 5432:5432
-
-env: POSTGRES_USER/PASSWORD/DB
-
-volume: finance-pgdata
-
-🌐 Env / Config
-
-Frontend
-
-apps/web/.env.local:
-
-VITE_API_BASE=http://127.0.0.1:8000
-
-
-apps/web/src/lib/api.ts:
-
-API_BASE = import.meta.env.VITE_API_BASE || "http://127.0.0.1:8000";
-
-
-Backend
-
-apps/backend/.env.example:
-
-DATABASE_URL=sqlite:///./data/finance.db
-# or: postgresql+psycopg://finance:finance@localhost:5432/finance
-
-
-config.py: defaults
-
-DB: sqlite
+* **Feedback**: `created_at NOT NULL DEFAULT now()`, index `ix_feedback_created_at`
+* **Transactions**: `merchant_canonical` + index; auto-sync via ORM validator
+* **Scripts**: `recanonicalize_merchants.py` recomputes canonical merchant strings
 
 ---
 
-## 📸 Finance Agent Snapshot (2025-09-09, with Incremental Learning)
+## 🖥 Frontend
 
-### 🧠 Incremental Learning Milestone
-- **Backend**
-  - New endpoint: `/ml/feedback` → accepts real txn ids, applies `partial_fit` to the active model.
-  - `/ml/selftest` → verifies update worked by bumping model mtime.
-  - `ml_train_service.py` → persists `latest.joblib` after partial fits.
-  - Unknowns endpoint now returns real DB ids (not just UI fake ids).
-  - Schema includes `transactions` + new `feedback` table.
+### New / Changed Files
 
-- **Frontend**
-  - **MLStatusCard**: polls `/ml/status` (guarded) and coalesces refreshes.
-  - **ChatDock**:
-    - Undo snackbar (snapshot old messages → clear → Undo restores).
-    - Badges: `LearnedBadge` (after feedback applied), `RestoredBadge` (after undo).
-    - Thinking indicator bubble.
-  - **Refresh Bus**: debounce + coalesced refresh across panels after successive applies.
-  - **Toasts**: animated exit (`animate-fade-slide-up`).
-  - API helpers added: `mlSelftest`, `getMlStatus`, `mlFeedback`.
+* **lib/api.ts**
 
-### 🔑 What this enables
-- Users can **teach the model interactively** by reclassifying suggestions → feedback → partial_fit.
-- Model updates incrementally without a full retrain.
-- UI reflects learning (badges, undo, toasts).
-- Dev overlay: **NetActivityBlip** shows color/intensity per update.
+  * `downloadReportExcel(month?, includeTransactions?, {start,end,splitAlpha})`
+  * `downloadReportPdf(month?, {start,end})`
+
+* **utils/download.ts** (new)
+
+  * `saveAs(blob, filename)` helper
+
+* **components/ExportMenu.tsx** (new)
+
+  * Dropdown menu: Export Excel / Export PDF
+  * Toggles: Include transactions, Split A–M/N–Z
+  * DateRangePicker rendered next to the dropdown (popover not nested)
+  * Busy state + error handling
+
+* **components/DateRangePicker.tsx** (new)
+
+  * Popover with two `<input type="date">` fields + Apply / Clear
+  * Validates order/format
+  * Styled as pill trigger
+
+### UI Niceties
+
+* Export button + separate pill-styled range trigger with green dot
+* Errors surface via toast/alert
+* Buttons disable while busy
+* Split toggle reflected in Excel sheet output
+
+---
+
+## 🧪 Tests
+
+* **test_report_exports.py** → verifies Excel signature, PDF status (200 or 503)
+* **test_report_options.py** → custom ranges, split_txns_alpha, include/exclude txns
+* **test_charts_router_refactor.py** → endpoint keys/shapes, normalized positive spends
+
+---
+
+## 🚦 Functionality
+
+* **Reports**
+
+  * Excel: Summary, Categories, Merchants, Flows, Trends, Transactions (split optional)
+  * PDF: Summary, Merchants, Categories, Flows
+  * Range: `month=YYYY-MM` OR `start/end=YYYY-MM-DD`
+  * Filenames respect range/month
+
+* **Charts**
+
+  * Endpoints: `/charts/month_summary`, `/month_merchants`, `/month_flows`, `/spending_trends`
+  * All powered by `charts_data.py` (SQL-backed, normalized positive spends)
+
+* **Frontend**
+
+  * Export UI fully integrated
+  * Custom range picker rendered outside the dropdown menu
+  * Busy/error handling polished
+
+* **CORS**
+
+  * Configured for `localhost:5173` / `127.0.0.1:5173`
+  * `Content-Disposition` exposed (download filenames preserved)
+
+---
+
+## � Repo Structure (relevant)
+
+```
+apps/backend/
+  app/
+    routers/
+      charts.py
+      report.py
+      ...
+    services/
+      charts_data.py
+      report_export.py
+      ...
+    scripts/
+      recanonicalize_merchants.py
+  requirements.txt
+  tests/
+    test_report_exports.py
+    test_report_options.py
+    test_charts_router_refactor.py
+
+apps/web/
+  src/
+    lib/api.ts
+    utils/download.ts
+    components/
+      ExportMenu.tsx
+      DateRangePicker.tsx
+    components/ui/
+      dropdown-menu.tsx
+      popover.tsx
+```
+
+---
+
+✅ **Status:** Exports (Excel/PDF) fully working, with categories + custom ranges, split toggle, busy/error handling, polished UI. Tests all green.
+ (See <attachments> above for file contents. You may not need to search or read the file again.)

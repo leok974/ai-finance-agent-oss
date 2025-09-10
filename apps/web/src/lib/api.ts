@@ -813,3 +813,19 @@ export async function downloadReportPdf(month?: string, opts?: { start?: string;
   const filename = parseDispositionFilename(res.headers.get("Content-Disposition")) || "finance_report.pdf";
   return { blob, filename };
 }
+
+// ---------- Natural-language Transactions Query ----------
+export type TxnQueryResult =
+  | { intent: "sum"; filters: any; result: { total_abs: number }; meta?: any }
+  | { intent: "count"; filters: any; result: { count: number }; meta?: any }
+  | { intent: "top_merchants"; filters: any; result: { merchant: string; spend: number }[]; meta?: any }
+  | { intent: "top_categories"; filters: any; result: { category: string; spend: number }[]; meta?: any }
+  | { intent: "list"; filters: any; result: any[]; meta?: any };
+
+export async function txnsQuery(q: string, opts?: { start?: string; end?: string; limit?: number }): Promise<TxnQueryResult> {
+  return http<TxnQueryResult>("/agent/txns_query", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ q, ...opts }),
+  });
+}

@@ -4,6 +4,8 @@ import { saveAs } from "@/utils/download";
 import { Download, Check } from "lucide-react";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuCheckboxItem } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
+// Optional toast helper (if you have one). Otherwise we fallback to alert().
+// import { toastError } from "@/src/lib/toast-helpers";
 import DateRangePicker from "@/components/DateRangePicker";
 
 type Props = { month?: string };
@@ -13,12 +15,17 @@ export default function ExportMenu({ month }: Props) {
   const [includeTxns, setIncludeTxns] = useState(true);
   const [splitAlpha, setSplitAlpha] = useState(false);
   const [range, setRange] = useState<{ start?: string; end?: string }>({});
+  const rangeActive = !!(range.start && range.end);
+  const rangeLabel = rangeActive ? `${range.start} → ${range.end}` : null;
 
   async function doExcel() {
     try {
       setBusy("excel");
-  const { blob, filename } = await downloadReportExcel(month, includeTxns, { ...range, splitAlpha });
+      const { blob, filename } = await downloadReportExcel(month, includeTxns, { ...range, splitAlpha });
       saveAs(blob, filename);
+    } catch (err: any) {
+      console.error("Excel export failed", err);
+      (window as any)?.toastError?.("Excel export failed") ?? alert("Excel export failed. Check console/logs.");
     } finally {
       setBusy(null);
     }
@@ -29,34 +36,25 @@ export default function ExportMenu({ month }: Props) {
       setBusy("pdf");
       const { blob, filename } = await downloadReportPdf(month, range);
       saveAs(blob, filename);
+    } catch (err: any) {
+      console.error("PDF export failed", err);
+      (window as any)?.toastError?.("PDF export failed") ?? alert("PDF export failed. Check console/logs.");
     } finally {
       setBusy(null);
     }
   }
 
 
-  const btn = (label: string, onClick: () => void, variant: "primary" | "secondary" = "primary") => (
-    <button
-      onClick={onClick}
-      disabled={!!busy}
-      className={
-        variant === "primary"
-          ? "px-3 py-1 rounded-2xl bg-blue-600 hover:bg-blue-500 text-white text-sm"
-          : "px-3 py-1 rounded-2xl bg-gray-700 hover:bg-gray-600 text-white text-sm"
-      }
-    >
-      {label}
-    </button>
-  );
-
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button disabled={!!busy} className="rounded-2xl">
-          <Download className="mr-2 h-4 w-4" /> Export
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="min-w-[220px]">
+    <div className="flex items-center gap-2">
+      {/* Export dropdown */}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button disabled={!!busy} className="rounded-2xl" aria-label={rangeActive ? `Export (range ${rangeLabel})` : "Export"}>
+            <Download className="mr-2 h-4 w-4" /> Export
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="min-w-[240px]">
         <DropdownMenuCheckboxItem
           checked={includeTxns}
           onCheckedChange={(v: boolean | "indeterminate") => setIncludeTxns(v === true)}
@@ -69,9 +67,6 @@ export default function ExportMenu({ month }: Props) {
         >
           Split transactions A–M / N–Z
         </DropdownMenuCheckboxItem>
-        <div className="px-2 py-1.5">
-          <DateRangePicker value={range} onChange={setRange} />
-        </div>
         <DropdownMenuSeparator />
         <DropdownMenuItem onClick={doExcel} disabled={busy === "excel"}>
           {busy === "excel" ? <Check className="mr-2 h-4 w-4" /> : <Download className="mr-2 h-4 w-4" />}
@@ -81,7 +76,11 @@ export default function ExportMenu({ month }: Props) {
           {busy === "pdf" ? <Check className="mr-2 h-4 w-4" /> : <Download className="mr-2 h-4 w-4" />}
           PDF (.pdf)
         </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      {/* Range picker popover lives OUTSIDE the dropdown */}
+      <DateRangePicker value={range} onChange={setRange} />
+    </div>
   );
 }
