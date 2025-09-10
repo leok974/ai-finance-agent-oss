@@ -1,0 +1,157 @@
+# apps/backend/app/services/budget_recommend.py
+from __future__ import annotations
+from collections import defaultdict
+from datetime import date
+from typing import Dict, List, Tuple, Any, Iterable, Optional
+
+from sqlalchemy.orm import Session
+from sqlalchemy import func, and_, extract
+
+# Reuse your existing ORM model import path
+from app.orm_models import Transaction  # adjust import if your project differs
+
+
+def _month_key(d: date) -> str:
+    return f"{d.year:04d}-{d.month:02d}"
+
+
+def _quantile(sorted_vals: List[float], q: float) -> float:
+    """
+    Simple inclusive quantile (p50/p75) without numpy to avoid extra deps.
+    q is 0..1. For small N, we pick linear interpolation between neighbors.
+    """
+    n = len(sorted_vals)
+    if n == 0:
+        return 0.0
+    if n == 1:
+        return float(sorted_vals[0])
+    # Using method ~ Type 7 (Excel/Pandas default)
+    idx = (n - 1) * q
+    lo = int(idx)
+    hi = min(lo + 1, n - 1)
+    frac = idx - lo
+    return sorted_vals[lo] * (1 - frac) + sorted_vals[hi] * frac
+
+
+def _abs_spend(amount: float) -> float:
+    """
+    Ensure spend is positive magnitude. By convention in this project,
+    expenses are often negative; budgets should be positive caps.
+    """
+    return float(abs(amount))
+
+
+def _is_expense_row(amount: Optional[float], category: Optional[str]) -> bool:
+    if amount is None:
+        return False
+    # Treat strictly negative amounts as expenses; ignore income/transfers.
+    if amount < 0:
+        return True
+    # If you want to also include edge cases (e.g., mis-signed rows),
+    # add a fallback: categories known to be expenses could pass here.
+    return False
+
+
+def _window_months(db: Session, months: int) -> Tuple[date, date, List[str]]:
+    """
+    Determine [start_date, end_date] spanning the last `months` FULL months,
+    ending at the max(Transaction.date) available.
+    Returns (start_date, end_date, month_keys_inclusive_ordered).
+    """
+    max_dt = db.query(func.max(Transaction.date)).scalar()
+    if not max_dt:
+        # No data; return empty window
+        today = date.today()
+        return today, today, []
+
+    # Build a list of year-month pairs from max_dt back `months-1`
+    y, m = max_dt.year, max_dt.month
+    keys: List[str] = []
+    for i in range(months):
+        yy = y
+        mm = m - i
+        while mm <= 0:
+            mm += 12
+            yy -= 1
+        keys.append(f"{yy:04d}-{mm:02d}")
+    keys = list(reversed(keys))  # chronological
+
+    # Compute start/end as first day of first month → last day of last month
+    first_key = keys[0]
+    last_key = keys[-1]
+    start_y, start_m = map(int, first_key.split("-"))
+    end_y, end_m = map(int, last_key.split("-"))
+
+    # first day
+    start_date = date(start_y, start_m, 1)
+    # last day of month trick: next month first day minus one
+    if end_m == 12:
+        end_date = date(end_y + 1, 1, 1)
+    else:
+        end_date = date(end_y, end_m + 1, 1)
+
+    return start_date, end_date, keys
+
+
+def compute_recommendations(db: Session, months: int = 6, min_samples: int = 2) -> List[Dict[str, Any]]:
+    """
+    Look at the last N full months; compute per-category monthly spend totals
+    and derive median (p50), p75, and average (mean) as recommended caps.
+    - Only expense rows (negative amounts) are included.
+    - Transfers are implicitly excluded if they are non-negative or recoded;
+      if you explicitly mark transfers, filter them here as needed.
+    Returns: [{category, median, p75, avg, sample_size}]
+    """
+    months = max(3, min(24, int(months)))
+    start_date, end_date, _ = _window_months(db, months)
+    if not _:
+        return []
+
+    # Pull candidate rows in window; rely on sign to exclude income
+    rows = (
+        db.query(Transaction.category, Transaction.date, Transaction.amount)
+        .filter(
+            and_(
+                Transaction.date >= start_date,
+                Transaction.date < end_date,
+                Transaction.category.isnot(None),
+                Transaction.category != "",
+                Transaction.category != "Unknown",
+            )
+        )
+        .all()
+    )
+
+    # Accumulate per-month spend by category (only expenses)
+    # category_month_totals[category][YYYY-MM] = total_spend_positive
+    category_month_totals: Dict[str, Dict[str, float]] = defaultdict(lambda: defaultdict(float))
+
+    for category, dt, amt in rows:
+        if not _is_expense_row(amt, category):
+            continue
+        key = _month_key(dt)
+        category_month_totals[category][key] += _abs_spend(amt)
+
+    # Convert each category's month totals → list for stats
+    recommendations: List[Dict[str, Any]] = []
+    for category, month_map in category_month_totals.items():
+        samples = sorted(month_map.values())
+        # Exclude categories with too few months to form a meaningful cap
+        if not samples or len(samples) < max(1, int(min_samples)):
+            continue
+        median = _quantile(samples, 0.5)
+        p75 = _quantile(samples, 0.75)
+        avg = sum(samples) / len(samples)
+        recommendations.append(
+            {
+                "category": category,
+                "median": round(median, 2),
+                "p75": round(p75, 2),
+                "avg": round(avg, 2),
+                "sample_size": len(samples),
+            }
+        )
+
+    # Stable sort: highest median first, then p75 desc, then alpha
+    recommendations.sort(key=lambda r: (-r["median"], -r["p75"], r["category"].lower()))
+    return recommendations

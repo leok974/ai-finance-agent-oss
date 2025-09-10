@@ -4,6 +4,7 @@ from typing import Tuple, Dict, Any, List
 import re
 from app.services.txns_nl_query import parse_nl_query, NLQuery
 from app.config import settings
+import re as _re
 
 def detect_txn_query(user_text: str) -> Tuple[bool, NLQuery]:
     """
@@ -138,6 +139,40 @@ def try_llm_rephrase_summary(user_text: str, res: Dict[str, Any], summary: str) 
         from app.utils import llm as llm_mod
     except Exception:
         return None
+
+
+# ---------------- Budget detectors ----------------
+def detect_budget_recommendation(text: str) -> bool:
+    """Conservative match for explicit budget recommendation requests."""
+    t = (text or "").lower()
+    keys = [
+        "budget recommendation",
+        "smart budget",
+        "what should my budget be",
+        "how much to budget",
+        "recommend a budget",
+    ]
+    return any(k in t for k in keys)
+
+
+def extract_months_or_default(text: str, default: int = 6) -> int:
+    """Extract a small integer months window if user specifies (e.g., 'last 6 months')."""
+    try:
+        t = (text or "").lower()
+        m = _re.search(r"(?:last|past|over|for)\s+(\d{1,2})\s+month", t)
+        if m:
+            val = int(m.group(1))
+            if 3 <= val <= 24:
+                return val
+        # Also catch bare "12 months"
+        m2 = _re.search(r"\b(\d{1,2})\s+months?\b", t)
+        if m2:
+            val = int(m2.group(1))
+            if 3 <= val <= 24:
+                return val
+    except Exception:
+        pass
+    return int(default)
 
     slim = {
         "intent": res.get("intent"),

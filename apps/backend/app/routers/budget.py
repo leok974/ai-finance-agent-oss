@@ -1,6 +1,10 @@
 from fastapi import APIRouter, HTTPException
 from typing import Dict, List, Optional
 from ..utils.dates import latest_month_from_txns
+from fastapi import Depends, Query
+from sqlalchemy.orm import Session
+from app.db import get_db
+from app.services.budget_recommend import compute_recommendations
 
 router = APIRouter()
 
@@ -33,3 +37,14 @@ def budget_check(month: Optional[str] = None) -> List[Dict]:
         s = spent.get(cat, 0.0)
         rows.append({"category": cat, "spent": round(s,2), "limit": limit, "over": round(max(0.0, s - limit),2)})
     return rows
+
+@router.get("/recommendations")
+def get_budget_recommendations(
+    months: int = Query(6, ge=3, le=24),
+    db: Session = Depends(get_db),
+):
+    """Return per-category budget recommendations computed from last N full months.
+    Note: main.py mounts this router at prefix '/budget', so final path is /budget/recommendations.
+    """
+    recs = compute_recommendations(db, months=months)
+    return {"months": months, "recommendations": recs}

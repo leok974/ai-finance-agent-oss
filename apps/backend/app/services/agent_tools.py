@@ -16,6 +16,8 @@ from app.services.charts_data import (
     get_month_merchants,
     get_month_categories,
 )
+from app.services.budget_recommend import compute_recommendations
+from app.services.agent_detect import detect_budget_recommendation, extract_months_or_default
 
 def tool_specs():
     return [
@@ -365,6 +367,16 @@ def route_to_tool(user_text: str, db: Session) -> Optional[Dict[str, Any]]:
             return {"mode": "report.link", "filters": {"month": month}, "url": url, "meta": {"kind": "pdf"}}
 
     # 4) Budgets placeholder
+    if detect_budget_recommendation(user_text):
+        months = extract_months_or_default(user_text, default=6)
+        recs = compute_recommendations(db, months=months)
+        return {
+            "mode": "budgets.recommendations",
+            "filters": {"months": months},
+            "result": {"months": months, "recommendations": recs},
+            "message": None,
+        }
+
     if any(k in text_low for k in ["budget", "over budget", "under budget", "remaining budget"]):
         return {
             "mode": "budgets.read",

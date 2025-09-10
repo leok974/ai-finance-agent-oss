@@ -39,6 +39,17 @@ class Transaction(Base):
             self.merchant_canonical = None
         return value
 
+    @validates("date")
+    def _on_date_set(self, key, value):
+        # Derive YYYY-MM month string for windowing and constraints
+        try:
+            if value is not None:
+                self.month = f"{value.year:04d}-{value.month:02d}"
+        except Exception:
+            # Leave month untouched if date invalid
+            pass
+        return value
+
 class RuleORM(Base):
     __tablename__ = "rules"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
