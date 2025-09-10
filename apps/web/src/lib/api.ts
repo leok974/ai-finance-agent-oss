@@ -478,7 +478,11 @@ export type AgentChatRequest = {
 };
 
 export type AgentChatResponse = {
+  mode?: string;
   reply: string;
+  summary?: string;
+  rephrased?: string | null;
+  nlq?: any;
   citations: { type: string; id?: string; count?: number }[];
   used_context: { month?: string };
   tool_trace: any[];

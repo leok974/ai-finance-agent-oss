@@ -1,5 +1,5 @@
 import React from "react";
-import { agentChat, getAgentModels, type AgentChatRequest, type AgentChatResponse, type AgentModelsResponse, type ChatMessage } from "../lib/api";
+import { agentChat, getAgentModels, type AgentChatRequest, type AgentChatResponse, type AgentModelsResponse, type ChatMessage, txnsQueryCsv } from "../lib/api";
 
 interface ExtendedMessage extends ChatMessage {
   meta?: {
@@ -7,7 +7,31 @@ interface ExtendedMessage extends ChatMessage {
     ctxMonth?: string;
     trace?: any[];
     model?: string;
+    mode?: string;
+    filters?: Record<string, any> | undefined;
+    q?: string;        // original NL query text
+    intent?: string;   // nl_txns intent (e.g., list)
   };
+}
+
+function saveBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+function modeLabel(mode?: string) {
+  if (!mode) return undefined;
+  if (mode === 'nl_txns') return 'Transactions';
+  if (mode.startsWith('charts.')) return 'Charts';
+  if (mode === 'report.link') return 'Report';
+  if (mode === 'budgets.read') return 'Budgets';
+  return undefined;
 }
 
 export default function AgentChat() {
@@ -65,18 +89,62 @@ export default function AgentChat() {
       }
       
       const resp: AgentChatResponse = await agentChat(req);
-      const assistantMsg: ExtendedMessage = {
-        role: "assistant",
-        content: resp.reply,
-        meta: {
-          citations: resp.citations,
-          ctxMonth: resp.used_context?.month,
-          trace: resp.tool_trace,
-          model: resp.model
+      if ((resp as any).mode === "nl_txns") {
+        const lastUser = next.slice().reverse().find(m => m.role === 'user');
+        const mode = (resp as any).mode as string;
+        const filters = (resp as any).nlq || (resp as any).filters;
+        const intent = (resp as any)?.result?.intent || (resp as any)?.nlq?.intent;
+        // Grounded NL transactions branch: show compact badge + summary
+        const msg1: ExtendedMessage = {
+          role: "assistant",
+          content: ((resp as any).message || resp.rephrased?.trim() || resp.summary || resp.reply),
+          meta: {
+            citations: resp.citations,
+            ctxMonth: resp.used_context?.month,
+            trace: resp.tool_trace,
+            model: resp.model,
+            mode,
+            filters,
+            q: lastUser?.content,
+            intent,
+          },
+        };
+        // Append optional details block
+        const msg2: ExtendedMessage = {
+          role: "assistant",
+          content: `Details:\n\n${resp.reply}`,
+        };
+        setMessages([...next, msg1, msg2]);
+      } else {
+        const mode = (resp as any).mode as string | undefined;
+        if (mode && ["charts.summary","charts.flows","charts.merchants","charts.categories","report.link","budgets.read"].includes(mode)) {
+          const groundedMsg: ExtendedMessage = {
+            role: "assistant",
+            content: ((resp as any).message || resp.reply),
+            meta: {
+              citations: resp.citations,
+              ctxMonth: resp.used_context?.month,
+              trace: resp.tool_trace,
+              model: resp.model,
+              mode,
+              filters: (resp as any).filters,
+            }
+          };
+          setMessages([...next, groundedMsg]);
+        } else {
+        const assistantMsg: ExtendedMessage = {
+          role: "assistant",
+          content: resp.reply,
+          meta: {
+            citations: resp.citations,
+            ctxMonth: resp.used_context?.month,
+            trace: resp.tool_trace,
+            model: resp.model
+          }
+        };
+        setMessages([...next, assistantMsg]);
         }
-      };
-      
-      setMessages([...next, assistantMsg]);
+      }
     } catch (e: any) {
       const errorMsg: ExtendedMessage = {
         role: "assistant",
@@ -130,15 +198,63 @@ export default function AgentChat() {
         {messages.filter(m => m.role !== "system").map((m, i) => (
           <div key={i} className={m.role === "user" ? "text-right" : ""}>
             <div className={`inline-block px-3 py-2 rounded-2xl ${m.role === "user" ? "bg-blue-600" : "bg-neutral-800"}`}>
-              <div>{m.content}</div>
-              {/* Render assistant message with light metadata (citations + trace collapsed) */}
-              {m.role === "assistant" && m.meta?.citations?.length ? (
+              <div className="flex items-center gap-2">
+                <div>{m.content}</div>
+                {m.role === "assistant" && m.meta?.mode ? (
+                  <>
+                    <span className="ml-2 chat-badge-grounded text-[10px] px-2 py-0.5 rounded-full" title="This reply is grounded in data">grounded</span>
+                    {modeLabel(m.meta.mode) ? (
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-neutral-900 border border-neutral-700" title={`Tool: ${m.meta.mode}`}>{modeLabel(m.meta.mode)}</span>
+                    ) : null}
+                  </>
+                ) : null}
+              </div>
+              {/* Render assistant message with light metadata, filters, and actions */}
+              {m.role === "assistant" && (m.meta?.citations?.length || m.meta?.filters) ? (
                 <div className="mt-2 text-xs opacity-70">
-                  Used data: {m.meta.citations.map((c: any) =>
-                    c.count ? `${c.type} ${c.count}` : `${c.type}`).join(' · ')}
-                  {m.meta.ctxMonth ? ` · month ${m.meta.ctxMonth}` : ''}
-                  {m.meta.model ? ` · ${m.meta.model}` : ''}
-                  {m.meta.trace?.length ? (
+                  {m.meta?.citations?.length ? (
+                    <>
+                      Used data: {m.meta.citations.map((c: any) => c.count ? `${c.type} ${c.count}` : `${c.type}`).join(' · ')}
+                      {m.meta.ctxMonth ? ` · month ${m.meta.ctxMonth}` : ''}
+                      {m.meta.model ? ` · ${m.meta.model}` : ''}
+                    </>
+                  ) : null}
+                  {m.meta?.filters ? (
+                    <div className="mt-1 flex flex-wrap items-center gap-1">
+                      {['month','start','end','window','flow'].filter(k => k in (m.meta!.filters||{})).map((k) => (
+                        <span key={k} className="px-2 py-0.5 rounded-full bg-neutral-900 border border-neutral-700">
+                          {k}: {String((m.meta!.filters as any)[k])}
+                        </span>
+                      ))}
+                      {Object.entries(m.meta.filters).filter(([k]) => !['month','start','end','window','flow'].includes(k)).map(([k, v]) => (
+                        <span key={k} className="px-2 py-0.5 rounded-full bg-neutral-900 border border-neutral-700">
+                          {k}: {String(v)}
+                        </span>
+                      ))}
+                      {m.meta?.mode === 'nl_txns' && m.meta.intent === 'list' && m.meta.q ? (
+                        <button
+                          className="ml-2 text-[11px] px-2 py-0.5 rounded-md bg-white text-black hover:opacity-90"
+                          title="Download CSV of these results"
+                          onClick={async () => {
+                            try {
+                              const { blob, filename } = await txnsQueryCsv(m.meta!.q!, {
+                                start: (m.meta!.filters as any)?.start,
+                                end: (m.meta!.filters as any)?.end,
+                                page_size: Math.max(100, Math.min(1000, (m.meta!.filters as any)?.page_size || (m.meta!.filters as any)?.limit || 200)),
+                                ...(m.meta!.filters as any)?.flow ? { flow: (m.meta!.filters as any)?.flow } : {},
+                              });
+                              saveBlob(blob, filename || 'txns_query.csv');
+                            } catch (err: any) {
+                              alert(`CSV export failed: ${err?.message || String(err)}`);
+                            }
+                          }}
+                        >
+                          Download CSV
+                        </button>
+                      ) : null}
+                    </div>
+                  ) : null}
+                  {m.meta?.trace?.length ? (
                     <details className="mt-1">
                       <summary className="cursor-pointer hover:text-neutral-300">Trace</summary>
                       <pre className="whitespace-pre-wrap text-[10px] mt-1 p-2 bg-neutral-900 rounded overflow-auto max-h-32">

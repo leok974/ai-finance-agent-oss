@@ -1,8 +1,21 @@
 # apps/backend/app/services/agent_tools.py
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from .rules_engine import apply_rules
 from collections import defaultdict
 import json
+import re
+from sqlalchemy.orm import Session
+
+# New imports for deterministic tool routing
+from app.services.txns_nl_query import parse_nl_query, run_txn_query
+from app.services.agent_detect import detect_txn_query
+from app.services.charts_data import (
+    latest_month_str,
+    get_month_summary,
+    get_month_flows,
+    get_month_merchants,
+    get_month_categories,
+)
 
 def tool_specs():
     return [
@@ -269,3 +282,95 @@ def call_tool(name: str, args: Dict[str, Any]):
         }
 
     return {"ok": False, "error": "Unknown tool"}
+
+
+# --------- Deterministic router for chat short-circuit ---------------------------------
+
+def _extract_month(text: str) -> Optional[str]:
+    """Try to infer a month (YYYY-MM) from natural text like 'in August 2025'."""
+    m = re.search(r"in\s+([A-Za-z]+)\s*(\d{4})?", text, re.IGNORECASE)
+    if not m:
+        return None
+    try:
+        from datetime import datetime
+        month_name = m.group(1).title()
+        year = int(m.group(2)) if m.group(2) else datetime.now().year
+        month_num = datetime.strptime(month_name, "%B").month
+        return f"{year:04d}-{month_num:02d}"
+    except Exception:
+        return None
+
+
+def route_to_tool(user_text: str, db: Session) -> Optional[Dict[str, Any]]:
+    """
+    Returns a dict with:
+      - mode: one of ["nl_txns", "charts.summary", "charts.flows", "charts.merchants", "charts.categories", "report.link", "budgets.read"]
+      - filters: resolved filters (month and/or start/end)
+      - result: tool result payload (shape depends on tool)
+      - url/meta: for links (reports)
+    Or None to indicate fallback to LLM.
+    """
+    text_low = user_text.lower()
+
+    # 1) Transactions NL — use conservative detector to avoid generic messages
+    is_txn, nlq = detect_txn_query(user_text)
+    if is_txn and nlq is not None:
+        res = run_txn_query(db, nlq)
+        return {"mode": "nl_txns", "filters": res.get("filters"), "result": res}
+
+    # 2) Charts
+    charts_kind: Optional[str] = None
+    if any(k in text_low for k in ["trend", "spending trend", "series", "by day", "by week", "by month", "time series", "flows", "cash flow", "net flow", "inflow", "outflow"]):
+        charts_kind = "flows"
+    elif any(k in text_low for k in ["top merchants", "merchants breakdown", "merchant spend"]):
+        charts_kind = "merchants"
+    elif any(k in text_low for k in ["categories", "category breakdown", "by category"]):
+        charts_kind = "categories"
+    elif any(k in text_low for k in ["summary", "overview", "snapshot"]):
+        charts_kind = "summary"
+
+    if charts_kind:
+        month = _extract_month(user_text) or latest_month_str(db)
+        if not month:
+            return None
+        if charts_kind == "summary":
+            data = get_month_summary(db, month)
+            return {"mode": "charts.summary", "filters": {"month": month}, "result": data}
+        if charts_kind == "flows":
+            data = get_month_flows(db, month)
+            return {"mode": "charts.flows", "filters": {"month": month}, "result": data}
+        if charts_kind == "merchants":
+            data = get_month_merchants(db, month)
+            # normalize to a simple array in result for consistency
+            return {"mode": "charts.merchants", "filters": {"month": month}, "result": data.get("merchants", [])}
+        if charts_kind == "categories":
+            data = get_month_categories(db, month)
+            return {"mode": "charts.categories", "filters": {"month": month}, "result": data}
+
+    # 3) Reports (Excel/PDF) — return a link to existing endpoints
+    if any(k in text_low for k in ["export", "download", "report", "excel", "xlsx", "pdf"]):
+        month = _extract_month(user_text) or latest_month_str(db)
+        qs = []
+        if month:
+            qs.append(f"month={month}")
+        include_tx = ("include transaction" in text_low) or ("with transactions" in text_low)
+        kind = "excel" if ("excel" in text_low or "xlsx" in text_low) else ("pdf" if "pdf" in text_low else "excel")
+        if kind == "excel":
+            if include_tx:
+                qs.append("include_transactions=true")
+            url = "/report/excel" + ("?" + "&".join(qs) if qs else "")
+            return {"mode": "report.link", "filters": {"month": month}, "url": url, "meta": {"kind": "excel"}}
+        else:
+            url = "/report/pdf" + ("?" + "&".join(qs) if qs else "")
+            return {"mode": "report.link", "filters": {"month": month}, "url": url, "meta": {"kind": "pdf"}}
+
+    # 4) Budgets placeholder
+    if any(k in text_low for k in ["budget", "over budget", "under budget", "remaining budget"]):
+        return {
+            "mode": "budgets.read",
+            "filters": {},
+            "result": None,
+            "message": "Budget queries are not implemented yet. Try: 'Top categories this month' or 'Export Excel for last month'.",
+        }
+
+    return None

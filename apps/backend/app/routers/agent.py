@@ -19,6 +19,9 @@ from app.routers import agent_tools_transactions, agent_tools_rules_crud, agent_
 
 from app.utils import llm as llm_mod  # <-- import module so tests can monkeypatch
 from app.config import settings
+from app.services.agent_detect import detect_txn_query, summarize_txn_result, infer_flow, try_llm_rephrase_summary
+from app.services.txns_nl_query import run_txn_query
+from app.services.agent_tools import route_to_tool
 
 router = APIRouter()  # <-- no prefix here (main.py supplies /agent)
 
@@ -271,8 +274,75 @@ def agent_chat(
     try:
         # Log request (with PII redacted)
         print(f"Agent chat request: {redact_pii(req.dict())}")
-
+        
         ctx = _enrich_context(db, req.context, req.txn_id)
+
+        # Always capture the latest user-authored message early for routing
+        last_user_msg = next((msg.content for msg in reversed(req.messages) if msg.role == "user"), "")
+
+        # First: deterministic tool routing (transactions/charts/reports/budgets)
+        if req.intent in ("general", "budget_help"):
+            tool_resp = route_to_tool(last_user_msg, db)
+            if tool_resp is not None:
+                # Deterministic summary string for tool output
+                summary = _summarize_tool_result(tool_resp)
+                # Optional rephrase via LLM (safe, short, numbers unchanged); default to deterministic
+                rephrased = _try_llm_rephrase_tool(last_user_msg, tool_resp, summary)
+                message = (rephrased or summary).strip()
+                resp = {
+                    "ok": True,
+                    "mode": tool_resp.get("mode"),
+                    "reply": message,   # backward-compat with existing UI
+                    "message": message, # canonical text for new UI
+                    "summary": summary,
+                    "rephrased": rephrased,
+                    "filters": tool_resp.get("filters"),
+                    "result": tool_resp.get("result"),
+                    "url": tool_resp.get("url"),
+                    "citations": [{"type": "summary", "count": 1}],
+                    "used_context": {"month": ctx.get("month")},
+                    "tool_trace": [{"tool": "router", "status": "short_circuit"}],
+                    "model": "deterministic",
+                }
+                if debug and getattr(settings, "ENV", "dev") != "prod":
+                    resp["__debug_context"] = ctx
+                return JSONResponse(resp)
+
+        # Short-circuit: detect if the last user message is a transactions NL query
+        # Only for general/budget_help intents; do not intercept explain_txn or rule_seed flows
+        is_txn, nlq = detect_txn_query(last_user_msg)
+        if is_txn and req.intent in ("general", "budget_help"):
+            # Propagate flow if detectable
+            flow = infer_flow(last_user_msg)
+            if flow:
+                setattr(nlq, "flow", flow)
+            # Respect simple pagination hints in message (optional, e.g., "page 2")
+            import re as _re
+            m_pg = _re.search(r"page\s+(\d{1,3})", last_user_msg.lower())
+            if m_pg:
+                setattr(nlq, "page", int(m_pg.group(1)))
+            # Execute grounded query
+            qres = run_txn_query(db, nlq)
+            # Include flow in filters if set
+            if getattr(nlq, "flow", None):
+                qres.setdefault("filters", {})["flow"] = getattr(nlq, "flow")
+            summary = summarize_txn_result(qres)
+            rephrased = try_llm_rephrase_summary(last_user_msg, qres, summary)
+            resp = {
+                "mode": "nl_txns",
+                "reply": rephrased or summary,
+                "summary": summary,
+                "rephrased": rephrased,
+                "nlq": qres.get("filters"),
+                "result": qres,
+                "citations": [{"type": "summary", "count": 1}],  # generic marker
+                "used_context": {"month": ctx.get("month")},
+                "tool_trace": [{"tool": "nl_txns", "status": "short_circuit"}],
+                "model": "deterministic",
+            }
+            if debug and getattr(settings, "ENV", "dev") != "prod":
+                resp["__debug_context"] = ctx
+            return JSONResponse(resp)
         
         # Fallback for explain_txn intent when txn_id is missing
         if req.intent == "explain_txn" and not req.txn_id and "txn" not in ctx:
@@ -372,6 +442,99 @@ def agent_chat(
         print(f"Agent chat error: {str(e)}")
         print(f"Request context: {redact_pii(req.dict() if hasattr(req, 'dict') else {})}")
         raise HTTPException(status_code=500, detail=f"Chat error: {str(e)}")
+
+
+def _fmt_usd(v: float) -> str:
+    sign = "-" if v < 0 else ""
+    return f"{sign}${abs(v):,.2f}"
+
+
+def _fmt_window(f: Dict[str, Any]) -> str:
+    if f and f.get("start") and f.get("end"):
+        return f" ({f['start']} → {f['end']})"
+    if f and f.get("month"):
+        return f" ({f['month']})"
+    return ""
+
+
+def _summarize_tool_result(tool_resp: Dict[str, Any]) -> str:
+    mode = tool_resp.get("mode")
+    if mode == "nl_txns":
+        # tool_resp.result is the full run_txn_query dict
+        res = tool_resp.get("result")
+        return summarize_txn_result(res)
+    if mode == "charts.summary":
+        s = tool_resp.get("result") or {}
+        parts = []
+        if isinstance(s, dict):
+            if "total_spend" in s:
+                parts.append(f"Total spend {_fmt_usd(float(s['total_spend']))}")
+            if "total_income" in s:
+                parts.append(f"Income {_fmt_usd(float(s['total_income']))}")
+            if "net" in s:
+                parts.append(f"Net {_fmt_usd(float(s['net']))}")
+        window = _fmt_window(tool_resp.get("filters", {}))
+        return (", ".join(parts) or "Summary ready") + window + "."
+    if mode == "charts.flows":
+        series = tool_resp.get("result", {}).get("series") if isinstance(tool_resp.get("result"), dict) else None
+        n = len(series or [])
+        window = _fmt_window(tool_resp.get("filters", {}))
+        return f"Returned {n} flow points{window}."
+    if mode == "charts.merchants":
+        rows = tool_resp.get("result") or []
+        top = ", ".join(f"{(r.get('merchant') or '?')} ({_fmt_usd(float(r.get('amount') or r.get('spend') or 0))})" for r in rows[:3])
+        window = _fmt_window(tool_resp.get("filters", {}))
+        return f"Top merchants{window}: {top}." if top else f"No merchant data{window}."
+    if mode == "charts.categories":
+        rows = tool_resp.get("result") or []
+        top = ", ".join(f"{(r.get('category') or '?')} ({_fmt_usd(float(r.get('spend') or 0))})" for r in rows[:3])
+        window = _fmt_window(tool_resp.get("filters", {}))
+        return f"Top categories{window}: {top}." if top else f"No category data{window}."
+    if mode == "report.link":
+        kind = tool_resp.get("meta", {}).get("kind", "report").upper()
+        window = _fmt_window(tool_resp.get("filters", {}))
+        return f"{kind} export link is ready{window}."
+    if mode == "budgets.read":
+        return tool_resp.get("message", "Budgets view")
+    return "OK."
+
+
+def _try_llm_rephrase_tool(user_text: str, tool_resp: Dict[str, Any], summary: str) -> Optional[str]:
+    # Default off in dev for determinism
+    if getattr(settings, "ENV", "dev") != "prod" and getattr(settings, "DEBUG", True):
+        return None
+    try:
+        slim = {
+            "mode": tool_resp.get("mode"),
+            "filters": tool_resp.get("filters"),
+            "preview": (tool_resp.get("result") or [])[:5] if isinstance(tool_resp.get("result"), list) else tool_resp.get("result"),
+            "url": tool_resp.get("url"),
+        }
+        system = (
+            "You will rephrase a financial reply that is already CORRECT.\n"
+            "Rules:\n"
+            "1) DO NOT change any numbers, totals, counts, or date ranges.\n"
+            "2) Keep to one short, clear sentence.\n"
+            "3) You may refer to links as 'the download link' without changing them.\n"
+            "4) Never invent data beyond the provided JSON."
+        )
+        user = (
+            f"User text: {user_text}\n"
+            f"Deterministic summary: {summary}\n"
+            f"Structured (JSON):\n{json.dumps(slim, ensure_ascii=False)}"
+        )
+        reply, _ = llm_mod.call_local_llm(
+            model=getattr(settings, "DEFAULT_LLM_MODEL", "gpt-oss:20b"),
+            messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
+            temperature=0.1,
+            top_p=0.9,
+        )
+        text = (reply or "").strip()
+        if not text or len(text) > 300:
+            return None
+        return text
+    except Exception:
+        return None
 
 # Legacy compatibility endpoints
 @router.get("/status")
