@@ -51,3 +51,27 @@ ANOMALY_IGNORES: Set[str] = set()
 def current_month_key(today: date | None = None) -> str:
     d = today or date.today()
     return f"{d.year:04d}-{d.month:02d}"
+
+# ---------------------------------------------------------------------------
+# Persisted Rule Suggestions (in-memory stub)
+# ---------------------------------------------------------------------------
+from typing import Dict, Literal
+from datetime import datetime  # noqa: F401  # used by routers for timestamps
+
+SuggestionStatus = Literal["new", "accepted", "dismissed"]
+
+# Simple in-memory store keyed by autoincrement id
+PERSISTED_SUGGESTIONS: Dict[int, dict] = {}
+PERSISTED_SUGGESTIONS_SEQ: int = 1  # simple autoincrement
+
+def _sugg_key(merchant: str, category: str) -> str:
+    return f"{merchant}||{category}".lower()
+
+# index to de-dupe by (merchant,category)
+PERSISTED_SUGGESTIONS_IDX: Dict[str, int] = {}
+
+def persisted_suggestions_reset():
+    global PERSISTED_SUGGESTIONS, PERSISTED_SUGGESTIONS_SEQ, PERSISTED_SUGGESTIONS_IDX
+    PERSISTED_SUGGESTIONS = {}
+    PERSISTED_SUGGESTIONS_SEQ = 1
+    PERSISTED_SUGGESTIONS_IDX = {}

@@ -22,6 +22,7 @@ import { setGlobalMonth } from "./state/month";
 import { Providers } from "@/components/Providers";
 import RuleSuggestionsPersistentPanel from "@/components/RuleSuggestionsPersistentPanel";
 import InsightsAnomaliesCard from "./components/InsightsAnomaliesCard";
+import ErrorBoundary from "@/components/ErrorBoundary";
 
 // Log frontend version info
 console.info("[Web] branch=", __WEB_BRANCH__, "commit=", __WEB_COMMIT__);
@@ -164,7 +165,9 @@ const App: React.FC = () => {
 
         {/* Persistent rule suggestions table */}
         <div id="rule-suggestions">
-          <RuleSuggestionsPersistentPanel />
+          <ErrorBoundary fallback={(e)=> <div className="text-sm text-red-500">Failed to render suggestions: {String(e?.message||e)}</div>}>
+            <RuleSuggestionsPersistentPanel />
+          </ErrorBoundary>
         </div>
 
         {/* Rules + Tester */}

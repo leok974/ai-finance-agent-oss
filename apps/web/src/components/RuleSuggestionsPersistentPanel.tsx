@@ -1,58 +1,64 @@
-import React, { useMemo, useState } from "react";
+import React from "react";
 import Card from "./Card";
-import { useRuleSuggestions } from "@/hooks/useRuleSuggestions";
-import { useOkErrToast } from "@/lib/toast-helpers";
+import { showToast } from "@/lib/toast-helpers";
+import {
+  listPersistedSuggestions,
+  acceptSuggestion,
+  dismissSuggestion,
+  listRuleSuggestionsPersistent,
+  applyRuleSuggestion,
+  ignoreRuleSuggestion,
+} from "@/lib/api";
+import type { RuleSuggestion } from "@/types/rules";
 
-function fmtPct(n: number) {
-  return `${(n * 100).toFixed(0)}%`;
-}
+type RowModel =
+  | ({ kind: "persisted"; id: number; status: "new" | "accepted" | "dismissed" } & Pick<RuleSuggestion, "merchant" | "category" | "count" | "window_days">)
+  | ({ kind: "mined" } & RuleSuggestion);
 
 export default function RuleSuggestionsPersistentPanel() {
-  const { items, loading, error, query, setFilter, accept, dismiss } = useRuleSuggestions({ limit: 50 });
-  const [merchantFilter, setMerchantFilter] = useState(query.merchant_norm ?? "");
-  const [categoryFilter, setCategoryFilter] = useState(query.category ?? "");
-  const { ok, err } = (useOkErrToast as any)?.() ?? { ok: console.log, err: console.error };
-  const [busyIds, setBusyIds] = useState<Set<number>>(new Set());
-  const addBusy = (id: number) => setBusyIds(prev => new Set(prev).add(id));
-  const removeBusy = (id: number) => setBusyIds(prev => { const n = new Set(prev); n.delete(id); return n; });
+  const [loading, setLoading] = React.useState(false);
+  const [rows, setRows] = React.useState<RowModel[]>([]);
+  const [error, setError] = React.useState<string | null>(null);
 
-  // derive a local map for quick lookups if needed (optional)
-  const busyMap = useMemo(() => busyIds, [busyIds]);
+  const load = React.useCallback(async () => {
+    setLoading(true); setError(null);
+    try {
+      const persisted = await listPersistedSuggestions();
+      if (Array.isArray(persisted) && persisted.length) {
+        const mapped: RowModel[] = persisted
+          .filter(s => s.status === "new")
+          .map(s => ({
+            kind: "persisted",
+            id: s.id,
+            status: s.status,
+            merchant: s.merchant,
+            category: s.category,
+            count: s.count ?? 0,
+            window_days: s.window_days ?? 60,
+          }));
+        setRows(mapped);
+      } else {
+        const mined = await listRuleSuggestionsPersistent({ windowDays: 60, minCount: 3, maxResults: 25 });
+        const arr = Array.isArray(mined?.suggestions) ? mined.suggestions : [];
+        setRows(arr.map(s => ({ kind: "mined", ...s })));
+      }
+    } catch (e: any) {
+      setError(e?.message ?? "Failed to load suggestions");
+      setRows([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  React.useEffect(() => { load(); }, [load]);
 
   return (
     <Card>
       <header className="flex items-center gap-3 pb-1 mb-3 border-b border-border">
-        <h3 className="text-base font-semibold">Rule Suggestions (persistent)</h3>
+        <h3 className="text-base font-semibold">Rule Suggestions</h3>
         <div className="ml-auto flex items-end gap-2">
-          <div>
-            <label className="block text-xs opacity-70">Merchant</label>
-            <input
-              value={merchantFilter}
-              onChange={(e) => setMerchantFilter(e.target.value)}
-              placeholder="normalized merchant"
-              className="bg-transparent border border-border rounded px-2 py-1 min-w-[160px]"
-            />
-          </div>
-          <div>
-            <label className="block text-xs opacity-70">Category</label>
-            <input
-              value={categoryFilter}
-              onChange={(e) => setCategoryFilter(e.target.value)}
-              placeholder="category"
-              className="bg-transparent border border-border rounded px-2 py-1 min-w-[140px]"
-            />
-          </div>
-          <button
-            className="btn btn-sm"
-            onClick={() => setFilter({ merchant_norm: merchantFilter || undefined, category: categoryFilter || undefined })}
-          >
-            Apply
-          </button>
-          <button
-            className="btn btn-ghost btn-sm"
-            onClick={() => { setMerchantFilter(""); setCategoryFilter(""); setFilter({ merchant_norm: undefined, category: undefined }); }}
-          >
-            Reset
+          <button className="btn btn-ghost btn-sm" onClick={load} disabled={loading}>
+            {loading ? "Refreshing…" : "Refresh"}
           </button>
         </div>
       </header>
@@ -60,73 +66,105 @@ export default function RuleSuggestionsPersistentPanel() {
       {loading && <div className="text-sm opacity-70">Loading…</div>}
       {error && <div className="text-sm text-red-500">{error}</div>}
 
-      <div className="overflow-x-auto">
-        <table className="min-w-full border border-border rounded-lg overflow-hidden">
-          <thead className="bg-muted/30 text-left">
-            <tr>
-              <th className="px-3 py-2 border-b">Merchant</th>
-              <th className="px-3 py-2 border-b">Category</th>
-              <th className="px-3 py-2 border-b">Support</th>
-              <th className="px-3 py-2 border-b">Positive</th>
-              <th className="px-3 py-2 border-b">Last Seen</th>
-              <th className="px-3 py-2 border-b"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {items.length === 0 && !loading ? (
-              <tr>
-                <td colSpan={6} className="px-3 py-6 text-center opacity-70">No suggestions yet.</td>
-              </tr>
-            ) : (
-              items.map((s) => (
-                <tr key={s.id} className="hover:bg-muted/20">
-                  <td className="px-3 py-2 border-b align-top">{s.merchant_norm}</td>
-                  <td className="px-3 py-2 border-b align-top">{s.category}</td>
-                  <td className="px-3 py-2 border-b align-top">{s.support}</td>
-                  <td className="px-3 py-2 border-b align-top">{fmtPct(s.positive_rate)}</td>
-                  <td className="px-3 py-2 border-b align-top">{s.last_seen ? new Date(s.last_seen).toLocaleString() : "—"}</td>
-                  <td className="px-3 py-2 border-b align-top">
-                    <div className="flex gap-2">
-                      <button
-                        className="btn btn-sm"
-                        disabled={busyMap.has(s.id)}
-                        onClick={async () => {
-                          addBusy(s.id);
-                          try {
-                            const res = await accept(s.id);
-                            ok("Rule created", `${s.merchant_norm} → ${s.category}  ${res?.rule_id ? `(rule #${res.rule_id})` : ''}`.trim());
-                            // Optimistic remove: locally hide the row (rely on refresh in hook too)
-                            // Note: keeping UI simple; underlying hook refresh will reconcile
-                          } catch (e: any) {
-                            err("Failed to accept", e?.message ?? String(e));
-                          } finally { removeBusy(s.id); }
-                        }}
-                      >
-                        Accept → Rule
-                      </button>
-                      <button
-                        className="btn btn-ghost btn-sm"
-                        disabled={busyMap.has(s.id)}
-                        onClick={async () => {
-                          addBusy(s.id);
-                          try {
-                            await dismiss(s.id);
-                            ok("Dismissed", `${s.merchant_norm} → ${s.category}`);
-                          } catch (e: any) {
-                            err("Failed to dismiss", e?.message ?? String(e));
-                          } finally { removeBusy(s.id); }
-                        }}
-                      >
-                        Dismiss
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+      {!loading && !error && rows.length === 0 && (
+        <div className="px-3 py-6 text-center opacity-70">No suggestions right now.</div>
+      )}
+
+      <div className="space-y-2">
+        {rows.map((s, i) => (
+          <SuggestionRow key={`${s.kind}-${s.merchant}-${s.category}-${i}`} s={s} onChanged={load} />
+        ))}
       </div>
     </Card>
+  );
+}
+
+function SuggestionRow({ s, onChanged }: { s: RowModel; onChanged: () => void }) {
+  const [busy, setBusy] = React.useState<null | "apply" | "ignore" | "accept" | "dismiss">(null);
+
+  const merchant = s.merchant ?? "—";
+  const category = s.category ?? "—";
+  const meta = <div className="text-xs opacity-70">Seen {s.count ?? 0}× in last {s.window_days ?? 60} days</div>;
+
+  async function doAccept() {
+    if (s.kind !== "persisted") return;
+    setBusy("accept");
+    try {
+      await acceptSuggestion(s.id);
+      showToast?.(`Accepted: ${merchant} → ${category}`, { type: "success" });
+    } catch (e:any) {
+      showToast?.(e?.message ?? "Failed to accept", { type: "error" });
+    } finally { setBusy(null); onChanged(); }
+  }
+  async function doDismiss() {
+    if (s.kind !== "persisted") return;
+    setBusy("dismiss");
+    try {
+      await dismissSuggestion(s.id);
+      showToast?.(`Dismissed: ${merchant} → ${category}`, { type: "success" });
+    } catch (e:any) {
+      showToast?.(e?.message ?? "Failed to dismiss", { type: "error" });
+    } finally { setBusy(null); onChanged(); }
+  }
+
+  return (
+    <div className="flex items-center justify-between border border-border rounded-lg px-3 py-2">
+      <div>
+        <div className="font-medium">{merchant} → {category}</div>
+        {meta}
+      </div>
+
+      {s.kind === "persisted" ? (
+        <div className="flex items-center gap-2">
+          <button
+            className="rounded-md border border-border px-2 py-1 text-xs disabled:opacity-60"
+            disabled={busy === "accept"}
+            onClick={doAccept}
+          >
+            {busy === "accept" ? "Accepting…" : "Accept"}
+          </button>
+          <button
+            className="rounded-md border border-border px-2 py-1 text-xs disabled:opacity-60"
+            disabled={busy === "dismiss"}
+            onClick={doDismiss}
+          >
+            {busy === "dismiss" ? "Dismissing…" : "Dismiss"}
+          </button>
+        </div>
+      ) : (
+        <div className="flex items-center gap-2">
+          <button
+            className="rounded-md border border-border px-2 py-1 text-xs disabled:opacity-60"
+            disabled={busy === "apply"}
+            onClick={async () => {
+              setBusy("apply");
+              try {
+                await applyRuleSuggestion({ merchant, category });
+                showToast?.(`Rule added: ${merchant} → ${category}`, { type: "success" });
+              } catch (e:any) {
+                showToast?.(e?.message ?? "Failed to apply", { type: "error" });
+              } finally { setBusy(null); onChanged(); }
+            }}
+          >
+            {busy === "apply" ? "Applying…" : "Apply"}
+          </button>
+          <button
+            className="rounded-md border border-border px-2 py-1 text-xs disabled:opacity-60"
+            disabled={busy === "ignore"}
+            onClick={async () => {
+              setBusy("ignore");
+              try {
+                await ignoreRuleSuggestion({ merchant, category });
+                showToast?.(`Ignored ${merchant} → ${category}`, { type: "success" });
+              } catch (e:any) {
+                showToast?.(e?.message ?? "Failed to ignore", { type: "error" });
+              } finally { setBusy(null); onChanged(); }
+            }}
+          >
+            {busy === "ignore" ? "Ignoring…" : "Ignore"}
+          </button>
+        </div>
+      )}
+    </div>
   );
 }

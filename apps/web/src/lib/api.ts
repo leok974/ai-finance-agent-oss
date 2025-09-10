@@ -1,3 +1,5 @@
+import { RuleSuggestion as MinedRuleSuggestionStrict, isRuleSuggestionArray } from "@/types/rules";
+
 // Resolve API base from env, with a dev fallback when running Vite on port 5173
 export const API_BASE = (import.meta as any)?.env?.VITE_API_BASE
   || (typeof window !== "undefined" && window.location?.port === "5173" ? "http://127.0.0.1:8000" : "");
@@ -66,6 +68,18 @@ async function http<T=any>(path: string, init?: RequestInit): Promise<T> {
   }
   const ct = res.headers.get('content-type') || '';
   return ct.includes('application/json') ? res.json() : (await res.text() as any);
+}
+
+// ---- Suggestions normalizer (array-shape resilience) ----
+export function normalizeSuggestions(payload: any): MinedRuleSuggestionStrict[] {
+  if (isRuleSuggestionArray(payload)) return payload;
+  if (payload && typeof payload === "object") {
+    if (isRuleSuggestionArray((payload as any).suggestions)) return (payload as any).suggestions;
+    if (isRuleSuggestionArray((payload as any).items)) return (payload as any).items;
+    const vals = Object.values(payload);
+    if (isRuleSuggestionArray(vals)) return vals;
+  }
+  return [];
 }
 
 // ---------- Health ----------
@@ -364,7 +378,7 @@ export async function createRule(body: RuleInput): Promise<RuleCreateResponse> {
 export const mlSuggest = (month: string, limit=100, topk=3) => http(`/ml/suggest${q({ month, limit, topk })}`)
 
 // ---------- Rule Suggestions (persistent) ----------
-export type RuleSuggestion = {
+export type PersistedRuleSuggestion = {
   id: number;
   merchant_norm: string;
   category: string;
@@ -375,10 +389,90 @@ export type RuleSuggestion = {
 };
 export async function listRuleSuggestions(params: { merchant_norm?: string; category?: string; limit?: number; offset?: number } = {}) {
   const qs = q(params as any);
-  return http<RuleSuggestion[]>(`/rules/suggestions${qs}`);
+  return http<PersistedRuleSuggestion[]>(`/rules/suggestions${qs}`);
 }
 export const acceptRuleSuggestion = (id: number) => http<{ ok: boolean; rule_id: number }>(`/rules/suggestions/${id}/accept`, { method: 'POST' });
 export const dismissRuleSuggestion = (id: number) => http<{ ok: boolean }>(`/rules/suggestions/${id}/dismiss`, { method: 'POST' });
+
+// ---------- Rule Suggestions (mined summary) ----------
+export type MinedRuleSuggestion = {
+  merchant: string;
+  category: string;
+  count: number;
+  window_days: number;
+  sample_txn_ids: number[];
+  recent_month_key?: string | null;
+};
+export type RuleSuggestionsSummary = {
+  window_days: number;
+  min_count: number;
+  suggestions: MinedRuleSuggestion[];
+};
+
+export function listRuleSuggestionsSummary(params?: {
+  windowDays?: number;
+  minCount?: number;
+  maxResults?: number;
+  excludeMerchants?: string[];
+  excludeCategories?: string[];
+}) {
+  const qp: Record<string, string> = {};
+  if (params?.windowDays != null) qp.window_days = String(params.windowDays);
+  if (params?.minCount != null) qp.min_count = String(params.minCount);
+  if (params?.maxResults != null) qp.max_results = String(params.maxResults);
+  if (params?.excludeMerchants?.length) qp.exclude_merchants = params.excludeMerchants.join(",");
+  if (params?.excludeCategories?.length) qp.exclude_categories = params.excludeCategories.join(",");
+  const qs = q(qp);
+  return http<RuleSuggestionsSummary>(`/rules/suggestions${qs}`);
+}
+
+export const applyRuleSuggestion = (payload: { merchant: string; category: string; backfill_month?: string | null }) =>
+  http<{ ok: boolean; rule_id: number; merchant: string; category: string; applied_backfill_month?: string | null }>(
+    `/rules/suggestions/apply`,
+    { method: 'POST', body: JSON.stringify(payload) }
+  );
+
+export const ignoreRuleSuggestion = (payload: { merchant: string; category: string }) =>
+  http<{ ignored: Array<{ merchant: string; category: string }> }>(
+    `/rules/suggestions/ignore`,
+    { method: 'POST', body: JSON.stringify(payload) }
+  );
+
+// Convenience: persistent-style wrapper that always returns an object with `.suggestions` array
+export const listRuleSuggestionsPersistent = async (params?: { windowDays?: number; minCount?: number; maxResults?: number }): Promise<{ suggestions: MinedRuleSuggestionStrict[] }> => {
+  const p = new URLSearchParams();
+  if (params?.windowDays) p.set("window_days", String(params.windowDays));
+  if (params?.minCount) p.set("min_count", String(params.minCount));
+  if (params?.maxResults) p.set("max_results", String(params.maxResults));
+  const res = await http<any>(`/rules/suggestions${p.toString() ? `?${p.toString()}` : ''}`);
+  return { suggestions: normalizeSuggestions(res) };
+};
+
+// ---- Persisted suggestions helpers (optional; 404-safe) ----
+export type PersistedSuggestion = {
+  id: number;
+  merchant: string;
+  category: string;
+  status: "new" | "accepted" | "dismissed";
+  count?: number;
+  window_days?: number;
+};
+
+export const listPersistedSuggestions = async (): Promise<PersistedSuggestion[]> => {
+  try {
+    const res = await http<{ suggestions: PersistedSuggestion[] }>("/rules/suggestions/persistent");
+    return Array.isArray((res as any)?.suggestions) ? (res as any).suggestions : [];
+  } catch (e: any) {
+    // Fallback on 404 or any error
+    return [];
+  }
+};
+
+export const acceptSuggestion = (id: number) =>
+  http<{ ok: boolean; id: number; status: "accepted" }>(`/rules/suggestions/${id}/accept`, { method: "POST" });
+
+export const dismissSuggestion = (id: number) =>
+  http<{ ok: boolean; id: number; status: "dismissed" }>(`/rules/suggestions/${id}/dismiss`, { method: "POST" });
 // ---------- ML Train ----------
 export async function mlTrain(month?: string, passes = 1, min_samples = 25) {
   const body = { month, passes, min_samples };

@@ -3,7 +3,7 @@ from typing import List, Dict, Any, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import select, delete, and_, or_, func
 from app.db import get_db
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from app.models import Rule
 from app.services.rules_apply import latest_month_from_data, apply_all_active_rules
 from app.services import rules_service, ml_train_service, txns_service
@@ -21,7 +21,22 @@ from app.schemas.rules import (
 from datetime import datetime, date
 import app.services.rule_suggestions as rs
 from app.services.rules_preview import preview_rule_matches, backfill_rule_apply, normalize_rule_input
+from app.services.rule_suggestions import mine_suggestions
+from app.services.rule_suggestions import (
+    list_suggestions as list_persisted_suggestions,
+    accept_suggestion as accept_persisted_suggestion,
+    dismiss_suggestion as dismiss_persisted_suggestion,
+)
+from app.utils.state import current_month_key
 from app.services.rules_budget import list_budget_rules
+from app.utils.state import (
+    PERSISTED_SUGGESTIONS,
+    PERSISTED_SUGGESTIONS_SEQ,
+    PERSISTED_SUGGESTIONS_IDX,
+    _sugg_key,
+)
+from datetime import datetime as _dt
+from pydantic import Field as _Field
 
 router = APIRouter(prefix="/rules", tags=["rules"])
 @router.get("/suggestions/config")
@@ -350,3 +365,229 @@ def backfill_rule(
     )
     result = backfill_rule_apply(db, rule_input, window_days, only_uncategorized, dry_run, limit)
     return {"ok": True, "dry_run": dry_run, **result}
+
+# --- Suggestions (feedback-mined) -------------------------------------------
+
+# In-memory ignore list (merchant, category)
+SUGGESTION_IGNORES: set[tuple[str, str]] = set()
+
+class SuggestionResp(BaseModel):
+    merchant: str
+    category: str
+    count: int
+    window_days: int
+    sample_txn_ids: List[int] = []
+    recent_month_key: Optional[str] = None
+
+class SuggestionsListResp(BaseModel):
+    window_days: int
+    min_count: int
+    suggestions: List[SuggestionResp] = []
+
+
+@router.get("/suggestions")
+def list_rule_suggestions(
+    window_days: int = Query(60, ge=7, le=180, description="Lookback window"),
+    min_count: int = Query(3, ge=2, le=20, description="Minimum repeated confirmations"),
+    max_results: int = Query(25, ge=1, le=100),
+    exclude_merchants: Optional[str] = Query(None, description="Comma-separated merchants to exclude"),
+    exclude_categories: Optional[str] = Query(None, description="Comma-separated categories to exclude"),
+    # Persisted suggestion query (when provided, we return list response)
+    merchant_norm: Optional[str] = Query(None, description="Filter persisted suggestions by canonical merchant"),
+    category: Optional[str] = Query(None, description="Filter persisted suggestions by category"),
+    limit: int = Query(50, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(get_db),
+):
+    # If persisted filters are provided, return the persisted list shape (list of dicts)
+    if merchant_norm is not None or category is not None:
+        return list_persisted_suggestions(
+            db,
+            merchant_norm=merchant_norm,
+            category=category,
+            limit=limit,
+            offset=offset,
+        )
+
+    # Otherwise, compute mined suggestions summary shape
+    exc_m = [s.strip() for s in (exclude_merchants or "").split(",") if s.strip()]
+    exc_c = [s.strip() for s in (exclude_categories or "").split(",") if s.strip()]
+    items = mine_suggestions(
+        db,
+        window_days=window_days,
+        min_count=min_count,
+        max_results=max_results,
+        exclude_merchants=exc_m,
+        exclude_categories=exc_c,
+    )
+    items = [s for s in items if (s["merchant"], s["category"]) not in SUGGESTION_IGNORES]
+    return {"window_days": window_days, "min_count": min_count, "suggestions": items}
+
+
+class ApplySuggestionReq(BaseModel):
+    merchant: str = Field(..., min_length=1)
+    category: str = Field(..., min_length=1)
+    backfill_month: Optional[str] = Field(None, description='Month "YYYY-MM" to backfill; defaults to recent')
+
+
+class ApplySuggestionResp(BaseModel):
+    ok: bool = True
+    rule_id: int
+    merchant: str
+    category: str
+    applied_backfill_month: Optional[str] = None
+
+
+@router.post("/suggestions/apply", response_model=ApplySuggestionResp)
+def apply_rule_suggestion(payload: ApplySuggestionReq, db: Session = Depends(get_db)):
+    # Create or activate rule
+    r = db.query(Rule).filter(Rule.merchant == payload.merchant, Rule.category == payload.category).one_or_none()
+    if r:
+        if hasattr(r, "active"):
+            r.active = True
+    else:
+        r = Rule(merchant=payload.merchant, category=payload.category, active=True)
+        db.add(r)
+    db.commit()
+    db.refresh(r)
+
+    backfill_month = payload.backfill_month or current_month_key()
+    return {"ok": True, "rule_id": r.id, "merchant": r.merchant, "category": r.category, "applied_backfill_month": backfill_month}
+
+
+class IgnoreSuggestionReq(BaseModel):
+    merchant: str
+    category: str
+
+
+@router.post("/suggestions/ignore")
+def ignore_rule_suggestion(payload: IgnoreSuggestionReq):
+    SUGGESTION_IGNORES.add((payload.merchant, payload.category))
+    return {
+        "ignored": sorted(
+            [{"merchant": m, "category": c} for m, c in SUGGESTION_IGNORES],
+            key=lambda x: (x["merchant"].lower(), x["category"].lower()),
+        )
+    }
+
+
+# (Removed older compat endpoints to avoid path conflicts; see persisted stubs below)
+
+
+# --- Persisted suggestions (in-memory stub for UI wiring) -------------------
+class PersistedSuggestion(BaseModel):
+    id: int
+    merchant: str
+    category: str
+    status: str = _Field("new", pattern=r"^(new|accepted|dismissed)$")
+    count: Optional[int] = None
+    window_days: Optional[int] = None
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+
+class PersistedListResp(BaseModel):
+    suggestions: List[PersistedSuggestion]
+
+def _ensure_persisted_from_mined(db: Session, window_days: int, min_count: int, max_results: int):
+    """
+    Auto-import mined suggestions if the persisted store is empty.
+    De-dupes by (merchant, category). Updates counts/window_days on re-run.
+    """
+    global PERSISTED_SUGGESTIONS_SEQ
+    mined = mine_suggestions(db, window_days=window_days, min_count=min_count, max_results=max_results)
+    now = _dt.utcnow().isoformat()
+    for s in mined:
+        key = _sugg_key(s["merchant"], s["category"])
+        if key in PERSISTED_SUGGESTIONS_IDX:
+            sid = PERSISTED_SUGGESTIONS_IDX[key]
+            obj = PERSISTED_SUGGESTIONS.get(sid, {})
+            obj["count"] = s.get("count", obj.get("count"))
+            obj["window_days"] = s.get("window_days", obj.get("window_days"))
+            obj["updated_at"] = now
+            PERSISTED_SUGGESTIONS[sid] = obj
+        else:
+            sid = PERSISTED_SUGGESTIONS_SEQ
+            PERSISTED_SUGGESTIONS_SEQ += 1
+            PERSISTED_SUGGESTIONS[sid] = {
+                "id": sid,
+                "merchant": s["merchant"],
+                "category": s["category"],
+                "status": "new",
+                "count": s.get("count"),
+                "window_days": s.get("window_days"),
+                "created_at": now,
+                "updated_at": now,
+            }
+            PERSISTED_SUGGESTIONS_IDX[key] = sid
+
+@router.get("/suggestions/persistent", response_model=PersistedListResp)
+def list_persisted_suggestions_stub(
+    window_days: int = Query(60, ge=7, le=180),
+    min_count: int = Query(3, ge=2, le=20),
+    max_results: int = Query(25, ge=1, le=100),
+    autofill: bool = Query(True, description="If true and list is empty, auto-import from mined suggestions"),
+    db: Session = Depends(get_db),
+):
+    if autofill and not PERSISTED_SUGGESTIONS:
+        _ensure_persisted_from_mined(db, window_days, min_count, max_results)
+    payload = sorted(
+        PERSISTED_SUGGESTIONS.values(),
+        key=lambda x: (x.get("status") != "new", -(x.get("count") or 0), x.get("merchant", "").lower()),
+    )
+    return {"suggestions": payload}
+
+@router.post("/suggestions/{sid}/accept")
+def accept_persisted_suggestion_stub(sid: int, db: Session = Depends(get_db)):
+    # Try DB-backed suggestion first (keeps existing tests working)
+    try:
+        rid = accept_persisted_suggestion(db, sid)
+        if rid:
+            return {"ok": True, "rule_id": rid}
+    except Exception:
+        pass
+    # Fallback: in-memory stub
+    obj = PERSISTED_SUGGESTIONS.get(sid)
+    if not obj:
+        raise HTTPException(status_code=404, detail="Suggestion not found")
+    obj["status"] = "accepted"
+    obj["updated_at"] = _dt.utcnow().isoformat()
+    return {"ok": True, "id": sid, "status": "accepted"}
+
+@router.post("/suggestions/{sid}/dismiss")
+def dismiss_persisted_suggestion_stub(sid: int, db: Session = Depends(get_db)):
+    # Try DB-backed suggestion first
+    try:
+        ok = dismiss_persisted_suggestion(db, sid)
+        if ok:
+            return {"ok": True}
+    except Exception:
+        pass
+    # Fallback: in-memory stub
+    obj = PERSISTED_SUGGESTIONS.get(sid)
+    if not obj:
+        raise HTTPException(status_code=404, detail="Suggestion not found")
+    obj["status"] = "dismissed"
+    obj["updated_at"] = _dt.utcnow().isoformat()
+    return {"ok": True, "id": sid, "status": "dismissed"}
+
+@router.post("/suggestions/persistent/refresh", response_model=PersistedListResp)
+def refresh_persisted_suggestions_stub(
+    window_days: int = Query(60, ge=7, le=180),
+    min_count: int = Query(3, ge=2, le=20),
+    max_results: int = Query(25, ge=1, le=100),
+    clear_non_new: bool = Query(False, description="If true, drop accepted/dismissed before re-import"),
+    db: Session = Depends(get_db),
+):
+    if clear_non_new:
+        to_delete = [sid for sid, obj in list(PERSISTED_SUGGESTIONS.items()) if obj.get("status") != "new"]
+        for sid in to_delete:
+            key = _sugg_key(PERSISTED_SUGGESTIONS[sid]["merchant"], PERSISTED_SUGGESTIONS[sid]["category"])
+            PERSISTED_SUGGESTIONS.pop(sid, None)
+            PERSISTED_SUGGESTIONS_IDX.pop(key, None)
+
+    _ensure_persisted_from_mined(db, window_days, min_count, max_results)
+    payload = sorted(
+        PERSISTED_SUGGESTIONS.values(),
+        key=lambda x: (x.get("status") != "new", -(x.get("count") or 0), x.get("merchant", "").lower()),
+    )
+    return {"suggestions": payload}

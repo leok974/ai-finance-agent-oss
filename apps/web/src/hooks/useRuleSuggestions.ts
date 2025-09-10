@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { acceptRuleSuggestion, dismissRuleSuggestion, listRuleSuggestions, RuleSuggestion } from "@/lib/api";
+import { acceptRuleSuggestion, dismissRuleSuggestion, listRuleSuggestions, type PersistedRuleSuggestion } from "@/lib/api";
 
 type Query = {
   merchant_norm?: string;
@@ -9,7 +9,7 @@ type Query = {
 };
 
 export function useRuleSuggestions(initial: Query = {}) {
-  const [items, setItems] = useState<RuleSuggestion[]>([]);
+  const [items, setItems] = useState<PersistedRuleSuggestion[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState<Query>({ limit: 50, offset: 0, ...initial });

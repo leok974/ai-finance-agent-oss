@@ -1,226 +1,298 @@
 from __future__ import annotations
 
+from dataclasses import dataclass, asdict
 import os
-from datetime import datetime, timedelta, timezone
-from typing import Optional, Tuple, List, Dict, Any
-import logging
+from datetime import datetime, timedelta
+from typing import List, Dict, Any, Optional, Tuple, Set
 
+from sqlalchemy import func, and_, or_
 from sqlalchemy.orm import Session
-from sqlalchemy import func, or_
 
-from app.models import RuleSuggestion, Feedback, Transaction, Rule  # type: ignore
+from app.orm_models import Transaction, Rule, Feedback
+from app.orm_models import RuleSuggestion
+from app.utils.text import canonicalize_merchant as _canonicalize
 
 
-# Thresholds for promoting a candidate into a persistent suggestion
-MIN_SUPPORT = int(os.getenv("RULE_SUGGESTION_MIN_SUPPORT", "3"))
-MIN_POSITIVE = float(os.getenv("RULE_SUGGESTION_MIN_POSITIVE", "0.8"))
-def _read_window_days_from_env() -> Optional[int]:
-    """Read RULE_SUGGESTION_WINDOW_DAYS from env; default 30; <=0/none disables."""
-    raw = os.getenv("RULE_SUGGESTION_WINDOW_DAYS", "30")
-    try:
-        sval = (raw or "").strip().lower()
-        if sval in {"", "none", "null"}:
-            return None
-        ival = int(sval)
-        return None if ival <= 0 else ival
-    except Exception:
-        return 30
+@dataclass
+class Suggestion:
+    merchant: str
+    category: str
+    count: int
+    window_days: int
+    sample_txn_ids: List[int]
+    recent_month_key: Optional[str]
 
-# Windowing days constant for import-time visibility (tests may assert default)
-WINDOW_DAYS: Optional[int] = _read_window_days_from_env()
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
 
-def _current_window_days() -> Optional[int]:
-    """Read window from env each call to avoid stale module state after reloads in tests."""
-    return _read_window_days_from_env()
 
 def get_config() -> Dict[str, Any]:
+    """Expose config, reflecting environment variables when set.
+
+    - RULE_SUGGESTION_WINDOW_DAYS: int; when 0, treated as None (no window)
+    - RULE_SUGGESTION_MIN_SUPPORT: int
+    - RULE_SUGGESTION_MIN_POSITIVE: float in [0,1]
+    """
+    wd = _env_int("RULE_SUGGESTION_WINDOW_DAYS", 60)
+    window_days: Optional[int] = None if wd == 0 else wd
     return {
-        "min_support": MIN_SUPPORT,
-        "min_positive": MIN_POSITIVE,
-    "window_days": _current_window_days(),
+        "window_days": window_days,
+        "min_support": _env_int("RULE_SUGGESTION_MIN_SUPPORT", 3),
+        "min_positive": _env_float("RULE_SUGGESTION_MIN_POSITIVE", 0.8),
+        "max_results": 25,
     }
 
 
-def canonicalize_merchant(name: str | None) -> str:
-    """Lowercase, remove punctuation, collapse spaces.
-    Keep this in sync with any frontend or ETL canonicalization logic.
-    """
-    if not name:
-        return ""
-    out = "".join(ch.lower() if (ch.isalnum() or ch.isspace()) else " " for ch in name)
-    out = " ".join(out.split())
-    return out
-
-def _as_aware_utc(dt: datetime) -> datetime:
-    """Ensure datetime is timezone-aware in UTC for safe comparisons."""
-    if dt.tzinfo is None:
-        return dt.replace(tzinfo=timezone.utc)
-    return dt.astimezone(timezone.utc)
-
-def compute_metrics(db: Session, merchant_norm: str, category: str) -> Optional[Tuple[int, float, datetime]]:
-    """Compute support, positive_rate, and last_seen.
-
-    SQL side:
-      - Join Feedback -> Transaction
-      - Filter by Feedback.label (category) and optional created_at cutoff
-
-    Python side:
-      - Canonicalize Transaction.merchant and compare to merchant_norm
-      - Count Feedback.source values ("accept" and "reject")
-    """
-    wd = _current_window_days()
-    cutoff: Optional[datetime] = None
-    if wd is not None and int(wd) > 0:
-        cutoff = datetime.now(timezone.utc) - timedelta(days=int(wd))
-
-    q = (
-        db.query(Feedback, Transaction)
-        .join(Transaction, Feedback.txn_id == Transaction.id)
-        .filter(func.lower(Feedback.label) == category.lower())
-    )
-    # Prefer stored canonical if available; fallback to Python canonicalization below
-    use_sql_canon = hasattr(Transaction, "merchant_canonical")
-    if use_sql_canon:
-        q = q.filter(func.lower(getattr(Transaction, "merchant_canonical")) == merchant_norm.lower())
-    if cutoff is not None:
-        # Inclusive by day: treat any feedback on the cutoff day as in-window
-        q = q.filter(func.date(Feedback.created_at) >= cutoff.date())
-
-    rows = q.all()
-    if not rows:
-        return None
-
-    accepts = 0
-    total = 0
-    label_matches = 0
-    last_seen: Optional[datetime] = None
-    for fb, txn in rows:
-        if not use_sql_canon:
-            mnorm = canonicalize_merchant((getattr(txn, "merchant", None) or "").strip())
-            if mnorm != merchant_norm:
-                continue
-        # Count any label match for fallback behavior
-        label_matches += 1
-        src = (getattr(fb, "source", "") or "").strip().lower()
-        if src in ("accept", "reject"):
-            total += 1
-        if src == "accept":
-            accepts += 1
-        ts = getattr(fb, "created_at", None)
-        if ts is not None:
-            last_seen = max(last_seen or ts, ts)
-
-    if total == 0:
-        if label_matches == 0:
-            return None
-        accepts = label_matches
-        total = label_matches
-    rate = accepts / total if total else 0.0
-    return accepts, rate, (last_seen or datetime.now(timezone.utc))
+def _recent_window(now: Optional[datetime], days: int) -> Tuple[datetime, datetime]:
+    end = now or datetime.utcnow()
+    start = end - timedelta(days=days)
+    return start, end
 
 
-def _has_in_window_feedback(db: Session, merchant_norm: str, category: str) -> bool:
-    """Fast check: is there at least one feedback row within the active window
-    for this merchant/category pair? Used to avoid suggestions based only on old data.
-    """
-    wd = _current_window_days()
-    if wd is None:
-        return True
-    now = datetime.now(timezone.utc)
-    cutoff_date = (now - timedelta(days=int(wd))).date()
+def _active_rule_pairs(db: Session) -> Set[tuple[str | None, str]]:
     rows = (
-        db.query(Feedback, Transaction)
-        .join(Transaction, Feedback.txn_id == Transaction.id)
+        db.query(Rule.merchant, Rule.category)
+        .filter(or_(Rule.active == True, Rule.active.is_(None)))
         .all()
     )
-    cat_lower = (category or "").strip().lower()
-    for fb, txn in rows:
-        mnorm = canonicalize_merchant((getattr(txn, "merchant", None) or "").strip())
-        if mnorm != merchant_norm:
-            continue
-        if (getattr(fb, "label", "") or "").strip().lower() != cat_lower:
-            continue
-        ts_raw = getattr(fb, "created_at", None) or datetime.fromtimestamp(0, tz=timezone.utc)
-        ts = _as_aware_utc(ts_raw)
-        if ts.date() >= cutoff_date:
-            return True
-    return False
+    return set((m, c) for m, c in rows if c)
 
 
-def upsert_suggestion(
+# ---- Module config (reloadable via importlib.reload in tests) -------------
+def _env_int(name: str, default: int) -> int:
+    try:
+        return int(os.getenv(name, str(default)))
+    except Exception:
+        return default
+
+
+def _env_float(name: str, default: float) -> float:
+    try:
+        return float(os.getenv(name, str(default)))
+    except Exception:
+        return default
+
+
+WINDOW_DAYS: int = _env_int("RULE_SUGGESTION_WINDOW_DAYS", 30)
+MIN_SUPPORT: int = _env_int("RULE_SUGGESTION_MIN_SUPPORT", 3)
+MIN_POSITIVE: float = _env_float("RULE_SUGGESTION_MIN_POSITIVE", 0.8)
+
+
+def canonicalize_merchant(val: Optional[str]) -> Optional[str]:
+    """Public helper used by tests and routers.
+
+    Delegates to app.utils.text.canonicalize_merchant.
+    """
+    return _canonicalize(val)
+
+
+def compute_metrics(
     db: Session,
     merchant_norm: str,
     category: str,
-    support_count: int,
-    positive_rate: float,
-    last_seen: datetime,
-) -> RuleSuggestion:
-    row = (
-        db.query(RuleSuggestion)
-        .filter(RuleSuggestion.merchant_norm == merchant_norm)
-        .filter(RuleSuggestion.category == category)
-        .one_or_none()
+) -> Optional[Tuple[int, float, datetime]]:
+    """Compute (accept_count, positive_rate, last_seen) for a merchant/category within window.
+
+    Treat sources {accept, user_change, accept_suggestion, rule_apply} as positive; {reject} as negative.
+    """
+    if not merchant_norm or not category:
+        return None
+
+    start_dt, end_dt = _recent_window(None, WINDOW_DAYS)
+    # Compare on dates to avoid flakiness at exact cutoff boundaries
+    start_date = start_dt.date()
+    end_date = end_dt.date()
+    rows = (
+        db.query(Feedback.created_at, Feedback.source, Transaction.merchant)
+        .join(Transaction, Transaction.id == Feedback.txn_id)
+        .filter(
+            Feedback.label == category,
+            func.date(Feedback.created_at) >= start_date,
+            func.date(Feedback.created_at) <= end_date,
+        )
+        .all()
     )
-    if row is None:
-        row = RuleSuggestion(
-            merchant_norm=merchant_norm,
-            category=category,
-            support_count=support_count,
-            positive_rate=positive_rate,
-            last_seen=last_seen,
-            ignored=False,
-        )
-        db.add(row)
-    else:
-        row.support_count = support_count
-        row.positive_rate = positive_rate
-        row.last_seen = last_seen
-    db.flush()
-    try:
-        logging.getLogger(__name__).info(
-            "rule_suggestion.upsert",
-            extra={
-                "merchant": merchant_norm,
-                "category": category,
-                "support": support_count,
-                "positive_rate": float(positive_rate or 0.0),
-                "last_seen": (last_seen.isoformat() if last_seen else None),
-            },
-        )
-    except Exception:
-        pass
-    return row
+    pos_sources = {"accept", "user_change", "accept_suggestion", "rule_apply"}
+    neg_sources = {"reject"}
+    pos = 0
+    neg = 0
+    last_seen: Optional[datetime] = None
+    for created_at, source, merch in rows:
+        mnorm = canonicalize_merchant(merch)
+        if (mnorm or "") != merchant_norm:
+            continue
+        if source in pos_sources:
+            pos += 1
+            if last_seen is None or (created_at and created_at > last_seen):
+                last_seen = created_at
+        elif source in neg_sources:
+            neg += 1
+
+    total = pos + neg
+    if total == 0:
+        return None
+    rate = float(pos) / float(total)
+    return pos, rate, (last_seen or end_dt)
 
 
 def evaluate_candidate(db: Session, merchant_norm: str, category: str) -> Optional[RuleSuggestion]:
-    """Return a (persisted) suggestion if thresholds are met, else None (no write)."""
+    """Upsert RuleSuggestion based on recent feedback.
+
+    Strategy:
+    - Try to compute metrics from Feedback; if available, snapshot them onto the suggestion.
+    - Otherwise, increment a per-(merchant_norm, category) counter (called on accept only).
+    - Return the row only once thresholds are met; else return None.
+    """
+    now = datetime.utcnow()
+    # Upsert row first so we can increment when metrics aren't derivable
+    row = (
+        db.query(RuleSuggestion)
+        .filter(RuleSuggestion.merchant_norm == merchant_norm, RuleSuggestion.category == category)
+        .one_or_none()
+    )
+    created = False
+    if row is None:
+        row = RuleSuggestion(merchant_norm=merchant_norm, category=category, support_count=0, positive_rate=1.0, last_seen=now)
+        db.add(row)
+        created = True
+
+    # Try metrics from feedback
     metrics = compute_metrics(db, merchant_norm, category)
-    if not metrics:
-        return None
-    support_count, rate, last_seen = metrics
-    # If all feedback is outside the window, do not suggest
-    if not _has_in_window_feedback(db, merchant_norm, category):
-        return None
-    # Safety gate: if windowing is enabled, require last_seen to be within the window
-    wd = _current_window_days()
-    if wd is not None:
-        now = datetime.now(timezone.utc)
-        cutoff_date = (now - timedelta(days=int(wd))).date()
-        if last_seen.date() < cutoff_date:
-            return None
-    if support_count < MIN_SUPPORT or rate < MIN_POSITIVE:
-        return None
+    if metrics:
+        accepts, rate, last_seen = metrics
+        row.support_count = int(accepts)
+        row.positive_rate = float(rate)
+        row.last_seen = last_seen
+    else:
+        # Incremental count on accept path (no reject info available here)
+        try:
+            row.support_count = int(getattr(row, "support_count", 0) or 0) + 1
+        except Exception:
+            row.support_count = 1
+        row.positive_rate = 1.0
+        row.last_seen = now
 
-    # TODO: At a later step, add a coverage check to avoid suggesting categories
-    # that are already enforced by an existing Rule.
-    # Example:
-    #   covered = db.query(Rule).filter(... pattern matches merchant_norm ...).first()
-    #   if covered: return None
+    db.flush()
+    try:
+        db.refresh(row)
+    except Exception:
+        pass
 
-    return upsert_suggestion(db, merchant_norm, category, support_count, rate, last_seen)
+    if row.support_count >= MIN_SUPPORT and row.positive_rate >= MIN_POSITIVE:
+        return row
+    # If we just created the row and thresholds not met, keep it but return None
+    return None
 
 
-# ---------------- Public service APIs for router ----------------------------
+def mine_suggestions(
+    db: Session,
+    window_days: int = 60,
+    min_count: int = 3,
+    max_results: int = 25,
+    exclude_merchants: Optional[List[str]] = None,
+    exclude_categories: Optional[List[str]] = None,
+) -> List[Dict[str, Any]]:
+    """Aggregate recent Feedback into merchant→category suggestions.
+
+    Uses Feedback.label as the proposed category and joins Transaction for merchant.
+    Skips pairs already covered by an active Rule and returns a few sample txn IDs.
+    """
+    exc_m = {m.lower() for m in (exclude_merchants or [])}
+    exc_c = {c.lower() for c in (exclude_categories or [])}
+
+    start, end = _recent_window(None, window_days)
+
+    agg_q = (
+        db.query(
+            Transaction.merchant_canonical.label("mcanon"),
+            Feedback.label.label("category"),
+            func.count(Feedback.id).label("cnt"),
+        )
+        .join(Transaction, Transaction.id == Feedback.txn_id)
+        .filter(
+            and_(
+                Feedback.created_at >= start,
+                Feedback.created_at <= end,
+                Transaction.merchant_canonical.isnot(None),
+                Transaction.merchant_canonical != "",
+                Feedback.label.isnot(None),
+                Feedback.label != "",
+            )
+        )
+    .group_by(Transaction.merchant_canonical, Feedback.label)
+        .order_by(func.count(Feedback.id).desc(), Transaction.merchant_canonical.asc(), Feedback.label.asc())
+    )
+
+    rows = agg_q.all()
+    if not rows:
+        return []
+
+    def _base_canon(s: str) -> str:
+        parts = [p for p in (s or "").split() if not p.isdigit()]
+        return " ".join(parts) or s
+
+    active_pairs = _active_rule_pairs(db)
+    # First, merge counts by base canonical (strip numeric-only tokens)
+    merged: Dict[Tuple[str, str], int] = {}
+    for mcanon, category, cnt in rows:
+        if not mcanon or not category:
+            continue
+        base = _base_canon(mcanon)
+        key = (base, category)
+        merged[key] = merged.get(key, 0) + int(cnt)
+
+    suggestions: List[Suggestion] = []
+    for (base_mcanon, category), cnt in merged.items():
+        if int(cnt) < int(min_count or 0):
+            continue
+        if base_mcanon.lower() in exc_m or category.lower() in exc_c:
+            continue
+        if (base_mcanon, category) in active_pairs:
+            continue
+
+        sample_rows = (
+            db.query(Transaction.id)
+            .filter(
+                and_(
+                    or_(
+                        Transaction.merchant_canonical == base_mcanon,
+                        Transaction.merchant_canonical.like(f"{base_mcanon}%"),
+                    ),
+                    Transaction.date >= start.date(),
+                    Transaction.date <= end.date(),
+                )
+            )
+            .order_by(Transaction.date.desc(), Transaction.id.desc())
+            .limit(5)
+            .all()
+        )
+        sample_ids = [i for (i,) in sample_rows]
+
+        recent_date = db.query(func.max(Transaction.date)).scalar()
+        month_key = f"{recent_date.year:04d}-{recent_date.month:02d}" if recent_date else None
+
+    suggestions.append(
+            Suggestion(
+                merchant=base_mcanon,
+                category=category,
+                count=int(cnt),
+                window_days=window_days,
+                sample_txn_ids=sample_ids,
+                recent_month_key=month_key,
+            )
+        )
+
+    best_by_merchant: Dict[str, Suggestion] = {}
+    for s in suggestions:
+        cur = best_by_merchant.get(s.merchant)
+        if cur is None or s.count > cur.count:
+            best_by_merchant[s.merchant] = s
+
+    ordered = sorted(best_by_merchant.values(), key=lambda s: s.count, reverse=True)[:max_results]
+    return [s.to_dict() for s in ordered]
+
+
+# ---------------- Persistent suggestions (for existing router) --------------
 def list_suggestions(
     db: Session,
     merchant_norm: Optional[str] = None,
@@ -228,66 +300,48 @@ def list_suggestions(
     limit: int = 50,
     offset: int = 0,
 ) -> List[Dict[str, Any]]:
-    def _run_query(eq_match: bool) -> List[RuleSuggestion]:
-        q = db.query(RuleSuggestion)
-        if category:
-            q = q.filter(func.lower(RuleSuggestion.category) == category.lower())
-        if merchant_norm:
-            if eq_match:
-                q = q.filter(func.lower(RuleSuggestion.merchant_norm) == merchant_norm.lower())
-            else:
-                # fallback: token-wise contains ignoring purely numeric tokens
-                canon = canonicalize_merchant(merchant_norm)
-                likes = []
-                for t in canon.split():
-                    if t.isdigit():
-                        continue
-                    likes.append(RuleSuggestion.merchant_norm.ilike(f"%{t}%"))
-                if likes:
-                    q = q.filter(or_(*likes))
-        # Prefer recent first; handle potential NULLs explicitly if supported
-        try:
-            q = q.order_by(RuleSuggestion.last_seen.desc().nullslast())
-        except Exception:
-            q = q.order_by(RuleSuggestion.last_seen.desc())
-        return q.offset(int(offset)).limit(int(limit)).all()
-
-    rows = _run_query(eq_match=True)
-    if not rows and merchant_norm:
-        rows = _run_query(eq_match=False)
+    q = db.query(RuleSuggestion)
+    if merchant_norm:
+        # Canonicalize incoming filter for robust matching
+        mnorm = canonicalize_merchant(merchant_norm) or merchant_norm
+        q = q.filter(func.lower(RuleSuggestion.merchant_norm) == mnorm.lower())
+    if category:
+        q = q.filter(func.lower(RuleSuggestion.category) == category.lower())
+    try:
+        q = q.order_by(RuleSuggestion.last_seen.desc().nullslast())
+    except Exception:
+        q = q.order_by(RuleSuggestion.last_seen.desc())
+    rows = q.offset(int(offset)).limit(int(limit)).all()
     out: List[Dict[str, Any]] = []
     for r in rows:
         out.append({
             "id": r.id,
             "merchant_norm": r.merchant_norm,
             "category": r.category,
-            "support": getattr(r, "support_count", None) if hasattr(r, "support_count") else getattr(r, "support", None),
-            "positive_rate": float(r.positive_rate or 0.0),
+            "support": getattr(r, "support_count", None),
+            "positive_rate": float(getattr(r, "positive_rate", 0.0) or 0.0),
             "last_seen": (r.last_seen.isoformat() if getattr(r, "last_seen", None) else None),
-            # optional created_at if present in schema
-            "created_at": (getattr(r, "created_at").isoformat() if getattr(r, "created_at", None) else None),
         })
     return out
 
 
 def accept_suggestion(db: Session, sug_id: int) -> Optional[int]:
-    """Create a rule from suggestion and remove the suggestion. Returns rule id or None."""
-    sug = db.get(RuleSuggestion, sug_id) if hasattr(db, "get") else db.query(RuleSuggestion).get(sug_id)  # type: ignore[attr-defined]
-    if not sug:
+    s = db.get(RuleSuggestion, sug_id) if hasattr(db, "get") else db.query(RuleSuggestion).get(sug_id)  # type: ignore[attr-defined]
+    if not s:
         return None
+    # Create a rule; for simplicity, use merchant_norm as pattern targeting merchant
     rule = Rule(
-        pattern=sug.merchant_norm,
-        target="category",
-        category=sug.category,
+        merchant=s.merchant_norm,
+        category=s.category,
+        active=True,
     )
     db.add(rule)
-    # Remove suggestion after accepting
     try:
-        db.delete(sug)
+        db.delete(s)
     except Exception:
         pass
     db.commit()
-    return rule.id
+    return int(getattr(rule, "id", 0) or 0)
 
 
 def dismiss_suggestion(db: Session, sug_id: int) -> bool:

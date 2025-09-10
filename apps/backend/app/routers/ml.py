@@ -253,8 +253,10 @@ def record_feedback(fb: FeedbackIn, db: Session = Depends(get_db)):
     # If this was an accept, evaluate for rule suggestion
     if fb.action == "accept":
         try:
-            # Prefer the canonicalized merchant from the actual transaction for stable matching
-            mnorm = rule_suggestions.canonicalize_merchant(txn.merchant or fb.merchant)
+            # Prefer the merchant provided by the client (more specific),
+            # fall back to the txn.merchant if not provided.
+            pref_merch = fb.merchant or txn.merchant
+            mnorm = rule_suggestions.canonicalize_merchant(pref_merch)
             sugg = rule_suggestions.evaluate_candidate(db, mnorm, fb.category)
             if sugg:
                 db.commit()
