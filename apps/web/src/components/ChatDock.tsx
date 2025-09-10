@@ -1,11 +1,12 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ChevronUp, Wrench } from "lucide-react";
-import { agentTools, agentChat, getAgentModels, type AgentChatRequest, type AgentChatResponse, type AgentModelsResponse, type ChatMessage, mlSelftest, txnsQuery, txnsQueryCsv, type TxnQueryResult } from "../lib/api";
+import { agentTools, agentChat, getAgentModels, type AgentChatRequest, type AgentChatResponse, type AgentModelsResponse, type ChatMessage, mlSelftest, txnsQuery, txnsQueryCsv, type TxnQueryResult, explainTxnForChat } from "../lib/api";
 import { saveAs } from "../utils/save";
 import { useOkErrToast } from "../lib/toast-helpers";
 import RestoredBadge from "./RestoredBadge";
 import ReactMarkdown from "react-markdown";
+import rehypeRaw from "rehype-raw";
 import remarkGfm from "remark-gfm";
 import type { ToolKey, ToolSpec, ToolRunState } from "../types/agentTools";
 import { AgentResultRenderer } from "./AgentResultRenderers";
@@ -273,7 +274,9 @@ export default function ChatDock() {
           <div className={m.role === 'user' ? 'text-primary' : ''}>
             <div className="prose prose-invert max-w-none">
               {m.role === 'assistant' ? (
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.text}</ReactMarkdown>
+                <div className="chat-markdown">
+                  <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]}>{m.text}</ReactMarkdown>
+                </div>
               ) : (
                 <>{m.text}</>
               )}
@@ -297,6 +300,32 @@ export default function ChatDock() {
     });
     return out;
   }, [uiMessages]);
+
+  // Event delegation for Explain buttons inside rendered markdown
+  useEffect(() => {
+    const root = listRef.current;
+    if (!root) return;
+    const onClick = async (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      const btn = target.closest('[data-explain-id]') as HTMLElement | null;
+      if (!btn) return;
+      e.preventDefault();
+      const id = btn.getAttribute('data-explain-id');
+      if (!id) return;
+      try {
+        setBusy(true);
+        const res = await explainTxnForChat(id);
+        const text = res.reply || "(no explanation)";
+        appendAssistant(text, { citations: res.meta?.citations, ctxMonth: res.meta?.ctxMonth, model: res.meta?.model });
+      } catch (err: any) {
+        appendAssistant(`Failed to explain transaction ${id}: ${err?.message || String(err)}`);
+      } finally {
+        setBusy(false);
+      }
+    };
+    root.addEventListener('click', onClick as any);
+    return () => root.removeEventListener('click', onClick as any);
+  }, [listRef, appendAssistant, setBusy]);
 
   // Helper to show the Undo snackbar with exit animation.
   function showUndo(msg: string, onUndo?: () => void) {
@@ -1207,32 +1236,48 @@ export default function ChatDock() {
 }
 
 // Helper: format NL transaction query result for chat rendering
-function formatTxnQueryResult(q: string, res: TxnQueryResult): string {
+// --- helper to inject a compact table (markdown + inline HTML for buttons)
+function tableForListWithExplain(rows: any[]): string {
+  if (!rows?.length) return "_No matches — try a narrower range or a specific merchant (e.g., `Starbucks last month`)._";
+  const head = `| Date | Merchant | Category | Amount | Action |\n|---|---|---|---:|---|`;
+  const body = rows.map((r: any) => {
+    const amt = `$${Math.abs(Number(r.amount || 0)).toFixed(2)}`;
+    const btn = `<button data-explain-id="${r.id}" class="px-2 py-1 rounded-md border border-border">Explain</button>`;
+    return `| ${r.date ?? ""} | ${r.merchant ?? ""} | ${r.category ?? ""} | ${amt} | ${btn} |`;
+  }).join("\n");
+  return `${head}\n${body}`;
+}
+
+function hintsBlock(hints?: string[]): string {
+  if (!hints?.length) return "";
+  const items = hints.map(h => `- \`${h}\``).join("\n");
+  return `> 💡 **Try:**\n${items}\n`;
+}
+
+function formatTxnQueryResult(q: string, res: TxnQueryResult & { meta?: any }): string {
   const f: any = (res as any).filters || {};
   const windowStr = f.start && f.end ? `\n• Range: ${f.start} → ${f.end}` : "";
-  if (res.intent === "sum") return `**NL Query:** ${q}\n**Total (abs):** $${res.result.total_abs.toFixed(2)}${windowStr}`;
-  if (res.intent === "count") return `**NL Query:** ${q}\n**Count:** ${res.result.count}${windowStr}`;
+  const hintStr = hintsBlock((res as any)?.meta?.hints);
+  if (res.intent === "sum") return `**NL Query:** ${q}${windowStr}\n**Total (abs):** $${res.result.total_abs.toFixed(2)}\n${hintStr}`;
+  if (res.intent === "count") return `**NL Query:** ${q}${windowStr}\n**Count:** ${res.result.count}\n${hintStr}`;
   if (res.intent === "top_merchants") {
     const lines = res.result.map((r, i) => `${i + 1}. ${r.merchant ?? "(Unknown)"} — $${r.spend.toFixed(2)}`).join("\n");
-    return `**NL Query:** ${q}${windowStr}\n**Top merchants:**\n${lines}`;
+    return `**NL Query:** ${q}${windowStr}\n**Top merchants:**\n${lines}\n${hintStr}`;
   }
   if (res.intent === "top_categories") {
     const lines = res.result.map((r, i) => `${i + 1}. ${r.category ?? "(Uncategorized)"} — $${r.spend.toFixed(2)}`).join("\n");
-    return `**NL Query:** ${q}${windowStr}\n**Top categories:**\n${lines}`;
+    return `**NL Query:** ${q}${windowStr}\n**Top categories:**\n${lines}\n${hintStr}`;
   }
   if (res.intent === "average") {
-    return `**NL Query:** ${q}${windowStr}\n**Average (abs):** $${res.result.average_abs.toFixed(2)}`;
+    return `**NL Query:** ${q}${windowStr}\n**Average (abs):** $${res.result.average_abs.toFixed(2)}\n${hintStr}`;
   }
   if (res.intent === "by_day" || res.intent === "by_week" || res.intent === "by_month") {
     const label = res.intent.replace("by_", "By ");
     const lines = (res.result as any[]).map((p: any) => `• ${p.bucket}: $${Number(p.spend || 0).toFixed(2)}`).join("\n");
-    return `**NL Query:** ${q}${windowStr}\n**${label}:**\n${lines}`;
+    return `**NL Query:** ${q}${windowStr}\n**${label}:**\n${lines}\n${hintStr}`;
   }
   // list
   const items = Array.isArray((res as any).result) ? (res as any).result : [];
-  const lim = (res as any)?.filters?.page_size ?? (res as any)?.filters?.limit ?? 50;
-  if (!items.length) return `**NL Query:** ${q}${windowStr}\n_No matches_`;
-  const header = `| Date | Merchant | Category | Amount |\n|---|---|---:|---:|`;
-  const rows = items.map((r: any) => `| ${r.date} | ${r.merchant ?? "(Unknown)"} | ${r.category ?? "(Uncategorized)"} | $${Math.abs(Number(r.amount || 0)).toFixed(2)} |`).join("\n");
-  return `**NL Query:** ${q}${windowStr}\n**Matches (showing up to ${lim}):**\n${header}\n${rows}`;
+  const table = tableForListWithExplain(items);
+  return `**NL Query:** ${q}${windowStr}\n${table}\n\n_Use \"Export CSV (NL Result)\" in tools to download rows._\n${hintStr}`;
 }

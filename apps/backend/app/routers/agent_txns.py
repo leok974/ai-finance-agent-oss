@@ -5,7 +5,7 @@ from typing import Optional, Any, Dict
 from sqlalchemy.orm import Session
 
 from app.db import get_db  # your existing dependency
-from app.services.txns_nl_query import parse_nl_query, run_txn_query
+from app.services.txns_nl_query import parse_nl_query, run_txn_query, NLQuery
 
 router = APIRouter(prefix="/agent", tags=["agent"])
 
@@ -16,6 +16,21 @@ class TxnQueryIn(BaseModel):
     end: Optional[str] = Field(None, description="Override end (YYYY-MM-DD)")
     page: Optional[int] = Field(1, ge=1, description="Page number for list pagination")
     page_size: Optional[int] = Field(50, ge=1, le=200, description="Page size for list pagination")
+
+# Friendly example hints when NL query is low-signal
+HINTS = [
+    'top 5 merchants this month',
+    'how much did I spend on groceries last month',
+    'Starbucks between 2025-08-01 and 2025-08-31',
+    'groceries over $40 since 2025-07-01',
+    'by month last 3 months',
+]
+
+def _is_low_signal(nlq: NLQuery) -> bool:
+    return not any([
+        nlq.merchants, nlq.categories, (nlq.start and nlq.end),
+        nlq.min_amount is not None, nlq.max_amount is not None
+    ])
 
 @router.post("/txns_query")
 def txns_query(payload: TxnQueryIn, db: Session = Depends(get_db)) -> Dict[str, Any]:
@@ -41,10 +56,20 @@ def txns_query(payload: TxnQueryIn, db: Session = Depends(get_db)) -> Dict[str, 
             raise HTTPException(status_code=400, detail="Invalid end date format (YYYY-MM-DD)")
 
     result = run_txn_query(db, nlq)
-    # empty guard
+
+    # nicety: attach hints if the query looks ambiguous
+    if _is_low_signal(nlq):
+        meta = result.get("meta", {})
+        meta["hints"] = HINTS
+        meta["low_signal"] = True
+        result["meta"] = meta
+
+    # keep empty hint
     if result["intent"] in ("list", "top_merchants", "top_categories") and not result["result"]:
-        # 200 OK but with a hint so UI can show "no matches"
-        result["meta"] = {"empty": True}
+        meta = result.get("meta", {})
+        meta["empty"] = True
+        result["meta"] = meta
+
     return result
 
 
