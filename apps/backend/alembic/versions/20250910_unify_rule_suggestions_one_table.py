@@ -15,74 +15,55 @@ branch_labels = None
 depends_on = None
 
 def upgrade():
-    # Columns are added in 20250910_extend_rule_suggestions_persisted. This migration focuses on data migration.
+    # 1) Extend rule_suggestions_persisted with new columns (safe to re-run)
+    op.add_column("rule_suggestions_persisted", sa.Column("source", sa.String(16), nullable=False, server_default="persisted"))
+    op.add_column("rule_suggestions_persisted", sa.Column("metrics_json", sa.JSON, nullable=True))
+    op.add_column("rule_suggestions_persisted", sa.Column("last_mined_at", sa.DateTime(timezone=True), nullable=True))
 
-    # 1) Migrate rows from legacy mined table if present (best-effort)
+    # 2) If a legacy mined table exists on Postgres, copy rows into the unified table
     conn = op.get_bind()
-    # Determine if legacy table exists (SQLite compatible)
-    exists = conn.execute(text(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name='rule_suggestions'"
-    )).fetchone()
+
+    # Postgres-safe existence check
+    exists = conn.execute(text("SELECT to_regclass('public.rule_suggestions')")).scalar() is not None
+
     if exists:
-        # Introspect columns
-        cols = [row[1] for row in conn.execute(text("PRAGMA table_info('rule_suggestions')")).fetchall()]
-        merchant_col = 'merchant' if 'merchant' in cols else ('merchant_norm' if 'merchant_norm' in cols else None)
-        category_col = 'category' if 'category' in cols else None
-        count_col = 'count' if 'count' in cols else ('support_count' if 'support_count' in cols else None)
-        window_col = 'window_days' if 'window_days' in cols else None
-        updated_col = 'updated_at' if 'updated_at' in cols else ('last_seen' if 'last_seen' in cols else None)
+        rows = conn.execute(text("""
+            SELECT merchant, category, count, window_days,
+                   COALESCE(updated_at, NOW()) AS updated_at
+            FROM public.rule_suggestions
+        """)).fetchall()
 
-        if merchant_col and category_col:
-            # Build SELECT dynamically with fallbacks to NULL/CURRENT_TIMESTAMP
-            select_sql = f"""
-                SELECT
-                    {merchant_col} AS merchant,
-                    {category_col} AS category,
-                    {count_col} AS count,
-                    {window_col} AS window_days,
-                    COALESCE({updated_col}, CURRENT_TIMESTAMP) AS updated_at
-                FROM rule_suggestions
-            """
-            # Replace None columns with NULL literals
-            select_sql = select_sql.replace("None AS count", "NULL AS count").replace("None AS window_days", "NULL AS window_days").replace("COALESCE(None, CURRENT_TIMESTAMP)", "CURRENT_TIMESTAMP")
+        for merchant, category, count, window_days, updated_at in rows:
+            conn.execute(text("""
+                INSERT INTO rule_suggestions_persisted
+                    (merchant, category, status, count, window_days, source,
+                     metrics_json, created_at, updated_at, last_mined_at)
+                VALUES
+                    (:merchant, :category, 'new', :count, :window_days, 'mined',
+                     NULL, NOW(), :updated_at, :updated_at)
+                ON CONFLICT (merchant, category)
+                DO UPDATE SET
+                    count = EXCLUDED.count,
+                    window_days = EXCLUDED.window_days,
+                    -- keep 'persisted' if it was manually inserted before
+                    source = CASE
+                        WHEN rule_suggestions_persisted.source = 'persisted' THEN 'persisted'
+                        ELSE 'mined'
+                    END,
+                    metrics_json = EXCLUDED.metrics_json,
+                    updated_at = EXCLUDED.updated_at,
+                    last_mined_at = EXCLUDED.last_mined_at
+            """), {
+                "merchant": merchant,
+                "category": category,
+                "count": int(count) if count is not None else None,
+                "window_days": int(window_days) if window_days is not None else None,
+                "updated_at": updated_at,
+            })
 
-            rows = conn.execute(text(select_sql)).fetchall()
-
-            for r in rows:
-                conn.execute(text("""
-                    INSERT INTO rule_suggestions_persisted
-                        (merchant, category, status, count, window_days, source, metrics_json, created_at, updated_at, last_mined_at)
-                    VALUES
-                        (:merchant, :category, 'new', :count, :window_days, 'mined',
-                         :metrics_json, CURRENT_TIMESTAMP, :updated_at, :updated_at)
-                    ON CONFLICT (merchant, category)
-                    DO UPDATE SET
-                        count = EXCLUDED.count,
-                        window_days = EXCLUDED.window_days,
-                        source = CASE
-                            WHEN rule_suggestions_persisted.source = 'persisted' THEN 'persisted'
-                            ELSE 'mined'
-                        END,
-                        metrics_json = EXCLUDED.metrics_json,
-                        updated_at = EXCLUDED.updated_at,
-                        last_mined_at = EXCLUDED.last_mined_at
-                """), {
-                    "merchant": r[0],
-                    "category": r[1],
-                    "count": int(r[2]) if r[2] is not None else None,
-                    "window_days": int(r[3]) if r[3] is not None else None,
-                    "metrics_json": None,
-                    "updated_at": r[4],
-                })
-
-    # 2) Backfill source for existing persisted rows (set to 'persisted')
-    conn.execute(text("""
-        UPDATE rule_suggestions_persisted
-        SET source = COALESCE(source, 'persisted')
-        WHERE source IS NULL
-    """))
+    # (Optional) don’t drop legacy table automatically; do it later when confident
 
 def downgrade():
-    # No-op: schema changes handled by 20250910_extend_rule_suggestions_persisted.
-    # We do not recreate the legacy mined table here.
-    pass
+    op.drop_column("rule_suggestions_persisted", "last_mined_at")
+    op.drop_column("rule_suggestions_persisted", "metrics_json")
+    op.drop_column("rule_suggestions_persisted", "source")
