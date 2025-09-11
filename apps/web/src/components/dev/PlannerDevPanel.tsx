@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import Card from "@/components/Card";
+import { Card } from "@/components/Card";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { Wand2, Play, FileSpreadsheet, RefreshCcw, Beaker, Copy, MessageSquareText, ListChecks, Sparkles, PiggyBank, CheckSquare } from "lucide-react";
@@ -30,7 +30,7 @@ export default function PlannerDevPanel({ className }: { className?: string }) {
   const onPreview = useCallback(async () => {
     setPreviewing(true);
     try {
-      const res = await agentPlanPreview(undefined);
+  const res = await agentPlanPreview({ month: null, prompt });
       setPlan(res);
       setSelected(res.items ?? []);
     } catch (e) {
@@ -45,7 +45,7 @@ export default function PlannerDevPanel({ className }: { className?: string }) {
     if (!plan || applying) return;
     setApplying(true);
     try {
-      const res: any = await agentPlanApply(plan?.month, selected);
+  const res: any = await agentPlanApply({ month: plan?.month ?? null, actions: selected as any });
       const ack = res?.ack ?? "Planner applied.";
       const msg = typeof ack === "string" ? ack : ack?.deterministic ?? "Planner applied.";
       // Keep dev-panel minimal: log ack; main toasts are elsewhere

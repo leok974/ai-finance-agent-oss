@@ -1193,3 +1193,45 @@ export const getAnomalies = (params?: { months?: number; min?: number; threshold
 // Remove a category from the anomalies ignore list
 export const unignoreAnomaly = (category: string) =>
   http<{ ignored: string[] }>(`/insights/anomalies/ignore/${encodeURIComponent(category)}`, { method: "DELETE" });
+
+// ---- Planner helpers expected by Dev panel ----
+export type AgentPlanAction = { kind: string; [k: string]: any };
+export type PlannerPlanItem = {
+  kind: 'categorize_unknowns' | 'seed_rule' | 'budget_limit' | 'export_report' | string;
+  title?: string;
+  txn_ids?: number[];
+  category?: string;
+  limit?: number;
+  impact?: string | number;
+  [k: string]: any;
+};
+
+export async function agentPlanPreview(body: {
+  month: string | null;
+  prompt?: string;
+  actions?: AgentPlanAction[];
+}) {
+  return api("/agent/plan/preview", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function agentPlanApply(body: {
+  month: string | null;
+  actions: AgentPlanAction[];
+}) {
+  return api("/agent/plan/apply", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+// Optional; some panels read a status card. If it 404s, return benign default.
+export async function agentPlanStatus() {
+  try {
+    return await api("/agent/plan/status");
+  } catch (e) {
+    return { mode: "deterministic", steps: 0, throttle: null, available: false };
+  }
+}

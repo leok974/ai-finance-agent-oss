@@ -33,7 +33,7 @@ export default function DevDock() {
             </div>
             <div className="space-y-3">
               {/* Rule Tester + ML Selftest */}
-              <RuleTesterPanel onChanged={() => { /* no-op */ }} />
+              <RuleTesterPanel />
               <MLStatusCard />
             </div>
           </div>
