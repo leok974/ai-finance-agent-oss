@@ -398,6 +398,16 @@ Backend
 - Mutating endpoints protected with `Depends(csrf_protect)` across auth, rules, txns, ml, and budget routers. GET endpoints remain unchanged.
 - CORS config: `allow_credentials=True` and `allow_headers` includes `Authorization`, `Content-Type`, `X-CSRF-Token`. Dev origins: `http://127.0.0.1:5173` and `http://localhost:5173`.
 
+Explain endpoint (DB-backed)
+- New: `GET /txns/{txn_id}/explain` returns a deterministic, SQL-backed explanation with optional LLM polish (`?use_llm=1`).
+- Response: `{ txn, evidence, candidates, rationale, llm_rationale, mode, actions }`.
+  - evidence includes `merchant_norm`, `rule_match`, `similar` (last 365 days; groups by canonical + base-token prefix), and `feedback` aggregates.
+  - candidates are derived from rules/history (never `Unknown`).
+  - rationale always includes `merchant_norm` and top historical category; `mode` is `deterministic` or `llm`.
+- Caching: in-memory TTL (~10 min; `EXPLAIN_CACHE_TTL`), keyed by `(txn_id, sources signature, use_llm, model)`.
+- LLM token bucket: ~30/min globally (`LLM_BUCKET_CAPACITY`), falls back to deterministic when depleted.
+- DEV: `DEV_ALLOW_NO_LLM=1` forces deterministic mode; tests cover 200/404, evidence correctness, deterministic/LLM modes.
+
 Dev/Prod Notes
 - Dev uses `127.0.0.1` for both FE and BE so SameSite=Lax cookies work reliably.
 - Production env switches:

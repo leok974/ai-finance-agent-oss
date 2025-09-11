@@ -3,6 +3,7 @@ import React from "react";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { InfoDot } from "./InfoDot";
 import { money, shortDate } from "../utils/format";
+import ExplainSignalDrawer from "./ExplainSignalDrawer";
 import type {
   TransactionsSearchResult,
   CategorizeResult,
@@ -71,6 +72,8 @@ function T({ header, rows }: { header: string[]; rows: React.ReactNode[][] }) {
 /** ---------- Transactions ---------- */
 
 export function TransactionsSearchCard({ data }: { data: TransactionsSearchResult }) {
+  const [open, setOpen] = React.useState(false);
+  const [txnId, setTxnId] = React.useState<number | null>(null);
   const rows = (data.items ?? []).slice(0, 50).map((t: Txn) => [
     shortDate(t.date),
     t.merchant || "—",
@@ -79,10 +82,17 @@ export function TransactionsSearchCard({ data }: { data: TransactionsSearchResul
     <span className={Number(t.amount) < 0 ? "text-[var(--accent-bad)]" : "text-[var(--accent-good)]"}>
       {money(t.amount)}
     </span>,
+    <button
+      className="px-2 py-1 rounded-md border border-border hover:bg-accent/10"
+      onClick={() => { const id = Number(t.id); if (!isNaN(id)) { setTxnId(id); setOpen(true); } }}
+    >
+      Explain
+    </button>,
   ]);
   return (
     <Card title={`Transactions (${data.total ?? rows.length})`}>
-      <T header={["Date", "Merchant", "Description", "Category", "Amount"]} rows={rows} />
+      <T header={["Date", "Merchant", "Description", "Category", "Amount", ""]} rows={rows} />
+      <ExplainSignalDrawer txnId={txnId} open={open} onOpenChange={setOpen} />
     </Card>
   );
 }
@@ -146,6 +156,8 @@ export function BudgetCheckCard({ data }: { data: BudgetCheckResult }) {
 /** ---------- Insights (Summary) ---------- */
 
 export function InsightSummaryCard({ data }: { data: InsightSummaryResult }) {
+  const [open, setOpen] = React.useState(false);
+  const [txnId, setTxnId] = React.useState<number | null>(null);
   const topCats = (data.topCategories ?? []).slice(0, 5).map((c) => [c.category, money(c.amount)]);
   const topMerch = (data.topMerchants ?? []).slice(0, 5).map((m) => [m.merchant, money(m.amount)]);
   const large = (data.largeTransactions ?? []).slice(0, 5).map((t) => [
@@ -153,6 +165,12 @@ export function InsightSummaryCard({ data }: { data: InsightSummaryResult }) {
     t.merchant || "—",
     t.category || "Unknown",
     money(t.amount),
+    <button
+      className="px-2 py-1 rounded-md border border-border hover:bg-accent/10"
+      onClick={() => { const id = Number(t.id); if (!isNaN(id)) { setTxnId(id); setOpen(true); } }}
+    >
+      Explain
+    </button>,
   ]);
 
   const income = data.summary?.income ?? 0;
@@ -213,7 +231,8 @@ export function InsightSummaryCard({ data }: { data: InsightSummaryResult }) {
       </Card>
 
       <Card title="Large Transactions">
-        <T header={["Date", "Merchant", "Category", "Amount"]} rows={large} />
+        <T header={["Date", "Merchant", "Category", "Amount", ""]} rows={large} />
+        <ExplainSignalDrawer txnId={txnId} open={open} onOpenChange={setOpen} />
       </Card>
     </div>
   );

@@ -63,9 +63,13 @@ DEV_ORIGINS = [
     "http://127.0.0.1:5173",
 ]
 
+# In production, prefer explicit allowlist via CORS_ALLOW_ORIGINS env (comma-separated)
+origins_env = os.environ.get("CORS_ALLOW_ORIGINS")
+ALLOW_ORIGINS = [o.strip() for o in origins_env.split(",") if o.strip()] if origins_env else DEV_ORIGINS
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=DEV_ORIGINS,   # In dev, allow both hosts used by the web app
+    allow_origins=ALLOW_ORIGINS,   # In dev, defaults to both hosts used by the web app
     allow_credentials=True,      # enable cookies
     allow_methods=["*"],
     allow_headers=["Authorization", "Content-Type", "X-CSRF-Token"],

@@ -12,6 +12,7 @@ import { scrollToId } from '@/lib/scroll'
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 import { InfoDot } from './InfoDot'
 import LearnedBadge from './LearnedBadge'
+import ExplainSignalDrawer from './ExplainSignalDrawer'
 import { useUnknowns } from '@/hooks/useUnknowns'
 
 export default function UnknownsPanel({ month, onSeedRule, onChanged, refreshKey }: {
@@ -24,6 +25,8 @@ export default function UnknownsPanel({ month, onSeedRule, onChanged, refreshKey
   const { ok, err } = (useOkErrToast as any)?.() ?? { ok: console.log, err: console.error }
   const { toast } = useToast()
   const [learned, setLearned] = useState<Record<number, boolean>>({})
+  const [explainOpen, setExplainOpen] = useState(false)
+  const [explainTxnId, setExplainTxnId] = useState<number | null>(null)
   // One shared timer for all unknowns refresh requests across this tab
   const scheduleUnknownsRefresh = useCoalescedRefresh('unknowns-refresh', () => refresh(), 450)
 
@@ -133,6 +136,12 @@ export default function UnknownsPanel({ month, onSeedRule, onChanged, refreshKey
                   Sends merchant/description (and current month) into Rule Tester so you can test & save a rule quickly.
                 </TooltipContent>
               </Tooltip>
+              <button
+                className="px-2 py-1 rounded-md border border-border hover:bg-accent/10"
+                onClick={() => { setExplainTxnId(tx.id); setExplainOpen(true); }}
+              >
+                Explain
+              </button>
               {['Groceries','Dining','Shopping'].map(c => (
                 <button key={c} className="px-2 py-1 rounded bg-blue-700 hover:bg-blue-600" onClick={()=>quickApply(tx.id, c)}>
                   Apply {c}
@@ -143,6 +152,7 @@ export default function UnknownsPanel({ month, onSeedRule, onChanged, refreshKey
           </li>
         ))}
       </ul>
+      <ExplainSignalDrawer txnId={explainTxnId} open={explainOpen} onOpenChange={setExplainOpen} />
       </Card>
     </div>
   )

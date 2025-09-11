@@ -613,14 +613,35 @@ export async function saveTrainReclassify(
 }
 
 // ---------- Explain & Agent ----------
-// Legacy shim: route explain to unified chat to avoid 404 on /txns/{id}/explain
-export const getExplain = async (txnId: number) => {
-  const resp = await agentChat({
-    messages: [{ role: 'user', content: `Explain transaction ${txnId} and suggest one action.` }],
-    intent: 'explain_txn',
-    txn_id: String(txnId)
-  });
-  return { reply: resp.reply, citations: resp.citations, model: resp.model } as any;
+// Explain API types aligned with backend
+export type ExplainEvidence = {
+  merchant_norm?: string;
+  rule_match?: { id: number; category?: string; display_name?: string } | null;
+  similar?: {
+    total: number;
+    by_category: Array<{ category: string; count: number }>;
+    recent_samples?: Array<{ id: number; amount: number; date: string; category?: string | null }>;
+  } | null;
+  feedback?: {
+    txn_feedback?: Array<{ id: number; action: string; category: string; created_at?: string }>;
+    merchant_feedback?: Array<{ category: string; positives: number; negatives: number }>;
+  } | null;
+};
+
+export type ExplainResponse = {
+  txn: { id: number; date?: string; amount?: number; merchant?: string; description?: string; category?: string | null };
+  evidence: ExplainEvidence;
+  candidates: Array<{ source: 'rule' | 'history' | 'model' | string; category: string; confidence?: number }>;
+  rationale: string;
+  llm_rationale?: string | null;
+  mode: 'deterministic' | 'llm';
+  actions?: Array<{ label: string; action: string; payload?: any }>;
+};
+
+// Real explain call hitting backend route
+export async function getExplain(txnId: number, opts?: { use_llm?: boolean }): Promise<ExplainResponse> {
+  const qs = opts?.use_llm ? `?use_llm=true` : '';
+  return http<ExplainResponse>(`/txns/${txnId}/explain${qs}`);
 }
 
 // Helper: unified chat for transaction explanations (returns formatted response for UI)

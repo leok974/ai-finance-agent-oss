@@ -70,3 +70,53 @@ Prod env switches
 - `COOKIE_SAMESITE=lax` (or `none` for HTTPS cross-site)
 - `COOKIE_DOMAIN=your.app.domain`
 - `OAUTH_POST_LOGIN_REDIRECT=https://your.app.domain/app`
+
+Cookie flags
+- Dev: `COOKIE_SAMESITE=lax`, `COOKIE_SECURE=0`.
+- Prod: `COOKIE_SECURE=1`, `COOKIE_SAMESITE=lax` (or `strict` if flows allow), consider `__Host-` prefix for cookies (requires Secure, path=/, no Domain) for strongest isolation.
+
+CORS allowlist
+- Use `CORS_ALLOW_ORIGINS` (comma-separated) in prod to explicitly set allowed origins; `allow_credentials=True` ensures `Access-Control-Allow-Credentials: true` on responses.
+
+---
+
+## Explain endpoint (Sep 2025)
+
+Deterministic, DB-backed transaction explanations with optional LLM polish.
+
+- Route: `GET /txns/{txn_id}/explain`
+  - Query: `use_llm=1` to request a short LLM rephrase (optional; see below).
+- Response shape:
+  - `txn`: `{ id, date, merchant, description, amount, category, month }`
+  - `evidence`:
+    - `merchant_norm`: canonical merchant (see canonicalization section)
+    - `rule_match`: `{ id, pattern, target, category } | null`
+    - `similar`: `{ total, by_category: [{ category, count, share }], recent_samples: [{ id, date, merchant, amount, category }] }`
+    - `feedback`: `{ txn_feedback: [{ label, source, created_at }], merchant_feedback: { total, by_label: [{ label, count, share }] } }`
+  - `candidates`: `[ { label, confidence, source } ]` (rule and history-based; never `Unknown`)
+  - `rationale`: deterministic one-liner including `merchant_norm` and top historical category
+  - `llm_rationale`: optional, non-empty only when LLM rephrase succeeds
+  - `mode`: `"deterministic" | "llm"` (set based on `llm_rationale`)
+  - `actions`: short actionable suggestions (e.g., accept category, apply rule)
+
+Evidence sources
+- Rules: first matching active rule (pattern/target/merchant/description) mirrors rule application logic.
+- Similar history: last 365 days by canonical merchant; includes base-token prefix grouping (e.g., `target store` groups with `target ...`).
+- Feedback: latest labels both for this txn and aggregated for the merchant group.
+
+Caching (nice to have)
+- Short-lived in-memory cache keyed by `(txn_id, sources_signature, use_llm, model)`.
+- Sources signature includes the latest `updated_at/created_at` across: the txn, any rule, any feedback for the merchant group, and similar transactions in the last year.
+- Default TTL: 10 minutes; configure via `EXPLAIN_CACHE_TTL` (seconds). Minimum enforced: 60s.
+
+Rate limiting (LLM)
+- Token bucket for LLM rephrases, default ~30 calls/minute across the app.
+- Configure capacity via `LLM_BUCKET_CAPACITY`. Refill rate derived as `capacity/60` per second.
+- If tokens are not available, the service falls back to deterministic mode.
+
+DEV/test behavior
+- `DEV_ALLOW_NO_LLM=1` forces deterministic mode even when `use_llm=1`.
+- Tests cover: 200/404, evidence correctness (top category), deterministic rationale content, DEV no-LLM handling, and mocked LLM path.
+
+Client notes
+- GET endpoint is CSRF-free. The frontend can show `rationale` immediately; when `mode=llm`, prefer `llm_rationale` if present.

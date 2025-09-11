@@ -176,7 +176,7 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
         )}
       </Card>
 
-      <Card title="Top Merchants (expenses)">
+  <Card title="Top Merchants (expenses)">
         {loading && <p className="text-sm text-gray-400">Loading…</p>}
         {!loading && merchantsData.length === 0 && (
           <p className="text-sm text-gray-400">No merchant data.</p>
@@ -203,6 +203,7 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
                 <Bar dataKey="amount" name="Spend" />
               </BarChart>
             </ResponsiveContainer>
+    <div className="text-xs opacity-70 mt-1">Tip: Open Insights → Large Transactions or use the Unknowns panel to explain individual transactions.</div>
           </div>
         )}
       </Card>

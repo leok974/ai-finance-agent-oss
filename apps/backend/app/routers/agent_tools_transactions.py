@@ -1,6 +1,7 @@
 from typing import List, Optional, Literal, Dict, Any, Annotated
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field, conlist, conint, confloat
+from app.utils.csrf import csrf_protect
+from pydantic import BaseModel, Field
 from sqlalchemy import func, and_, or_, desc, asc
 from sqlalchemy.orm import Session
 
@@ -43,12 +44,13 @@ class SearchQuery(BaseModel):
     description_contains: Optional[str] = None
     category_in: Optional[List[str]] = Field(None, description="Match any of these categories")
     unlabeled_only: bool = Field(False, description='Treat None/""/"Unknown" as unlabeled when true')
-    min_amount: Optional[confloat(le=0) | confloat(ge=0)] = None
-    max_amount: Optional[confloat(le=0) | confloat(ge=0)] = None
+    # Use numeric fields with constraints via Field to satisfy type checkers
+    min_amount: Optional[float] = Field(None, description="Minimum amount (<=0 for outflows, >=0 for inflows)")
+    max_amount: Optional[float] = Field(None, description="Maximum amount (<=0 for outflows, >=0 for inflows)")
     order_by: OrderField = "date"
     order_dir: OrderDir = "desc"
-    offset: conint(ge=0) = 0
-    limit: conint(ge=1, le=200) = 50
+    offset: int = Field(0, ge=0)
+    limit: int = Field(50, ge=1, le=200)
 
 
 class SearchResponse(BaseModel):
@@ -130,7 +132,7 @@ def search_transactions(body: SearchQuery, db: Session = Depends(get_db)) -> Sea
     return SearchResponse(total=total, items=[TxnDTO.from_row(t) for t in rows])
 
 
-@router.post("/categorize", response_model=Dict[str, Any])
+@router.post("/categorize", response_model=Dict[str, Any], dependencies=[Depends(csrf_protect)])
 def categorize_transactions(body: CategorizeBody, db: Session = Depends(get_db)):
     updated = (
         db.query(Transaction)

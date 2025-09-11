@@ -39,10 +39,10 @@ def csrf_protect(request: Request, x_csrf_token: Optional[str] = Header(default=
     if method in _SAFE:
         return
 
-    # Allowlist auth and health endpoints (no CSRF cookie present yet)
+    # Allowlist pre-login auth endpoints and health (no CSRF cookie present yet)
     path = request.url.path or ""
-    if path.startswith("/auth/login") or path.startswith("/auth/register") or path.startswith("/auth/refresh") or \
-       path.startswith("/auth/logout") or path.startswith("/auth/github/") or path.startswith("/auth/google/") or \
+    if path.startswith("/auth/login") or path.startswith("/auth/register") or \
+       path.startswith("/auth/github/") or path.startswith("/auth/google/") or \
        path in ("/health", "/healthz", "/ping"):
         return
 
