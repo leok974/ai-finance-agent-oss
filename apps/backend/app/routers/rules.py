@@ -38,6 +38,7 @@ from app.utils.state import (
 from datetime import datetime as _dt
 from pydantic import Field as _Field
 from app.services.rule_suggestions_store import list_persisted as _db_list_persisted, upsert_from_mined as _db_upsert_from_mined, set_status as _db_set_status, clear_non_new as _db_clear_non_new
+from app.orm_models import RuleSuggestion  # legacy suggestions table for compat fallback
 
 router = APIRouter(prefix="/rules", tags=["rules"])
 @router.get("/suggestions/config")
@@ -477,12 +478,18 @@ def ignore_rule_suggestion(payload: IgnoreSuggestionReq):
 
 # --- Persisted suggestions (in-memory stub for UI wiring) -------------------
 class PersistedSuggestion(BaseModel):
+    ok: Optional[bool] = True
+    rule_id: Optional[int] = None
     id: int
     merchant: str
     category: str
     status: str = _Field("new", pattern=r"^(new|accepted|dismissed)$")
     count: Optional[int] = None
     window_days: Optional[int] = None
+    # Extended fields from unified persisted table
+    source: Optional[str] = None
+    metrics_json: Optional[dict] = None
+    last_mined_at: Optional[str] = None
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
 
@@ -507,18 +514,70 @@ def list_persisted_suggestions_stub(
 
 @router.post("/suggestions/{sid}/accept", response_model=PersistedSuggestion)
 def accept_persisted_suggestion_db(sid: int, db: Session = Depends(get_db)):
+    # First try persisted store
     try:
-        return _db_set_status(db, sid, "accepted")
+        out = _db_set_status(db, sid, "accepted")
+        out["ok"] = True
+        out["rule_id"] = None
+        return out
     except ValueError:
-        raise HTTPException(status_code=404, detail="Suggestion not found")
+        # Fallback: legacy suggestion accept creates a rule
+        legacy = db.get(RuleSuggestion, sid) if hasattr(db, "get") else db.query(RuleSuggestion).get(sid)  # type: ignore[attr-defined]
+        if not legacy:
+            raise HTTPException(status_code=404, detail="Suggestion not found")
+        merchant = getattr(legacy, "merchant_norm", None) or getattr(legacy, "merchant", None) or ""
+        category = getattr(legacy, "category", "")
+        # Reuse legacy service to create rule & delete suggestion
+        rid = rs.accept_suggestion(db, sid)
+        if rid is None:
+            raise HTTPException(status_code=404, detail="Suggestion not found")
+        # Return a shape compatible with persisted model for clients that expect it
+        return {
+            "ok": True,
+            "rule_id": int(rid),
+            "id": sid,
+            "merchant": merchant,
+            "category": category,
+            "status": "accepted",
+            "count": None,
+            "window_days": None,
+            "source": "mined",
+            "metrics_json": None,
+            "last_mined_at": None,
+            "created_at": None,
+            "updated_at": None,
+        }
 
 
 @router.post("/suggestions/{sid}/dismiss", response_model=PersistedSuggestion)
 def dismiss_persisted_suggestion_db(sid: int, db: Session = Depends(get_db)):
     try:
-        return _db_set_status(db, sid, "dismissed")
+        out = _db_set_status(db, sid, "dismissed")
+        out["ok"] = True
+        return out
     except ValueError:
-        raise HTTPException(status_code=404, detail="Suggestion not found")
+        legacy = db.get(RuleSuggestion, sid) if hasattr(db, "get") else db.query(RuleSuggestion).get(sid)  # type: ignore[attr-defined]
+        if not legacy:
+            raise HTTPException(status_code=404, detail="Suggestion not found")
+        merchant = getattr(legacy, "merchant_norm", None) or getattr(legacy, "merchant", None) or ""
+        category = getattr(legacy, "category", "")
+        ok = rs.dismiss_suggestion(db, sid)
+        if not ok:
+            raise HTTPException(status_code=404, detail="Suggestion not found")
+        return {
+            "ok": True,
+            "id": sid,
+            "merchant": merchant,
+            "category": category,
+            "status": "dismissed",
+            "count": None,
+            "window_days": None,
+            "source": "mined",
+            "metrics_json": None,
+            "last_mined_at": None,
+            "created_at": None,
+            "updated_at": None,
+        }
 
 
 @router.post("/suggestions/persistent/refresh", response_model=PersistedListResp)

@@ -167,6 +167,10 @@ class RuleSuggestionPersisted(Base):
     status: Mapped[str] = mapped_column(String(16), nullable=False, server_default="new", index=True)  # new|accepted|dismissed
     count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     window_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # NEW: track origin/metrics and latest mining time
+    source: Mapped[str] = mapped_column(String(16), nullable=False, server_default="persisted")  # persisted|mined
+    metrics_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    last_mined_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
     __table_args__ = (
