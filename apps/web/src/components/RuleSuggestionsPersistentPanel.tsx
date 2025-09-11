@@ -1,5 +1,6 @@
 import React from "react";
 import Card from "./Card";
+import SuggestionIgnoresPanel from "./SuggestionIgnoresPanel";
 import { showToast } from "@/lib/toast-helpers";
 import {
   listPersistedSuggestions,
@@ -19,6 +20,7 @@ export default function RuleSuggestionsPersistentPanel() {
   const [loading, setLoading] = React.useState(false);
   const [rows, setRows] = React.useState<RowModel[]>([]);
   const [error, setError] = React.useState<string | null>(null);
+  const [showIgnores, setShowIgnores] = React.useState(false);
 
   const load = React.useCallback(async () => {
     setLoading(true); setError(null);
@@ -57,6 +59,11 @@ export default function RuleSuggestionsPersistentPanel() {
       <header className="flex items-center gap-3 pb-1 mb-3 border-b border-border">
         <h3 className="text-base font-semibold">Rule Suggestions</h3>
         <div className="ml-auto flex items-end gap-2">
+          <button
+            className="btn btn-ghost btn-sm"
+            onClick={() => setShowIgnores(v => !v)}
+            title="Show ignored pairs"
+          >{showIgnores ? 'Hide ignores' : 'Show ignores'}</button>
           <button className="btn btn-ghost btn-sm" onClick={load} disabled={loading}>
             {loading ? "Refreshing…" : "Refresh"}
           </button>
@@ -75,6 +82,12 @@ export default function RuleSuggestionsPersistentPanel() {
           <SuggestionRow key={`${s.kind}-${s.merchant}-${s.category}-${i}`} s={s} onChanged={load} />
         ))}
       </div>
+
+      {showIgnores && (
+        <div className="mt-6">
+          <SuggestionIgnoresPanel />
+        </div>
+      )}
     </Card>
   );
 }
