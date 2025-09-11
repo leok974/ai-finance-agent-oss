@@ -7,7 +7,7 @@
     "dev": "pnpm smoke:backend && vite",
     "build": "vite build",
     "preview": "vite preview --port 5173 --strictPort",
-    "typecheck": "tsc -p . --noEmit",
+  "typecheck": "tsc -p . --noEmit",
   "test": "vitest run",
     "smoke:backend": "powershell -ExecutionPolicy Bypass -File ../backend/app/scripts/smoke-backend.ps1"
   },
@@ -30,6 +30,9 @@
     "vaul": "^1.1.2"
   },
   "devDependencies": {
+  "@testing-library/jest-dom": "^6.6.3",
+  "@testing-library/react": "^16.0.1",
+  "@testing-library/user-event": "^14.6.1",
     "@types/react": "^18.2.66",
     "@types/react-dom": "^18.2.22",
     "@vitejs/plugin-react": "^4.3.1",

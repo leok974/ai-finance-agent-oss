@@ -25,6 +25,11 @@ export default defineConfig({
       Recharts: "recharts",
     },
   },
+  test: {
+    environment: 'jsdom',
+    setupFiles: ['./src/test/setup.ts'],
+    css: true,
+  },
   server: {
   host: "127.0.0.1",
     proxy: {
