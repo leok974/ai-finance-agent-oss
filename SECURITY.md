@@ -1,0 +1,3 @@
+- Secrets live only in environment variables. Provide `.env.example` and never commit real `.env`.
+- If a secret is ever committed, rotate it and run `scripts/history-purge.ps1`.
+- CI runs gitleaks on every push.

@@ -1,3 +1,44 @@
+# Node / React
+node_modules/
+.pnpm-store/
+dist/
+build/
+.vite/
+.turbo/
+*.log
+
+# Python / FastAPI
+__pycache__/
+*.py[cod]
+*.sqlite
+*.db
+*.pkl
+.venv/
+.coverage
+.pytest_cache/
+.mypy_cache/
+.dmypy.json
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Archives / misc
+*.tar
+*.zip
+*.bak
+*.swp
+
+# Secrets (never commit)
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.pfx
+serviceAccount*.json
 # Python
 __pycache__/
 *.pyc
