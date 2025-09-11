@@ -16,6 +16,7 @@ from app.routers import agent_tools_rules_crud as rules_crud_router
 from app.routers import agent_tools_rules_apply_all as rules_apply_all_router
 from app.routers import agent_tools_meta as meta_router
 from .routers import charts
+from app.utils.demo import ensure_demo_user
 from app.routers import agent_plan  # NEW: agent plan stub router
 from app.routers import auth as auth_router
 from app.routers import auth_oauth as auth_oauth_router
@@ -65,6 +66,13 @@ def _create_tables_dev():
         ensure_alembic_version_len(engine, 64)
     except Exception:
         # Don't crash the app; Alembic will still surface errors if any
+        pass
+
+    # Ensure a demo/admin user exists for quick-start and demos (idempotent)
+    try:
+        ensure_demo_user()
+    except Exception:
+        # Non-fatal in case DB is not ready yet; normal auth flows still work
         pass
 
 # Allow Vite dev origins explicitly (browser CORS) and expose filename header
@@ -145,6 +153,14 @@ app.include_router(suggestions_router.router)
 
 # Mount health router at root so /healthz is available at top-level
 app.include_router(health_router.router)  # exposes GET /healthz
+
+# Optional: register demo login route in demo mode only
+try:
+    if os.getenv("DEMO_MODE", "0") == "1":
+        from app.routers import auth_demo
+        app.include_router(auth_demo.router)
+except Exception:
+    pass
 
 
 
