@@ -13,6 +13,7 @@ import { flags } from "@/lib/flags";
 import AboutDrawer from './components/AboutDrawer';
 import RulesPanel from "./components/RulesPanel";
 import ChatDock from "./components/ChatDock";
+import DevDock from "@/components/dev/DevDock";
 import { ChatDockProvider } from "./context/ChatDockContext";
 import ChartsPanel from "./components/ChartsPanel";
 import TopEmptyBanner from "./components/TopEmptyBanner";
@@ -176,7 +177,17 @@ const App: React.FC = () => {
         <header className="flex items-center justify-between">
           <h1 className="text-3xl font-bold">Finance Agent
             {flags.dev && (
-              <span className="ml-2 rounded-full border px-2 py-0.5 text-xs opacity-80" title="Ctrl+Shift+D toggles Dev UI">DEV</span>
+              <button
+                title="Ctrl+Shift+D also toggles Dev UI"
+                className="ml-2 rounded-full border px-2 py-0.5 text-xs opacity-80"
+                onClick={() => {
+                  const v = localStorage.getItem("DEV_UI") === "1" ? "0" : "1";
+                  localStorage.setItem("DEV_UI", v);
+                  location.reload();
+                }}
+              >
+                DEV
+              </button>
             )}
           </h1>
           <div className="flex items-center gap-3">
@@ -232,6 +243,7 @@ const App: React.FC = () => {
             {(flags.dev) && <MLStatusCard />}
           </div>
           <ChatDock />
+          <DevDock />
         </div>
       </div>
   </div>
