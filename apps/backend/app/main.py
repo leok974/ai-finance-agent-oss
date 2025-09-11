@@ -24,6 +24,7 @@ from .routers import transactions as transactions_router
 from .routers import dev as dev_router
 from .routers import health as health_router
 from .utils.state import load_state, save_state
+from .utils.db_admin import ensure_alembic_version_len
 import logging
 import subprocess
 
@@ -57,6 +58,13 @@ def _create_tables_dev():
                 Base.metadata.create_all(bind=engine)
     except Exception:
         # Ignore in dev if engine misconfigured
+        pass
+
+    # Postgres-only: ensure alembic_version.version_num is wide enough for long revisions
+    try:
+        ensure_alembic_version_len(engine, 64)
+    except Exception:
+        # Don't crash the app; Alembic will still surface errors if any
         pass
 
 # Allow Vite dev origins explicitly (browser CORS) and expose filename header

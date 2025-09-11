@@ -1,6 +1,7 @@
 from logging.config import fileConfig
 from alembic import context
 from sqlalchemy import engine_from_config, pool
+import sqlalchemy as sa
 import os, sys
 
 # Ensure the 'app' package is importable when running Alembic from this folder
@@ -36,6 +37,10 @@ def run_migrations_offline():
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
+        # Ensure Alembic version PK wide enough for long revision ids
+        version_table="alembic_version",
+    version_table_pk="version_num",
+        version_table_pk_type=sa.String(64),
     )
     with context.begin_transaction():
         context.run_migrations()
@@ -55,6 +60,10 @@ def run_migrations_online():
             compare_type=True,
             compare_server_default=True,
             version_table_schema=None if is_sqlite else "public",
+            # Ensure Alembic version PK wide enough for long revision ids
+            version_table="alembic_version",
+            version_table_pk="version_num",
+            version_table_pk_type=sa.String(64),
             include_schemas=(not is_sqlite),
         )
         with context.begin_transaction():

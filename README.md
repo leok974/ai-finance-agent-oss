@@ -115,6 +115,24 @@ pip install -e .
 uvicorn app.main:app --reload --port 8000
 ```
 
+### Alembic on Docker + Postgres note
+
+If Alembic fails on Postgres with `value too long for type character varying(32)` while inserting a long revision into `public.alembic_version`, widen the column once:
+
+- New installs are safe: we configured Alembic to use a wider key (`VARCHAR(64)`) in `apps/backend/alembic/env.py`.
+- For existing DBs, run this one-time alter in the Postgres container, then rerun migrations:
+
+```powershell
+# See running containers (names typically: ai-finance-agent-oss-backend-1, finance-pg)
+docker ps --format "table {{.Names}}\t{{.Image}}\t{{.Status}}"
+
+# Widen the alembic version column
+docker exec -i finance-pg psql -U myuser -d finance -c "ALTER TABLE public.alembic_version ALTER COLUMN version_num TYPE VARCHAR(64);"
+
+# Apply migrations from backend container
+docker exec -i ai-finance-agent-oss-backend-1 alembic upgrade head
+```
+
 ### 3) Frontend
 ```bash
 cd ../../apps/web
@@ -220,6 +238,13 @@ docker exec -it finance-pg psql -U myuser -d finance -c "SELECT MAX(date), month
 → Run migrations inside backend container:
 ```bash
 docker exec -it <backend_container> alembic upgrade head
+```
+
+**Postgres first-run (alembic_version too short)**
+→ The backend auto-widens `public.alembic_version.version_num` to `VARCHAR(64)` at startup. If you need to run it manually:
+```powershell
+$BE = (docker ps --format "{{.Names}}" | Select-String -Pattern "backend" | ForEach-Object { $_.ToString() })
+docker exec -it $BE python -m app.scripts.fix_alembic_version
 ```
 
 **Latest month looks wrong**

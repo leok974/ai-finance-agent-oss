@@ -34,8 +34,14 @@ export default function PlannerApplyPanel() {
     try {
       const res: any = await agentPlanApply(plan?.month, actions);
       ok?.(getAckText(res?.ack) || "Applied.");
-      if (wantsExport && plan?.month) {
-        await downloadReportExcel(plan.month, true, { splitAlpha: true });
+      if (wantsExport) {
+        const url: string | undefined = res?.report_url;
+        if (url) {
+          // simplest: navigate to trigger browser download preserving filename
+          window.location.href = url;
+        } else if (plan?.month) {
+          await downloadReportExcel(plan.month, true, { splitAlpha: true });
+        }
       }
     } catch (e: any) {
       err?.(e?.message || "Apply failed");
