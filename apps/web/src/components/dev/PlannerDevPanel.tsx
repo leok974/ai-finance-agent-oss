@@ -1,11 +1,10 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { agentPlanDebug, agentPlanStatus, type AgentPlanDebug, type PlannerPlanItem, downloadReportExcel } from "@/lib/api";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-// simple separator helper
-const Sep = ({ className = "" }: { className?: string }) => (
-  <div role="separator" className={`my-3 border-t border-neutral-800 ${className}`} />
-);
+import Card from "@/components/Card";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
+import { Wand2, Play, FileSpreadsheet, RefreshCcw, Beaker, Copy } from "lucide-react";
 
 export default function PlannerDevPanel() {
   const [q, setQ] = useState<string>(() => localStorage.getItem("planner:q") || "Give me my top merchants for July and generate a PDF");
@@ -18,6 +17,7 @@ export default function PlannerDevPanel() {
     return urlBypass || saved;
   });
   const [throttle, setThrottle] = useState<{ rate_per_min: number; capacity: number; tokens: number } | null>(null);
+  const [statusRefreshing, setStatusRefreshing] = useState(false);
 
   useEffect(() => {
     localStorage.setItem("planner:q", q);
@@ -49,153 +49,129 @@ export default function PlannerDevPanel() {
 
   const loadStatus = useCallback(async () => {
     try {
+      setStatusRefreshing(true);
       const r = await agentPlanStatus();
       setThrottle(r.throttle);
-    } catch { /* ignore */ }
+    } catch {
+      // ignore
+    } finally {
+      setStatusRefreshing(false);
+    }
   }, []);
   useEffect(() => { loadStatus(); }, [loadStatus]);
   useEffect(() => { localStorage.setItem("planner:bypass", bypass ? "1" : "0"); }, [bypass]);
 
   const copyJson = useCallback(async () => {
-    if (!resp) return;
-    await navigator.clipboard.writeText(JSON.stringify(resp, null, 2));
-  }, [resp]);
-
-  const pdfLink = (resp && resp.mode === "executed" && (resp as any).artifacts?.pdf_url) || null;
-  const excelLink = (resp && resp.mode === "executed" && (resp as any).artifacts?.excel_url) || null;
-
-  const apiBase = (import.meta as any).env?.VITE_API_BASE || "";
+    const data = resp ? JSON.stringify(resp, null, 2) : JSON.stringify({ q, bypass }, null, 2);
+    await navigator.clipboard.writeText(data);
+  }, [resp, q, bypass]);
 
   return (
-    <div className="mx-auto max-w-3xl p-6 space-y-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold">Planner DevTool</h1>
+    <Card className={cn("mt-6 mx-auto max-w-4xl p-4 md:p-6")}> 
+      {/* Header */}
+      <div className="flex items-center justify-between border-b border-border pb-2">
         <div className="flex items-center gap-2">
-          <Badge variant="secondary">dev-only</Badge>
-          <Badge variant="outline">
-            {throttle ? `${Math.floor(throttle.tokens)}/${throttle.capacity} • ${throttle.rate_per_min}/min` : "—"}
-          </Badge>
+          <h2 className="text-lg font-semibold">Planner DevTool</h2>
+          <span className="text-xs font-medium px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground">dev-only</span>
         </div>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              className="h-9 w-9 rounded-md"
+              onClick={loadStatus}
+              disabled={statusRefreshing}
+              aria-label="Refresh status"
+            >
+              <RefreshCcw className={cn("h-4 w-4", statusRefreshing && "animate-spin")} />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Refresh status</TooltipContent>
+        </Tooltip>
       </div>
 
-      <p className="text-sm opacity-80">
-        Enter a natural language prompt. <span className="font-medium">Plan</span> calls the dev endpoint (no execution).
-        <span className="px-1" /> <span className="font-medium">Plan &amp; Run</span> executes tools and returns links.
-      </p>
+      {/* Body */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 pt-3">
+        {/* Left: Prompt */}
+        <div className="lg:col-span-2">
+          <label htmlFor="planner-prompt" className="text-sm text-muted-foreground block mb-1">
+            Natural-language planner prompt
+          </label>
+          <textarea
+            id="planner-prompt"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            rows={4}
+            className="w-full rounded-xl bg-background text-foreground border border-border px-3 py-2
+                       placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/40"
+            placeholder='e.g., "Give me my top merchants for July and generate a PDF"'
+          />
+          {/* Advanced toggles */}
+          <div className="mt-3 flex flex-wrap items-center gap-3">
+            <label className="inline-flex items-center gap-2 text-sm text-muted-foreground">
+              <input
+                type="checkbox"
+                className="h-4 w-4 rounded border-border"
+                checked={bypass}
+                onChange={(e) => setBypass(e.target.checked)}
+              />
+              Bypass planner throttle
+            </label>
+          </div>
+        </div>
 
-      <textarea
-        value={q}
-        onChange={(e) => setQ(e.target.value)}
-        rows={3}
-        className="w-full rounded-md border bg-background p-3 text-sm"
-        placeholder='e.g., "Give me my top merchants for July and generate a PDF"'
-      />
-
-      <div className="flex gap-2 items-center">
-        <Button disabled={loading || !q.trim()} onClick={doPlan}>Plan</Button>
-        <Button disabled={loading || !q.trim()} variant="secondary" onClick={doPlanRun}>Plan &amp; Run</Button>
-        <Button disabled={!resp} variant="ghost" onClick={copyJson}>Copy JSON</Button>
-        <label className="ml-auto flex items-center gap-2 text-sm">
-          <input type="checkbox" checked={bypass} onChange={(e) => setBypass(e.target.checked)} />
-          Bypass planner throttle
-        </label>
-        <Button variant="ghost" onClick={loadStatus}>Refresh status</Button>
-      </div>
-
-      {loading && <div className="text-sm">Planning…</div>}
-      {err && <div className="text-sm text-red-500">{err}</div>}
-
-      {resp && (
-        <div className="rounded-lg border p-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Badge>{resp.mode}</Badge>
-              {resp.mode === "executed" && <Badge variant="outline">preview</Badge>}
+        {/* Right: Mini status / plan meta */}
+        <div className="rounded-xl border border-border p-3 bg-muted/30">
+          <div className="text-sm text-muted-foreground mb-2">Planner status</div>
+          <div className="space-y-1 text-sm">
+            <div><span className="text-muted-foreground">Mode:</span> {resp?.mode ?? "—"}</div>
+            <div><span className="text-muted-foreground">Steps:</span> {resp?.plan?.steps?.length ?? 0}</div>
+            <div>
+              <span className="text-muted-foreground">Throttle:</span>{" "}
+              {throttle ? `${Math.floor(throttle.tokens)}/${throttle.capacity} • ${throttle.rate_per_min}/min` : "—"}
             </div>
-            <div className="text-xs opacity-60">/agent/plan/debug</div>
-          </div>
-
-          <Sep />
-
-          <div className="space-y-2">
-            <div className="text-sm font-medium">Steps</div>
-            <ol className="list-decimal pl-5 text-sm">
-              {resp.plan.steps.map((s: any, i: number) => (
-                <li key={i}>
-                  <code className="rounded bg-muted px-1 py-0.5">{s.tool}</code>{" "}
-                  <span className="opacity-70">{JSON.stringify(s.args)}</span>
-                </li>
-              ))}
-            </ol>
-
-            {resp.mode === "executed" && (
-              <>
-                <Sep />
-                <div className="space-y-2">
-                  <div className="text-sm font-medium">Reply preview</div>
-                  {/* reply_preview already includes human summary + link text */}
-                  <div className="text-sm">{(resp as any).reply_preview}</div>
-
-                  {(pdfLink || excelLink) && (
-                    <div className="flex gap-4 pt-1">
-                      {pdfLink && (
-                        <a
-                          className="underline text-primary"
-                          href={apiBase + pdfLink}
-                          target="_blank"
-                          rel="noreferrer"
-                        >
-                          Download PDF
-                        </a>
-                      )}
-                      {excelLink && (
-                        <a
-                          className="underline text-primary"
-                          href={apiBase + excelLink}
-                          target="_blank"
-                          rel="noreferrer"
-                        >
-                          Download Excel
-                        </a>
-                      )}
-                    </div>
-                  )}
-
-          {!!(resp as any).artifacts?.merchants?.length && (
-                    <div className="pt-2">
-                      <div className="text-sm font-medium">Top merchants</div>
-                      <ul className="list-disc pl-5 text-sm opacity-90">
-                        {(resp as any).artifacts.merchants.slice(0, 5).map((m: any, idx: number) => (
-                          <li key={idx}>
-              {m.merchant}: ${Math.round(Number(m.spend ?? m.amount ?? 0))}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                </div>
-
-        {!!(resp as any).tool_trace?.length && (
-                  <>
-          <Sep />
-                    <div className="text-sm font-medium">Tool trace</div>
-                    <pre className="text-xs whitespace-pre-wrap leading-snug opacity-80">
-                      {JSON.stringify((resp as any).tool_trace, null, 2)}
-                    </pre>
-                  </>
-                )}
-              </>
-            )}
-
-      <Sep />
-            <div className="text-sm font-medium">Raw response</div>
-            <pre className="text-xs whitespace-pre-wrap leading-snug opacity-80">
-              {JSON.stringify(resp, null, 2)}
-            </pre>
           </div>
         </div>
+      </div>
+
+      {/* Footer actions */}
+      <div className="mt-4 flex flex-wrap items-center gap-2">
+        <Button onClick={doPlan} disabled={loading || !q.trim()} className="gap-2">
+          <Wand2 className="h-4 w-4" />
+          {loading ? "Planning…" : "Preview Plan"}
+        </Button>
+
+        <Button onClick={doPlanRun} disabled={loading || !q.trim()} className="gap-2" variant="secondary">
+          <Play className={cn("h-4 w-4", loading && "animate-pulse")} />
+          {loading ? "Running…" : "Plan & Run"}
+        </Button>
+
+        <Button onClick={copyJson} variant="ghost" className="gap-2" disabled={!q.trim() && !resp}>
+          <Copy className="h-4 w-4" />
+          Copy JSON
+        </Button>
+
+        {/* Spacer */}
+        <div className="ml-auto flex items-center gap-2">
+          <Button variant="ghost" className="gap-2 h-8 px-2" onClick={doPlan} disabled={loading || !q.trim()}>
+            <Beaker className="h-4 w-4" />
+            Plan
+          </Button>
+          <Button variant="ghost" className="gap-2 h-8 px-2" onClick={doPlanRun} disabled={loading || !q.trim()}>
+            <FileSpreadsheet className="h-4 w-4" />
+            Plan &amp; Run
+          </Button>
+        </div>
+      </div>
+
+      {/* Inline status messages */}
+      {loading && (
+        <div className="mt-2 text-sm text-muted-foreground">Planning…</div>
       )}
-    </div>
+      {err && (
+        <div className="mt-2 text-sm text-red-500">{err}</div>
+      )}
+    </Card>
   );
 }
 
