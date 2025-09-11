@@ -13,6 +13,53 @@ Offline-first finance agent with local inference via Ollama or vLLM. Designed fo
 - **Safe UX**: optimistic UI, loading/error states, no duplicate suggestions, explain-why
 - **Smart Chat**: unified `/agent/chat` endpoint with natural language transaction explanations and auto-context enrichment
 
+## Judge Login quickstart (Sep 2025)
+
+Make demo login trivial with a pre-provisioned account.
+
+Backend envs
+- DEMO_MODE=1 (enable route)
+- DEMO_LOGIN_EMAIL=admin@local (default)
+- DEMO_LOGIN_PASSWORD=admin123 (default)
+- DEMO_LOGIN_TOKEN=<long-random-string> (required for one‑click)
+
+One‑click URL
+- {API_BASE}/auth/demo_login?token=<DEMO_LOGIN_TOKEN>
+
+Cookie/CORS hints
+- Dev: COOKIE_SECURE=0, COOKIE_SAMESITE=lax, CORS_ALLOW_ORIGINS=http://127.0.0.1:5173,http://localhost:5173
+- Hosted over HTTPS and cross‑site: COOKIE_SECURE=1, COOKIE_SAMESITE=none, set COOKIE_DOMAIN and allow the frontend origin in CORS_ALLOW_ORIGINS.
+
+Docker Compose override
+- Copy `docker-compose.override.example.yml` → `docker-compose.override.yml` and adjust values.
+
+Optional frontend toggles
+- VITE_DEMO_MODE=1 (shows one‑click link when token is present)
+- VITE_DEMO_LOGIN_EMAIL / VITE_DEMO_LOGIN_PASSWORD (prefill)
+- VITE_DEMO_LOGIN_TOKEN (used to build the one‑click link)
+
+Sample .env (dev)
+```
+APP_ENV=dev
+DEMO_MODE=1
+DEMO_LOGIN_EMAIL=admin@local
+DEMO_LOGIN_PASSWORD=admin123
+DEMO_LOGIN_TOKEN=please-change-me
+COOKIE_SECURE=0
+COOKIE_SAMESITE=lax
+CORS_ALLOW_ORIGINS=http://127.0.0.1:5173,http://localhost:5173
+```
+
+Verify (PowerShell)
+```
+./scripts/verify-demo-login.ps1 -Base http://127.0.0.1:8000 -Email admin@local -Password admin123
+```
+
+Troubleshooting
+- 404 demo login disabled → set DEMO_MODE=1.
+- 403 invalid token → pass the exact DEMO_LOGIN_TOKEN in the URL.
+- One‑click works but app not logged in → check cookie flags; for cross‑site use SameSite=None + Secure over HTTPS and set COOKIE_DOMAIN.
+
 ## 🚀 New: Enhanced Agent Chat System
 
 ### **Natural Language Transaction Explanations**

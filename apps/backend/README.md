@@ -1,3 +1,53 @@
+# Judge Login quickstart (Sep 2025)
+
+Make it trivial for judges/demos to sign in with a pre-provisioned account.
+
+Backend setup
+- Enable demo mode: set environment variables (defaults in parentheses):
+  - DEMO_MODE=1 (required to enable the route)
+  - DEMO_LOGIN_EMAIL=admin@local (default)
+  - DEMO_LOGIN_PASSWORD=admin123 (default)
+  - DEMO_LOGIN_TOKEN=<long-random-string> (required for one-click login)
+- On startup, the app will create the demo user if missing and grant admin (ensure_demo_user).
+- One‑click login URL (sets auth + CSRF cookies):
+  - {API_BASE}/auth/demo_login?token=<DEMO_LOGIN_TOKEN>
+
+Cookie/CORS notes (see Auth & CSRF section below for full details)
+- Local/dev: COOKIE_SECURE=0, COOKIE_SAMESITE=lax, CORS_ALLOW_ORIGINS=http://127.0.0.1:5173,http://localhost:5173
+- Hosted cross‑site over HTTPS: COOKIE_SECURE=1, COOKIE_SAMESITE=none, set COOKIE_DOMAIN=your.app.domain and include the frontend origin in CORS_ALLOW_ORIGINS.
+
+Docker Compose override
+- Copy `docker-compose.override.example.yml` to `docker-compose.override.yml` and adjust values.
+
+Optional frontend toggles
+- VITE_DEMO_MODE=1 (shows one‑click link when token is present)
+- VITE_DEMO_LOGIN_EMAIL and VITE_DEMO_LOGIN_PASSWORD (prefill "Use demo credentials")
+- VITE_DEMO_LOGIN_TOKEN (to render the one‑click link pointing to /auth/demo_login)
+
+Sample .env (dev)
+```
+APP_ENV=dev
+DEMO_MODE=1
+DEMO_LOGIN_EMAIL=admin@local
+DEMO_LOGIN_PASSWORD=admin123
+DEMO_LOGIN_TOKEN=please-change-me
+COOKIE_SECURE=0
+COOKIE_SAMESITE=lax
+CORS_ALLOW_ORIGINS=http://127.0.0.1:5173,http://localhost:5173
+```
+
+Verify locally (PowerShell)
+```
+./scripts/verify-demo-login.ps1 -Base http://127.0.0.1:8000 -Email admin@local -Password admin123
+```
+
+Troubleshooting
+- 404 demo login disabled → set DEMO_MODE=1.
+- 403 invalid token → pass the exact DEMO_LOGIN_TOKEN in the URL.
+- One‑click works but app not logged in → check cookie flags. For cross‑site, use SameSite=None + Secure and serve over HTTPS with a proper COOKIE_DOMAIN.
+
+---
+
 # Backend notes: Merchant canonicalization and suggestions
 
 This backend stores a canonical form of `Transaction.merchant` in `transactions.merchant_canonical`.

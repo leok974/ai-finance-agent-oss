@@ -1,0 +1,32 @@
+# Copy this file to docker-compose.override.yml and adjust values as needed
+# This wires demo-mode login and dev-friendly cookie/CORS settings.
+
+services:
+  backend:
+    environment:
+      # App env
+      - APP_ENV=dev
+      # Enable one-click demo login and provision demo user on startup
+      - DEMO_MODE=1
+      - DEMO_LOGIN_EMAIL=admin@local
+      - DEMO_LOGIN_PASSWORD=admin123
+      # CHANGE THIS to a long random string before sharing the URL
+      - DEMO_LOGIN_TOKEN=please-change-me
+      # Dev cookie/CORS
+      - COOKIE_SECURE=0
+      - COOKIE_SAMESITE=lax
+      - CORS_ALLOW_ORIGINS=http://127.0.0.1:5173,http://localhost:5173
+      # Optional prod hints (uncomment and set when hosting over HTTPS)
+      # - COOKIE_DOMAIN=your.app.domain
+      # - OAUTH_POST_LOGIN_REDIRECT=https://your.app.domain/app
+
+  web:
+    environment:
+      # Point the frontend to the backend API exposed on the host
+      - VITE_API_BASE=http://127.0.0.1:8000
+      # Show demo helpers and one-click link
+      - VITE_DEMO_MODE=1
+      - VITE_DEMO_LOGIN_EMAIL=admin@local
+      - VITE_DEMO_LOGIN_PASSWORD=admin123
+      # Keep in sync with backend DEMO_LOGIN_TOKEN above
+      - VITE_DEMO_LOGIN_TOKEN=please-change-me
