@@ -29,8 +29,7 @@ describe('selectTopMerchantCat', () => {
   })
 
   it('returns null when similar absent', () => {
-    const data = makeData([])
-    // @ts-expect-error force absent
+    const data = makeData([]) as any
     data.evidence.similar = undefined
     expect(selectTopMerchantCat(data)).toBeNull()
   })
