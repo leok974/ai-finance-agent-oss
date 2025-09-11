@@ -1,9 +1,42 @@
 import { RuleSuggestion as MinedRuleSuggestionStrict, isRuleSuggestionArray } from "@/types/rules";
 
 // Resolve API base from env, with a dev fallback when running Vite on port 5173
-const _FROM_ENV = (import.meta as any)?.env?.VITE_API_BASE as string | undefined;
-const _CANDIDATE = _FROM_ENV || (typeof window !== "undefined" && window.location?.port === "5173" ? "http://127.0.0.1:8000" : "");
-export const API_BASE = _CANDIDATE ? _CANDIDATE.replace(/\/+$/,'') : "";
+export const API_BASE = ((import.meta as any).env?.VITE_API_BASE?.replace(/\/+$/, "")) || "http://127.0.0.1:8000";
+
+function cookieGet(name: string): string | null {
+  try {
+    const m = document.cookie.match(new RegExp("(^| )" + name + "=([^;]+)"));
+    return m ? decodeURIComponent(m[2]) : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function api<T = any>(path: string, options: RequestInit = {}): Promise<T> {
+  const url = `${API_BASE}${path.startsWith("/") ? path : `/${path}`}`;
+  const method = (options.method || "GET").toString().toUpperCase();
+  const headers = new Headers(options.headers || {});
+  if (!headers.has("Content-Type") && !["GET", "HEAD"].includes(method)) {
+    headers.set("Content-Type", "application/json");
+  }
+  if (!["GET", "HEAD", "OPTIONS"].includes(method)) {
+    const csrf = cookieGet("csrf_token");
+    if (csrf && !headers.has("X-CSRF-Token")) headers.set("X-CSRF-Token", csrf);
+  }
+  const res = await fetch(url, { credentials: "include", ...options, headers });
+  if (res.status === 204) return null as T;
+  const text = await res.text();
+  if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText} :: ${text || "<empty>"}`);
+  try {
+    return text ? (JSON.parse(text) as T) : (null as T);
+  } catch {
+    return text as unknown as T;
+  }
+}
+
+export const charts = {
+  monthSummary: () => api(`/charts/month_summary`),
+};
 
 // Optional bearer fallback: keep a transient token if needed (e.g., dev/testing)
 let accessToken: string | null = null;

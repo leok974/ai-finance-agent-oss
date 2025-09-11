@@ -7,7 +7,7 @@ import RuleTesterPanel from "./components/RuleTesterPanel";
 import { AgentResultRenderer } from "./components/AgentResultRenderers";
 import { useOkErrToast } from "@/lib/toast-helpers";
 // import RulesPanel from "./components/RulesPanel";
-import { getAlerts, getMonthSummary, getMonthMerchants, getMonthFlows, agentTools, meta, resolveLatestMonthHybrid, getHealthz } from './lib/api'
+import { getAlerts, getMonthSummary, getMonthMerchants, getMonthFlows, agentTools, meta, getHealthz, api, charts } from './lib/api'
 import DbRevBadge from './components/DbRevBadge';
 import { flags } from "@/lib/flags";
 import AboutDrawer from './components/AboutDrawer';
@@ -61,12 +61,24 @@ const App: React.FC = () => {
   }, []);
 
   // Initialize month once
+  async function resolveMonth(): Promise<string> {
+    try {
+      const r = await api<{ month: string }>("/agent/tools/charts/summary", {
+        method: "POST",
+        body: JSON.stringify({ month: null }),
+      });
+      if (r?.month) return r.month;
+    } catch {}
+    const g = await charts.monthSummary();
+    return g.month;
+  }
+
   useEffect(() => {
     if (booted.current) return; // guard re-run in dev (StrictMode)
     booted.current = true;
     (async () => {
       console.info("[boot] resolving month…");
-      const m = (await resolveLatestMonthHybrid())
+      const m = (await resolveMonth())
         ?? (() => {
              const now = new Date();
              return `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}`;
