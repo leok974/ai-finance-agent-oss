@@ -465,16 +465,13 @@ curl "http://127.0.0.1:8000/agent/plan/debug?q=top%20merchants%20for%20July&bypa
 
 ## Maintainer: cleanup & verify
 ```powershell
-# one-time
 cp .env.example .env
-# cleanup tracked junk
 .\scripts\cleanup-working-tree.ps1
-# rebuild & verify login
 docker compose up -d --build
 .\scripts\verify-demo-login.ps1
 ```
 
-### History purge (if secrets were pushed)
+### History purge (if secrets were pushed earlier)
 ```powershell
 python -m pip install git-filter-repo
 .\scripts\history-purge.ps1

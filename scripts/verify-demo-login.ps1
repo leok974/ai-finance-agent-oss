@@ -1,3 +1,8 @@
+param([string]$Base="http://127.0.0.1:8000",[string]$Email="admin@local",[string]$Password="admin123")
+$ses=New-Object Microsoft.PowerShell.Commands.WebRequestSession
+Invoke-RestMethod -Method POST -Uri "$Base/auth/login" -WebSession $ses -ContentType "application/json" -Body (@{email=$Email;password=$Password}|ConvertTo-Json)|Out-Null
+$r=Invoke-RestMethod -Method GET -Uri "$Base/charts/month_summary" -WebSession $ses
+if($r -and $r.month){Write-Host "✅ Login OK. month=$($r.month) total_spend=$($r.total_spend)";exit 0}else{exit 1}
 param(
   [string]$Base = "http://127.0.0.1:8000",
   [string]$Email = "admin@local",
