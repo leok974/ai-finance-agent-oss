@@ -221,6 +221,11 @@ export async function handleApply(args: {
     } else if (month) {
       // client-side fallback
       await downloadReportExcel(month, true, { splitAlpha: true });
+    } else {
+      // Explicit breadcrumb to help debug empty-month states
+      console.warn(
+        "[Planner] export_report requested but no month resolved and no report_url from backend."
+      );
     }
   }
   return res;
