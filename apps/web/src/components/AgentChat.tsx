@@ -1,5 +1,5 @@
 import React from "react";
-import { agentChat, getAgentModels, type AgentChatRequest, type AgentChatResponse, type AgentModelsResponse, type ChatMessage, txnsQueryCsv, applyBudgets, downloadReportPdf, type Anomaly, clearTempBudget, unignoreAnomaly } from "../lib/api";
+import { agentChat, getAgentModels, type AgentChatRequest, type AgentChatResponse, type AgentModelsResponse, type ChatMessage, txnsQueryCsv, applyBudgets, downloadReportPdf, type Anomaly, clearTempBudget, unignoreAnomaly, getReplyText } from "../lib/api";
 import { showToast } from "@/lib/toast-helpers";
 
 interface ExtendedMessage extends ChatMessage {
@@ -119,7 +119,7 @@ export default function AgentChat() {
         // Grounded NL transactions branch: show compact badge + summary
         const msg1: ExtendedMessage = {
           role: "assistant",
-          content: ((resp as any).message || resp.rephrased?.trim() || resp.summary || resp.reply),
+          content: ((resp as any).message || getReplyText(resp)),
           meta: {
             citations: resp.citations,
             ctxMonth: resp.used_context?.month,
@@ -134,7 +134,7 @@ export default function AgentChat() {
         // Append optional details block
         const msg2: ExtendedMessage = {
           role: "assistant",
-          content: `Details:\n\n${resp.reply}`,
+          content: `Details:\n\n${getReplyText(resp)}`,
         };
         setMessages([...next, msg1, msg2]);
       } else {
@@ -146,7 +146,7 @@ export default function AgentChat() {
           const anomaliesMonth: string | null = (result?.month as string | undefined) ?? (resp as any)?.used_context?.month ?? null;
           const groundedMsg: ExtendedMessage = {
             role: "assistant",
-            content: ((resp as any).message || resp.reply || 'Unusual spending categories detected.'),
+            content: ((resp as any).message || getReplyText(resp) || 'Unusual spending categories detected.'),
             meta: {
               citations: resp.citations,
               ctxMonth: resp.used_context?.month,
@@ -162,7 +162,7 @@ export default function AgentChat() {
   } else if (mode && ["charts.summary","charts.flows","charts.merchants","charts.categories","charts.category","report.link","budgets.read","budgets.recommendations","budgets.temp","insights.anomalies.ignore"].includes(mode)) {
           const groundedMsg: ExtendedMessage = {
             role: "assistant",
-            content: ((resp as any).message || resp.reply),
+            content: ((resp as any).message || getReplyText(resp)),
             meta: {
               citations: resp.citations,
               ctxMonth: resp.used_context?.month,
@@ -176,7 +176,7 @@ export default function AgentChat() {
         } else {
         const assistantMsg: ExtendedMessage = {
           role: "assistant",
-          content: resp.reply,
+          content: getReplyText(resp),
           meta: {
             citations: resp.citations,
             ctxMonth: resp.used_context?.month,

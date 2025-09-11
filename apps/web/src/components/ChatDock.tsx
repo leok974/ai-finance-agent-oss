@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ChevronUp, Wrench } from "lucide-react";
-import { agentTools, agentChat, getAgentModels, type AgentChatRequest, type AgentChatResponse, type AgentModelsResponse, type ChatMessage, mlSelftest, txnsQuery, txnsQueryCsv, type TxnQueryResult, explainTxnForChat } from "../lib/api";
+import { agentTools, agentChat, getAgentModels, type AgentChatRequest, type AgentChatResponse, type AgentModelsResponse, type ChatMessage, mlSelftest, txnsQuery, txnsQueryCsv, type TxnQueryResult, explainTxnForChat, getReplyText } from "../lib/api";
 import { saveAs } from "../utils/save";
 import { useOkErrToast } from "../lib/toast-helpers";
 import RestoredBadge from "./RestoredBadge";
@@ -315,7 +315,7 @@ export default function ChatDock() {
       try {
         setBusy(true);
         const res = await explainTxnForChat(id);
-        const text = res.reply || "(no explanation)";
+  const text = getReplyText(res) || "(no explanation)";
         appendAssistant(text, { citations: res.meta?.citations, ctxMonth: res.meta?.ctxMonth, model: res.meta?.model });
       } catch (err: any) {
         appendAssistant(`Failed to explain transaction ${id}: ${err?.message || String(err)}`);
@@ -582,7 +582,10 @@ export default function ChatDock() {
   // keep legacy helper name for response objects (internal use)
   const handleAgentResponse = React.useCallback((resp: AgentChatResponse) => {
     setChatResp(resp);
-    if (resp?.reply) appendAssistant(resp.reply, { citations: resp.citations, ctxMonth: resp.used_context?.month, trace: resp.tool_trace, model: resp.model });
+    if (resp) {
+      const txt = getReplyText(resp);
+      if (txt) appendAssistant(txt, { citations: resp.citations, ctxMonth: resp.used_context?.month, trace: resp.tool_trace, model: resp.model });
+    }
   }, []);
 
   const appendAssistantFromText = React.useCallback((text: string, opts?: { meta?: any }) => {

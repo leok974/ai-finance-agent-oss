@@ -292,6 +292,34 @@ export async function getSpendingTrends(months = 6) {
   return fetchJson(`/charts/spending_trends?months=${months}`);
 }
 
+// ---- Planner debug (dev-only endpoint) ----
+export type AgentPlanDebug =
+  | { ok: true; mode: "plan-only"; plan: { steps: Array<{ tool: string; args: Record<string, any> }> } }
+  | {
+      ok: true;
+      mode: "executed";
+      plan: { steps: Array<{ tool: string; args: Record<string, any> }> };
+      tool_trace: any[];
+      artifacts: { pdf_url?: string; excel_url?: string; merchants?: Array<{ merchant: string; spend: number }> };
+      reply_preview: string;
+      throttle?: { rate_per_min: number; capacity: number; tokens: number };
+      bypass?: boolean;
+    };
+
+export function agentPlanDebug(q: string, opts?: { run?: boolean; max_steps?: number; bypass?: boolean }) {
+  const run = opts?.run ? "1" : "0";
+  const max = opts?.max_steps ?? 3;
+  const bypass = opts?.bypass ? "1" : "0";
+  const url = `/agent/plan/debug?q=${encodeURIComponent(q)}&run=${run}&max_steps=${max}&bypass=${bypass}`;
+  return apiGet<AgentPlanDebug>(url);
+}
+
+export function agentPlanStatus() {
+  return apiGet<{ ok: true; throttle: { rate_per_min: number; capacity: number; tokens: number } }>(
+    "/agent/plan/status"
+  );
+}
+
 // ---------- Budgets ----------
 export const budgetCheck = (month?: string) => {
   const qs = month ? `?month=${encodeURIComponent(month)}` : "";
@@ -660,7 +688,7 @@ export async function explainTxnForChat(txnId: string | number): Promise<{
     txn_id: String(txnId)
   });
   return {
-    reply: resp.reply,
+    reply: getReplyText(resp),
     meta: {
       citations: resp.citations,
       ctxMonth: resp.used_context?.month,
@@ -687,16 +715,25 @@ export type AgentChatRequest = {
 };
 
 export type AgentChatResponse = {
-  mode?: string;
-  reply: string;
+  // New shape (backend we added):
+  reply?: string;
+  // Legacy shape (existing UI used this):
+  /** @deprecated Use getReplyText(resp) */
+  replied?: string;
+  // Some older code bases also used `summary` as the display text:
   summary?: string;
-  rephrased?: string | null;
-  nlq?: any;
-  citations: { type: string; id?: string; count?: number }[];
-  used_context: { month?: string };
-  tool_trace: any[];
-  model: string;
+  citations?: { type: string; id?: string; count?: number; url?: string; month?: string }[];
+  used_context?: { month?: string };
+  tool_trace?: any[];
+  model?: string;
+  mode?: 'general'|'nl_txns'|'charts'|'report'|'budgets'|'chain';
+  artifacts?: { pdf_url?: string; excel_url?: string; merchants?: Array<{ merchant: string; spend: number; txns?: number }> };
 };
+
+// One canonical way to read the assistant text everywhere:
+export function getReplyText(resp: AgentChatResponse): string {
+  return resp.reply ?? resp.replied ?? resp.summary ?? "";
+}
 
 export type AgentModelsResponse = {
   provider: 'ollama' | 'openai' | string;

@@ -28,6 +28,10 @@ from app import orm_models        # ensure models are registered with Base
 
 @pytest.fixture(scope="session")
 def _engine():
+    # Enable dev/no-auth and CSRF bypass for tests to reduce flakiness of auth flows
+    os.environ.setdefault("DEV_ALLOW_NO_AUTH", "1")
+    os.environ.setdefault("TEST_BYPASS_CSRF", "1")
+    os.environ.setdefault("TEST_BYPASS_AUTH", "1")
     # Single shared in-memory SQLite across threads (OK for TestClient)
     engine = create_engine(
         "sqlite+pysqlite:///:memory:",

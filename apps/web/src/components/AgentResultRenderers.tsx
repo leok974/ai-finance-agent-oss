@@ -579,3 +579,58 @@ export function AgentResultRenderer({ tool, data }: { tool: ToolKey; data: any }
       return <pre className="text-xs whitespace-pre-wrap break-all">{JSON.stringify(data, null, 2)}</pre>;
   }
 }
+
+import { AgentChatResponse } from "@/lib/api";
+import { getReplyText } from "@/lib/api";
+
+export function AgentReplyRenderer({ resp }: { resp: AgentChatResponse }) {
+  const mode = resp.mode || "general";
+  if (mode === "nl_txns") return <TxnsRenderer resp={resp} />;
+  if (mode === "charts") return <ChartsRenderer resp={resp} />;
+  if (mode === "report") return <ReportRenderer resp={resp} />;
+  if (mode === "chain") {
+    return (
+      <div className="space-y-2">
+  <p>{getReplyText(resp)}</p>
+        {resp.artifacts?.pdf_url && (
+          <a
+            className="underline text-primary"
+            href={import.meta.env.VITE_API_BASE + resp.artifacts.pdf_url}
+            target="_blank"
+            rel="noreferrer"
+          >
+            Download PDF
+          </a>
+        )}
+        {resp.artifacts?.excel_url && (
+          <a
+            className="underline text-primary block"
+            href={import.meta.env.VITE_API_BASE + resp.artifacts.excel_url}
+            target="_blank"
+            rel="noreferrer"
+          >
+            Download Excel
+          </a>
+        )}
+        {!!resp.artifacts?.merchants?.length && (
+          <ul className="text-sm opacity-90 list-disc pl-5">
+            {resp.artifacts.merchants.slice(0, 5).map((m, i) => (
+              <li key={i}>{m.merchant}: ${Math.round(Number(m.spend))}</li>
+            ))}
+          </ul>
+        )}
+      </div>
+    );
+  }
+  return <p>{getReplyText(resp)}</p>;
+}
+
+function TxnsRenderer({ resp }: { resp: AgentChatResponse }) {
+  return <p>{getReplyText(resp)}</p>;
+}
+function ChartsRenderer({ resp }: { resp: AgentChatResponse }) {
+  return <p>{getReplyText(resp)}</p>;
+}
+function ReportRenderer({ resp }: { resp: AgentChatResponse }) {
+  return <p>{getReplyText(resp)}</p>;
+}

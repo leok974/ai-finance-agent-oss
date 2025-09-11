@@ -50,12 +50,26 @@ type AgentChatRequest = {
 
 type AgentChatResponse = {
   reply: string;
-  citations: { type: string; id?: string; count?: number }[];
-  used_context: { month?: string };
-  tool_trace: any[];
-  model: string;
+  citations?: { type: string; id?: string; count?: number; url?: string; month?: string }[];
+  used_context?: { month?: string };
+  tool_trace?: any[];
+  model?: string;
+  mode?: 'general'|'nl_txns'|'charts'|'report'|'budgets'|'chain';
+  artifacts?: { pdf_url?: string; excel_url?: string; merchants?: Array<{ merchant: string; spend: number; txns?: number }> };
 };
 ```
+
+### Planner + chain mode (Sep 2025)
+- The chat router detects multi-intent prompts (e.g., contains "and"/"then"/"also" or mentions "pdf").
+- It plans a short tool sequence and executes deterministically (charts/report tools only):
+  - Allowed tools: `charts.merchants`, `charts.summary`, `report.pdf`, `report.excel`.
+  - Clamped to at most 3 steps for safety.
+  - Planner is rate-limited (~10 req/min) to avoid hammering your local LLM.
+- Response shape when a plan runs:
+  - `mode: "chain"` with `artifacts` like `{ pdf_url, excel_url, merchants[] }` and a `tool_trace`.
+  - The reply includes a concise one-liner plus inline links when available.
+
+Dev-only planner debugger is available; see below.
 
 ### Web UI: ChatDock updates (Sep 2025)
 - Unified messages stream persisted in `localStorage` at `financeAgent.chat.messages.v1` with cross‑tab sync via `BroadcastChannel`.
@@ -231,6 +245,7 @@ docker exec -it finance-pg psql -U myuser -d finance -c "SELECT MAX(date) FROM t
 - `OPENAI_API_KEY` (dummy like `ollama` for Ollama, or your real key for remote servers)
 - `MODEL` (default `gpt-oss:20b`)
 - `DEV_ALLOW_NO_LLM=1` to use deterministic stubbed suggestions if LLM is down
+- `PLANNER_BYPASS=1` to bypass the planner LLM throttle in dev (root `dev.ps1` sets this automatically)
 
 ## Repo layout
 ```
@@ -242,9 +257,13 @@ docker-compose.yml
 ```
 
 ## Dev scripts (Windows)
-- `scripts/dev.ps1` — starts Ollama (pulls model), backend (Uvicorn), and frontend (Vite) in parallel and streams logs.
+- Top-level `dev.ps1` — launches backend (FastAPI) and frontend (Vite) in separate terminals.
+  - Sets `APP_ENV=dev`, `DEV_ALLOW_NO_LLM=1`, and `PLANNER_BYPASS=1` for convenience.
+  - Opens the Planner DevTool route in the browser (`/dev/plan`).
+- `scripts/dev.ps1` — convenience runner that also starts Ollama and streams all logs in one window.
   - Parameters: `-Model gpt-oss:20b` (default), `-Py .venv/\Scripts/\python.exe` to point at your venv.
 - `scripts/run-ollama.ps1` — ensures Ollama is running, pulls the model, and performs a quick generation test.
+ - Top-level `prod.ps1` — build or preview a production-like setup. With `-Local`, serves the built app via `pnpm preview` and starts backend without Secure cookies; otherwise builds assets only.
 
 Tip: In PowerShell, you may need to allow script execution for your repo path: `Set-ExecutionPolicy -Scope Process Bypass`.
 
@@ -295,6 +314,59 @@ POST `/agent/tools/charts/spending_trends`
 
 Notes
 - Charts endpoints require a month (or months list for trends). The UI injects the selected month automatically.
+
+## Dev-only features
+
+- Planner DevTool (web): visible only in dev builds. Open the header Dev menu (wrench) → "Planner DevTool" or jump to `#dev-plan`. Lets you Plan or Plan & Run, shows tool traces and artifacts (PDF/Excel links, merchants), displays throttle status, and respects the bypass toggle.
+- Dev menu (web header): shows live planner throttle tokens/rate with refresh, a persistent "Bypass planner throttle" checkbox, and quick links to backend Plan Debug and `/docs`.
+- Backend endpoints (guarded): `GET /agent/plan/debug` and `GET /agent/plan/status` are available only when `APP_ENV=dev`. Responses include throttle info and echo the bypass flag.
+- Dev env defaults: top‑level `dev.ps1` sets `APP_ENV=dev`, `DEV_ALLOW_NO_LLM=1`, and `PLANNER_BYPASS=1`, and opens the Planner DevTool route.
+- Safety: these tools and routes are hidden in production builds.
+
+## Dev-only: Planner debugger
+
+GET `/agent/plan/debug`
+
+Parameters:
+- `q` (string): user text to plan
+- `run` (bool, default false): execute the plan with deterministic tools
+- `max_steps` (int, default 3): cap plan length
+- `bypass` (bool, default false): bypass planner throttle (also honored when `PLANNER_BYPASS=1` is set on the backend)
+
+Behavior:
+- Hidden unless `APP_ENV=dev` (or `ENV=dev`). Returns 404 in non‑dev.
+- When `run=false`: returns `{ ok, mode: "plan-only", plan }`.
+- When `run=true`: returns `{ ok, mode: "executed", plan, tool_trace, artifacts, reply_preview }`.
+- `reply_preview` appends PDF/Excel links when present.
+- All responses include `throttle` metadata and echo the `bypass` flag.
+
+Status endpoint:
+
+GET `/agent/plan/status` → `{ ok, throttle }`
+
+Examples:
+
+Plan only (no execution):
+
+```bash
+curl "http://127.0.0.1:8000/agent/plan/debug?q=Give%20me%20my%20top%20merchants%20for%20July%20and%20generate%20a%20PDF"
+```
+
+Execute plan (charts + report):
+
+```bash
+curl "http://127.0.0.1:8000/agent/plan/debug?q=top%20merchants%20for%20July%20and%20excel&run=1"
+
+Bypass throttle in a single request:
+
+```bash
+curl "http://127.0.0.1:8000/agent/plan/debug?q=top%20merchants%20for%20July&bypass=1"
+```
+
+### Web Dev UI helpers
+- Header includes a Dev menu with live planner throttle status and a persistent "Bypass planner throttle" toggle.
+- The Planner DevTool panel (dev-only, at the bottom of the App) can Plan or Plan & Run, shows tool traces and artifacts, and respects the bypass toggle.
+```
 
 ## Overlays & Insights (dev notes)
 

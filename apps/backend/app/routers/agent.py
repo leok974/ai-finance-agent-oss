@@ -22,6 +22,10 @@ from app.config import settings
 from app.services.agent_detect import detect_txn_query, summarize_txn_result, infer_flow, try_llm_rephrase_summary
 from app.services.txns_nl_query import run_txn_query
 from app.services.agent_tools import route_to_tool
+from app.services.agent_planner import plan_tools, get_planner_bucket_status
+from app.services.agent_chain import execute_plan
+from app.utils.env import is_dev
+from datetime import datetime
 
 router = APIRouter()  # <-- no prefix here (main.py supplies /agent)
 
@@ -280,6 +284,35 @@ def agent_chat(
         # Always capture the latest user-authored message early for routing
         last_user_msg = next((msg.content for msg in reversed(req.messages) if msg.role == "user"), "")
 
+        # NEW: attempt planner if the user asks for multiple actions (e.g., "and", "then", "also") or pdf
+        multi_intent = any(x in last_user_msg.lower() for x in [" and ", " then ", " also ", " & "]) or ("pdf" in last_user_msg.lower())
+        if multi_intent:
+            p = plan_tools(last_user_msg, now_year=datetime.utcnow().year)
+            if p.steps:
+                steps_results, artifacts, one_line = execute_plan(db, p)
+                links = []
+                if artifacts.get("pdf_url"):
+                    links.append(f"PDF: {artifacts['pdf_url']}")
+                if artifacts.get("excel_url"):
+                    links.append(f"Excel: {artifacts['excel_url']}")
+                link_str = (" • " + " | ".join(links)) if links else ""
+                resp = {
+                    "reply": one_line + link_str,
+                    "citations": [
+                        *([{ "type": "charts.merchants", "month": p.steps[0].args.get("month") }] if p.steps and p.steps[0].tool.startswith("charts.") else []),
+                        *([{ "type": "report.pdf", "url": artifacts["pdf_url"] }] if artifacts.get("pdf_url") else []),
+                        *([{ "type": "report.excel", "url": artifacts["excel_url"] }] if artifacts.get("excel_url") else []),
+                    ],
+                    "used_context": {"month": (p.steps[0].args.get("month") if p.steps else None)},
+                    "tool_trace": steps_results,
+                    "model": req.model or "planner+tools",
+                    "mode": "chain",
+                    "artifacts": artifacts,
+                }
+                if debug and getattr(settings, "ENV", "dev") != "prod":
+                    resp["__debug_context"] = ctx
+                return JSONResponse(resp)
+
         # First: deterministic tool routing (transactions/charts/reports/budgets)
         if req.intent in ("general", "budget_help"):
             tool_resp = route_to_tool(last_user_msg, db)
@@ -442,6 +475,59 @@ def agent_chat(
         print(f"Agent chat error: {str(e)}")
         print(f"Request context: {redact_pii(req.dict() if hasattr(req, 'dict') else {})}")
         raise HTTPException(status_code=500, detail=f"Chat error: {str(e)}")
+
+
+@router.get("/plan/debug")
+def agent_plan_debug(
+    q: str,
+    run: bool = False,
+    max_steps: int = 3,
+    bypass: bool = False,
+    db: Session = Depends(get_db),
+):
+    """
+    Dev-only planner debugger.
+    - q: user text prompt to plan
+    - run: if true, execute the plan with deterministic tools
+    - max_steps: trim plan length (defaults to 3)
+    """
+    if not is_dev():
+        # Hide entirely in non-dev
+        raise HTTPException(status_code=404, detail="Not found")
+
+    plan = plan_tools(q, now_year=datetime.utcnow().year, bypass_throttle=bypass)
+    # Clamp steps (mirrors planner guardrail)
+    if len(plan.steps) > max_steps:
+        plan.steps = plan.steps[:max_steps]
+
+    if not run:
+        return {
+            "ok": True,
+            "mode": "plan-only",
+            "plan": plan.dict(),
+            "throttle": get_planner_bucket_status(),
+            "bypass": bool(bypass),
+        }
+
+    steps_results, artifacts, one_line = execute_plan(db, plan)
+    return {
+        "ok": True,
+        "mode": "executed",
+        "plan": plan.dict(),
+        "tool_trace": steps_results,
+        "artifacts": artifacts,
+        "reply_preview": one_line
+            + (" • PDF: " + artifacts["pdf_url"] if artifacts.get("pdf_url") else "")
+            + (" • Excel: " + artifacts["excel_url"] if artifacts.get("excel_url") else ""),
+        "throttle": get_planner_bucket_status(),
+        "bypass": bool(bypass),
+    }
+
+@router.get("/plan/status")
+def agent_plan_status():
+    if not is_dev():
+        raise HTTPException(status_code=404, detail="Not found")
+    return {"ok": True, "throttle": get_planner_bucket_status()}
 
 
 def _fmt_usd(v: float) -> str:

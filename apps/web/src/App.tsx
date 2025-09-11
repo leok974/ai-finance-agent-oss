@@ -25,6 +25,8 @@ import { setGlobalMonth } from "./state/month";
 import RuleSuggestionsPersistentPanel from "@/components/RuleSuggestionsPersistentPanel";
 import InsightsAnomaliesCard from "./components/InsightsAnomaliesCard";
 import ErrorBoundary from "@/components/ErrorBoundary";
+import PlannerDevPanel from "@/components/dev/PlannerDevPanel";
+import DevMenu from "@/components/dev/DevMenu";
 
 // Log frontend version info
 console.info("[Web] branch=", __WEB_BRANCH__, "commit=", __WEB_COMMIT__);
@@ -137,6 +139,7 @@ const App: React.FC = () => {
     );
   }
 
+  const isDev = import.meta.env.MODE !== "production";
   return (
   <MonthContext.Provider value={{ month, setMonth }}>
       <ChatDockProvider>
@@ -154,6 +157,7 @@ const App: React.FC = () => {
             <input type="month" className="bg-neutral-900 border border-neutral-800 rounded px-3 py-2" value={month} onChange={e=>{ setMonth(e.target.value); setGlobalMonth(e.target.value); }} />
             <button className="btn btn-sm hover:bg-accent" onClick={()=>setRefreshKey(k=>k+1)}>Refresh</button>
             <a href="#rule-suggestions" className="btn btn-ghost btn-sm" title="Jump to persistent Rule Suggestions">Suggestions</a>
+            {isDev && <DevMenu />}
           </div>
         </header>
 
@@ -198,6 +202,14 @@ const App: React.FC = () => {
             <MLStatusCard />
           </div>
           <ChatDock />
+        {isDev && (
+          <>
+            <hr className="my-6 border-neutral-800" />
+            <div id="dev-plan">
+              <PlannerDevPanel />
+            </div>
+          </>
+        )}
         </div>
       </div>
   </div>
