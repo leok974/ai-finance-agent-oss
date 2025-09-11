@@ -463,6 +463,27 @@ curl "http://127.0.0.1:8000/agent/plan/debug?q=top%20merchants%20for%20July&bypa
 - Windows PowerShell: activate venv with `.venv\Scripts\Activate.ps1`.
 - Optional backend smoke check script lives under `apps/backend/app/scripts/smoke-backend.ps1` (used by the web smoke script).
 
+## Maintainer: cleanup & verify
+```powershell
+# one-time
+cp .env.example .env
+# cleanup tracked junk
+.\scriptsackup-ignore
+.\scripts\cleanup-working-tree.ps1
+# rebuild & verify login
+docker compose up -d --build
+.\scripts\verify-demo-login.ps1
+```
+
+### History purge (if secrets were pushed)
+```powershell
+python -m pip install git-filter-repo
+.\scripts\history-purge.ps1
+git fetch --all --prune
+git reset --hard origin/main
+git gc --prune=now --aggressive
+```
+
 ## Why this will impress judges
 - **Applies gpt-oss uniquely**: on-device, function-calling agent that explains its reasoning (“Explain Signal”) and learns from user feedback (train->reclassify loop).
 - **Design**: clean UX, resilient states, deduped suggestions, one-click “Auto-apply best” with threshold.
