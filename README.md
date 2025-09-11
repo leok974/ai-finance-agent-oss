@@ -468,7 +468,6 @@ curl "http://127.0.0.1:8000/agent/plan/debug?q=top%20merchants%20for%20July&bypa
 # one-time
 cp .env.example .env
 # cleanup tracked junk
-.\scriptsackup-ignore
 .\scripts\cleanup-working-tree.ps1
 # rebuild & verify login
 docker compose up -d --build
