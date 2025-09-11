@@ -1,6 +1,9 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { agentPlanPreview, agentPlanApply, agentPlanStatus, type PlannerPlanItem, downloadReportExcel } from "@/lib/api";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
+import { Checkbox } from "@/components/ui/checkbox";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import Card from "@/components/Card";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -130,16 +133,10 @@ export default function PlannerDevPanel({ className }: { className?: string }) {
 
           {/* Advanced toggles */}
           <div className="mt-3 flex items-center gap-3">
-            <label htmlFor="planner-throttle" className="inline-flex items-center gap-2 text-sm text-muted-foreground">
-              <input
-                id="planner-throttle"
-                type="checkbox"
-                className="h-4 w-4 rounded border-border"
-                checked={bypassThrottle}
-                onChange={(e) => setBypassThrottle(e.target.checked)}
-              />
-              Bypass planner throttle
-            </label>
+            <div className="flex items-center gap-2">
+              <Switch id="planner-throttle" checked={bypassThrottle} onCheckedChange={setBypassThrottle} />
+              <label htmlFor="planner-throttle" className="text-sm text-muted-foreground">Bypass planner throttle</label>
+            </div>
           </div>
         </div>
 
@@ -164,7 +161,7 @@ export default function PlannerDevPanel({ className }: { className?: string }) {
           {/* Compact plan items */}
           <div className="text-sm text-muted-foreground mb-1">Plan items</div>
           <div className="rounded-lg border border-border bg-background/60">
-            <div className="h-44 overflow-auto">
+            <ScrollArea className="h-44">
               {!plan?.items?.length ? (
                 <div className="p-3 text-sm text-muted-foreground/70">No plan yet. Click <b>Preview Plan</b>.</div>
               ) : (
@@ -173,7 +170,7 @@ export default function PlannerDevPanel({ className }: { className?: string }) {
                     const checked = selected.includes(it);
                     return (
                       <li key={idx} className="flex items-center gap-3 px-3 py-2 hover:bg-muted/40">
-                        <input type="checkbox" className="h-4 w-4" checked={checked} onChange={() => toggleItem(it)} />
+                        <Checkbox checked={checked} onCheckedChange={() => toggleItem(it)} />
                         <div className="shrink-0 text-muted-foreground">
                           {it.kind === "categorize_unknowns" ? (
                             <ListChecks className="h-4 w-4" />
@@ -202,7 +199,7 @@ export default function PlannerDevPanel({ className }: { className?: string }) {
                   })}
                 </ul>
               )}
-            </div>
+            </ScrollArea>
           </div>
         </div>
       </div>
