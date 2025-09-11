@@ -85,9 +85,12 @@ export async function http<T=any>(path: string, init?: RequestInit): Promise<T> 
   return fetch(url, withCreds({ ...init, headers }));
   };
   let res = await doFetch();
-  // No retry on 401 to avoid infinite loops; surface a clear error
   if (res.status === 401) {
-    throw new Error('unauthorized');
+    // Attempt cookie-based refresh once, then retry original request
+    try {
+      await fetch(`${API_BASE || ''}/auth/refresh`, withCreds({ method: 'POST' }));
+    } catch {}
+    res = await doFetch();
   }
   if (!res.ok) {
     const txt = await res.text().catch(() => "");
@@ -104,12 +107,21 @@ export const apiGet = async <T = any>(path: string): Promise<T> => http<T>(path)
 export async function apiPost<T = any>(path: string, body?: any, init?: RequestInit): Promise<T> {
   const url = API_BASE ? `${API_BASE}${path}` : path;
   const headers = withAuthHeaders({ 'Content-Type': 'application/json', ...(init?.headers || {}) as any });
-  const res = await fetch(url, withCreds({
+  let res = await fetch(url, withCreds({
     ...init,
     method: 'POST',
     headers,
     body: body === undefined ? undefined : JSON.stringify(body),
   }));
+  if (res.status === 401) {
+    try { await fetch(`${API_BASE || ''}/auth/refresh`, withCreds({ method: 'POST' })); } catch {}
+    res = await fetch(url, withCreds({
+      ...init,
+      method: 'POST',
+      headers,
+      body: body === undefined ? undefined : JSON.stringify(body),
+    }));
+  }
   if (!res.ok) {
     const text = await res.text().catch(() => '');
     // Provide helpful message in dev (includes backend detail)
@@ -228,9 +240,12 @@ export async function fetchJson(path: string, init?: RequestInit) {
           const headers = withAuthHeaders(merged.headers);
           return fetch(url, withCreds({ ...merged, headers }));
         };
-  const res = await doFetch();
-  if (res.status === 401) throw new Error('unauthorized');
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+        let res = await doFetch();
+        if (res.status === 401) {
+          try { await fetch(`${API_BASE || ''}/auth/refresh`, withCreds({ method: 'POST' })); } catch {}
+          res = await doFetch();
+        }
+        if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
         const json = res.status === 204 ? null : await res.json();
         resolve(json);
       } catch (e) {
