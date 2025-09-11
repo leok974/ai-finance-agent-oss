@@ -5,21 +5,14 @@ import { Button } from "@/components/ui/button";
 // Adjust these to actual paths. Available components in repo:
 // - RuleTesterPanel at src/components/RuleTesterPanel.tsx
 // - MLStatusCard at src/components/MLStatusCard.tsx
-// PlannerDevTool not found in repo; render a gentle placeholder instead (still useful for judges)
 import RuleTesterPanel from "@/components/RuleTesterPanel";
 import MLStatusCard from "@/components/MLStatusCard";
-
-function PlannerDevToolPlaceholder() {
-  return (
-    <div className="border border-dashed rounded-xl p-3 text-sm opacity-80">
-      <div className="font-medium mb-1">Planner DevTool</div>
-      <div>Planner DevTool component not found in repo. Placeholder only.</div>
-    </div>
-  );
-}
+import PlannerDevTool from "@/components/planner/PlannerDevTool";
 
 export default function DevDock() {
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(
+    typeof window !== "undefined" && localStorage.getItem("DEV_DOCK") !== "0"
+  );
   if (!flags.dev) return null;
   return (
     <div className="fixed bottom-4 left-4 right-4 z-40 space-y-3">
@@ -32,11 +25,11 @@ export default function DevDock() {
             </Button>
           </div>
         </div>
-        {open && (
+    {open && (
           <div className="mt-3 grid gap-4 md:grid-cols-2">
             <div className="space-y-3">
               {/* Planner DevTool */}
-              <PlannerDevToolPlaceholder />
+      <PlannerDevTool />
             </div>
             <div className="space-y-3">
               {/* Rule Tester + ML Selftest */}

@@ -175,23 +175,22 @@ const App: React.FC = () => {
   <div className="relative">
           <div className="mx-auto max-w-6xl space-y-6">
         <header className="flex items-center justify-between">
-          <h1 className="text-3xl font-bold">Finance Agent
+          <h1 className="text-3xl font-bold">Finance Agent</h1>
+          <div className="flex items-center gap-3">
+            <LoginForm />
             {flags.dev && (
               <button
-                title="Ctrl+Shift+D also toggles Dev UI"
-                className="ml-2 rounded-full border px-2 py-0.5 text-xs opacity-80"
+                title="Toggle Dev Dock (Ctrl+Shift+D also works)"
+                className="ml-2 rounded-full border px-2 py-0.5 text-[10px] tracking-wide opacity-80 hover:opacity-100"
                 onClick={() => {
-                  const v = localStorage.getItem("DEV_UI") === "1" ? "0" : "1";
-                  localStorage.setItem("DEV_UI", v);
-                  location.reload();
+                  const v = localStorage.getItem("DEV_DOCK") === "1" ? "0" : "1";
+                  localStorage.setItem("DEV_DOCK", v);
+                  location.reload(); // simple + reliable
                 }}
               >
                 DEV
               </button>
             )}
-          </h1>
-          <div className="flex items-center gap-3">
-            <LoginForm />
             <DbRevBadge dbRevision={dbRev ?? undefined} inSync={inSync} />
             <AboutDrawer />
             <input type="month" className="bg-neutral-900 border border-neutral-800 rounded px-3 py-2" value={month} onChange={e=>{ setMonth(e.target.value); setGlobalMonth(e.target.value); }} />
@@ -232,18 +231,16 @@ const App: React.FC = () => {
         {/* Rules + Tester */}
         <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
           <RulesPanel refreshKey={refreshKey} />
-          {(flags.dev) && (
-            <RuleTesterPanel onChanged={() => setRefreshKey((k) => k + 1)} />
-          )}
+          {/* Dev tools only in DevDock now */}
           </div>
 
           {/* Status / Recent (right-side style) */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="hidden md:block" />
-            {(flags.dev) && <MLStatusCard />}
+            {/* Dev tools only in DevDock now */}
           </div>
           <ChatDock />
-          <DevDock />
+          {flags.dev && <DevDock />}
         </div>
       </div>
   </div>
