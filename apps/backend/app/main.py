@@ -16,6 +16,7 @@ from app.routers import agent_tools_rules_crud as rules_crud_router
 from app.routers import agent_tools_rules_apply_all as rules_apply_all_router
 from app.routers import agent_tools_meta as meta_router
 from .routers import charts
+from app.routers import agent_plan  # NEW: agent plan stub router
 from app.routers import auth as auth_router
 from app.routers import auth_oauth as auth_oauth_router
 from app.routers import agent_txns  # NEW
@@ -115,6 +116,7 @@ except Exception:
 app.include_router(alerts.router, prefix="/alerts", tags=["alerts"])
 app.include_router(insights.router)
 app.include_router(agent.router, prefix="/agent", tags=["agent"])
+app.include_router(agent_plan.router)  # /agent/plan/status stub
 app.include_router(explain.router, prefix="/txns", tags=["explain"])
 app.include_router(charts.router, prefix="/charts", tags=["charts"]) 
 app.include_router(auth_router.router)
