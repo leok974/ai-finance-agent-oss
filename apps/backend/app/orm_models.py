@@ -15,8 +15,8 @@ class Transaction(Base):
     raw_category: Mapped[str | None] = mapped_column(String(128))
     account: Mapped[str | None] = mapped_column(String(128), index=True)
     month: Mapped[str] = mapped_column(String(7), index=True)  # YYYY-MM
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.current_timestamp())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.current_timestamp(), onupdate=func.current_timestamp())
     # NEW: SQL-side canonical merchant (indexed)
     merchant_canonical: Mapped[str | None] = mapped_column(String(256), index=True, nullable=True)
 
@@ -63,8 +63,8 @@ class RuleORM(Base):
     category: Mapped[str] = mapped_column(String(128), index=True)
     # meta
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="1")
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.current_timestamp())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.current_timestamp(), onupdate=func.current_timestamp())
 
 # Backward-compat: expose classic name 'Rule' for imports/tests
 Rule = RuleORM
@@ -74,7 +74,7 @@ class UserLabel(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     txn_id: Mapped[int] = mapped_column(Integer, index=True)
     category: Mapped[str] = mapped_column(String(128), index=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.current_timestamp())
 
 # --- NEW: TransferLink --------------------------------------------------------
 class TransferLink(Base):
@@ -82,7 +82,7 @@ class TransferLink(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     txn_out_id: Mapped[int] = mapped_column(Integer, ForeignKey("transactions.id"), nullable=False)
     txn_in_id: Mapped[int] = mapped_column(Integer, ForeignKey("transactions.id"), nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.current_timestamp())
 
     __table_args__ = (
         UniqueConstraint("txn_out_id", "txn_in_id", name="uq_transfer_pair"),
@@ -96,7 +96,7 @@ class TransactionSplit(Base):
     category: Mapped[str] = mapped_column(String, nullable=False)
     amount: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
     note: Mapped[str | None] = mapped_column(String, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.current_timestamp())
 
 # --- NEW: RecurringSeries -----------------------------------------------------
 class RecurringSeries(Base):
@@ -109,7 +109,7 @@ class RecurringSeries(Base):
     last_seen: Mapped[datetime] = mapped_column(Date, nullable=False)
     next_due: Mapped[datetime | None] = mapped_column(Date, nullable=True)
     sample_txn_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("transactions.id"), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.current_timestamp())
 
 # --- NEW: Feedback -----------------------------------------------------------
 class Feedback(Base):
@@ -119,7 +119,7 @@ class Feedback(Base):
     label: Mapped[str] = mapped_column(String(128), nullable=False)
     source: Mapped[str] = mapped_column(String(64), nullable=False, server_default="user_change")  # user_change | accept_suggestion | rule_apply
     # Enforce NOT NULL with server default at DB level for reliable windowing
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.current_timestamp())
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Relationship back to transaction
     txn: Mapped["Transaction"] = relationship("Transaction", back_populates="feedbacks")
@@ -136,7 +136,7 @@ class RuleSuggestion(Base):
     category: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
     support_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     positive_rate: Mapped[float] = mapped_column(Float, nullable=False, server_default="0")
-    last_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    last_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.current_timestamp(), nullable=False)
     cooldown_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     ignored: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="0")
     applied_rule_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("rules.id"), nullable=True)
@@ -154,8 +154,8 @@ class Budget(Base):
     # Simple global budget per category (v1). If we want month-scoped later,
     # add: month = mapped_column(String, index=True) and UniqueConstraint("category", "month")
     effective_from: Mapped[date] = mapped_column(Date, nullable=False, server_default=func.current_date())
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.current_timestamp())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.current_timestamp(), onupdate=func.current_timestamp())
 
 # --- NEW: DB-backed persisted suggestions (separate table) -----------------
 class RuleSuggestionPersisted(Base):
@@ -171,8 +171,8 @@ class RuleSuggestionPersisted(Base):
     source: Mapped[str] = mapped_column(String(16), nullable=False, server_default="persisted")  # persisted|mined
     metrics_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     last_mined_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.current_timestamp(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.current_timestamp(), onupdate=func.current_timestamp(), nullable=False)
     __table_args__ = (
         UniqueConstraint("merchant", "category", name="ux_rule_suggestions_persisted_merchant_category"),
     )
@@ -182,7 +182,7 @@ class AnomalyIgnore(Base):
     __tablename__ = "anomaly_ignores"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     category: Mapped[str] = mapped_column(String(255), nullable=False, index=True, unique=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.current_timestamp(), nullable=False)
 
 
 # --- NEW: RuleSuggestionIgnore (merchant/category pairs) -------------------
@@ -191,7 +191,7 @@ class RuleSuggestionIgnore(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     merchant: Mapped[str] = mapped_column(String(255), nullable=False)
     category: Mapped[str] = mapped_column(String(255), nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.current_timestamp(), nullable=False)
     __table_args__ = (
         UniqueConstraint("merchant", "category", name="ux_rule_suggestion_ignores_merchant_category"),
     )
@@ -213,7 +213,7 @@ class RuleBackfillRun(Base):
     updated: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     dry_run: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="0")
     actor: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.current_timestamp(), nullable=False)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 # --- NEW: Auth models (Users / Roles) --------------------------------------
@@ -223,7 +223,7 @@ class User(Base):
     email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="1")
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.current_timestamp(), nullable=False)
 
     roles: Mapped[list["UserRole"]] = relationship("UserRole", back_populates="user", cascade="all, delete-orphan")
 

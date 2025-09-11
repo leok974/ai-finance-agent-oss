@@ -18,6 +18,17 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    """Create oauth_accounts table if it doesn't already exist.
+
+    Some dev/test flows may have created this table out-of-band; guard with inspector.
+    """
+    bind = op.get_bind()
+    dialect = bind.dialect.name
+    insp = sa.inspect(bind)
+    existing = insp.get_table_names() if dialect == "sqlite" else insp.get_table_names(schema="public")
+    if "oauth_accounts" in existing:
+        return
+
     op.create_table(
         "oauth_accounts",
         sa.Column("id", sa.Integer(), primary_key=True),
@@ -31,4 +42,10 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_table("oauth_accounts")
+    # Drop only if present to be symmetric with guarded upgrade
+    bind = op.get_bind()
+    dialect = bind.dialect.name
+    insp = sa.inspect(bind)
+    existing = insp.get_table_names() if dialect == "sqlite" else insp.get_table_names(schema="public")
+    if "oauth_accounts" in existing:
+        op.drop_table("oauth_accounts")
