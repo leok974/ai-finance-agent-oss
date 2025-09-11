@@ -1,10 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from starlette.responses import RedirectResponse
+import os
 
 from app.db import get_db
 from app.orm_models import User, OAuthAccount
-from app.utils.auth import create_tokens, hash_password, _ensure_roles
+from app.utils.auth import create_tokens, hash_password, _ensure_roles, set_auth_cookies
 from app.utils.oauth import oauth, absolute_url
 from app.utils.env import get_env
 
@@ -55,7 +56,7 @@ async def _finalize(provider: str, provider_user_id: str, email: str | None, db:
         db.add(link); db.commit()
     roles = [ur.role.name for ur in user.roles]
     pair = create_tokens(user.email, roles)
-    redirect = get_env("OAUTH_POST_LOGIN_REDIRECT", "http://localhost:5173/app")
-    # DEV: return tokens in hash; PROD: prefer HttpOnly cookies
-    url = f"{redirect}#access_token={pair.access_token}&refresh_token={pair.refresh_token}"
-    return RedirectResponse(url)
+    redirect = os.environ.get("OAUTH_POST_LOGIN_REDIRECT", get_env("OAUTH_POST_LOGIN_REDIRECT", "http://localhost:5173/app"))
+    resp = RedirectResponse(redirect)
+    set_auth_cookies(resp, pair)
+    return resp

@@ -7,7 +7,7 @@ import time
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Optional
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, Response, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -32,6 +32,24 @@ def _json(data: dict) -> bytes:
 
 def _now_ts() -> int:
     return int(time.time())
+
+
+# cookie settings
+def _cookie_secure() -> bool:
+    return os.environ.get("COOKIE_SECURE", "0") == "1"
+
+
+def _cookie_samesite() -> str:
+    return os.environ.get("COOKIE_SAMESITE", "lax")
+
+
+def _cookie_domain() -> Optional[str]:
+    return os.environ.get("COOKIE_DOMAIN") or None
+
+
+def _refresh_max_age() -> int:
+    days = int(os.environ.get("REFRESH_TOKEN_EXPIRE_DAYS", "14"))
+    return days * 24 * 3600
 
 
 class Tokens(BaseModel):
@@ -140,14 +158,32 @@ def verify_password(password: str, stored: str) -> bool:
 http_bearer = HTTPBearer(auto_error=False)
 
 
+def set_auth_cookies(resp: Response, pair: "Tokens") -> None:
+    resp.set_cookie(
+        "access_token", pair.access_token,
+        max_age=pair.expires_in, httponly=True, secure=_cookie_secure(),
+        samesite=_cookie_samesite(), path="/", domain=_cookie_domain(),
+    )
+    resp.set_cookie(
+        "refresh_token", pair.refresh_token,
+        max_age=_refresh_max_age(), httponly=True, secure=_cookie_secure(),
+        samesite=_cookie_samesite(), path="/", domain=_cookie_domain(),
+    )
+
+
+def clear_auth_cookies(resp: Response) -> None:
+    for name in ("access_token", "refresh_token"):
+        resp.delete_cookie(name, path="/", domain=_cookie_domain())
+
+
 def get_current_user(
     creds: Optional[HTTPAuthorizationCredentials] = Depends(http_bearer),
     db: Session = Depends(get_db),
+    request: Optional[Request] = None,
 ):
     # Dev bypass
     if os.getenv("DEV_ALLOW_NO_AUTH", getattr(settings, "DEV_ALLOW_NO_AUTH", False)) in (True, "1", 1, "true", "True"):
-        if not creds:
-            # return a permissive stub for non-security-critical endpoints
+        if not creds and request is None:
             u = db.query(User).filter(User.email == "dev@local").first()
             if not u:
                 u = User(email="dev@local", password_hash=hash_password("dev"))
@@ -155,9 +191,16 @@ def get_current_user(
                 _ensure_roles(db, u, ["user"])  # minimal role
             return u
 
-    if not creds or not creds.credentials:
+    token: Optional[str] = None
+    if creds and creds.credentials:
+        token = creds.credentials
+    # fallback to cookie
+    if not token and request is not None:
+        token = request.cookies.get("access_token")
+
+    if not token:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing credentials")
-    payload = decode_token(creds.credentials)
+    payload = decode_token(token)
     if payload.get("type") != "access":
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token type")
     email = payload.get("sub")

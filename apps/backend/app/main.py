@@ -1,4 +1,3 @@
-
 from fastapi import FastAPI
 from .db import Base, engine
 from sqlalchemy import inspect
@@ -67,9 +66,9 @@ DEV_ORIGINS = [
 app.add_middleware(
     CORSMiddleware,
     allow_origins=DEV_ORIGINS,   # In dev, allow both hosts used by the web app
-    allow_credentials=False,     # no cookies; simplifies CORS
+    allow_credentials=True,      # enable cookies
     allow_methods=["*"],
-    allow_headers=["*"],
+    allow_headers=["Authorization", "Content-Type", "X-CSRF-Token"],
     expose_headers=["Content-Disposition"],  # allow frontend to read filename
 )
 
@@ -77,7 +76,7 @@ app.add_middleware(
 app.add_middleware(
     SessionMiddleware,
     secret_key=os.environ.get("OAUTH_SESSION_SECRET", os.environ.get("AUTH_SECRET", "change-me")),
-    same_site="lax",
+    same_site=os.environ.get("COOKIE_SAMESITE", "lax"),
 )
 
 # Legacy in-memory stores (kept for compatibility; safe to remove if unused)
