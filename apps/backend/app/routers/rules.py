@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Depends, Query, Body
+from fastapi import APIRouter, HTTPException, Depends, Query, Body, Path
 from typing import List, Dict, Any, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import select, delete, and_, or_, func
@@ -39,6 +39,12 @@ from datetime import datetime as _dt
 from pydantic import Field as _Field
 from app.services.rule_suggestions_store import list_persisted as _db_list_persisted, upsert_from_mined as _db_upsert_from_mined, set_status as _db_set_status, clear_non_new as _db_clear_non_new
 from app.orm_models import RuleSuggestion  # legacy suggestions table for compat fallback
+from app.services.rule_suggestion_ignores_store import (
+    list_ignores as rsi_list,
+    list_ignores_cached as rsi_list_cached,
+    add_ignore as rsi_add,
+    remove_ignore as rsi_remove,
+)
 
 router = APIRouter(prefix="/rules", tags=["rules"])
 @router.get("/suggestions/config")
@@ -497,6 +503,40 @@ class PersistedListResp(BaseModel):
     suggestions: List[PersistedSuggestion]
 
 AUTOFILL_FROM_MINED = True
+
+# --- Suggestion Ignores (DB-backed with small TTL cache) -------------------
+class IgnorePair(BaseModel):
+    merchant: str = Field(..., min_length=1, example="Starbucks")
+    category: str = Field(..., min_length=1, example="Dining out")
+
+class IgnoreListResp(BaseModel):
+    ignores: List[IgnorePair] = Field(default_factory=list)
+
+@router.get("/suggestions/ignores", response_model=IgnoreListResp, summary="List ignored (merchant, category) pairs")
+def list_rule_suggestion_ignores(
+    cached: bool = Query(True, description="Use short TTL cache for reads"),
+    db: Session = Depends(get_db),
+):
+    rows = rsi_list_cached(db) if cached else rsi_list(db)
+    return {"ignores": rows}
+
+@router.post("/suggestions/ignores", response_model=IgnoreListResp, summary="Add an ignore pair")
+def add_rule_suggestion_ignore(payload: IgnorePair, db: Session = Depends(get_db)):
+    rows = rsi_add(db, payload.merchant.strip(), payload.category.strip())
+    return {"ignores": rows}
+
+@router.delete(
+    "/suggestions/ignores/{merchant}/{category}",
+    response_model=IgnoreListResp,
+    summary="Remove an ignore pair"
+)
+def remove_rule_suggestion_ignore(
+    merchant: str = Path(..., min_length=1),
+    category: str = Path(..., min_length=1),
+    db: Session = Depends(get_db),
+):
+    rows = rsi_remove(db, merchant.strip(), category.strip())
+    return {"ignores": rows}
 
 @router.get("/suggestions/persistent", response_model=PersistedListResp)
 def list_persisted_suggestions_stub(

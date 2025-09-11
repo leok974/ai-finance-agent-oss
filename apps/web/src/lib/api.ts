@@ -394,6 +394,22 @@ export async function listRuleSuggestions(params: { merchant_norm?: string; cate
 export const acceptRuleSuggestion = (id: number) => http<{ ok: boolean; rule_id: number }>(`/rules/suggestions/${id}/accept`, { method: 'POST' });
 export const dismissRuleSuggestion = (id: number) => http<{ ok: boolean }>(`/rules/suggestions/${id}/dismiss`, { method: 'POST' });
 
+// ---------- Suggestion Ignores (DB-backed) ----------
+export const listSuggestionIgnores = (cached = true) =>
+  http<{ ignores: { merchant: string; category: string }[] }>(`/rules/suggestions/ignores?cached=${cached ? "true" : "false"}`);
+
+export const addSuggestionIgnore = (merchant: string, category: string) =>
+  http<{ ignores: { merchant: string; category: string }[] }>(`/rules/suggestions/ignores`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ merchant, category }),
+  });
+
+export const removeSuggestionIgnore = (merchant: string, category: string) =>
+  http<{ ignores: { merchant: string; category: string }[] }>(
+    `/rules/suggestions/ignores/${encodeURIComponent(merchant)}/${encodeURIComponent(category)}`,
+    { method: "DELETE" }
+  );
+
 // ---------- Rule Suggestions (mined summary) ----------
 export type MinedRuleSuggestion = {
   merchant: string;
