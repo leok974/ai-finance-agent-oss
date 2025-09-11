@@ -51,20 +51,11 @@ function q(params: Record<string, any>) {
 
 async function http<T=any>(path: string, init?: RequestInit): Promise<T> {
   const url = API_BASE ? `${API_BASE}${path}` : path;
-  const res = await fetch(url, {
-    headers: { 'Content-Type': 'application/json' },
-    ...init,
-  });
+  const res = await fetch(url, { headers: { 'Content-Type': 'application/json' }, ...init });
   if (!res.ok) {
-    let msg = `${res.status} ${res.statusText}`;
-    try {
-      const j = await res.json();
-      if (j?.detail) msg += ` — ${JSON.stringify(j.detail)}`;
-    } catch {
-      const t = await res.text().catch(() => "");
-      if (t) msg += ` — ${t}`;
-    }
-    throw new Error(msg);
+    const txt = await res.text().catch(() => "");
+    const snippet = txt ? ` — ${txt.slice(0, 200)}` : "";
+    throw new Error(`${res.status} ${res.statusText}${snippet}`);
   }
   const ct = res.headers.get('content-type') || '';
   return ct.includes('application/json') ? res.json() : (await res.text() as any);
