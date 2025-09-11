@@ -3,6 +3,7 @@ import json
 import re
 import logging
 from typing import Any, Dict, List, Optional, Tuple, Literal
+import os
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from starlette.responses import JSONResponse, RedirectResponse
@@ -25,6 +26,7 @@ from app.services.agent_tools import route_to_tool
 from app.services.agent_planner import plan_tools, get_planner_bucket_status
 from app.services.agent_chain import execute_plan
 from app.utils.env import is_dev
+from app.utils.auth import require_roles
 from datetime import datetime
 
 router = APIRouter()  # <-- no prefix here (main.py supplies /agent)
@@ -523,9 +525,12 @@ def agent_plan_debug(
         "bypass": bool(bypass),
     }
 
-@router.get("/plan/status")
+@router.get(
+    "/plan/status",
+    dependencies=[Depends(require_roles("admin"))]
+)
 def agent_plan_status():
-    if not is_dev():
+    if not (is_dev() or os.getenv("ENABLE_PLAN_STATUS") == "1"):
         raise HTTPException(status_code=404, detail="Not found")
     return {"ok": True, "throttle": get_planner_bucket_status()}
 

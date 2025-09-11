@@ -343,6 +343,7 @@ Behavior:
 Status endpoint:
 
 GET `/agent/plan/status` → `{ ok, throttle }`
+- Available in dev by default; to enable in any environment, set `ENABLE_PLAN_STATUS=1` on the backend.
 
 Examples:
 
