@@ -12,6 +12,7 @@ from app.services.ml_train import incremental_update, train_on_db
 from app.services.ml_train_service import incremental_update_rows, latest_model_path
 
 router = APIRouter()
+from app.utils.csrf import csrf_protect
 
 def _fetch_txn_row(db: Session, any_id: int):
     """Fetch a transaction row by DB id (raw SQL)."""
@@ -44,7 +45,7 @@ class FeedbackInSuggest(BaseModel):
     category: str = Field(..., min_length=1)
     action: Literal["accept", "reject"]
 
-@router.post("/ml/train")
+@router.post("/ml/train", dependencies=[Depends(csrf_protect)])
 def train_model(params: TrainParams, db: Session = Depends(get_db)) -> Dict[str, Any]:
     try:
         result = train_on_db(
@@ -83,7 +84,7 @@ def ml_status(db: Session = Depends(get_db)) -> Dict[str, Any]:
         info["classes"] = []
     return info
 
-@router.post("/ml/selftest")
+@router.post("/ml/selftest", dependencies=[Depends(csrf_protect)])
 def ml_selftest(db: Session = Depends(get_db)) -> Dict[str, Any]:
     """
     E2E smoke test for incremental learning:
@@ -230,7 +231,7 @@ class FeedbackByIdIn(BaseModel):
     notes: str | None = None
 
 
-@router.post("/ml/feedback")
+@router.post("/ml/feedback", dependencies=[Depends(csrf_protect)])
 def record_feedback(fb: FeedbackIn, db: Session = Depends(get_db)):
     # Fetch ORM transaction by DB id
     txn = db.query(Transaction).filter(Transaction.id == fb.txn_id).first()
@@ -268,7 +269,7 @@ def record_feedback(fb: FeedbackIn, db: Session = Depends(get_db)):
     db.commit()
     return {"ok": True, "id": row.id}
 
-@router.post("/ml/feedback/by_id")
+@router.post("/ml/feedback/by_id", dependencies=[Depends(csrf_protect)])
 def record_feedback_by_id(payload: FeedbackByIdIn, db: Session = Depends(get_db)):
     txn = db.query(Transaction).filter(Transaction.id == payload.id).first()
     if not txn:

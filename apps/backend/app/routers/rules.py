@@ -22,6 +22,7 @@ from datetime import datetime, date
 import app.services.rule_suggestions as rs
 from app.services.rules_preview import preview_rule_matches, backfill_rule_apply, normalize_rule_input
 from app.utils.auth import require_roles
+from app.utils.csrf import csrf_protect
 from app.services.rule_suggestions import mine_suggestions
 from app.services.rule_suggestions import (
     list_suggestions as list_persisted_suggestions,
@@ -233,14 +234,14 @@ def add_rule(body: CompatRuleInput = Body(...), db: Session = Depends(get_db)):
     return RuleCreateResponse(id=str(getattr(r, "id", "")), display_name=display)
 
 
-@router.delete("/")
+@router.delete("/", dependencies=[Depends(csrf_protect)])
 def clear_rules(db: Session = Depends(get_db)):
     db.execute(delete(Rule))
     db.commit()
     return {"ok": True}
 
 
-@router.delete("/{rule_id}")
+@router.delete("/{rule_id}", dependencies=[Depends(csrf_protect)])
 def delete_rule(rule_id: int, db: Session = Depends(get_db)):
     res = db.execute(delete(Rule).where(Rule.id == rule_id))
     if getattr(res, "rowcount", 0) == 0:
@@ -343,7 +344,7 @@ def save_train_reclass(payload: SaveTrainPayload, db: Session = Depends(get_db))
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Save/train/reclass failed: {e}")
 
-@router.post("/preview", dependencies=[Depends(require_roles("admin"))])
+@router.post("/preview", dependencies=[Depends(require_roles("admin")), Depends(csrf_protect)])
 def preview_rule(
     payload: Dict[str, Any],
     window_days: Optional[int] = Query(default=None, description="Number of days to look back (inclusive)"),
@@ -354,7 +355,7 @@ def preview_rule(
     total, samples = preview_rule_matches(db, payload, window_days, only_uncategorized, sample_limit)
     return {"matches_count": total, "sample_txns": samples}
 
-@router.post("/{rule_id}/backfill", dependencies=[Depends(require_roles("admin"))])
+@router.post("/{rule_id}/backfill", dependencies=[Depends(require_roles("admin")), Depends(csrf_protect)])
 def backfill_rule(
     rule_id: int,
     params: Dict[str, Any],
@@ -447,7 +448,7 @@ class ApplySuggestionResp(BaseModel):
     applied_backfill_month: Optional[str] = None
 
 
-@router.post("/suggestions/apply", response_model=ApplySuggestionResp)
+@router.post("/suggestions/apply", response_model=ApplySuggestionResp, dependencies=[Depends(csrf_protect)])
 def apply_rule_suggestion(payload: ApplySuggestionReq, db: Session = Depends(get_db)):
     # Create or activate rule
     r = db.query(Rule).filter(Rule.merchant == payload.merchant, Rule.category == payload.category).one_or_none()
@@ -469,7 +470,7 @@ class IgnoreSuggestionReq(BaseModel):
     category: str
 
 
-@router.post("/suggestions/ignore")
+@router.post("/suggestions/ignore", dependencies=[Depends(csrf_protect)])
 def ignore_rule_suggestion(payload: IgnoreSuggestionReq):
     SUGGESTION_IGNORES.add((payload.merchant, payload.category))
     return {
@@ -521,7 +522,7 @@ def list_rule_suggestion_ignores(
     rows = rsi_list_cached(db) if cached else rsi_list(db)
     return {"ignores": rows}
 
-@router.post("/suggestions/ignores", response_model=IgnoreListResp, summary="Add an ignore pair")
+@router.post("/suggestions/ignores", response_model=IgnoreListResp, summary="Add an ignore pair", dependencies=[Depends(csrf_protect)])
 def add_rule_suggestion_ignore(payload: IgnorePair, db: Session = Depends(get_db)):
     rows = rsi_add(db, payload.merchant.strip(), payload.category.strip())
     return {"ignores": rows}
@@ -553,7 +554,7 @@ def list_persisted_suggestions_stub(
     return {"suggestions": payload}
 
 
-@router.post("/suggestions/{sid}/accept", response_model=PersistedSuggestion)
+@router.post("/suggestions/{sid}/accept", response_model=PersistedSuggestion, dependencies=[Depends(csrf_protect)])
 def accept_persisted_suggestion_db(sid: int, db: Session = Depends(get_db)):
     # First try persisted store
     try:
@@ -590,7 +591,7 @@ def accept_persisted_suggestion_db(sid: int, db: Session = Depends(get_db)):
         }
 
 
-@router.post("/suggestions/{sid}/dismiss", response_model=PersistedSuggestion)
+@router.post("/suggestions/{sid}/dismiss", response_model=PersistedSuggestion, dependencies=[Depends(csrf_protect)])
 def dismiss_persisted_suggestion_db(sid: int, db: Session = Depends(get_db)):
     try:
         out = _db_set_status(db, sid, "dismissed")
@@ -621,7 +622,7 @@ def dismiss_persisted_suggestion_db(sid: int, db: Session = Depends(get_db)):
         }
 
 
-@router.post("/suggestions/persistent/refresh", response_model=PersistedListResp)
+@router.post("/suggestions/persistent/refresh", response_model=PersistedListResp, dependencies=[Depends(csrf_protect)])
 def refresh_persisted_suggestions_db(
     window_days: int = Query(60, ge=7, le=180),
     min_count: int = Query(3, ge=2, le=20),

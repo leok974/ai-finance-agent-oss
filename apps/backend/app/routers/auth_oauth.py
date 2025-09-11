@@ -6,6 +6,7 @@ import os
 from app.db import get_db
 from app.orm_models import User, OAuthAccount
 from app.utils.auth import create_tokens, hash_password, _ensure_roles, set_auth_cookies
+from app.utils.csrf import issue_csrf_cookie
 from app.utils.oauth import oauth, absolute_url
 from app.utils.env import get_env
 
@@ -59,4 +60,5 @@ async def _finalize(provider: str, provider_user_id: str, email: str | None, db:
     redirect = os.environ.get("OAUTH_POST_LOGIN_REDIRECT", get_env("OAUTH_POST_LOGIN_REDIRECT", "http://localhost:5173/app"))
     resp = RedirectResponse(redirect)
     set_auth_cookies(resp, pair)
+    issue_csrf_cookie(resp)
     return resp

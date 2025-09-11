@@ -15,6 +15,7 @@ from app.utils.env import is_dev
 import datetime as dt
 from pydantic import BaseModel
 from app.services.rules_apply import apply_all_active_rules, latest_month_from_data
+from app.utils.csrf import csrf_protect
 
 router = APIRouter()
 
@@ -89,7 +90,7 @@ def get_unknowns(month: Optional[str] = None, db: Session = Depends(get_db)) -> 
     unknowns = [Txn(**t) for t in month_items if (t.get("category") or "Unknown") == "Unknown"]
     return {"month": month, "unknowns": unknowns}
 
-@router.post("/{txn_id}/categorize")
+@router.post("/{txn_id}/categorize", dependencies=[Depends(csrf_protect)])
 def categorize(txn_id: int, req: CategorizeRequest, db: Session = Depends(get_db)):
     # Update DB if present
     tdb = db.get(Transaction, txn_id)
@@ -120,7 +121,7 @@ def categorize(txn_id: int, req: CategorizeRequest, db: Session = Depends(get_db
         return {"ok": True, "txn": to_txn_dict(tdb)}
     raise HTTPException(status_code=404, detail="Transaction not found")
 
-@router.post("/categorize")
+@router.post("/categorize", dependencies=[Depends(csrf_protect)])
 def categorize_body(req: Dict[str, Any]):
     """
     Compatibility endpoint to accept {"id": <number>, "category": <string>} in the body.
@@ -193,7 +194,7 @@ class TransferIn(BaseModel):
     txn_in_id: int = Field(..., description="Inflow txn id (positive amount)")
 
 
-@router.post("/mark_transfer")
+@router.post("/mark_transfer", dependencies=[Depends(csrf_protect)])
 def mark_transfer(payload: TransferIn, db: Session = Depends(get_db)):
     try:
         link = link_transfer(db, payload.txn_out_id, payload.txn_in_id)
@@ -202,7 +203,7 @@ def mark_transfer(payload: TransferIn, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@router.delete("/transfer/{link_id}")
+@router.delete("/transfer/{link_id}", dependencies=[Depends(csrf_protect)])
 def delete_transfer(link_id: int, db: Session = Depends(get_db)):
     unlink_transfer(db, link_id)
     return {"status": "ok"}
@@ -219,7 +220,7 @@ class SplitIn(BaseModel):
     legs: List[SplitLeg]
 
 
-@router.post("/{txn_id}/split")
+@router.post("/{txn_id}/split", dependencies=[Depends(csrf_protect)])
 def create_or_replace_splits(txn_id: int, payload: SplitIn, db: Session = Depends(get_db)):
     try:
         legs = upsert_splits(db, txn_id, [l.dict() for l in payload.legs])
@@ -228,7 +229,7 @@ def create_or_replace_splits(txn_id: int, payload: SplitIn, db: Session = Depend
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@router.delete("/{txn_id}/split/{split_id}")
+@router.delete("/{txn_id}/split/{split_id}", dependencies=[Depends(csrf_protect)])
 def delete_split_leg(txn_id: int, split_id: int, db: Session = Depends(get_db)):
     leg = db.query(TransactionSplitORM).get(split_id)
     if not leg or leg.parent_txn_id != txn_id:
@@ -243,7 +244,7 @@ class RecurringScanIn(BaseModel):
     month: Optional[str] = None
 
 
-@router.post("/recurring/scan")
+@router.post("/recurring/scan", dependencies=[Depends(csrf_protect)])
 def recurring_scan(payload: RecurringScanIn, db: Session = Depends(get_db)):
     n = scan_recurring(db, month=payload.month)
     return {"status": "ok", "upserts": n}
@@ -308,7 +309,7 @@ class ReclassifyIn(BaseModel):
     month: Optional[str] = None
 
 
-@router.post("/reclassify")
+@router.post("/reclassify", dependencies=[Depends(csrf_protect)])
 def reclassify(
     payload: Optional[ReclassifyIn] = None,
     month: Optional[str] = Query(None, description="YYYY-MM; defaults to latest if omitted"),

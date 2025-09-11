@@ -10,6 +10,7 @@ from app.services.budget_recommend import compute_recommendations
 from pydantic import BaseModel, Field, RootModel
 from app.orm_models import Budget, Transaction
 from app.utils.state import TEMP_BUDGETS, current_month_key
+from app.utils.csrf import csrf_protect
 
 router = APIRouter()
 # Separate router exposing "/budgets" prefix for temp budget overlay endpoints
@@ -133,7 +134,7 @@ class BudgetApplyResp(BaseModel):
     applied_total: float
 
 
-@router.post("/apply", response_model=BudgetApplyResp, summary="Upsert budgets for selected categories using a strategy")
+@router.post("/apply", response_model=BudgetApplyResp, summary="Upsert budgets for selected categories using a strategy", dependencies=[Depends(csrf_protect)])
 def apply_budgets(payload: ApplyReq, db: Session = Depends(get_db)):
     recs = compute_recommendations(db, months=payload.months, include_current=True)
     inc = set(payload.categories_include or [])
@@ -182,7 +183,7 @@ class BudgetSetReq(BaseModel):
     amount: float = Field(..., gt=0)
 
 
-@router.post("/set")
+@router.post("/set", dependencies=[Depends(csrf_protect)])
 def set_budget(req: BudgetSetReq, db: Session = Depends(get_db)):
     cat = req.category.strip()
     amt = float(req.amount)
@@ -210,7 +211,7 @@ def set_budget(req: BudgetSetReq, db: Session = Depends(get_db)):
     }
 
 
-@router.delete("/{category}")
+@router.delete("/{category}", dependencies=[Depends(csrf_protect)])
 def delete_budget(
     category: str = Path(..., min_length=1),
     db: Session = Depends(get_db),

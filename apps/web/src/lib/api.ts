@@ -12,6 +12,15 @@ function withCreds(init: RequestInit = {}): RequestInit {
   // Preserve headers and include cookies in all requests
   const headers = new Headers(init.headers || {});
   if (accessToken) headers.set("Authorization", `Bearer ${accessToken}`);
+  // CSRF: include header for unsafe methods if cookie is present
+  const method = (init.method || 'GET').toString().toUpperCase();
+  if (["POST", "PUT", "PATCH", "DELETE"].includes(method)) {
+    try {
+      const m = typeof document !== 'undefined' ? document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/) : null;
+      const csrf = m && m[1] ? decodeURIComponent(m[1]) : undefined;
+      if (csrf && !headers.has("X-CSRF-Token")) headers.set("X-CSRF-Token", csrf);
+    } catch {}
+  }
   return { ...init, headers, credentials: "include" };
 }
 

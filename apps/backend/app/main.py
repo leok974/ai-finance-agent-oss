@@ -79,6 +79,8 @@ app.add_middleware(
     same_site=os.environ.get("COOKIE_SAMESITE", "lax"),
 )
 
+# CSRF is attached per-route on unsafe endpoints only (see routers)
+
 # Legacy in-memory stores (kept for compatibility; safe to remove if unused)
 app.state.rules = []
 app.state.txns = []

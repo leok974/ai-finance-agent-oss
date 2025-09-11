@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from app.db import get_db
 from app.orm_models import User
 from app.utils.auth import create_tokens, verify_password, hash_password, get_current_user, _ensure_roles, set_auth_cookies, clear_auth_cookies, decode_token
+from app.utils.csrf import issue_csrf_cookie, csrf_protect
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -26,6 +27,7 @@ def login(body: LoginBody, resp: Response, db: Session = Depends(get_db)):
     roles = [ur.role.name for ur in u.roles]
     pair = create_tokens(u.email, roles)
     set_auth_cookies(resp, pair)
+    issue_csrf_cookie(resp)
     return pair.model_dump()
 
 @router.post("/register")
@@ -38,9 +40,10 @@ def register(body: RegisterBody, resp: Response, db: Session = Depends(get_db)):
     roles = body.roles
     pair = create_tokens(u.email, roles)
     set_auth_cookies(resp, pair)
+    issue_csrf_cookie(resp)
     return pair.model_dump()
 
-@router.post("/refresh")
+@router.post("/refresh", dependencies=[Depends(csrf_protect)])
 def refresh(resp: Response, request: Request, token: str | None = None, db: Session = Depends(get_db)):
     # Accept token either from body or cookie
     tok = token or request.cookies.get("refresh_token")
@@ -58,9 +61,10 @@ def refresh(resp: Response, request: Request, token: str | None = None, db: Sess
     roles = [ur.role.name for ur in u.roles]
     pair = create_tokens(email, roles)
     set_auth_cookies(resp, pair)
+    issue_csrf_cookie(resp)
     return pair.model_dump()
 
-@router.post("/logout")
+@router.post("/logout", dependencies=[Depends(csrf_protect)])
 def logout(resp: Response):
     clear_auth_cookies(resp)
     return {"ok": True}
