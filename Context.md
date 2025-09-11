@@ -374,3 +374,38 @@ apps/web/
 ---
 
 ✅ **Status:** Exports (Excel/PDF) fully working, with categories + custom ranges, split toggle, busy/error handling, polished UI. Tests all green.
+
+---
+
+## ✳️ Recent updates (Sep 11, 2025)
+
+Auth & Web Security
+- Switched to HttpOnly cookie auth end-to-end. Backend sets/reads `access_token` and `refresh_token` cookies; frontend uses `credentials: "include"` and stores no tokens.
+- CSRF protection added via a minimal double-submit cookie:
+  - Backend sets a non-HttpOnly `csrf_token` cookie on login/register/refresh and OAuth finalize.
+  - Mutating routes (POST/PUT/PATCH/DELETE) now depend on `csrf_protect` which validates `X-CSRF-Token` against the cookie; GET routes stay CSRF-free.
+  - CORS already allows `X-CSRF-Token` header; SameSite and Secure inherit from env.
+- Frontend automatically sends `X-CSRF-Token` for unsafe methods and when calling `/auth/refresh` during a 401 auto-retry.
+
+Frontend
+- API helper (`apps/web/src/lib/api.ts`):
+  - One-time 401 auto-refresh flow: on 401, POST `/auth/refresh` (cookies + CSRF), then re-issue the original request.
+  - For POST/PUT/PATCH/DELETE, attach `X-CSRF-Token` from the `csrf_token` cookie when present.
+
+Backend
+- CSRF utils (`app/utils/csrf.py`): `issue_csrf_cookie(response)` and `csrf_protect` dependency.
+- Auth routes: issue CSRF cookie on `/auth/login`, `/auth/register`, `/auth/refresh`, and OAuth callback finalize.
+- Mutating endpoints protected with `Depends(csrf_protect)` across auth, rules, txns, ml, and budget routers. GET endpoints remain unchanged.
+- CORS config: `allow_credentials=True` and `allow_headers` includes `Authorization`, `Content-Type`, `X-CSRF-Token`. Dev origins: `http://127.0.0.1:5173` and `http://localhost:5173`.
+
+Dev/Prod Notes
+- Dev uses `127.0.0.1` for both FE and BE so SameSite=Lax cookies work reliably.
+- Production env switches:
+  - `COOKIE_SECURE=1`
+  - `COOKIE_SAMESITE=lax` (or `none` if truly cross-site over HTTPS)
+  - `COOKIE_DOMAIN=your.app.domain`
+  - `OAUTH_POST_LOGIN_REDIRECT=https://your.app.domain/app`
+
+Status
+- Backend and frontend updated; cookies and CSRF verified locally.
+- Commits pushed on `Security-features` branch.

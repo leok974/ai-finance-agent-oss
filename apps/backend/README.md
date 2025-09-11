@@ -40,3 +40,33 @@ The backend uses `APP_ENV` (preferred) or `ENV` to decide behavior:
 - `APP_ENV=test` → used in pytest runs
 
 Never run prod deployments with `APP_ENV=dev`.
+
+---
+
+## Auth & CSRF (Sep 2025)
+
+Cookie-based auth
+- Backend issues HttpOnly `access_token` and `refresh_token` cookies on login/register/refresh and OAuth finalize.
+- Clients should send requests with `credentials: include`; no token storage in local/session storage.
+
+CSRF protection (double-submit cookie)
+- Backend sets a non-HttpOnly `csrf_token` cookie alongside auth cookies.
+- Mutating endpoints (POST/PUT/PATCH/DELETE) require header `X-CSRF-Token` that must match the `csrf_token` cookie.
+- GET endpoints are CSRF-free by design.
+
+Endpoints protected
+- Auth: `POST /auth/refresh`, `POST /auth/logout`.
+- Rules: Admin preview/backfill, suggestions apply/ignore, ignores add/remove, persisted refresh, and DELETE endpoints.
+- Transactions: categorize (both forms), transfer link/unlink, splits create/delete, recurring scan, reclassify.
+- ML: train, selftest, feedback.
+- Budgets: apply, set, delete.
+
+CORS and headers
+- CORS allows dev origins `http://127.0.0.1:5173` and `http://localhost:5173`, `allow_credentials=True`.
+- `allow_headers` include `Authorization`, `Content-Type`, `X-CSRF-Token`. `Content-Disposition` is exposed for downloads.
+
+Prod env switches
+- `COOKIE_SECURE=1`
+- `COOKIE_SAMESITE=lax` (or `none` for HTTPS cross-site)
+- `COOKIE_DOMAIN=your.app.domain`
+- `OAUTH_POST_LOGIN_REDIRECT=https://your.app.domain/app`
