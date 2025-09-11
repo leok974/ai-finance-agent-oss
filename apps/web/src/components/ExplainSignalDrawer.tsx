@@ -1,6 +1,8 @@
 import * as React from 'react'
 import { getExplain, type ExplainResponse } from '@/api'
 import Chip from '@/components/ui/chip'
+import { Skeleton } from '@/components/ui/skeleton'
+import { selectTopMerchantCat } from '@/selectors/explain'
 
 function GroundedBadge() {
   return (
@@ -39,6 +41,7 @@ export default function ExplainSignalDrawer({ txnId, open, onOpenChange }: {
 
   const rationale = data?.llm_rationale || data?.rationale || ''
   const mode = data?.mode || (data?.llm_rationale ? 'llm' : 'deterministic')
+  const top = React.useMemo(() => selectTopMerchantCat(data), [data])
 
   return (
     <>
@@ -51,7 +54,26 @@ export default function ExplainSignalDrawer({ txnId, open, onOpenChange }: {
               <button className="text-sm opacity-70 hover:opacity-100" onClick={() => onOpenChange(false)}>Close</button>
             </div>
 
-            {loading && <div className="text-sm opacity-70">Loading…</div>}
+            {loading && (
+              <div className="space-y-4">
+                <div className="flex items-center gap-2">
+                  <Skeleton className="h-5 w-16 rounded-full" />
+                  <Skeleton className="h-5 w-28 rounded-full" />
+                </div>
+                <Skeleton className="h-4 w-[85%]" />
+                <Skeleton className="h-4 w-[70%]" />
+                <div className="border-t border-border pt-3">
+                  <div className="space-y-2">
+                    <Skeleton className="h-4 w-24" />
+                    <div className="flex flex-wrap gap-2">
+                      <Skeleton className="h-6 w-40 rounded-2xl" />
+                      <Skeleton className="h-6 w-48 rounded-2xl" />
+                      <Skeleton className="h-6 w-36 rounded-2xl" />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
             {error && (
               <div className="text-sm text-amber-300/90 bg-amber-500/10 border border-amber-500/30 rounded-xl p-3">
                 Failed to load: <code>{error}</code>
@@ -73,12 +95,9 @@ export default function ExplainSignalDrawer({ txnId, open, onOpenChange }: {
                     {data.evidence?.rule_match?.category && (
                       <Chip tone="good" title={`Rule #${data.evidence.rule_match.id}`}>Rule → {data.evidence.rule_match.category}</Chip>
                     )}
-                    {(() => {
-                      const top = data.evidence?.similar?.by_category?.[0]
-                      if (!top) return null
-                      const label = `${top.category || 'Unknown'} • ${top.count}`
-                      return <Chip tone="muted" title="Top historical category">History → {label}</Chip>
-                    })()}
+                    {top && (
+                      <Chip tone="muted" title="Top historical category">History → {top.cat || 'Unknown'} • {top.count}</Chip>
+                    )}
                     {(() => {
                       const fb = data.evidence?.feedback?.merchant_feedback?.[0]
                       if (!fb) return null
