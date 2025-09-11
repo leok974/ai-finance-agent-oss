@@ -23,10 +23,12 @@ const LoginForm: React.FC = () => {
     setError(null);
     setLoading(true);
     try {
-      if (mode === "login") await login(email, password);
-      else await register(email, password);
+      const trimmed = email.trim();
+      if (mode === "login") await login(trimmed, password);
+      else await register(trimmed, password);
     } catch (e: any) {
-      setError(e?.message || String(e));
+      // show friendly message for auth failures
+      setError("Invalid email or password");
     } finally {
       setLoading(false);
     }

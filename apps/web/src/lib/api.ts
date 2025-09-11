@@ -110,8 +110,11 @@ export async function apiPost<T = any>(path: string, body?: any, init?: RequestI
     headers,
     body: body === undefined ? undefined : JSON.stringify(body),
   }));
-  if (res.status === 401) throw new Error('unauthorized');
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    // Provide helpful message in dev (includes backend detail)
+    throw new Error(`${res.status} ${res.statusText} ${text}`.trim());
+  }
   const ct = res.headers.get('content-type') || '';
   return ct.includes('application/json') ? res.json() : (await res.text() as any);
 }
