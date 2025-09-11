@@ -8,6 +8,7 @@ from alembic import op
 import sqlalchemy as sa
 from sqlalchemy import inspect
 from sqlalchemy.sql import text
+from datetime import datetime
 
 # ids
 revision = "20250910_unify_rule_suggestions_one_table"
@@ -18,9 +19,14 @@ depends_on = None
 def upgrade():
     conn = op.get_bind()
     insp = inspect(conn)
+    dialect = conn.dialect.name  # "sqlite", "postgresql", etc.
+    schema = None if dialect == "sqlite" else "public"
 
     # ---- 1) Add columns ONLY if missing (idempotent) ----
-    cols = {c["name"] for c in insp.get_columns("rule_suggestions_persisted", schema="public")}
+    if schema:
+        cols = {c["name"] for c in insp.get_columns("rule_suggestions_persisted", schema=schema)}
+    else:
+        cols = {c["name"] for c in insp.get_columns("rule_suggestions_persisted")}
 
     if "source" not in cols:
         # Postgres supports IF NOT EXISTS, but we'll stay portable via inspector
@@ -39,60 +45,72 @@ def upgrade():
             sa.Column("last_mined_at", sa.DateTime(timezone=True), nullable=True),
         )
 
-    # ---- 2) Copy legacy rows if the old mined table exists (Postgres-safe) ----
-    legacy_exists = conn.execute(text("SELECT to_regclass('public.rule_suggestions')")).scalar() is not None
+    # ---- 2) Copy legacy rows if the old mined table exists (cross-dialect) ----
+    # Detect table existence using Inspector to avoid schema-specific SQL
+    if schema:
+        table_names = insp.get_table_names(schema=schema)
+    else:
+        table_names = insp.get_table_names()
+    legacy_exists = "rule_suggestions" in table_names
+
     if legacy_exists:
         # Detect legacy schema shape
-        legacy_cols = {c["name"] for c in insp.get_columns("rule_suggestions", schema="public")}
+        if schema:
+            legacy_cols = {c["name"] for c in insp.get_columns("rule_suggestions", schema=schema)}
+        else:
+            legacy_cols = {c["name"] for c in insp.get_columns("rule_suggestions")}
 
+        # Build a portable SELECT (no schema prefix, no casts). We'll bind timestamps from Python.
         if {"merchant", "category", "count", "window_days", "updated_at"}.issubset(legacy_cols):
-            select_sql = """
-                SELECT merchant, category, count, window_days,
-                       COALESCE(updated_at, NOW()) AS updated_at
-                FROM public.rule_suggestions
-            """
+            select_sql = "SELECT merchant, category, count, window_days, updated_at FROM rule_suggestions"
         elif {"merchant_norm", "category", "support_count", "last_seen"}.issubset(legacy_cols):
-            # Map legacy mining schema to unified fields
-            select_sql = """
-                SELECT merchant_norm AS merchant,
-                       category AS category,
-                       support_count AS count,
-                       NULL::integer AS window_days,
-                       COALESCE(last_seen, NOW()) AS updated_at
-                FROM public.rule_suggestions
-            """
+            select_sql = (
+                "SELECT merchant_norm AS merchant, "
+                "category AS category, "
+                "support_count AS count, "
+                "NULL AS window_days, "
+                "last_seen AS updated_at "
+                "FROM rule_suggestions"
+            )
         else:
             select_sql = None
 
         if select_sql:
             rows = conn.execute(text(select_sql)).fetchall()
-
+            now = datetime.utcnow()
             for merchant, category, count, window_days, updated_at in rows:
-                conn.execute(text("""
-                    INSERT INTO rule_suggestions_persisted
-                        (merchant, category, status, count, window_days, source,
-                         metrics_json, created_at, updated_at, last_mined_at)
-                    VALUES
-                        (:merchant, :category, 'new', :count, :window_days, 'mined',
-                         NULL, NOW(), :updated_at, :updated_at)
-                    ON CONFLICT (merchant, category)
-                    DO UPDATE SET
-                        count = EXCLUDED.count,
-                        window_days = EXCLUDED.window_days,
-                        source = CASE
-                            WHEN rule_suggestions_persisted.source = 'persisted' THEN 'persisted'
-                            ELSE 'mined'
-                        END,
-                        metrics_json = EXCLUDED.metrics_json,
-                        updated_at = EXCLUDED.updated_at,
-                        last_mined_at = EXCLUDED.last_mined_at
-                """), {
-                    "merchant": merchant,
-                    "category": category,
-                    "count": int(count) if count is not None else None,
-                    "window_days": int(window_days) if window_days is not None else None,
-                    "updated_at": updated_at,
-                })
+                updated_at = updated_at or now
+                conn.execute(
+                    text(
+                        """
+                        INSERT INTO rule_suggestions_persisted
+                            (merchant, category, status, count, window_days, source,
+                             metrics_json, created_at, updated_at, last_mined_at)
+                        VALUES
+                            (:merchant, :category, 'new', :count, :window_days, 'mined',
+                             NULL, :now, :updated_at, :updated_at)
+                        ON CONFLICT (merchant, category)
+                        DO UPDATE SET
+                            count = EXCLUDED.count,
+                            window_days = EXCLUDED.window_days,
+                            source = CASE
+                                WHEN rule_suggestions_persisted.source = 'persisted' THEN 'persisted'
+                                ELSE 'mined'
+                            END,
+                            metrics_json = EXCLUDED.metrics_json,
+                            updated_at = EXCLUDED.updated_at,
+                            last_mined_at = EXCLUDED.last_mined_at
+                        """
+                    ),
+                    {
+                        "merchant": merchant,
+                        "category": category,
+                        "count": int(count) if count is not None else None,
+                        "window_days": int(window_days) if window_days is not None else None,
+                        "updated_at": updated_at,
+                        "now": now,
+                    },
+                )
 
     # (Optional) don’t drop legacy table automatically; do it later when confident
 

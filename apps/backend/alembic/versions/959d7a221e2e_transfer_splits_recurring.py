@@ -30,7 +30,7 @@ def upgrade() -> None:
     sa.Column('last_seen', sa.Date(), nullable=False),
     sa.Column('next_due', sa.Date(), nullable=True),
     sa.Column('sample_txn_id', sa.Integer(), nullable=True),
-    sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
+    sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('CURRENT_TIMESTAMP'), nullable=False),
     sa.ForeignKeyConstraint(['sample_txn_id'], ['transactions.id'], ),
     sa.PrimaryKeyConstraint('id')
     )
@@ -42,7 +42,7 @@ def upgrade() -> None:
     sa.Column('category', sa.String(), nullable=False),
     sa.Column('amount', sa.Numeric(precision=12, scale=2), nullable=False),
     sa.Column('note', sa.String(), nullable=True),
-    sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
+    sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('CURRENT_TIMESTAMP'), nullable=False),
     sa.ForeignKeyConstraint(['parent_txn_id'], ['transactions.id'], ),
     sa.PrimaryKeyConstraint('id')
     )
@@ -52,7 +52,7 @@ def upgrade() -> None:
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('txn_out_id', sa.Integer(), nullable=False),
     sa.Column('txn_in_id', sa.Integer(), nullable=False),
-    sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
+    sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('CURRENT_TIMESTAMP'), nullable=False),
     sa.ForeignKeyConstraint(['txn_in_id'], ['transactions.id'], ),
     sa.ForeignKeyConstraint(['txn_out_id'], ['transactions.id'], ),
     sa.PrimaryKeyConstraint('id'),

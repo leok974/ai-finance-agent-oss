@@ -54,6 +54,8 @@ def run_migrations_online():
             render_as_batch=is_sqlite,
             compare_type=True,
             compare_server_default=True,
+            version_table_schema=None if is_sqlite else "public",
+            include_schemas=(not is_sqlite),
         )
         with context.begin_transaction():
             context.run_migrations()

@@ -25,10 +25,10 @@ def upgrade() -> None:
         sa.Column("provider", sa.String(length=32), nullable=False),
         sa.Column("provider_user_id", sa.String(length=255), nullable=False),
         sa.Column("email", sa.String(length=255), nullable=True),
+        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("CURRENT_TIMESTAMP"), nullable=False),
+        sa.UniqueConstraint("provider", "provider_user_id", name="uq_oauth_provider_user"),
     )
-    op.create_unique_constraint("uq_oauth_provider_user", "oauth_accounts", ["provider", "provider_user_id"])
 
 
 def downgrade() -> None:
-    op.drop_constraint("uq_oauth_provider_user", "oauth_accounts", type_="unique")
     op.drop_table("oauth_accounts")
