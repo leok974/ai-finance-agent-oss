@@ -1,0 +1,47 @@
+name: Backend Tests (Planner)
+
+on:
+  pull_request:
+    branches: [ main ]
+  push:
+    branches: [ chore/sqlite-safe-migrations-ack-smoke ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: bash
+    env:
+      DATABASE_URL: sqlite:////home/runner/work/ai-finance-agent-oss/ai-finance-agent-oss/apps/backend/data/finance.db
+      ACK_ASCII: "1"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install backend deps
+        working-directory: apps/backend
+        run: |
+          python -m venv .venv
+          source .venv/bin/activate
+          python -m pip install -U pip
+          pip install -r requirements.txt
+
+      - name: Migrate DB (SQLite)
+        working-directory: apps/backend
+        run: |
+          source .venv/bin/activate
+          alembic upgrade head
+
+      - name: Run planner test
+        working-directory: apps/backend
+        run: |
+          source .venv/bin/activate
+          pytest -q tests/test_planner.py

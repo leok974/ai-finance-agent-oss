@@ -1,0 +1,65 @@
+name: Backend Smoke (Windows)
+
+on:
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch: {}
+
+jobs:
+  smoke:
+    runs-on: windows-latest
+    timeout-minutes: 15
+
+    env:
+      BACKEND_BASE_URL: http://127.0.0.1:8000
+      SMOKE_EMAIL: admin@local
+      SMOKE_PASSWORD: admin123
+      DATABASE_URL: sqlite:///C:/a/ai-finance-agent-oss/apps/backend/data/finance.db
+      ACK_ASCII: "1"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install backend deps
+        shell: pwsh
+        working-directory: apps/backend
+        run: |
+          python -m venv .venv
+          .\.venv\Scripts\Activate.ps1
+          python -m pip install -U pip
+          pip install -r requirements.txt
+
+      - name: Migrate DB (SQLite)
+        shell: pwsh
+        working-directory: apps/backend
+        run: |
+          .\.venv\Scripts\Activate.ps1
+          $env:DATABASE_URL = "${{ env.DATABASE_URL }}"
+          alembic upgrade head
+
+      - name: Start API (background)
+        shell: pwsh
+        working-directory: apps/backend
+        run: |
+          .\.venv\Scripts\Activate.ps1
+          $env:DATABASE_URL = "${{ env.DATABASE_URL }}"
+          $env:APP_ENV="dev"; $env:COOKIE_SECURE="0"
+          Start-Process -FilePath pwsh -ArgumentList '-NoLogo','-NoExit','-Command','uvicorn app.main:app --host 127.0.0.1 --port 8000' 
+          Start-Sleep -Seconds 3
+
+      - name: Run smoke script
+        shell: pwsh
+        working-directory: apps/backend
+        run: |
+          .\.venv\Scripts\Activate.ps1
+          $env:BACKEND_BASE_URL = "${{ env.BACKEND_BASE_URL }}"
+          $env:SMOKE_EMAIL = "${{ env.SMOKE_EMAIL }}"
+          $env:SMOKE_PASSWORD = "${{ env.SMOKE_PASSWORD }}"
+          $env:ACK_ASCII = "${{ env.ACK_ASCII }}"
+          powershell -File .\app\scripts\smoke-backend.ps1

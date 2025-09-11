@@ -6,6 +6,7 @@ import {
 import { Wrench, FileText, Bug, Link2, RefreshCw } from "lucide-react";
 import { agentPlanStatus } from "@/lib/api";
 import React from "react";
+import PlannerApplyPanel from "@/components/dev/PlannerApplyPanel";
 
 export default function DevMenu() {
   const isDev = import.meta.env.MODE !== "production";
@@ -44,6 +45,9 @@ export default function DevMenu() {
       <DropdownMenuContent align="end" className="w-56">
         <DropdownMenuItem onClick={() => (window.location.hash = "#dev-plan") }>
           <FileText className="h-4 w-4 mr-2" /> Planner DevTool
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => (window.location.hash = "#dev-plan-apply") }>
+          <FileText className="h-4 w-4 mr-2" /> Planner Apply Panel
         </DropdownMenuItem>
 
         <DropdownMenuSeparator />

@@ -27,6 +27,7 @@ import InsightsAnomaliesCard from "./components/InsightsAnomaliesCard";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import PlannerDevPanel from "@/components/dev/PlannerDevPanel";
 import DevMenu from "@/components/dev/DevMenu";
+import PlannerApplyPanel from "@/components/dev/PlannerApplyPanel";
 
 // Log frontend version info
 console.info("[Web] branch=", __WEB_BRANCH__, "commit=", __WEB_COMMIT__);
@@ -207,6 +208,9 @@ const App: React.FC = () => {
             <hr className="my-6 border-neutral-800" />
             <div id="dev-plan">
               <PlannerDevPanel />
+            </div>
+            <div id="dev-plan-apply" className="mt-6">
+              <PlannerApplyPanel />
             </div>
           </>
         )}

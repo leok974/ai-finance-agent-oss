@@ -320,6 +320,28 @@ export function agentPlanStatus() {
   );
 }
 
+// ---------- Planner (preview/apply) ----------
+export type PlannerPlanItem =
+  | { kind: "categorize_unknowns"; title: string; txn_ids: number[]; impact: string; category?: string }
+  | { kind: "seed_rule"; title: string; rule: any; impact: string }
+  | { kind: "budget_limit"; title: string; category: string; limit: number; impact: string }
+  | { kind: "export_report"; title: string; month?: string; impact: string };
+
+export type PlannerPlan = {
+  ok: boolean;
+  month: string;
+  summary: any;
+  items: PlannerPlanItem[];
+};
+
+export async function agentPlanPreview(month?: string): Promise<PlannerPlan> {
+  return apiPost("/agent/plan/preview", { month });
+}
+
+export async function agentPlanApply(month: string | undefined, actions: PlannerPlanItem[]) {
+  return apiPost("/agent/plan/apply", { month, actions });
+}
+
 // ---------- Budgets ----------
 export const budgetCheck = (month?: string) => {
   const qs = month ? `?month=${encodeURIComponent(month)}` : "";

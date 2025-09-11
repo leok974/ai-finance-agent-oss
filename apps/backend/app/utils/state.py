@@ -41,6 +41,18 @@ def save_state(app) -> None:
 # Ephemeral overlays/state used by certain endpoints and agent flows
 # ---------------------------------------------------------------------------
 
+# Simple in-memory ephemeral state for agent/temporary values
+_EPHEMERAL_STATE: Dict[str, Any] = {}
+
+def get_state(key: str, default: Any = None) -> Any:
+    return _EPHEMERAL_STATE.get(key, default)
+
+def set_state(key: str, value: Any) -> None:
+    if value is None:
+        _EPHEMERAL_STATE.pop(key, None)
+    else:
+        _EPHEMERAL_STATE[key] = value
+
 # Temp budgets are scoped to a month key "YYYY-MM" to avoid stale carryover.
 # Map: (month_key, category) -> amount
 TEMP_BUDGETS: Dict[Tuple[str, str], float] = {}
