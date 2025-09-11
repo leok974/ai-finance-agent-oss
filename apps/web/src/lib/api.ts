@@ -4,64 +4,19 @@ import { RuleSuggestion as MinedRuleSuggestionStrict, isRuleSuggestionArray } fr
 export const API_BASE = (import.meta as any)?.env?.VITE_API_BASE
   || (typeof window !== "undefined" && window.location?.port === "5173" ? "http://127.0.0.1:8000" : "");
 
-// ---------------------------
-// Auth token management
-// ---------------------------
-let _accessToken: string | null = null;
-let _refreshToken: string | null = null;
+// Optional bearer fallback: keep a transient token if needed (e.g., dev/testing)
+let accessToken: string | null = null;
+export const setAccessToken = (t: string | null) => { accessToken = t; };
 
-function readStoredTokens() {
-  try {
-    if (typeof window === "undefined") return;
-    const at = window.sessionStorage.getItem("access_token");
-    const rt = window.sessionStorage.getItem("refresh_token");
-    if (at) _accessToken = at;
-    if (rt) _refreshToken = rt;
-  } catch {}
-}
-readStoredTokens();
-
-export function setAuthTokens(tokens: { accessToken: string; refreshToken: string }) {
-  _accessToken = tokens.accessToken || null;
-  _refreshToken = tokens.refreshToken || null;
-  try {
-    if (typeof window !== "undefined") {
-      window.sessionStorage.setItem("access_token", _accessToken || "");
-      window.sessionStorage.setItem("refresh_token", _refreshToken || "");
-    }
-  } catch {}
-}
-
-// Optional helper: set only the access token (keeps refresh as-is)
-export function setAccessToken(token: string | null) {
-  _accessToken = token || null;
-  try {
-    if (typeof window !== "undefined") {
-      if (token) window.sessionStorage.setItem("access_token", token);
-      else window.sessionStorage.removeItem("access_token");
-    }
-  } catch {}
-}
-
-export function getAccessToken(): string | null {
-  return _accessToken || (typeof window !== "undefined" ? window.sessionStorage.getItem("access_token") : null);
-}
-export function getRefreshToken(): string | null {
-  return _refreshToken || (typeof window !== "undefined" ? window.sessionStorage.getItem("refresh_token") : null);
-}
-export function clearAuthTokens() {
-  _accessToken = null;
-  _refreshToken = null;
-  try {
-    if (typeof window !== "undefined") {
-      window.sessionStorage.removeItem("access_token");
-      window.sessionStorage.removeItem("refresh_token");
-    }
-  } catch {}
+function withCreds(init: RequestInit = {}): RequestInit {
+  // Preserve headers and include cookies in all requests
+  const headers = new Headers(init.headers || {});
+  if (accessToken) headers.set("Authorization", `Bearer ${accessToken}`);
+  return { ...init, headers, credentials: "include" };
 }
 
 function withAuthHeaders(headers?: HeadersInit): HeadersInit {
-  const at = getAccessToken();
+  const at = accessToken;
   if (!at) return headers || {};
   const base: Record<string, string> = {};
   if (headers) {
@@ -75,28 +30,6 @@ function withAuthHeaders(headers?: HeadersInit): HeadersInit {
   }
   base["Authorization"] = `Bearer ${at}`;
   return base;
-}
-
-async function tryRefreshOnce(): Promise<boolean> {
-  const rt = getRefreshToken();
-  if (!rt) return false;
-  try {
-    const url = API_BASE ? `${API_BASE}/auth/refresh` : "/auth/refresh";
-    const r = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token: rt }),
-    });
-    if (!r.ok) return false;
-    const data = await r.json();
-    const accessToken = data?.access_token || data?.accessToken;
-    const refreshToken = data?.refresh_token || data?.refreshToken || rt;
-    if (!accessToken) return false;
-    setAuthTokens({ accessToken, refreshToken });
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 // ---------------------------
@@ -148,8 +81,8 @@ function q(params: Record<string, any>) {
 export async function http<T=any>(path: string, init?: RequestInit): Promise<T> {
   const url = API_BASE ? `${API_BASE}${path}` : path;
   const doFetch = async () => {
-    const headers = withAuthHeaders({ 'Content-Type': 'application/json', ...(init?.headers || {}) as any });
-    return fetch(url, { ...init, headers });
+  const headers = withAuthHeaders({ 'Content-Type': 'application/json', ...(init?.headers || {}) as any });
+  return fetch(url, withCreds({ ...init, headers }));
   };
   let res = await doFetch();
   // No retry on 401 to avoid infinite loops; surface a clear error
@@ -167,6 +100,21 @@ export async function http<T=any>(path: string, init?: RequestInit): Promise<T> 
 
 // Convenience GET wrapper
 export const apiGet = async <T = any>(path: string): Promise<T> => http<T>(path);
+
+export async function apiPost<T = any>(path: string, body?: any, init?: RequestInit): Promise<T> {
+  const url = API_BASE ? `${API_BASE}${path}` : path;
+  const headers = withAuthHeaders({ 'Content-Type': 'application/json', ...(init?.headers || {}) as any });
+  const res = await fetch(url, withCreds({
+    ...init,
+    method: 'POST',
+    headers,
+    body: body === undefined ? undefined : JSON.stringify(body),
+  }));
+  if (res.status === 401) throw new Error('unauthorized');
+  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  const ct = res.headers.get('content-type') || '';
+  return ct.includes('application/json') ? res.json() : (await res.text() as any);
+}
 
 // ---- Suggestions normalizer (array-shape resilience) ----
 export function normalizeSuggestions(payload: any): MinedRuleSuggestionStrict[] {
@@ -275,7 +223,7 @@ export async function fetchJson(path: string, init?: RequestInit) {
       try {
         const doFetch = async () => {
           const headers = withAuthHeaders(merged.headers);
-          return fetch(url, { ...merged, headers });
+          return fetch(url, withCreds({ ...merged, headers }));
         };
   const res = await doFetch();
   if (res.status === 401) throw new Error('unauthorized');
@@ -450,11 +398,11 @@ export const deleteRule = (id: number) => http(`/rules/${id}`, { method: 'DELETE
 // Enhanced createRule with richer FastAPI error reporting (e.g., 422 validation errors)
 export async function createRule(body: RuleInput): Promise<RuleCreateResponse> {
   const url = API_BASE ? `${API_BASE}/rules` : `/rules`;
-  const r = await fetch(url, {
+  const r = await fetch(url, withCreds({
     method: 'POST',
     headers: withAuthHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify(body),
-  });
+  }));
   if (!r.ok) {
     let msg = `createRule failed: ${r.status}`;
     try {
@@ -899,11 +847,11 @@ export const rulesCrud = {
 
 // ---------- Helper: resolve latest month from backend ----------
 export async function fetchLatestMonth(): Promise<string | null> {
-  const res = await fetch(`${API_BASE}/agent/tools/meta/latest_month`, {
+  const res = await fetch(`${API_BASE}/agent/tools/meta/latest_month`, withCreds({
     method: "POST",
-  headers: withAuthHeaders({ "Content-Type": "application/json" }),
+    headers: withAuthHeaders({ "Content-Type": "application/json" }),
     body: "{}"
-  });
+  }));
   if (!res.ok) return null;
   const data = await res.json(); // { month: "YYYY-MM" | null }
   return data?.month ?? null;
@@ -1011,7 +959,7 @@ export async function downloadReportExcel(
   if (opts?.end) url.searchParams.set("end", opts.end);
   url.searchParams.set("include_transactions", String(includeTransactions));
   if (opts?.splitAlpha) url.searchParams.set("split_transactions_alpha", String(!!opts.splitAlpha));
-  const res = await fetch(url.toString(), { method: "GET", headers: withAuthHeaders() });
+  const res = await fetch(url.toString(), withCreds({ method: "GET", headers: withAuthHeaders() }));
   if (!res.ok) throw new Error(`Excel export failed: ${res.status}`);
   const blob = await res.blob();
   const filename = parseDispositionFilename(res.headers.get("Content-Disposition")) || "finance_report.xlsx";
@@ -1024,7 +972,7 @@ export async function downloadReportPdf(month?: string, opts?: { start?: string;
   if (month) url.searchParams.set("month", month);
   if (opts?.start) url.searchParams.set("start", opts.start);
   if (opts?.end) url.searchParams.set("end", opts.end);
-  const res = await fetch(url.toString(), { method: "GET", headers: withAuthHeaders() });
+  const res = await fetch(url.toString(), withCreds({ method: "GET", headers: withAuthHeaders() }));
   if (!res.ok) throw new Error(`PDF export failed: ${res.status}`);
   const blob = await res.blob();
   const filename = parseDispositionFilename(res.headers.get("Content-Disposition")) || "finance_report.pdf";
@@ -1061,11 +1009,11 @@ export async function txnsQueryCsv(
 ): Promise<{ blob: Blob; filename: string }> {
   const base = (import.meta as any)?.env?.VITE_API_BASE || API_BASE || "";
   const url = new URL("/agent/txns_query/csv", base);
-  const res = await fetch(url.toString(), {
+  const res = await fetch(url.toString(), withCreds({
     method: "POST",
     headers: withAuthHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify({ q, ...opts }),
-  });
+  }));
   if (!res.ok) throw new Error(`CSV export failed: ${res.status} ${res.statusText}`);
   const blob = await res.blob();
   const filename = parseDispositionFilename(res.headers.get("Content-Disposition")) || "txns_query.csv";
