@@ -155,7 +155,7 @@ def verify_password(password: str, stored: str) -> bool:
         return False
 
 
-http_bearer = HTTPBearer(auto_error=False)
+bearer_scheme = HTTPBearer(auto_error=False)
 
 
 def set_auth_cookies(resp: Response, pair: "Tokens") -> None:
@@ -177,13 +177,13 @@ def clear_auth_cookies(resp: Response) -> None:
 
 
 def get_current_user(
-    creds: Optional[HTTPAuthorizationCredentials] = Depends(http_bearer),
+    request: Request,
+    creds: Optional[HTTPAuthorizationCredentials] = Depends(bearer_scheme),
     db: Session = Depends(get_db),
-    request: Optional[Request] = None,
-):
+) -> User:
     # Dev bypass
     if os.getenv("DEV_ALLOW_NO_AUTH", getattr(settings, "DEV_ALLOW_NO_AUTH", False)) in (True, "1", 1, "true", "True"):
-        if not creds and request is None:
+        if not creds:
             u = db.query(User).filter(User.email == "dev@local").first()
             if not u:
                 u = User(email="dev@local", password_hash=hash_password("dev"))
@@ -192,10 +192,10 @@ def get_current_user(
             return u
 
     token: Optional[str] = None
-    if creds and creds.credentials:
+    if creds and creds.scheme and creds.scheme.lower() == "bearer":
         token = creds.credentials
     # fallback to cookie
-    if not token and request is not None:
+    if not token:
         token = request.cookies.get("access_token")
 
     if not token:

@@ -18,19 +18,18 @@ class RegisterBody(BaseModel):
     roles: list[str] = ["user"]
 
 @router.post("/login")
-def login(body: LoginBody, db: Session = Depends(get_db), resp: Response = None):
+def login(body: LoginBody, resp: Response, db: Session = Depends(get_db)):
     u = db.query(User).filter(User.email == body.email).first()
     if not u or not verify_password(body.password, u.password_hash):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
     # Load roles
     roles = [ur.role.name for ur in u.roles]
     pair = create_tokens(u.email, roles)
-    if resp is not None:
-        set_auth_cookies(resp, pair)
+    set_auth_cookies(resp, pair)
     return pair.model_dump()
 
 @router.post("/register")
-def register(body: RegisterBody, db: Session = Depends(get_db), resp: Response = None):
+def register(body: RegisterBody, resp: Response, db: Session = Depends(get_db)):
     if db.query(User).filter(User.email == body.email).first():
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email already registered")
     u = User(email=body.email, password_hash=hash_password(body.password))
@@ -38,14 +37,13 @@ def register(body: RegisterBody, db: Session = Depends(get_db), resp: Response =
     _ensure_roles(db, u, body.roles)
     roles = body.roles
     pair = create_tokens(u.email, roles)
-    if resp is not None:
-        set_auth_cookies(resp, pair)
+    set_auth_cookies(resp, pair)
     return pair.model_dump()
 
 @router.post("/refresh")
-def refresh(token: str | None = None, db: Session = Depends(get_db), resp: Response = None, request: Request | None = None):
+def refresh(resp: Response, request: Request, token: str | None = None, db: Session = Depends(get_db)):
     # Accept token either from body or cookie
-    tok = token or (request.cookies.get("refresh_token") if request else None)
+    tok = token or request.cookies.get("refresh_token")
     try:
         payload = decode_token(tok or "")
         if payload.get("type") != "refresh":
@@ -59,8 +57,7 @@ def refresh(token: str | None = None, db: Session = Depends(get_db), resp: Respo
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User disabled")
     roles = [ur.role.name for ur in u.roles]
     pair = create_tokens(email, roles)
-    if resp is not None:
-        set_auth_cookies(resp, pair)
+    set_auth_cookies(resp, pair)
     return pair.model_dump()
 
 @router.post("/logout")
