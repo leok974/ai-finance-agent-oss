@@ -2,6 +2,7 @@ import React from 'react';
 import Card from './Card';
 import { listSuggestionIgnores, removeSuggestionIgnore } from '@/lib/api';
 import { showToast } from '@/lib/toast-helpers';
+import { Skeleton } from '@/components/ui/skeleton';
 
 export default function SuggestionIgnoresPanel() {
   const [rows, setRows] = React.useState<Array<{ merchant: string; category: string }>>([]);
@@ -32,6 +33,16 @@ export default function SuggestionIgnoresPanel() {
       </header>
 
       {error && <div className="text-sm text-red-500">{error}</div>}
+      {loading && (
+        <div className="space-y-2">
+          {[0,1,2].map(i => (
+            <div key={i} className="flex items-center justify-between border border-border rounded-lg px-3 py-2">
+              <Skeleton className="h-4 w-48" />
+              <Skeleton className="h-7 w-20" />
+            </div>
+          ))}
+        </div>
+      )}
       {!error && rows.length === 0 && (
         <div className="px-3 py-4 text-sm opacity-70">No ignored (merchant, category) pairs.</div>
       )}

@@ -14,6 +14,7 @@ import { InfoDot } from './InfoDot'
 import LearnedBadge from './LearnedBadge'
 import ExplainSignalDrawer from './ExplainSignalDrawer'
 import { useUnknowns } from '@/hooks/useUnknowns'
+import { Skeleton } from '@/components/ui/skeleton'
 
 export default function UnknownsPanel({ month, onSeedRule, onChanged, refreshKey }: {
   month?: string
@@ -89,7 +90,26 @@ export default function UnknownsPanel({ month, onSeedRule, onChanged, refreshKey
   return (
       <div id="unknowns-panel">
         <Card title={`Unknowns ${titleMonth}`}>
-      {loading && <div className="opacity-70">Loading…</div>}
+      {loading && (
+        <div className="space-y-2">
+          {[0,1,2].map(i => (
+            <div key={i} className="rounded-lg border border-neutral-800 p-3 bg-neutral-900">
+              <div className="flex items-center justify-between">
+                <div className="space-y-1">
+                  <Skeleton className="h-4 w-40" />
+                  <Skeleton className="h-3 w-64" />
+                </div>
+                <Skeleton className="h-4 w-24" />
+              </div>
+              <div className="mt-2 flex items-center gap-2">
+                <Skeleton className="h-7 w-20 rounded" />
+                <Skeleton className="h-7 w-16 rounded" />
+                <Skeleton className="h-7 w-24 rounded" />
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
       {!loading && error && <div className="text-sm text-rose-300">{error}</div>}
       {!loading && !error && items.length === 0 && (
         <EmptyState title="No transactions yet" note="Upload a CSV to view and categorize unknowns." />

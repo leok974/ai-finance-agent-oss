@@ -12,6 +12,7 @@ import { useCoalescedRefresh } from "@/utils/refreshBus";
 import InfoDot from "@/components/InfoDot";
 import { useOkErrToast } from "@/lib/toast-helpers";
 import Card from "./Card";
+import { Skeleton } from "@/components/ui/skeleton";
 
 type Suggestion = MinedRuleSuggestion;
 
@@ -156,6 +157,24 @@ export default function SuggestionsPanel() {
 
   {/* List */}
       <div className="space-y-2">
+        {loading && (
+          <div className="space-y-2">
+            {[0,1,2,3].map(i => (
+              <div key={i} className="rounded-xl border border-[hsl(var(--border))] bg-card/60 px-3 py-2">
+                <div className="flex items-center gap-3">
+                  <Skeleton className="w-4 h-4 rounded" />
+                  <div className="min-w-0 flex-1">
+                    <Skeleton className="h-4 w-40" />
+                    <div className="mt-1">
+                      <Skeleton className="h-3 w-24" />
+                    </div>
+                  </div>
+                  <Skeleton className="h-6 w-48" />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
         {rows.map((r, idx) => {
           const key = keyFor(r);
           const disabled = pending.has(key);
@@ -203,7 +222,7 @@ export default function SuggestionsPanel() {
           </div>
           );
         })}
-        {rows.length === 0 && (
+  {!loading && rows.length === 0 && (
           <div className="text-sm opacity-70 py-4 text-center">No suggestions right now.</div>
         )}
       </div>

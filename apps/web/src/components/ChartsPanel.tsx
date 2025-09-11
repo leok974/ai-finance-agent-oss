@@ -9,6 +9,7 @@ import {
   getMonthFlows,
   getSpendingTrends,
 } from "../lib/api";
+import { Skeleton } from "@/components/ui/skeleton";
 
 // Cast so TS treats them as FCs (safe for now)
 const ResponsiveContainer = RC.ResponsiveContainer as unknown as React.FC<any>;
@@ -118,8 +119,19 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
           <EmptyState title="No transactions yet" note="Once you upload, charts will populate automatically." />
         </div>
       )}
-  <Card title={`Overview — ${resolvedMonth}`} right={<ExportMenu month={resolvedMonth} />}>
-        {loading && <p className="text-sm text-gray-400">Loading charts…</p>}
+      <Card title={`Overview — ${resolvedMonth}`} right={<ExportMenu month={resolvedMonth} />}>
+        {loading && (
+          <div className="grid grid-cols-3 gap-4 text-sm">
+            {[0, 1, 2].map((i) => (
+              <div key={i} className="rounded-xl bg-gray-800/50 p-3">
+                <Skeleton className="h-4 w-24" />
+                <div className="mt-2">
+                  <Skeleton className="h-6 w-28" />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
         {error && !empty && <p className="text-sm text-rose-300">Error: {error}</p>}
         {!loading && !error && summary && (
           <div className="grid grid-cols-3 gap-4 text-sm">
@@ -146,7 +158,15 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
       </Card>
 
       <Card title="Top Categories (expenses)">
-        {loading && <p className="text-sm text-gray-400">Loading…</p>}
+        {loading && (
+          <div className="h-64">
+            <div className="h-full w-full flex items-end gap-2">
+              {[...Array(8)].map((_, i) => (
+                <Skeleton key={i} className="w-8" style={{ height: `${20 + (i % 5) * 12}%` }} />
+              ))}
+            </div>
+          </div>
+        )}
         {!loading && categoriesData.length === 0 && (
           <p className="text-sm text-gray-400">No category data.</p>
         )}
@@ -176,8 +196,16 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
         )}
       </Card>
 
-  <Card title="Top Merchants (expenses)">
-        {loading && <p className="text-sm text-gray-400">Loading…</p>}
+      <Card title="Top Merchants (expenses)">
+        {loading && (
+          <div className="h-64">
+            <div className="h-full w-full flex items-end gap-2">
+              {[...Array(8)].map((_, i) => (
+                <Skeleton key={i} className="w-8" style={{ height: `${18 + (i % 4) * 14}%` }} />
+              ))}
+            </div>
+          </div>
+        )}
         {!loading && merchantsData.length === 0 && (
           <p className="text-sm text-gray-400">No merchant data.</p>
         )}
@@ -203,13 +231,19 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
                 <Bar dataKey="amount" name="Spend" />
               </BarChart>
             </ResponsiveContainer>
-    <div className="text-xs opacity-70 mt-1">Tip: Open Insights → Large Transactions or use the Unknowns panel to explain individual transactions.</div>
+            <div className="text-xs opacity-70 mt-1">Tip: Open Insights → Large Transactions or use the Unknowns panel to explain individual transactions.</div>
           </div>
         )}
       </Card>
 
       <Card title="Daily Flows">
-        {loading && <p className="text-sm text-gray-400">Loading…</p>}
+        {loading && (
+          <div className="h-64">
+            <div className="h-full w-full flex items-center">
+              <Skeleton className="h-32 w-full" />
+            </div>
+          </div>
+        )}
         {!loading && flowsData.length === 0 && (
           <p className="text-sm text-gray-400">No flow data.</p>
         )}
@@ -242,7 +276,13 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
       </Card>
 
       <Card title="Spending Trends (last 6 months)">
-        {loading && <p className="text-sm text-gray-400">Loading…</p>}
+        {loading && (
+          <div className="h-64">
+            <div className="h-full w-full flex items-center">
+              <Skeleton className="h-32 w-full" />
+            </div>
+          </div>
+        )}
         {!loading && trendsData.length === 0 && (
           <p className="text-sm text-gray-400">No historical data.</p>
         )}
