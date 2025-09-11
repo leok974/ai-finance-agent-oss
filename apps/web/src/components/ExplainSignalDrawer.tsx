@@ -48,10 +48,17 @@ export default function ExplainSignalDrawer({ txnId, open, onOpenChange }: {
       {open && (
         <div className="fixed inset-0 z-50 flex">
           <div className="absolute inset-0 bg-black/50" onClick={() => onOpenChange(false)} />
-          <div className="ml-auto h-full w-full max-w-xl bg-background border-l border-border p-4 overflow-auto">
+          <div className="ml-auto h-full w-full max-w-xl bg-background border-l border-border p-4 overflow-auto" data-testid="explain-drawer">
             <div className="flex items-center justify-between mb-2">
               <div className="text-lg font-semibold">Why this category?</div>
-              <button className="text-sm opacity-70 hover:opacity-100" onClick={() => onOpenChange(false)}>Close</button>
+              <button
+                className="text-sm opacity-70 hover:opacity-100"
+                aria-label="Close"
+                data-testid="drawer-close"
+                onClick={() => onOpenChange(false)}
+              >
+                Close
+              </button>
             </div>
 
             {loading && (
