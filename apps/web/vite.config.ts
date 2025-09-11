@@ -26,6 +26,7 @@ export default defineConfig({
     },
   },
   server: {
+  host: "127.0.0.1",
     proxy: {
       // ✅ proxy ALL backend routes to FastAPI
       "/ingest": { target: API, changeOrigin: true },
