@@ -9,6 +9,7 @@ import { useOkErrToast } from "@/lib/toast-helpers";
 // import RulesPanel from "./components/RulesPanel";
 import { getAlerts, getMonthSummary, getMonthMerchants, getMonthFlows, agentTools, meta, resolveLatestMonthHybrid, getHealthz } from './lib/api'
 import DbRevBadge from './components/DbRevBadge';
+import { flags } from "@/lib/flags";
 import AboutDrawer from './components/AboutDrawer';
 import RulesPanel from "./components/RulesPanel";
 import ChatDock from "./components/ChatDock";
@@ -43,6 +44,21 @@ const App: React.FC = () => {
   const booted = useRef(false)
   const [dbRev, setDbRev] = useState<string | null>(null);
   const [inSync, setInSync] = useState<boolean | undefined>(undefined);
+
+  // Quick keyboard toggle for Dev UI: Ctrl+Shift+D
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      try {
+        if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === "d") {
+          const v = (localStorage.getItem("DEV_UI") === "1") ? "0" : "1";
+          localStorage.setItem("DEV_UI", v);
+          location.reload();
+        }
+      } catch {}
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   // Initialize month once
   useEffect(() => {
@@ -146,7 +162,11 @@ const App: React.FC = () => {
   <div className="relative">
           <div className="mx-auto max-w-6xl space-y-6">
         <header className="flex items-center justify-between">
-          <h1 className="text-3xl font-bold">Finance Agent</h1>
+          <h1 className="text-3xl font-bold">Finance Agent
+            {flags.dev && (
+              <span className="ml-2 rounded-full border px-2 py-0.5 text-xs opacity-80" title="Ctrl+Shift+D toggles Dev UI">DEV</span>
+            )}
+          </h1>
           <div className="flex items-center gap-3">
             <LoginForm />
             <DbRevBadge dbRevision={dbRev ?? undefined} inSync={inSync} />
@@ -189,13 +209,15 @@ const App: React.FC = () => {
         {/* Rules + Tester */}
         <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
           <RulesPanel refreshKey={refreshKey} />
-          <RuleTesterPanel onChanged={() => setRefreshKey((k) => k + 1)} />
+          {(flags.dev) && (
+            <RuleTesterPanel onChanged={() => setRefreshKey((k) => k + 1)} />
+          )}
           </div>
 
           {/* Status / Recent (right-side style) */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="hidden md:block" />
-            <MLStatusCard />
+            {(flags.dev) && <MLStatusCard />}
           </div>
           <ChatDock />
         </div>

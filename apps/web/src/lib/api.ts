@@ -1,8 +1,9 @@
 import { RuleSuggestion as MinedRuleSuggestionStrict, isRuleSuggestionArray } from "@/types/rules";
 
 // Resolve API base from env, with a dev fallback when running Vite on port 5173
-export const API_BASE = (import.meta as any)?.env?.VITE_API_BASE
-  || (typeof window !== "undefined" && window.location?.port === "5173" ? "http://127.0.0.1:8000" : "");
+const _FROM_ENV = (import.meta as any)?.env?.VITE_API_BASE as string | undefined;
+const _CANDIDATE = _FROM_ENV || (typeof window !== "undefined" && window.location?.port === "5173" ? "http://127.0.0.1:8000" : "");
+export const API_BASE = _CANDIDATE ? _CANDIDATE.replace(/\/+$/,'') : "";
 
 // Optional bearer fallback: keep a transient token if needed (e.g., dev/testing)
 let accessToken: string | null = null;
