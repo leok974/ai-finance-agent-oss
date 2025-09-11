@@ -71,6 +71,8 @@ type AgentChatResponse = {
 
 Dev-only planner debugger is available; see below.
 
+Apply with “Export report” will download the monthly Excel automatically. If the backend includes a report_url hint, the UI uses it; otherwise it falls back to a local Excel builder.
+
 ### Web UI: ChatDock updates (Sep 2025)
 - Unified messages stream persisted in `localStorage` at `financeAgent.chat.messages.v1` with cross‑tab sync via `BroadcastChannel`.
 - Hydrates on mount and auto-scrolls to the latest message; history renders from the same stream.

@@ -96,12 +96,12 @@ def report_excel(
         txns_df=txns_df,
         split_txns_alpha=split_transactions_alpha,
     )
-    # Filename reflects month or custom range
+    # Friendly filename reflects month or custom range
     if month:
-        filename = f"report-{month}.xlsx"
+        filename = f"FinanceReport_{month}_{month}.xlsx"
     else:
-        filename = f"report-{summary['start']}_to_{summary['end']}.xlsx"
-    headers = {"Content-Disposition": f"attachment; filename={filename}"}
+        filename = f"FinanceReport_{summary['start']}_{summary['end']}.xlsx"
+    headers = {"Content-Disposition": f"attachment; filename=\"{filename}\""}
     return StreamingResponse(
         iter([data]),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

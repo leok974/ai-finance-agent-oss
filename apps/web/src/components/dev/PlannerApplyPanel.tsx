@@ -5,6 +5,7 @@ import { useOkErrToast } from "@/lib/toast-helpers";
 
 export default function PlannerApplyPanel() {
   const [loading, setLoading] = useState(false);
+  const [applying, setApplying] = useState(false);
   const [plan, setPlan] = useState<PlannerPlan | null>(null);
   const [selected, setSelected] = useState<Record<number, boolean>>({});
   const { ok, err } = (useOkErrToast as any)?.() ?? { ok: console.log, err: console.error };
@@ -23,7 +24,7 @@ export default function PlannerApplyPanel() {
   }, [err]);
 
   const apply = useCallback(async () => {
-    if (!plan) return;
+    if (!plan || applying) return;
     const picked: PlannerPlanItem[] = [];
     (plan.items || []).forEach((it, idx) => {
       if (selected[idx]) picked.push(it);
@@ -31,13 +32,14 @@ export default function PlannerApplyPanel() {
     const wantsExport = picked.some((a) => a.kind === "export_report");
     const actions: PlannerPlanItem[] = picked; // backend no-ops export_report, safe to send
     setLoading(true);
+    setApplying(true);
     try {
       const res: any = await agentPlanApply(plan?.month, actions);
       ok?.(getAckText(res?.ack) || "Applied.");
       if (wantsExport) {
         const url: string | undefined = res?.report_url;
         if (url) {
-          // simplest: navigate to trigger browser download preserving filename
+          // Single source of truth if backend provided it
           window.location.href = url;
         } else if (plan?.month) {
           await downloadReportExcel(plan.month, true, { splitAlpha: true });
@@ -47,8 +49,9 @@ export default function PlannerApplyPanel() {
       err?.(e?.message || "Apply failed");
     } finally {
       setLoading(false);
+      setApplying(false);
     }
-  }, [plan, selected, ok, err]);
+  }, [plan, selected, applying, ok, err]);
 
   const download = useCallback(async (m?: string) => {
     try {
@@ -66,7 +69,9 @@ export default function PlannerApplyPanel() {
     <div className="rounded-lg border p-3 space-y-3">
       <div className="flex items-center gap-2">
         <Button onClick={preview} disabled={loading}>{loading ? "Loading…" : "Preview Plan"}</Button>
-        <Button onClick={apply} variant="secondary" disabled={!plan || loading}>Apply Selected</Button>
+        <Button onClick={apply} variant="secondary" disabled={!plan || loading || applying}>
+          {applying ? "Applying…" : "Apply Selected"}
+        </Button>
       </div>
       {plan && (
         <div className="text-sm opacity-80">Month: <b>{plan.month}</b></div>
