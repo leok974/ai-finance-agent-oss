@@ -5,6 +5,7 @@ from typing import Optional, Any, Dict
 from sqlalchemy.orm import Session
 
 from app.db import get_db  # your existing dependency
+from app.utils.auth import get_current_user
 from app.services.txns_nl_query import parse_nl_query, run_txn_query, NLQuery
 
 router = APIRouter(prefix="/agent", tags=["agent"])
@@ -34,7 +35,7 @@ def _is_low_signal(nlq: NLQuery) -> bool:
         nlq.min_amount is not None, nlq.max_amount is not None
     ])
 
-@router.post("/txns_query")
+@router.post("/txns_query", dependencies=[Depends(get_current_user)])
 def txns_query(payload: TxnQueryIn, db: Session = Depends(get_db)) -> Dict[str, Any]:
     nlq = parse_nl_query(payload.q)
     if payload.limit:
@@ -77,7 +78,7 @@ def txns_query(payload: TxnQueryIn, db: Session = Depends(get_db)) -> Dict[str, 
     return result
 
 
-@router.post("/txns_query/csv")
+@router.post("/txns_query/csv", dependencies=[Depends(get_current_user)])
 def txns_query_csv(payload: TxnQueryIn, db: Session = Depends(get_db)) -> Response:
     nlq = parse_nl_query(payload.q)
     # explicit overrides

@@ -21,6 +21,7 @@ from app.schemas.rules import (
 from datetime import datetime, date
 import app.services.rule_suggestions as rs
 from app.services.rules_preview import preview_rule_matches, backfill_rule_apply, normalize_rule_input
+from app.utils.auth import require_roles
 from app.services.rule_suggestions import mine_suggestions
 from app.services.rule_suggestions import (
     list_suggestions as list_persisted_suggestions,
@@ -342,7 +343,7 @@ def save_train_reclass(payload: SaveTrainPayload, db: Session = Depends(get_db))
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Save/train/reclass failed: {e}")
 
-@router.post("/preview")
+@router.post("/preview", dependencies=[Depends(require_roles("admin"))])
 def preview_rule(
     payload: Dict[str, Any],
     window_days: Optional[int] = Query(default=None, description="Number of days to look back (inclusive)"),
@@ -353,7 +354,7 @@ def preview_rule(
     total, samples = preview_rule_matches(db, payload, window_days, only_uncategorized, sample_limit)
     return {"matches_count": total, "sample_txns": samples}
 
-@router.post("/{rule_id}/backfill")
+@router.post("/{rule_id}/backfill", dependencies=[Depends(require_roles("admin"))])
 def backfill_rule(
     rule_id: int,
     params: Dict[str, Any],

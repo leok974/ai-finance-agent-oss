@@ -16,6 +16,7 @@ from app.services.charts_data import (
     get_spending_trends,
 )
 from app.services.report_export import build_excel_bytes, build_pdf_bytes
+from app.utils.auth import require_roles
 from app.transactions import Transaction
 
 router = APIRouter()
@@ -32,7 +33,7 @@ def report(month: str) -> Dict:
     return {"month": month, "total": round(total,2), "by_category": rows}
 
 
-@router.get("/report/excel")
+@router.get("/report/excel", dependencies=[Depends(require_roles("admin","analyst"))])
 def report_excel(
     month: str | None = Query(None, pattern=r"^\d{4}-\d{2}$"),
     start: str | None = Query(None, description="YYYY-MM-DD"),
@@ -108,7 +109,7 @@ def report_excel(
     )
 
 
-@router.get("/report/pdf")
+@router.get("/report/pdf", dependencies=[Depends(require_roles("admin","analyst"))])
 def report_pdf(
     month: str | None = Query(None, pattern=r"^\d{4}-\d{2}$"),
     start: str | None = Query(None, description="YYYY-MM-DD"),

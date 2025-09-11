@@ -11,11 +11,12 @@ from app.services.charts_data import (
     get_spending_trends as srv_get_spending_trends,
 )
 from app.services.charts_data import get_category_timeseries
+from app.utils.auth import get_current_user
 
 router = APIRouter()
 
 
-@router.get("/month_summary")
+@router.get("/month_summary", dependencies=[Depends(get_current_user)])
 def month_summary(month: str | None = Query(None, pattern=r"^\d{4}-\d{2}$"), db: Session = Depends(get_db)):
     if not month:
         # No explicit month: prefer legacy in-memory behavior for compatibility with onboarding

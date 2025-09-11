@@ -14,6 +14,7 @@ from app.routers import agent_tools_rules_crud as rules_crud_router
 from app.routers import agent_tools_rules_apply_all as rules_apply_all_router
 from app.routers import agent_tools_meta as meta_router
 from .routers import charts
+from app.routers import auth as auth_router
 from app.routers import agent_txns  # NEW
 from .routers import transactions as transactions_router
 from .routers import dev as dev_router
@@ -100,6 +101,7 @@ app.include_router(insights.router)
 app.include_router(agent.router, prefix="/agent", tags=["agent"])
 app.include_router(explain.router, prefix="/txns", tags=["explain"])
 app.include_router(charts.router, prefix="/charts", tags=["charts"]) 
+app.include_router(auth_router.router)
 app.include_router(transactions_router.router)
 app.include_router(dev_router.router)
 app.include_router(agent_tools_txn.router)
