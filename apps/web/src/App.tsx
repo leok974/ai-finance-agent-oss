@@ -17,9 +17,11 @@ import ChartsPanel from "./components/ChartsPanel";
 import TopEmptyBanner from "./components/TopEmptyBanner";
 import MLStatusCard from "./components/MLStatusCard";
 import NetActivityBlip from "@/components/NetActivityBlip";
+import LoginForm from "@/components/LoginForm";
+import { useAuth } from "@/state/auth";
 // import AgentChat from "./components/AgentChat"; // legacy chat bubble disabled
 import { setGlobalMonth } from "./state/month";
-import { Providers } from "@/components/Providers";
+// Providers are applied at the top-level (main.tsx)
 import RuleSuggestionsPersistentPanel from "@/components/RuleSuggestionsPersistentPanel";
 import InsightsAnomaliesCard from "./components/InsightsAnomaliesCard";
 import ErrorBoundary from "@/components/ErrorBoundary";
@@ -60,9 +62,11 @@ const App: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Load dashboard data whenever month changes
+  const { user, authReady } = useAuth();
+  const authOk = !!user;
+  // Load dashboard data whenever month changes (only when authenticated)
   useEffect(() => {
-    if (!month) return;
+    if (!authOk || !month) return;
     console.info("[boot] loading dashboards for month", month);
     void Promise.allSettled([
       agentTools.chartsSummary({ month }),
@@ -70,7 +74,7 @@ const App: React.FC = () => {
       agentTools.chartsFlows({ month }),
       agentTools.chartsSpendingTrends({ month, months_back: 6 }),
     ]);
-  }, [month]);
+  }, [authOk, month]);
 
   // Log DB health once after CORS/DB are good (boot complete) and capture db revision
   useEffect(() => {
@@ -94,36 +98,47 @@ const App: React.FC = () => {
 
   // Load insights and alerts separately for state management
   useEffect(()=>{ (async()=>{
-    if (!ready || !month) return;
+  if (!authOk || !ready || !month) return;
     try {
       setInsights(await agentTools.insightsExpanded({ month, large_limit: 10 }))
       setAlerts(await getAlerts(month))
     } catch {}
-  })() }, [ready, month, refreshKey])
+  })() }, [authOk, ready, month, refreshKey])
 
   // Probe backend emptiness (latest by default). If charts summary returns null or month:null, show banner.
   useEffect(() => { (async () => {
-    if (!ready || !month) return;
+  if (!authOk || !ready || !month) return;
     try {
       const s = await getMonthSummary(month);
       setEmpty(!s || s?.month == null);
     } catch {
       setEmpty(true);
     }
-  })() }, [ready, month, refreshKey])
+  })() }, [authOk, ready, month, refreshKey])
 
   const onCsvUploaded = useCallback(() => {
     setRefreshKey((k) => k + 1);
     ok("Transactions imported. Panels refreshed.", "CSV ingested");
   }, [ok]);
 
-  if (!ready) {
+  
+
+  if (!ready || !authReady) {
     return <div className="p-6 text-[color:var(--text-muted)]">Loading…</div>;
   }
 
+  if (!authOk) {
+    return (
+      <div className="p-6">
+        <div className="max-w-md mx-auto">
+          <LoginForm />
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <MonthContext.Provider value={{ month, setMonth }}>
-      <Providers>
+  <MonthContext.Provider value={{ month, setMonth }}>
       <ChatDockProvider>
   <NetActivityBlip />
       <div className="min-h-screen bg-gray-50 text-gray-900 p-6 dark:bg-gray-950 dark:text-gray-100">
@@ -133,6 +148,7 @@ const App: React.FC = () => {
         <header className="flex items-center justify-between">
           <h1 className="text-3xl font-bold">Finance Agent</h1>
           <div className="flex items-center gap-3">
+            <LoginForm />
             <DbRevBadge dbRevision={dbRev ?? undefined} inSync={inSync} />
             <AboutDrawer />
             <input type="month" className="bg-neutral-900 border border-neutral-800 rounded px-3 py-2" value={month} onChange={e=>{ setMonth(e.target.value); setGlobalMonth(e.target.value); }} />
@@ -186,7 +202,6 @@ const App: React.FC = () => {
       </div>
   </div>
   </ChatDockProvider>
-  </Providers>
     </MonthContext.Provider>
   );
 };

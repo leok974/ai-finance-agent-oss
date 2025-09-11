@@ -3,6 +3,8 @@ from fastapi import FastAPI
 from .db import Base, engine
 from sqlalchemy import inspect
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.sessions import SessionMiddleware
+import os
 from .routers import ingest, txns, rules, ml, report, budget, alerts, insights, agent, explain
 from .routers import meta
 from app.routers import agent_tools_transactions as agent_tools_txn
@@ -15,6 +17,7 @@ from app.routers import agent_tools_rules_apply_all as rules_apply_all_router
 from app.routers import agent_tools_meta as meta_router
 from .routers import charts
 from app.routers import auth as auth_router
+from app.routers import auth_oauth as auth_oauth_router
 from app.routers import agent_txns  # NEW
 from .routers import transactions as transactions_router
 from .routers import dev as dev_router
@@ -70,6 +73,13 @@ app.add_middleware(
     expose_headers=["Content-Disposition"],  # allow frontend to read filename
 )
 
+# Session storage (used by OAuth state/nonce)
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=os.environ.get("OAUTH_SESSION_SECRET", os.environ.get("AUTH_SECRET", "change-me")),
+    same_site="lax",
+)
+
 # Legacy in-memory stores (kept for compatibility; safe to remove if unused)
 app.state.rules = []
 app.state.txns = []
@@ -102,6 +112,7 @@ app.include_router(agent.router, prefix="/agent", tags=["agent"])
 app.include_router(explain.router, prefix="/txns", tags=["explain"])
 app.include_router(charts.router, prefix="/charts", tags=["charts"]) 
 app.include_router(auth_router.router)
+app.include_router(auth_oauth_router.router)
 app.include_router(transactions_router.router)
 app.include_router(dev_router.router)
 app.include_router(agent_tools_txn.router)
