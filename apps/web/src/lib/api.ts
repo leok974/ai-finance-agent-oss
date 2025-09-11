@@ -350,7 +350,11 @@ export type RuleSuggestConfig = {
 export const fetchRuleSuggestConfig = () => http<RuleSuggestConfig>(`/rules/suggestions/config`);
 
 // If you have explain/categorize helpers, keep them as-is
-export const categorizeTxn = (id: number, category: string) => http(`/txns/${id}/categorize`, { method: 'POST', body: JSON.stringify({ category }) })
+export const categorizeTxn = (id: number, category: string) =>
+  http<{ ok: boolean; txn: any; ack?: LearningAck }>(
+    `/txns/${id}/categorize`,
+    { method: 'POST', body: JSON.stringify({ category }) }
+  )
 
 // ---- ML feedback (incremental learning) ----
 // New ML feedback shape aligned to backend
@@ -497,7 +501,11 @@ export async function listRuleSuggestions(params: { merchant_norm?: string; cate
   const qs = q(params as any);
   return http<PersistedRuleSuggestion[]>(`/rules/suggestions${qs}`);
 }
-export const acceptRuleSuggestion = (id: number) => http<{ ok: boolean; rule_id: number }>(`/rules/suggestions/${id}/accept`, { method: 'POST' });
+export const acceptRuleSuggestion = (id: number) =>
+  http<{ ok: boolean; rule_id: number; ack?: LearningAck }>(
+    `/rules/suggestions/${id}/accept`,
+    { method: 'POST' }
+  );
 export const dismissRuleSuggestion = (id: number) => http<{ ok: boolean }>(`/rules/suggestions/${id}/dismiss`, { method: 'POST' });
 
 // ---------- Suggestion Ignores (DB-backed) ----------
@@ -549,7 +557,7 @@ export function listRuleSuggestionsSummary(params?: {
 }
 
 export const applyRuleSuggestion = (payload: { merchant: string; category: string; backfill_month?: string | null }) =>
-  http<{ ok: boolean; rule_id: number; merchant: string; category: string; applied_backfill_month?: string | null }>(
+  http<{ ok: boolean; rule_id: number; merchant: string; category: string; applied_backfill_month?: string | null; ack?: LearningAck }>(
     `/rules/suggestions/apply`,
     { method: 'POST', body: JSON.stringify(payload) }
   );
@@ -591,7 +599,10 @@ export const listPersistedSuggestions = async (): Promise<PersistedSuggestion[]>
 };
 
 export const acceptSuggestion = (id: number) =>
-  http<{ ok: boolean; id: number; status: "accepted" }>(`/rules/suggestions/${id}/accept`, { method: "POST" });
+  http<{ ok: boolean; id: number; status: "accepted"; ack?: LearningAck }>(
+    `/rules/suggestions/${id}/accept`,
+    { method: "POST" }
+  );
 
 export const dismissSuggestion = (id: number) =>
   http<{ ok: boolean; id: number; status: "dismissed" }>(`/rules/suggestions/${id}/dismiss`, { method: "POST" });
@@ -740,6 +751,13 @@ export type AgentModelsResponse = {
   default: string;
   models: { id: string }[];
 };
+
+// ---------- Friendly acknowledgements (ack) ----------
+// Contract from backend: { deterministic: string; llm?: string; mode: 'deterministic'|'llm' }
+export type LearningAck = { deterministic: string; llm?: string; mode: 'deterministic'|'llm' };
+export function getAckText(ack?: LearningAck | null): string {
+  return (ack?.llm ?? ack?.deterministic ?? '').trim();
+}
 
 export async function agentChat(
   input: string | ChatMessage[] | AgentChatRequest,

@@ -1,12 +1,13 @@
 from typing import List, Literal, Dict, Any
 from fastapi import APIRouter, Depends
 from app.utils.csrf import csrf_protect
-from pydantic import BaseModel, Field, conint
+from pydantic import BaseModel, Field
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.transactions import Transaction
+from app.services.ack_service import build_ack
 
 router = APIRouter(prefix="/agent/tools/rules", tags=["agent-tools:rules"])
 
@@ -46,6 +47,7 @@ class ApplyResp(BaseModel):
     updated: int
     category: str
     rule: Dict[str, Any]
+    ack: Dict[str, Any] | None = None
 
 
 
@@ -123,12 +125,21 @@ def apply_rule(body: RuleBody, db: Session = Depends(get_db)) -> ApplyResp:
         )
         db.commit()
 
+    # Friendly ack
+    ack = build_ack(
+        merchant="these matches",
+        category=body.category,
+        updated_count=int(updated),
+        scope="similar",
+    )
+
     return ApplyResp(
         month=body.month,
         matched_ids=ids,
         updated=int(updated),
         category=body.category,
         rule={"pattern": body.pattern, "target": body.target},
+        ack=ack,
     )
 
 

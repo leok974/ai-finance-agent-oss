@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import Card from './Card'
 import EmptyState from './EmptyState'
-import { categorizeTxn, mlFeedback } from '@/api'
+import { categorizeTxn, mlFeedback, getAckText } from '@/api'
 import { useCoalescedRefresh } from '@/utils/refreshBus'
 import { setRuleDraft } from '@/state/rulesDraft'
 import { getGlobalMonth } from '@/state/month'
@@ -32,7 +32,7 @@ export default function UnknownsPanel({ month, onSeedRule, onChanged, refreshKey
   const scheduleUnknownsRefresh = useCoalescedRefresh('unknowns-refresh', () => refresh(), 450)
 
   async function quickApply(id: number, category: string) {
-    await categorizeTxn(id, category)
+    const res = await categorizeTxn(id, category)
     // Attempt ML feedback; show transient "learned" badge on success
     try {
       await mlFeedback({ txn_id: id, category, action: 'accept' })
@@ -51,7 +51,7 @@ export default function UnknownsPanel({ month, onSeedRule, onChanged, refreshKey
   // items comes from the hook; since we can't mutate it here, trigger a refresh
   refresh()
     onChanged?.()
-  ok?.(`Set category → ${category}`)
+  ok?.(getAckText(res?.ack) || `Set category → ${category}`)
   // Batch multiple quick applies into a single reload (coalesced by key)
   scheduleUnknownsRefresh()
   }

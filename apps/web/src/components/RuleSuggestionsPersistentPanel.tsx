@@ -2,6 +2,7 @@ import React from "react";
 import Card from "./Card";
 import SuggestionIgnoresPanel from "./SuggestionIgnoresPanel";
 import { showToast } from "@/lib/toast-helpers";
+import { getAckText } from "@/lib/api";
 import {
   listPersistedSuggestions,
   acceptSuggestion,
@@ -103,8 +104,9 @@ function SuggestionRow({ s, onChanged }: { s: RowModel; onChanged: () => void })
     if (s.kind !== "persisted") return;
     setBusy("accept");
     try {
-      await acceptSuggestion(s.id);
-      showToast?.(`Accepted: ${merchant} → ${category}`, { type: "success" });
+      const res = await acceptSuggestion(s.id);
+      const msg = getAckText((res as any)?.ack) || `Accepted: ${merchant} → ${category}`;
+      showToast?.(msg, { type: "success" });
     } catch (e:any) {
       showToast?.(e?.message ?? "Failed to accept", { type: "error" });
     } finally { setBusy(null); onChanged(); }
@@ -152,8 +154,9 @@ function SuggestionRow({ s, onChanged }: { s: RowModel; onChanged: () => void })
             onClick={async () => {
               setBusy("apply");
               try {
-                await applyRuleSuggestion({ merchant, category });
-                showToast?.(`Rule added: ${merchant} → ${category}`, { type: "success" });
+                const res = await applyRuleSuggestion({ merchant, category });
+                const msg = getAckText((res as any).ack) || `Rule added: ${merchant} → ${category}`;
+                showToast?.(msg, { type: "success" });
               } catch (e:any) {
                 showToast?.(e?.message ?? "Failed to apply", { type: "error" });
               } finally { setBusy(null); onChanged(); }

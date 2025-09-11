@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 import os
 from .routers import ingest, txns, rules, ml, report, budget, alerts, insights, agent, explain
+from .routers import suggestions as suggestions_router
 from .routers import meta
 from app.routers import agent_tools_transactions as agent_tools_txn
 from app.routers import agent_tools_budget as agent_tools_budget
@@ -130,6 +131,7 @@ app.include_router(rules_apply_all_router.router)
 app.include_router(meta_router.router)
 app.include_router(meta.router)
 app.include_router(agent_txns.router)  # NEW
+app.include_router(suggestions_router.router)
 
 # Mount health router at root so /healthz is available at top-level
 app.include_router(health_router.router)  # exposes GET /healthz

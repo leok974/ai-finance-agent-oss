@@ -15,6 +15,7 @@ from app.utils.env import is_dev
 import datetime as dt
 from pydantic import BaseModel
 from app.services.rules_apply import apply_all_active_rules, latest_month_from_data
+from app.services.ack_service import build_ack
 from app.utils.csrf import csrf_protect
 
 router = APIRouter()
@@ -94,10 +95,12 @@ def get_unknowns(month: Optional[str] = None, db: Session = Depends(get_db)) -> 
 def categorize(txn_id: int, req: CategorizeRequest, db: Session = Depends(get_db)):
     # Update DB if present
     tdb = db.get(Transaction, txn_id)
+    updated_count = 0
     if tdb:
         tdb.category = req.category
         db.commit()
         db.refresh(tdb)
+        updated_count += 1
         # Feedback logging (best-effort): raw SQL to ensure training signal is captured
         try:
             db.execute(
@@ -115,10 +118,12 @@ def categorize(txn_id: int, req: CategorizeRequest, db: Session = Depends(get_db
             app.state.user_labels.append({"txn_id": txn_id, "category": req.category})
             save_state(app)
             # Prefer returning the in-memory dict shape used by clients
-            return {"ok": True, "txn": t}
+            ack = build_ack(t.get("merchant"), req.category, None, scope="future")
+            return {"ok": True, "txn": t, "ack": ack}
     # If not found in memory but present in DB, return DB-mapped shape
     if tdb:
-        return {"ok": True, "txn": to_txn_dict(tdb)}
+        ack = build_ack(getattr(tdb, "merchant", None), req.category, None, scope="future")
+        return {"ok": True, "txn": to_txn_dict(tdb), "ack": ack}
     raise HTTPException(status_code=404, detail="Transaction not found")
 
 @router.post("/categorize", dependencies=[Depends(csrf_protect)])

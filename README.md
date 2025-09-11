@@ -398,6 +398,14 @@ curl "http://127.0.0.1:8000/agent/plan/debug?q=top%20merchants%20for%20July&bypa
 ## Agent Tools: Budget
 
 ### 1) Summary
+\
+
+### Friendly acknowledgements (ack)
+Learning endpoints that change categorization or apply rules include a small acknowledgement payload for the UI:
+
+ack: { "deterministic": "string", "llm": "string?", "mode": "deterministic|llm" }
+
+The deterministic string is always present. When an LLM is available, a short polished sentence may be included and `mode` will be `llm`. The LLM path is best‑effort and safe to disable with DEV_ALLOW_NO_LLM=1.
 POST `/agent/tools/budget/summary`
 
 Request:

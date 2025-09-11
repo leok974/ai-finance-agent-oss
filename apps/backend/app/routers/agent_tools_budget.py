@@ -1,7 +1,7 @@
 from typing import Dict, List, Optional, Literal
 from dataclasses import asdict, dataclass
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel, Field, conint, confloat
+from pydantic import BaseModel, Field, confloat
 from sqlalchemy import func, case, desc
 from sqlalchemy.orm import Session
 
@@ -14,7 +14,7 @@ router = APIRouter(prefix="/agent/tools/budget", tags=["agent-tools:budget"])
 # ---------- Schemas ----------
 class MonthParam(BaseModel):
     month: str = Field(..., description="YYYY-MM")
-    top_n: conint(ge=1, le=50) = 5
+    top_n: int = Field(5, ge=1, le=50)
 
 
 class BudgetCheckBody(BaseModel):

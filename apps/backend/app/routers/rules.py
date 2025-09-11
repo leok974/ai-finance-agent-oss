@@ -40,6 +40,7 @@ from app.utils.state import (
 from datetime import datetime as _dt
 from pydantic import Field as _Field
 from app.services.rule_suggestions_store import list_persisted as _db_list_persisted, upsert_from_mined as _db_upsert_from_mined, set_status as _db_set_status, clear_non_new as _db_clear_non_new
+from app.services.ack_service import build_ack
 from app.orm_models import RuleSuggestion  # legacy suggestions table for compat fallback
 from app.services.rule_suggestion_ignores_store import (
     list_ignores as rsi_list,
@@ -49,6 +50,89 @@ from app.services.rule_suggestion_ignores_store import (
 )
 
 router = APIRouter(prefix="/rules", tags=["rules"])
+class TestApplyBody(BaseModel):
+    merchant: str
+    category: str
+    enabled: Optional[bool] = True
+    backfill: Optional[bool] = True
+
+def _canon(s: Optional[str]) -> str:
+    return (s or "").strip().lower()
+
+@router.post(
+    "/test/apply",
+    status_code=200,
+    dependencies=[Depends(require_roles("admin")), Depends(csrf_protect)],
+)
+def test_apply(body: TestApplyBody, db: Session = Depends(get_db)):
+    """
+    Admin action: from the rule 'test' screen, persist the rule and optionally backfill.
+    Mirrors /rules/apply but kept separate for UI clarity. Returns ack for UX.
+    """
+    mcanon = _canon(body.merchant)
+    if not mcanon or not body.category:
+        raise HTTPException(status_code=400, detail="merchant and category required")
+
+    # upsert rule deterministically
+    rule = (
+        db.query(Rule)
+        .filter(getattr(Rule, "merchant_canonical", None) == mcanon if hasattr(Rule, "merchant_canonical") else Rule.merchant == body.merchant)
+        .one_or_none()
+    )
+    if rule is None:
+        # Prefer merchant_canonical if model has it; else store merchant
+        kwargs = {}
+        if hasattr(Rule, "merchant_canonical"):
+            kwargs["merchant_canonical"] = mcanon
+        else:
+            kwargs["merchant"] = body.merchant
+        kwargs["category"] = body.category
+        if hasattr(Rule, "enabled"):
+            kwargs["enabled"] = bool(body.enabled)
+        elif hasattr(Rule, "active"):
+            kwargs["active"] = bool(body.enabled)
+        rule = Rule(**kwargs)
+        db.add(rule)
+    else:
+        if hasattr(rule, "category"):
+            rule.category = body.category
+        if body.enabled is not None:
+            if hasattr(rule, "enabled"):
+                rule.enabled = bool(body.enabled)
+            elif hasattr(rule, "active"):
+                rule.active = bool(body.enabled)
+
+    updated_count = 0
+    if body.backfill:
+        # Backfill by merchant canonical when available
+        target_field = getattr(Transaction, "merchant_canonical", None)
+        if target_field is not None:
+            updated_count = (
+                db.query(Transaction)
+                .filter(target_field == mcanon)
+                .update({Transaction.category: body.category}, synchronize_session=False)
+            )
+        else:
+            updated_count = (
+                db.query(Transaction)
+                .filter(Transaction.merchant == body.merchant)
+                .update({Transaction.category: body.category}, synchronize_session=False)
+            )
+
+    db.commit()
+
+    ack = build_ack(
+        merchant=body.merchant,
+        category=body.category,
+        updated_count=(updated_count if body.backfill else None),
+        scope="similar" if body.backfill else "future",
+    )
+    return {
+        "ok": True,
+        "rule": {"merchant": body.merchant, "category": body.category, "enabled": bool(body.enabled)},
+        "updated": int(updated_count),
+        "ack": ack,
+    }
 @router.get("/suggestions/config")
 def rules_suggestions_config():
     # Read from module each call to reflect env + reloads
@@ -446,6 +530,7 @@ class ApplySuggestionResp(BaseModel):
     merchant: str
     category: str
     applied_backfill_month: Optional[str] = None
+    ack: Optional[Dict[str, Any]] = None
 
 
 @router.post("/suggestions/apply", response_model=ApplySuggestionResp, dependencies=[Depends(csrf_protect)])
@@ -462,7 +547,21 @@ def apply_rule_suggestion(payload: ApplySuggestionReq, db: Session = Depends(get
     db.refresh(r)
 
     backfill_month = payload.backfill_month or current_month_key()
-    return {"ok": True, "rule_id": r.id, "merchant": r.merchant, "category": r.category, "applied_backfill_month": backfill_month}
+    # Friendly acknowledgement for mined apply (no immediate backfill here)
+    ack = build_ack(
+        merchant=payload.merchant,
+        category=payload.category,
+        updated_count=None,
+        scope="future",
+    )
+    return {
+        "ok": True,
+        "rule_id": r.id,
+        "merchant": r.merchant,
+        "category": r.category,
+        "applied_backfill_month": backfill_month,
+        "ack": ack,
+    }
 
 
 class IgnoreSuggestionReq(BaseModel):
@@ -500,6 +599,8 @@ class PersistedSuggestion(BaseModel):
     last_mined_at: Optional[str] = None
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
+    # Friendly acknowledgement for UI
+    ack: Optional[Dict[str, Any]] = None
 
 class PersistedListResp(BaseModel):
     suggestions: List[PersistedSuggestion]
@@ -561,6 +662,13 @@ def accept_persisted_suggestion_db(sid: int, db: Session = Depends(get_db)):
         out = _db_set_status(db, sid, "accepted")
         out["ok"] = True
         out["rule_id"] = None
+        # Add friendly ack if merchant/category present
+        merchant = out.get("merchant") if isinstance(out, dict) else None
+        category = out.get("category") if isinstance(out, dict) else None
+        try:
+            out["ack"] = build_ack(merchant, category, updated_count=None, scope="similar")
+        except Exception:
+            pass
         return out
     except ValueError:
         # Fallback: legacy suggestion accept creates a rule
@@ -574,6 +682,7 @@ def accept_persisted_suggestion_db(sid: int, db: Session = Depends(get_db)):
         if rid is None:
             raise HTTPException(status_code=404, detail="Suggestion not found")
         # Return a shape compatible with persisted model for clients that expect it
+        ack = build_ack(merchant, category, updated_count=None, scope="similar")
         return {
             "ok": True,
             "rule_id": int(rid),
@@ -588,6 +697,7 @@ def accept_persisted_suggestion_db(sid: int, db: Session = Depends(get_db)):
             "last_mined_at": None,
             "created_at": None,
             "updated_at": None,
+            "ack": ack,
         }
 
 
