@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { agentPlanDebug, agentPlanStatus, type AgentPlanDebug } from "@/lib/api";
+import { agentPlanDebug, agentPlanStatus, type AgentPlanDebug, type PlannerPlanItem, downloadReportExcel } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 // simple separator helper
@@ -197,4 +197,31 @@ export default function PlannerDevPanel() {
       )}
     </div>
   );
+}
+
+/**
+ * Handle post-apply behaviors (export, etc.).
+ * Prefer backend `report_url` if present; otherwise fall back to client Excel builder.
+ * Designed to be unit-tested.
+ */
+export async function handleApply(args: {
+  res: any;                 // response from agentPlanApply(...)
+  month?: string;           // month string like "2025-08"
+  selected: PlannerPlanItem[];
+}) {
+  const { res, month, selected } = args;
+
+  const wantsExport = (selected || []).some((a) => a.kind === "export_report");
+  const reportUrl: string | undefined = res?.report_url;
+
+  if (wantsExport) {
+    if (reportUrl) {
+      // single source of truth when backend provides URL
+      window.location.href = reportUrl;
+    } else if (month) {
+      // client-side fallback
+      await downloadReportExcel(month, true, { splitAlpha: true });
+    }
+  }
+  return res;
 }

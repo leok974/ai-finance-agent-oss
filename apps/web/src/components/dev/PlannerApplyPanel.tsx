@@ -1,5 +1,6 @@
 import React, { useCallback, useState } from "react";
 import { agentPlanPreview, agentPlanApply, type PlannerPlan, type PlannerPlanItem, downloadReportExcel, getAckText } from "@/lib/api";
+import { handleApply as handleApplyExport } from "@/lib/planHandleApply";
 import { Button } from "@/components/ui/button";
 import { useOkErrToast } from "@/lib/toast-helpers";
 
@@ -37,13 +38,7 @@ export default function PlannerApplyPanel() {
       const res: any = await agentPlanApply(plan?.month, actions);
       ok?.(getAckText(res?.ack) || "Applied.");
       if (wantsExport) {
-        const url: string | undefined = res?.report_url;
-        if (url) {
-          // Single source of truth if backend provided it
-          window.location.href = url;
-        } else if (plan?.month) {
-          await downloadReportExcel(plan.month, true, { splitAlpha: true });
-        }
+        await handleApplyExport({ res, month: plan?.month, selected: actions as any });
       }
     } catch (e: any) {
       err?.(e?.message || "Apply failed");
