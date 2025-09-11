@@ -6,6 +6,7 @@ Create Date: 2025-09-10
 """
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy import inspect
 from sqlalchemy.sql import text
 
 # ids
@@ -15,18 +16,32 @@ branch_labels = None
 depends_on = None
 
 def upgrade():
-    # 1) Extend rule_suggestions_persisted with new columns (safe to re-run)
-    op.add_column("rule_suggestions_persisted", sa.Column("source", sa.String(16), nullable=False, server_default="persisted"))
-    op.add_column("rule_suggestions_persisted", sa.Column("metrics_json", sa.JSON, nullable=True))
-    op.add_column("rule_suggestions_persisted", sa.Column("last_mined_at", sa.DateTime(timezone=True), nullable=True))
-
-    # 2) If a legacy mined table exists on Postgres, copy rows into the unified table
     conn = op.get_bind()
+    insp = inspect(conn)
 
-    # Postgres-safe existence check
-    exists = conn.execute(text("SELECT to_regclass('public.rule_suggestions')")).scalar() is not None
+    # ---- 1) Add columns ONLY if missing (idempotent) ----
+    cols = {c["name"] for c in insp.get_columns("rule_suggestions_persisted", schema="public")}
 
-    if exists:
+    if "source" not in cols:
+        # Postgres supports IF NOT EXISTS, but we'll stay portable via inspector
+        op.add_column(
+            "rule_suggestions_persisted",
+            sa.Column("source", sa.String(16), nullable=False, server_default="persisted"),
+        )
+    if "metrics_json" not in cols:
+        op.add_column(
+            "rule_suggestions_persisted",
+            sa.Column("metrics_json", sa.JSON, nullable=True),
+        )
+    if "last_mined_at" not in cols:
+        op.add_column(
+            "rule_suggestions_persisted",
+            sa.Column("last_mined_at", sa.DateTime(timezone=True), nullable=True),
+        )
+
+    # ---- 2) Copy legacy rows if the old mined table exists (Postgres-safe) ----
+    legacy_exists = conn.execute(text("SELECT to_regclass('public.rule_suggestions')")).scalar() is not None
+    if legacy_exists:
         rows = conn.execute(text("""
             SELECT merchant, category, count, window_days,
                    COALESCE(updated_at, NOW()) AS updated_at
@@ -45,7 +60,6 @@ def upgrade():
                 DO UPDATE SET
                     count = EXCLUDED.count,
                     window_days = EXCLUDED.window_days,
-                    -- keep 'persisted' if it was manually inserted before
                     source = CASE
                         WHEN rule_suggestions_persisted.source = 'persisted' THEN 'persisted'
                         ELSE 'mined'
@@ -64,6 +78,17 @@ def upgrade():
     # (Optional) don’t drop legacy table automatically; do it later when confident
 
 def downgrade():
-    op.drop_column("rule_suggestions_persisted", "last_mined_at")
-    op.drop_column("rule_suggestions_persisted", "metrics_json")
-    op.drop_column("rule_suggestions_persisted", "source")
+    # best-effort rollback of the extra columns (safe even if previously missing)
+    with op.batch_alter_table("rule_suggestions_persisted") as batch:
+        try:
+            batch.drop_column("last_mined_at")
+        except Exception:
+            pass
+        try:
+            batch.drop_column("metrics_json")
+        except Exception:
+            pass
+        try:
+            batch.drop_column("source")
+        except Exception:
+            pass
