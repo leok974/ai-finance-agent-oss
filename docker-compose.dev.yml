@@ -1,0 +1,22 @@
+version: "3.9"
+
+services:
+  backend:
+    # live-reload + mount your source
+    volumes:
+      - ./apps/backend:/app
+    environment:
+      DEV_MODE: "1"
+      DEMO_MODE: "1"           # optional: enables /auth/demo_login if your branch has it
+      DEMO_LOGIN_TOKEN: "let-judges-in"
+      FRONTEND_ORIGIN: "http://127.0.0.1:5173"
+      # database URL stays the same; uses the postgres service from base compose
+    command: >
+      sh -lc
+      "alembic -c /app/alembic.ini upgrade head &&
+       uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --proxy-headers"
+
+  # (optional) run web dev inside compose too; otherwise run pnpm dev locally
+  web:
+    volumes:
+      - ./apps/web:/app

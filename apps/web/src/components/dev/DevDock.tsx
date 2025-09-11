@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 // - MLStatusCard at src/components/MLStatusCard.tsx
 import RuleTesterPanel from "@/components/RuleTesterPanel";
 import MLStatusCard from "@/components/MLStatusCard";
-import PlannerDevTool from "@/components/planner/PlannerDevTool";
+import PlannerDevPanel from "@/components/dev/PlannerDevPanel";
 
 export default function DevDock() {
   const [open, setOpen] = useState(
@@ -29,7 +29,7 @@ export default function DevDock() {
           <div className="mt-3 grid gap-4 md:grid-cols-2">
             <div className="space-y-3">
               {/* Planner DevTool */}
-      <PlannerDevTool />
+              <PlannerDevPanel />
             </div>
             <div className="space-y-3">
               {/* Rule Tester + ML Selftest */}

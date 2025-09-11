@@ -3,7 +3,7 @@ import { MonthContext } from "./context/MonthContext";
 import UploadCsv from "./components/UploadCsv";
 import UnknownsPanel from "./components/UnknownsPanel";
 import SuggestionsPanel from "./components/SuggestionsPanel";
-import RuleTesterPanel from "./components/RuleTesterPanel";
+// import RuleTesterPanel from "./components/RuleTesterPanel"; // rendered only inside DevDock
 import { AgentResultRenderer } from "./components/AgentResultRenderers";
 import { useOkErrToast } from "@/lib/toast-helpers";
 // import RulesPanel from "./components/RulesPanel";
@@ -17,7 +17,7 @@ import DevDock from "@/components/dev/DevDock";
 import { ChatDockProvider } from "./context/ChatDockContext";
 import ChartsPanel from "./components/ChartsPanel";
 import TopEmptyBanner from "./components/TopEmptyBanner";
-import MLStatusCard from "./components/MLStatusCard";
+// import MLStatusCard from "./components/MLStatusCard"; // rendered only inside DevDock
 import NetActivityBlip from "@/components/NetActivityBlip";
 import LoginForm from "@/components/LoginForm";
 import { useAuth } from "@/state/auth";
@@ -27,6 +27,7 @@ import { setGlobalMonth } from "./state/month";
 import RuleSuggestionsPersistentPanel from "@/components/RuleSuggestionsPersistentPanel";
 import InsightsAnomaliesCard from "./components/InsightsAnomaliesCard";
 import ErrorBoundary from "@/components/ErrorBoundary";
+import DevFab from "@/components/dev/DevFab";
 
 // Log frontend version info
 console.info("[Web] branch=", __WEB_BRANCH__, "commit=", __WEB_COMMIT__);
@@ -241,6 +242,7 @@ const App: React.FC = () => {
           </div>
           <ChatDock />
           {flags.dev && <DevDock />}
+          {flags.dev && <DevFab />}
         </div>
       </div>
   </div>

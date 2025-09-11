@@ -7,14 +7,18 @@
     "dev": "pnpm smoke:backend && vite",
     "build": "vite build",
     "preview": "vite preview --port 5173 --strictPort",
-  "typecheck": "tsc -p . --noEmit",
-  "test": "vitest run",
+    "typecheck": "tsc -p . --noEmit",
+    "test": "vitest run",
     "smoke:backend": "powershell -ExecutionPolicy Bypass -File ../backend/app/scripts/smoke-backend.ps1"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.15",
+    "@radix-ui/react-dropdown-menu": "^2.1.16",
+    "@radix-ui/react-label": "^2.1.7",
     "@radix-ui/react-popover": "^1.1.15",
+    "@radix-ui/react-separator": "^1.1.7",
     "@radix-ui/react-slot": "^1.2.3",
+    "@radix-ui/react-switch": "^1.2.6",
     "@radix-ui/react-toast": "^1.2.15",
     "@radix-ui/react-tooltip": "^1.2.8",
     "class-variance-authority": "^0.7.0",
@@ -30,9 +34,9 @@
     "vaul": "^1.1.2"
   },
   "devDependencies": {
-  "@testing-library/jest-dom": "^6.6.3",
-  "@testing-library/react": "^16.0.1",
-  "@testing-library/user-event": "^14.6.1",
+    "@testing-library/jest-dom": "^6.6.3",
+    "@testing-library/react": "^16.0.1",
+    "@testing-library/user-event": "^14.6.1",
     "@types/react": "^18.2.66",
     "@types/react-dom": "^18.2.22",
     "@vitejs/plugin-react": "^4.3.1",
