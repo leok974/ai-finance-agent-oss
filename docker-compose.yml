@@ -1,40 +1,44 @@
-version: "3.9"
 services:
-  backend:
-    build: ./apps/backend
-    environment:
-      - OPENAI_BASE_URL=${OPENAI_BASE_URL}
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - MODEL=${MODEL}
-      - DEV_ALLOW_NO_LLM=${DEV_ALLOW_NO_LLM}
-      # When running with Docker, point the backend at the postgres service host
-  - DATABASE_URL=${DATABASE_URL:-postgresql+psycopg://${POSTGRES_USER:-myuser}:${POSTGRES_PASSWORD:-mypassword}@postgres:5432/${POSTGRES_DB:-finance}}
-    ports: ["8000:8000"]
-    volumes:
-      - ./apps/backend:/app
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
-    depends_on:
-      - postgres
-
-  web:
-    build: ./apps/web
-    ports: ["5173:5173"]
-    volumes:
-      - ./apps/web:/app
-    command: ["pnpm","dev","--host"]
-
   postgres:
-    image: postgres:16
-    container_name: finance-pg
-    restart: unless-stopped
+    image: postgres:15
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-myuser}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mypassword}
-      POSTGRES_DB: ${POSTGRES_DB:-finance}
+      POSTGRES_DB: finance
+      POSTGRES_USER: myuser
+      POSTGRES_PASSWORD: password
     ports:
       - "5432:5432"
     volumes:
-      - finance-pgdata:/var/lib/postgresql/data
+      - pgdata:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ./apps/backend
+      dockerfile: Dockerfile
+    environment:
+      DATABASE_URL: postgresql+psycopg://myuser:password@postgres:5432/finance
+      FRONTEND_ORIGIN: http://127.0.0.1:5173
+      DEMO_MODE: "1"
+      DEMO_LOGIN_EMAIL: admin@local
+      DEMO_LOGIN_PASSWORD: admin123
+      DEMO_LOGIN_TOKEN: let-judges-in
+    depends_on:
+      - postgres
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+
+  web:
+    build:
+      context: ./apps/web
+      dockerfile: Dockerfile
+    environment:
+      VITE_API_BASE: http://127.0.0.1:8000
+    depends_on:
+      - backend
+    ports:
+      - "5173:5173"
+    restart: unless-stopped
 
 volumes:
-  finance-pgdata:
+  pgdata:
