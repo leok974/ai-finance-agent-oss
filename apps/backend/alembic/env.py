@@ -1,6 +1,6 @@
 from logging.config import fileConfig
 from alembic import context
-from sqlalchemy import engine_from_config, pool
+from sqlalchemy import engine_from_config, pool, text
 import os, sys
 
 # Ensure the 'app' package is importable when running Alembic from this folder
@@ -40,6 +40,37 @@ def run_migrations_offline():
     with context.begin_transaction():
         context.run_migrations()
 
+def _ensure_alembic_version_width(connection):
+    """Ensure alembic_version.version_num can store long revision ids.
+
+    Some historical databases may have a 32-char column. Our revision ids
+    can be longer (e.g., with human-friendly slugs), so widen to VARCHAR(64).
+    """
+    try:
+        if connection.dialect.name.startswith("postgres"):
+            # Create table if missing with the correct width
+            with connection.begin():
+                connection.execute(
+                    text(
+                        "CREATE TABLE IF NOT EXISTS public.alembic_version (version_num VARCHAR(64) PRIMARY KEY)"
+                    )
+                )
+            # Try to widen existing column; ignore if already wide enough
+            try:
+                with connection.begin():
+                    connection.execute(
+                        text(
+                            "ALTER TABLE public.alembic_version ALTER COLUMN version_num TYPE VARCHAR(64)"
+                        )
+                    )
+            except Exception:
+                # Likely already correct width; proceed
+                pass
+    except Exception:
+        # Never block migrations if this helper fails; proceed as-is
+        pass
+
+
 def run_migrations_online():
     connectable = engine_from_config(
         config.get_section(config.config_ini_section, {}),
@@ -48,6 +79,8 @@ def run_migrations_online():
     )
     with connectable.connect() as connection:
         is_sqlite = connection.dialect.name == "sqlite"
+        # Preflight: ensure alembic_version can hold long revision ids (Postgres)
+        _ensure_alembic_version_width(connection)
         context.configure(
             connection=connection,
             target_metadata=target_metadata,

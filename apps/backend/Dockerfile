@@ -15,6 +15,9 @@ RUN if [ -f requirements.txt ]; then \
 # Copy the rest of the app (paths are relative to build context: apps/backend)
 COPY . .
 
+# Normalize CRLF and make entrypoint executable
+RUN sed -i 's/\r$//' /app/start.sh && chmod +x /app/start.sh
+
 ENV PYTHONPATH=/app
 EXPOSE 8000
-CMD ["uvicorn","app.main:app","--host","0.0.0.0","--port","8000","--reload"]
+CMD ["/app/start.sh"]
