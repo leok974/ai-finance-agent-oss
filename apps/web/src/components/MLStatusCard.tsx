@@ -97,7 +97,7 @@ export default function MLStatusCard() {
     status?.classes && status.classes.length > 0 ? status.classes.join(', ') : '—';
 
   return (
-    <div className="card bg-card border border-border rounded-2xl p-3">
+  <div className="panel-tight md:p-5 lg:p-6">
       <div className="flex items-center justify-between border-b border-border pb-1">
         <h3 className="text-sm font-medium">ML Status</h3>
         <button

@@ -144,7 +144,6 @@ const UploadCsv: React.FC<UploadCsvProps> = ({ onUploaded, defaultReplace = true
 
   return (
     <div className={`w-full ${className ?? ""}`}>
-      <Card>
         <header className="flex items-center justify-between border-b border-border pb-1">
           <h2 className="text-lg font-semibold">Upload Transactions CSV</h2>
           <div className="flex items-center gap-3">
@@ -202,10 +201,7 @@ const UploadCsv: React.FC<UploadCsvProps> = ({ onUploaded, defaultReplace = true
           </div>
         </label>
 
-        <div className="mt-4 flex items-center justify-between">
-          <div className="text-xs opacity-70">
-            Endpoint: <code className="opacity-90">/ingest?replace={String(replace)}</code> (auto-detects expense signs)
-          </div>
+        <div className="mt-4 flex items-center justify-end">
           <button
             type="button"
             disabled={disabled}
@@ -245,10 +241,7 @@ const UploadCsv: React.FC<UploadCsvProps> = ({ onUploaded, defaultReplace = true
             )}
           </div>
         )}
-        <div className="mt-3 text-xs opacity-70">
-          Hint: If your bank exports expenses as positive numbers, check “Expenses are positive” so we’ll normalize them during import. Income stays positive.
-        </div>
-      </Card>
+  {/* hint removed per request */}
     </div>
   );
 };

@@ -28,15 +28,66 @@
 
 :root { color-scheme: dark; }
 
-/* ---------- Global tooltip look & feel ---------- */
+/* ---------- Global tooltip look & feel + panel utilities ---------- */
 @layer components {
-  /* Soft, uniform cards everywhere */
-  .panel {
-  @apply rounded-2xl border border-white/10 bg-white/5 shadow-sm;
+  /* Subtle, reusable card/panel surfaces */
+  .panel{
+    @apply rounded-2xl bg-white/5 border border-white/5 shadow-sm;
   }
+  .panel-tight{
+    @apply panel p-3 md:p-4;
+  }
+
+  /* Inputs & chips */
+  .input-muted{
+    @apply rounded-xl bg-white/5 border border-white/10 focus:outline-none focus:ring-2 focus:ring-white/10;
+  }
+  .pill{
+    @apply inline-flex items-center rounded-full px-2 py-0.5 text-xs opacity-80 bg-white/5 border border-white/10;
+  }
+
+  /* Charts container helper */
+  .chart-panel{
+    @apply panel-tight;
+  }
+
+  /* Soft panel without visible border (for charts/overview tiles) */
+  .panel-no-border {
+    @apply rounded-2xl bg-white/5 shadow-sm border-0;
+  }
+
+  /* Overview mini tiles use this to avoid inner bright outlines */
+  .tile-no-border {
+    @apply rounded-xl bg-white/5 border-0;
+  }
+
+  /* If any child within a no-border panel forces a border, remove it */
+  .panel-no-border :is(.border, [class*="border-"]) {
+    border-width: 0 !important;
+    border-color: transparent !important;
+  }
+
+  /* Chart card + title */
+  .chart-card { @apply panel-no-border p-4 md:p-5; }
+  .chart-title { @apply text-sm md:text-base font-medium tracking-tight mb-3 opacity-90; }
+
+  /* Help long text wrap inside rows/lists */
+  .wrap{
+    @apply whitespace-normal break-words;
+  }
+
+  /* kill nested double borders when a panel sits inside another panel container */
+  .panel .panel {
+    @apply border-0 bg-transparent shadow-none p-0;
+  }
+
+  /* page section spacing */
+  .section {
+    @apply space-y-6;
+  }
+
   /* Optional muted helpers */
   .card-muted { @apply rounded-2xl border border-white/10 bg-white/5; }
-  .input-muted { @apply rounded-xl border border-white/10 bg-white/5 outline-none focus:ring-2 focus:ring-sky-500/40; }
 
   /* Form grid + fields */
   .form-grid {
@@ -60,15 +111,7 @@
     @apply text-xs opacity-70;
   }
 
-  /* Inputs inside panels (muted) */
-  .input-muted {
-  @apply rounded-xl border border-white/10 bg-white/[0.04] focus:outline-none focus:ring-2 focus:ring-white/20;
-  }
-
-  /* Tiny pill for tags/status */
-  .pill {
-  @apply inline-flex items-center rounded-full border border-white/15 px-2 py-0.5 text-xs opacity-80;
-  }
+  /* keep legacy helpers if referenced elsewhere */
 
   /* Action rows */
   .actions-row {

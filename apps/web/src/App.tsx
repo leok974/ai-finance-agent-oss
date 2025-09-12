@@ -7,8 +7,7 @@ import SuggestionsPanel from "./components/SuggestionsPanel";
 import { AgentResultRenderer } from "./components/AgentResultRenderers";
 import { useOkErrToast } from "@/lib/toast-helpers";
 // import RulesPanel from "./components/RulesPanel";
-import { getAlerts, getMonthSummary, getMonthMerchants, getMonthFlows, agentTools, meta, getHealthz, api, charts, resolveMonth as resolveMonthApi, resolveMonthFromCharts } from './lib/api'
-import DbRevBadge from './components/DbRevBadge';
+import { getAlerts, getMonthSummary, getMonthMerchants, getMonthFlows, agentTools, meta, getHealthz, api, resolveMonthFromCharts } from './lib/api'
 import { flags } from "@/lib/flags";
 import AboutDrawer from './components/AboutDrawer';
 import RulesPanel from "./components/RulesPanel";
@@ -69,10 +68,7 @@ const App: React.FC = () => {
 
   // Initialize month once
   async function resolveMonth(): Promise<string> {
-    // Preferred: tool route first, with GET fallback inside helper
-    const m = await resolveMonthApi();
-    if (m) return m;
-    // Extra safety: try GET-only path directly if helper returned empty
+    // GET-only path compatible with older backend
     const viaCharts = await resolveMonthFromCharts();
     return viaCharts || "";
   }
@@ -181,7 +177,6 @@ const App: React.FC = () => {
           <h1 className="text-3xl font-bold">Finance Agent</h1>
           <div className="flex items-center gap-3">
             <LoginForm />
-            <DbRevBadge dbRevision={dbRev ?? undefined} inSync={inSync} />
             <AboutDrawer />
             <input type="month" className="bg-neutral-900 border border-neutral-800 rounded px-3 py-2" value={month} onChange={e=>{ setMonth(e.target.value); setGlobalMonth(e.target.value); }} />
             <button className="btn btn-sm hover:bg-accent" onClick={()=>setRefreshKey(k=>k+1)}>Refresh</button>
@@ -205,45 +200,48 @@ const App: React.FC = () => {
         )}
 
         {/* Upload CSV */}
-        <section className="panel p-4">
+        <section className="panel p-4 md:p-5">
           <UploadCsv defaultReplace={true} onUploaded={onCsvUploaded} />
         </section>
 
         {/* Insights */}
-        {insights && <AgentResultRenderer tool="insights.expanded" data={insights} />}
-        {/* Anomalies quick card */}
-        <InsightsAnomaliesCard />
+        <div className="section">
+          {insights && <AgentResultRenderer tool="insights.expanded" data={insights} />}
+          {/* Anomalies quick card */}
+          <InsightsAnomaliesCard />
+        </div>
   {/* Agent chat box (legacy) — disabled; use ChatDock instead */}
   {/* <AgentChat /> */}
   {/* ChartsPanel now requires month; always pass the selected month */}
   <ChartsPanel month={month} refreshKey={refreshKey} />
 
         {/* Main grid */}
-        <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-          <UnknownsPanel month={month} refreshKey={refreshKey} />
-          <SuggestionsPanel />
+        <div className="section">
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+            <UnknownsPanel month={month} refreshKey={refreshKey} />
+            <SuggestionsPanel />
+          </div>
         </div>
 
         {/* Persistent rule suggestions table */}
-        <div id="rule-suggestions">
+        <div id="rule-suggestions" className="section">
           <ErrorBoundary fallback={(e)=> <div className="text-sm text-red-500">Failed to render suggestions: {String(e?.message||e)}</div>}>
             <RuleSuggestionsPersistentPanel />
           </ErrorBoundary>
         </div>
 
-        {/* Rules + Tester */}
-        <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-          <RulesPanel refreshKey={refreshKey} />
-          {/* Keep Rule Tester in main grid (right column) when enabled */}
-          {flags.ruleTester ? <RuleTesterPanel /> : <div className="hidden md:block" />}
+        {/* Rules + Rule Tester + ML Status */}
+        <div className="section">
+          <div className="grid gap-6 lg:grid-cols-2">
+            <RulesPanel refreshKey={refreshKey} />
+            {flags.ruleTester ? <RuleTesterPanel /> : <div className="hidden lg:block" />}
+            {flags.mlSelftest ? (
+              <div className="lg:col-span-2">
+                <MLStatusCard />
+              </div>
+            ) : null}
           </div>
-
-          {/* Status / Recent (right-side style) */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="hidden md:block" />
-            {/* Keep ML Status in right column when enabled */}
-            {flags.mlSelftest ? <MLStatusCard /> : <div className="hidden md:block" />}
-          </div>
+        </div>
           <ChatDock />
 
           {/* Dev Dock at very bottom: only Planner DevTool */}

@@ -30,7 +30,8 @@ export default function InsightsAnomaliesCard() {
   }, [selectedMonth]);
 
   return (
-    <Card>
+    <div className="panel-no-border p-3 md:p-4">
+      <Card className="border-0 bg-transparent shadow-none p-0">
       <div className="flex items-center justify-between mb-2">
         <h3 className="text-lg font-semibold">⚠ Unusual this month</h3>
         {month && <span className="text-xs opacity-70">{month}</span>}
@@ -65,6 +66,7 @@ export default function InsightsAnomaliesCard() {
           <div className="text-sm opacity-70">No unusual categories this month.</div>
         )
       )}
-    </Card>
+      </Card>
+    </div>
   );
 }

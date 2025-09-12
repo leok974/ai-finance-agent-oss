@@ -48,21 +48,13 @@ export async function resolveMonthFromCharts(): Promise<string> {
   }
 }
 
-// Old behavior: try POST tool route first, then fall back to GET charts/month_summary
+// GET-only: older backend compatibility
 export async function resolveMonth(): Promise<string> {
   try {
-    const r = await api(`/agent/tools/charts/summary`, {
-      method: 'POST',
-      body: JSON.stringify({ month: null }),
-    });
-    return (r as any)?.month;
+    const r = await charts.monthSummary();
+    return (r as any)?.month ?? "";
   } catch {
-    try {
-      const r = await charts.monthSummary();
-      return (r as any)?.month;
-    } catch {
-      return "";
-    }
+    return "";
   }
 }
 

@@ -81,7 +81,7 @@ export default function PlannerDevPanel({ className }: { className?: string }) {
   } as { mode?: string; steps?: number; throttle?: string };
 
   return (
-    <section id="planner-dev" className={cn("panel p-4", className)}>
+  <section id="planner-dev" className={cn("panel-tight md:p-5 lg:p-6", className)}>
       <div className="flex items-center gap-2 mb-3">
         <h2 className="text-lg font-semibold">Planner DevTool</h2>
         <span className="pill">dev-only</span>
@@ -153,7 +153,7 @@ export default function PlannerDevPanel({ className }: { className?: string }) {
  * Prefer backend `report_url` if present; otherwise fall back to client Excel builder.
  * Designed to be unit-tested.
  */
-export async function handleApply(args: {
+async function handleApply(args: {
   res: any;                 // response from agentPlanApply(...)
   month?: string;           // month string like "2025-08"
   selected: PlannerPlanItem[];

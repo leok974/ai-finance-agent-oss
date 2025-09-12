@@ -22,6 +22,7 @@ const BarChart = RC.BarChart as unknown as React.FC<any>;
 const Bar = RC.Bar as unknown as React.FC<any>;
 const LineChart = RC.LineChart as unknown as React.FC<any>;
 const Line = RC.Line as unknown as React.FC<any>;
+const Cell = RC.Cell as unknown as React.FC<any>;
 
 interface Props {
   /** Required: charts endpoints require month */
@@ -112,22 +113,59 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
     [trends]
   );
 
+  // Color helpers for bars
+  function pickColor(v: number, max: number) {
+    if (!Number.isFinite(max) || max <= 0) return "#60a5fa"; // blue fallback
+    const pct = Math.abs(v) / max;
+    if (pct <= 0.33) return "#22c55e";   // green-500
+    if (pct <= 0.66) return "#f59e0b";   // amber-500
+    return "#ef4444";                    // red-500
+  }
+  const maxCategory = useMemo(() => Math.max(1, ...categoriesData.map((d: any) => Math.abs(Number(d?.amount ?? 0)))), [categoriesData]);
+  const maxMerchant = useMemo(() => Math.max(1, ...merchantsData.map((d: any) => Math.abs(Number(d?.amount ?? 0)))), [merchantsData]);
+
+  // Dark tooltip style
+  const tooltipStyle = useMemo(() => ({
+    backgroundColor: "rgba(17,24,39,.95)",
+    border: "1px solid rgba(255,255,255,.1)",
+    borderRadius: 8,
+    color: "#fff",
+    boxShadow: "0 6px 18px rgba(0,0,0,.35)",
+  } as const), []);
+  const tooltipItemStyle = useMemo(() => ({ color: "#fff" } as const), []);
+  const tooltipLabelStyle = useMemo(() => ({ color: "#fff" } as const), []);
+  const legendTextStyle = useMemo(() => ({ color: "#e5e7eb" } as const), []);
+
+  // Custom legend for bar charts to reflect multi-color palette
+  const BarPaletteLegend: React.FC<{ label?: string }> = ({ label = "Spend" }) => (
+    <div className="flex items-center gap-3 text-xs" style={{ color: "#e5e7eb" }}>
+      <span className="opacity-90">{label}</span>
+      <div className="flex items-center gap-1">
+        <span className="inline-block w-3 h-3 rounded-[2px]" style={{ backgroundColor: "#22c55e" }} />
+        <span className="inline-block w-3 h-3 rounded-[2px]" style={{ backgroundColor: "#f59e0b" }} />
+        <span className="inline-block w-3 h-3 rounded-[2px]" style={{ backgroundColor: "#ef4444" }} />
+      </div>
+      <span className="opacity-60">low → high</span>
+    </div>
+  );
+
   return (
-    <div id="charts-panel" className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+    <div id="charts-panel" className="grid gap-6 md:gap-7 grid-cols-1 lg:grid-cols-2">
       {empty && !error && (
         <div className="lg:col-span-2">
           <EmptyState title="No transactions yet" note="Once you upload, charts will populate automatically." />
         </div>
       )}
-      <Card>
+  <div className="chart-card">
+  <Card className="border-0 bg-transparent shadow-none p-0">
         <div className="flex items-center justify-between mb-2">
-          <h3 className="font-semibold">{`Overview — ${resolvedMonth}`}</h3>
+          <h3 className="chart-title">{`Overview — ${resolvedMonth}`}</h3>
           <ExportMenu month={resolvedMonth} />
         </div>
         {loading && (
           <div className="grid grid-cols-3 gap-4 text-sm">
             {[0, 1, 2].map((i) => (
-              <div key={i} className="rounded-xl bg-gray-800/50 p-3">
+              <div key={i} className="tile-no-border p-3">
                 <Skeleton className="h-4 w-24" />
                 <div className="mt-2">
                   <Skeleton className="h-6 w-28" />
@@ -139,19 +177,19 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
         {error && !empty && <p className="text-sm text-rose-300">Error: {error}</p>}
         {!loading && !error && summary && (
           <div className="grid grid-cols-3 gap-4 text-sm">
-            <div className="rounded-xl bg-gray-800/50 p-3">
+            <div className="tile-no-border p-3">
               <div className="text-gray-400">Total Spend</div>
               <div className="mt-1 text-lg font-semibold text-rose-300">
                 {currency(summary.total_spend || 0)}
               </div>
             </div>
-            <div className="rounded-xl bg-gray-800/50 p-3">
+            <div className="tile-no-border p-3">
               <div className="text-gray-400">Total Income</div>
               <div className="mt-1 text-lg font-semibold text-emerald-300">
                 {currency(summary.total_income || 0)}
               </div>
             </div>
-            <div className="rounded-xl bg-gray-800/50 p-3">
+            <div className="tile-no-border p-3">
               <div className="text-gray-400">Net</div>
               <div className="mt-1 text-lg font-semibold text-indigo-300">
                 {currency(summary.net || 0)}
@@ -159,9 +197,14 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
             </div>
           </div>
         )}
-      </Card>
+  </Card>
+  </div>
 
-      <Card title="Top Categories (expenses)">
+  <div className="chart-card">
+  <Card className="border-0 bg-transparent shadow-none p-0">
+        <div className="flex items-center justify-between mb-2">
+          <h3 className="chart-title">{`Top Categories — ${resolvedMonth}`}</h3>
+        </div>
         {loading && (
           <div className="h-64">
             <div className="h-full w-full flex items-end gap-2">
@@ -183,24 +226,27 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
                 <YAxis
                   tick={{ fill: "var(--text-muted)" }}
                   stroke="var(--border-subtle)"
-                  label={{ value: "Spend (absolute)", angle: -90, position: "insideLeft", fill: "var(--text-muted)" }}
+                  label={{ value: "Spend", angle: -90, position: "insideLeft", fill: "var(--text-muted)" }}
                 />
-                <Tooltip
-                  contentStyle={{
-                    background: "var(--tooltip-bg)",
-                    borderColor: "var(--tooltip-br)",
-                    color: "var(--tooltip-text)",
-                  }}
-                />
-                <Legend />
-                <Bar dataKey="amount" name="Spend" />
+                <Tooltip contentStyle={tooltipStyle} itemStyle={tooltipItemStyle} labelStyle={tooltipLabelStyle} />
+                <Legend content={<BarPaletteLegend label="Spend" />} />
+                <Bar dataKey="amount" name="Spend" activeBar={{ fillOpacity: 1, stroke: "#fff", strokeWidth: 1 }} fillOpacity={0.9}>
+                  {categoriesData.map((d: any, i: number) => (
+                    <Cell key={i} fill={pickColor(Number(d?.amount ?? 0), maxCategory)} />
+                  ))}
+                </Bar>
               </BarChart>
             </ResponsiveContainer>
           </div>
         )}
-      </Card>
+  </Card>
+  </div>
 
-      <Card title="Top Merchants (expenses)">
+  <div className="chart-card">
+  <Card className="border-0 bg-transparent shadow-none p-0">
+        <div className="flex items-center justify-between mb-2">
+          <h3 className="chart-title">{`Top Merchants — ${resolvedMonth}`}</h3>
+        </div>
         {loading && (
           <div className="h-64">
             <div className="h-full w-full flex items-end gap-2">
@@ -222,25 +268,28 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
                 <YAxis
                   tick={{ fill: "var(--text-muted)" }}
                   stroke="var(--border-subtle)"
-                  label={{ value: "Spend (absolute)", angle: -90, position: "insideLeft", fill: "var(--text-muted)" }}
+                  label={{ value: "Spend", angle: -90, position: "insideLeft", fill: "var(--text-muted)" }}
                 />
-                <Tooltip
-                  contentStyle={{
-                    background: "var(--tooltip-bg)",
-                    borderColor: "var(--tooltip-br)",
-                    color: "var(--tooltip-text)",
-                  }}
-                />
-                <Legend />
-                <Bar dataKey="amount" name="Spend" />
+                <Tooltip contentStyle={tooltipStyle} itemStyle={tooltipItemStyle} labelStyle={tooltipLabelStyle} />
+                <Legend content={<BarPaletteLegend label="Spend" />} />
+                <Bar dataKey="amount" name="Spend" activeBar={{ fillOpacity: 1, stroke: "#fff", strokeWidth: 1 }} fillOpacity={0.9}>
+                  {merchantsData.map((d: any, i: number) => (
+                    <Cell key={i} fill={pickColor(Number(d?.amount ?? 0), maxMerchant)} />
+                  ))}
+                </Bar>
               </BarChart>
             </ResponsiveContainer>
-            <div className="text-xs opacity-70 mt-1">Tip: Open Insights → Large Transactions or use the Unknowns panel to explain individual transactions.</div>
+            {/* Tip removed per request */}
           </div>
         )}
-      </Card>
+  </Card>
+  </div>
 
-      <Card title="Daily Flows">
+  <div className="chart-card">
+  <Card className="border-0 bg-transparent shadow-none p-0">
+        <div className="flex items-center justify-between mb-2">
+          <h3 className="chart-title">{`Daily Flows — ${resolvedMonth}`}</h3>
+        </div>
         {loading && (
           <div className="h-64">
             <div className="h-full w-full flex items-center">
@@ -262,24 +311,23 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
                   stroke="var(--border-subtle)"
                   label={{ value: "Amount", angle: -90, position: "insideLeft", fill: "var(--text-muted)" }}
                 />
-                <Tooltip
-                  contentStyle={{
-                    background: "var(--tooltip-bg)",
-                    borderColor: "var(--tooltip-br)",
-                    color: "var(--tooltip-text)",
-                  }}
-                />
-                <Legend />
-                <Line type="monotone" dataKey="in" name="In" />
-                <Line type="monotone" dataKey="out" name="Out" />
-                <Line type="monotone" dataKey="net" name="Net" />
+                <Tooltip contentStyle={tooltipStyle} itemStyle={tooltipItemStyle} labelStyle={tooltipLabelStyle} />
+                <Legend wrapperStyle={legendTextStyle} />
+                <Line type="monotone" dataKey="in"  name="In"  stroke="#22c55e" strokeWidth={2} dot={false} />
+                <Line type="monotone" dataKey="out" name="Out" stroke="#ef4444" strokeWidth={2} dot={false} />
+                <Line type="monotone" dataKey="net" name="Net" stroke="#60a5fa" strokeWidth={2} dot={false} />
               </LineChart>
             </ResponsiveContainer>
           </div>
         )}
-      </Card>
+  </Card>
+  </div>
 
-      <Card title="Spending Trends (last 6 months)">
+  <div className="chart-card">
+  <Card className="border-0 bg-transparent shadow-none p-0">
+        <div className="flex items-center justify-between mb-2">
+          <h3 className="chart-title">{`Spending Trends — last ${monthsWindow} months`}</h3>
+        </div>
         {loading && (
           <div className="h-64">
             <div className="h-full w-full flex items-center">
@@ -299,22 +347,17 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
                 <YAxis
                   tick={{ fill: "var(--text-muted)" }}
                   stroke="var(--border-subtle)"
-                  label={{ value: "Spend (absolute)", angle: -90, position: "insideLeft", fill: "var(--text-muted)" }}
+                  label={{ value: "Spend", angle: -90, position: "insideLeft", fill: "var(--text-muted)" }}
                 />
-                <Tooltip
-                  contentStyle={{
-                    background: "var(--tooltip-bg)",
-                    borderColor: "var(--tooltip-br)",
-                    color: "var(--tooltip-text)",
-                  }}
-                />
-                <Legend />
-                <Line type="monotone" dataKey="spent" name="Spent" />
+                <Tooltip contentStyle={tooltipStyle} itemStyle={tooltipItemStyle} labelStyle={tooltipLabelStyle} />
+                <Legend wrapperStyle={legendTextStyle} />
+                <Line type="monotone" dataKey="spent" name="Spent" stroke="#f59e0b" strokeWidth={2} dot={false} />
               </LineChart>
             </ResponsiveContainer>
           </div>
         )}
-      </Card>
+  </Card>
+  </div>
     </div>
   );
 };

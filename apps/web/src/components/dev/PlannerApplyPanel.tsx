@@ -1,6 +1,5 @@
 import React, { useCallback, useState } from "react";
 import { agentPlanPreview, agentPlanApply, downloadReportExcel, type PlannerPlanItem } from "@/lib/api";
-import { handleApply as handleApplyExport } from "@/components/dev/PlannerDevPanel";
 import { Button } from "@/components/ui/button";
 import { useOkErrToast } from "@/lib/toast-helpers";
 
@@ -38,7 +37,7 @@ export default function PlannerApplyPanel() {
   const res: any = await agentPlanApply({ month: plan?.month ?? null, actions });
   ok?.("Applied.");
       if (wantsExport) {
-        await handleApplyExport({ res, month: plan?.month, selected: actions as any });
+        await handleApplyLocal({ res, month: plan?.month, selected: actions as any });
       }
     } catch (e: any) {
       err?.(e?.message || "Apply failed");
@@ -91,4 +90,24 @@ export default function PlannerApplyPanel() {
       )}
     </div>
   );
+}
+
+// Local, file-scoped helper to avoid HMR export-shape changes
+async function handleApplyLocal(args: {
+  res: any;
+  month?: string;
+  selected: PlannerPlanItem[];
+}) {
+  const { res, month, selected } = args;
+  const wantsExport = (selected || []).some((a) => a.kind === "export_report");
+  const reportUrl: string | undefined = (res as any)?.report_url;
+  if (!wantsExport) return res;
+  if (reportUrl) {
+    window.location.href = reportUrl;
+  } else if (month) {
+    await downloadReportExcel(month, true, { splitAlpha: true });
+  } else {
+    console.warn("[PlannerApplyPanel] export_report requested but no month resolved and no report_url from backend.");
+  }
+  return res;
 }

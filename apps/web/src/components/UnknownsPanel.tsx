@@ -88,12 +88,12 @@ export default function UnknownsPanel({ month, onSeedRule, onChanged, refreshKey
 
   const titleMonth = (currentMonth ?? month) ? `— ${currentMonth ?? month}` : '— (latest)'
   return (
-      <section id="unknowns-panel" className="panel p-4">
-        <Card title={`Unknowns ${titleMonth}`}>
-      {loading && (
+      <section id="unknowns-panel" className="panel p-4 md:p-5">
+        <Card title={`Unknowns ${titleMonth}`} className="border-0 bg-transparent shadow-none p-0">
+  {loading && (
         <div className="space-y-2">
           {[0,1,2].map(i => (
-            <div key={i} className="rounded-lg border border-neutral-800 p-3 bg-neutral-900">
+    <div key={i} className="panel-tight">
               <div className="flex items-center justify-between">
                 <div className="space-y-1">
                   <Skeleton className="h-4 w-40" />
@@ -128,13 +128,13 @@ export default function UnknownsPanel({ month, onSeedRule, onChanged, refreshKey
         </div>
         <div className="text-xs opacity-70">Review → Seed → Categorize</div>
       </div>
-      <ul className="space-y-2">
+  <ul className="space-y-2">
         {items.map(tx => (
-          <li key={tx.id} className="rounded-lg border border-neutral-800 p-3 bg-neutral-900">
+      <li key={tx.id} className="panel-tight md:p-5 lg:p-6">
             <div className="flex items-center justify-between">
               <div>
                 <div className="font-medium">{tx.merchant ?? '—'}</div>
-                <div className="text-sm opacity-70">{tx.description ?? ''}</div>
+        <div className="text-sm opacity-70 wrap">{tx.description ?? ''}</div>
               </div>
               <div className="text-right">
                 <div className="text-sm opacity-70">{new Date(tx.date).toLocaleDateString()}</div>
