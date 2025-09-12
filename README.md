@@ -13,7 +13,7 @@ Offline-first finance agent with local inference via Ollama or vLLM. Designed fo
 - **Safe UX**: optimistic UI, loading/error states, no duplicate suggestions, explain-why
 - **Smart Chat**: unified `/agent/chat` endpoint with natural language transaction explanations and auto-context enrichment
 
-## â‰¡Æ’ÃœÃ‡ New: Enhanced Agent Chat System
+## ≡ƒÜÇ New: Enhanced Agent Chat System
 
 ### **Natural Language Transaction Explanations**
 Now supports conversational transaction explanations without requiring explicit transaction IDs:
@@ -28,12 +28,12 @@ curl -X POST http://127.0.0.1:8000/agent/chat \
 ```
 
 ### **Key Features**
-- **â‰¡Æ’Ã±Ã» Smart Fallback**: Automatically finds relevant transactions when ID is missing
-- **â‰¡Æ’Ã„Â» Intent-Specific Behavior**: Specialized responses for `general`, `explain_txn`, `budget_help`, `rule_seed`
-- **â‰¡Æ’Ã´Ã¨ Rich Citations**: Comprehensive context metadata (`summary`, `rules`, `merchants`, `alerts`, `insights`, `txn`)
-- **Î“ÃœÃ­ Performance Optimized**: Smart context trimming and HTTP client reuse
-- **â‰¡Æ’Ã¶Ã‰ Privacy Protected**: PII redaction for secure logging
-- **Î“Â£Ã  Production Ready**: Full Pydantic validation with comprehensive test coverage
+- **≡ƒñû Smart Fallback**: Automatically finds relevant transactions when ID is missing
+- **≡ƒÄ» Intent-Specific Behavior**: Specialized responses for `general`, `explain_txn`, `budget_help`, `rule_seed`
+- **≡ƒôè Rich Citations**: Comprehensive context metadata (`summary`, `rules`, `merchants`, `alerts`, `insights`, `txn`)
+- **ΓÜí Performance Optimized**: Smart context trimming and HTTP client reuse
+- **≡ƒöÉ Privacy Protected**: PII redaction for secure logging
+- **Γ£à Production Ready**: Full Pydantic validation with comprehensive test coverage
 
 ### **Agent Chat API**
 ```typescript
@@ -58,24 +58,24 @@ type AgentChatResponse = {
 ```
 
 ### Web UI: ChatDock updates (Sep 2025)
-- Unified messages stream persisted in `localStorage` at `financeAgent.chat.messages.v1` with crossÎ“Ã‡Ã¦tab sync via `BroadcastChannel`.
+- Unified messages stream persisted in `localStorage` at `financeAgent.chat.messages.v1` with crossΓÇætab sync via `BroadcastChannel`.
 - Hydrates on mount and auto-scrolls to the latest message; history renders from the same stream.
 - Header actions: Export chat as JSON or Markdown; History toggle; Tools toggle (with Lucide ChevronUp/Wrench icons).
 - Accessible toggle uses `aria-expanded` + `aria-controls="agent-tools-panel"`; the tools panel is labeled with that id.
 - Tiny tool presets run through `/agent/chat` and append back into the same messages stream; duplicate inline quick tools removed.
 - Model selection (Advanced) is saved per-tab in `sessionStorage` under `fa.model`; leave blank to use backend default.
-- Î“Ã‡Â£ExplainÎ“Ã‡Â¥ and other entry points now funnel into the same chat, so everything is captured and restorable.
+- ΓÇ£ExplainΓÇ¥ and other entry points now funnel into the same chat, so everything is captured and restorable.
 
 ### Backend resilience updates (Sep 2025)
-- Insights enrichment is optional and non-fatal during `/agent/chat` context building; failures donÎ“Ã‡Ã–t block a reply.
+- Insights enrichment is optional and non-fatal during `/agent/chat` context building; failures donΓÇÖt block a reply.
 - Added a minimal `ExpandedBody` + `expand(...)` helper to normalize insights payloads defensively.
 - Normalized citations and `used_context.month` metadata are returned to support UI annotations.
 
 Tips
-- Open the ChatDock from the floating bubble (â‰¡Æ’Ã†Â¼) or with Ctrl+Shift+K.
+- Open the ChatDock from the floating bubble (≡ƒÆ¼) or with Ctrl+Shift+K.
 - Export buttons live in the header (JSON/Markdown).
 - The model selection (Advanced) is saved per tab; leave blank to use the backend default.
-- Clearing the chat resets the persisted stream (synced across this browserÎ“Ã‡Ã–s tabs).
+- Clearing the chat resets the persisted stream (synced across this browserΓÇÖs tabs).
 
 ## Quickstart
 
@@ -114,14 +114,14 @@ In the web UI, go to **CSV Ingest** and upload `transactions_sample.csv` from `a
 
 ---
 
-# Finance Agent Î“Ã‡Ã¶ Setup & Notes
+# Finance Agent ΓÇö Setup & Notes
 
 This branch (UI-update) focuses on UI/UX refinements and stability: unified toasts (single Toaster), actionable CTA toasts with smooth scroll to anchors, shared scroll helper, and removal of deprecated insights summary usage.
 
 Complete test coverage with zero external dependencies:
-- **Î“ÃœÃ­ Lightning Fast**: Tests run in seconds instead of minutes
-- **â‰¡Æ’Ã„Â» CI/CD Ready**: Works in any environment without API keys
-- **â‰¡Æ’Ã´Ã¯ Comprehensive Coverage**: 15+ test scenarios covering all functionality
+- **ΓÜí Lightning Fast**: Tests run in seconds instead of minutes
+- **≡ƒÄ» CI/CD Ready**: Works in any environment without API keys
+- **≡ƒôï Comprehensive Coverage**: 15+ test scenarios covering all functionality
 pytest tests/test_agent_chat.py -v
 
 
@@ -138,8 +138,8 @@ pytest tests/test_agent_chat.py -v
 ### Backend
 
 **Meta Endpoints**
-- `/agent/tools/meta/version` Î“Ã¥Ã† shows current git branch + commit.
-- `/agent/tools/meta/latest_month` Î“Ã¥Ã† shows latest month in DB (e.g. "2025-08").
+- `/agent/tools/meta/version` ΓåÆ shows current git branch + commit.
+- `/agent/tools/meta/latest_month` ΓåÆ shows latest month in DB (e.g. "2025-08").
 
 **CSV Ingest Improvements**
 - New auto-detection logic: if most expense-like rows are positive, amounts are flipped automatically.
@@ -158,7 +158,7 @@ Response shape:
 docker exec -it finance-pg psql -U myuser -d finance -c "SELECT month, COUNT(*) FROM transactions;"
 ```
 
-## â‰¡Æ’ÃœÃ‡ Local Dev via Docker Compose
+## ≡ƒÜÇ Local Dev via Docker Compose
 ### 1. Build & start stack
 ```bash
 docker compose down -v   # optional: nuke DB volume
@@ -190,26 +190,26 @@ Invoke-WebRequest -UseBasicParsing -Method POST http://127.0.0.1:8000/agent/tool
 docker exec -it finance-pg psql -U myuser -d finance -c "SELECT MAX(date), month, COUNT(*) FROM transactions GROUP BY month ORDER BY month DESC;"
 ```
 
-## Î“Â£Ã  Expected Behavior
-- On UI startup Î“Ã¥Ã† global month is set to latest (2025-08 with sample CSV).
-- After CSV upload Î“Ã¥Ã† global month updates automatically, charts & insights refresh.
-- Insert Context Î“Ã¥Ã† auto-runs whenever month changes (no more manual clicks needed).
-- Run Button Î“Ã¥Ã† works without glitching on second click.
-- Expenses Î“Ã¥Ã† correctly negative regardless of CSV sign convention.
+## Γ£à Expected Behavior
+- On UI startup ΓåÆ global month is set to latest (2025-08 with sample CSV).
+- After CSV upload ΓåÆ global month updates automatically, charts & insights refresh.
+- Insert Context ΓåÆ auto-runs whenever month changes (no more manual clicks needed).
+- Run Button ΓåÆ works without glitching on second click.
+- Expenses ΓåÆ correctly negative regardless of CSV sign convention.
 
-## â‰¡Æ’Ã¶Âº Troubleshooting
+## ≡ƒöº Troubleshooting
 
 **`web-1 exited with code 1` during compose**
-Î“Ã¥Ã† Make sure `smoke-backend.ps1` is not called in containerized environments (Windows-only).
+ΓåÆ Make sure `smoke-backend.ps1` is not called in containerized environments (Windows-only).
 
 **`relation "transactions" does not exist`**
-Î“Ã¥Ã† Run migrations inside backend container:
+ΓåÆ Run migrations inside backend container:
 ```bash
 docker exec -it <backend_container> alembic upgrade head
 ```
 
 **Latest month looks wrong**
-Î“Ã¥Ã† Check DB directly:
+ΓåÆ Check DB directly:
 ```bash
 docker exec -it finance-pg psql -U myuser -d finance -c "SELECT MAX(date) FROM transactions;"
 ```
@@ -242,9 +242,9 @@ docker-compose.yml
 ```
 
 ## Dev scripts (Windows)
-- `scripts/dev.ps1` Î“Ã‡Ã¶ starts Ollama (pulls model), backend (Uvicorn), and frontend (Vite) in parallel and streams logs.
+- `scripts/dev.ps1` ΓÇö starts Ollama (pulls model), backend (Uvicorn), and frontend (Vite) in parallel and streams logs.
   - Parameters: `-Model gpt-oss:20b` (default), `-Py .venv/\Scripts/\python.exe` to point at your venv.
-- `scripts/run-ollama.ps1` Î“Ã‡Ã¶ ensures Ollama is running, pulls the model, and performs a quick generation test.
+- `scripts/run-ollama.ps1` ΓÇö ensures Ollama is running, pulls the model, and performs a quick generation test.
 
 Tip: In PowerShell, you may need to allow script execution for your repo path: `Set-ExecutionPolicy -Scope Process Bypass`.
 
@@ -301,10 +301,10 @@ Notes
 - Optional backend smoke check script lives under `apps/backend/app/scripts/smoke-backend.ps1` (used by the web smoke script).
 
 ## Why this will impress judges
-- **Applies gpt-oss uniquely**: on-device, function-calling agent that explains its reasoning (Î“Ã‡Â£Explain SignalÎ“Ã‡Â¥) and learns from user feedback (train->reclassify loop).
-- **Design**: clean UX, resilient states, deduped suggestions, one-click Î“Ã‡Â£Auto-apply bestÎ“Ã‡Â¥ with threshold.
+- **Applies gpt-oss uniquely**: on-device, function-calling agent that explains its reasoning (ΓÇ£Explain SignalΓÇ¥) and learns from user feedback (train->reclassify loop).
+- **Design**: clean UX, resilient states, deduped suggestions, one-click ΓÇ£Auto-apply bestΓÇ¥ with threshold.
 - **Impact**: turns messy bank CSVs into actionable budgets & insights locally.
-- **Novelty**: Î“Ã‡Â£ExplainÎ“Ã‡Â¥ turns category predictions into transparent traces (rules + LLM rationale).
+- **Novelty**: ΓÇ£ExplainΓÇ¥ turns category predictions into transparent traces (rules + LLM rationale).
 
 ## Agent Tools: Budget
 
