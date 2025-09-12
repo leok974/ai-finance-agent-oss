@@ -1,4 +1,4 @@
-LedgerMind Ã¢‚¬€ AI Finance Agent (gpt-oss:20b)
+LedgerMind ¢â‚¬â€ AI Finance Agent (gpt-oss:20b)
 
 Offline-first finance agent with local inference via Ollama or vLLM. Built for the Open Models Hackathon.
 
@@ -8,9 +8,9 @@ Local: point to your local LLM (Ollama or vLLM) via env; your data never leaves 
 
 Explain Signal: transparent traces for category predictions (rules + LLM rationale).
 
-Learns Fast: feedback Ã¢€ €™ train Ã¢€ €™ reclassify loop with incremental learning.
+Learns Fast: feedback ¢â€ â€™ train ¢â€ â€™ reclassify loop with incremental learning.
 
-Natural Language: conversational transaction explanations Ã¢‚¬€ Ã¢‚¬Å“Explain this coffee charge.Ã¢‚¬
+Natural Language: conversational transaction explanations ¢â‚¬â€ ¢â‚¬Å“Explain this coffee charge.¢â‚¬Â
 
 Production-grade: Pydantic validation, context trimming, PII redaction, CSRF + cookie auth, RBAC.
 
@@ -20,12 +20,12 @@ Design: clean UX, resilient state, deduped suggestions, one-click Auto-apply bes
 
 Impact: turns messy bank CSVs into clear budgets & insights locally.
 
-Novelty: grounded NLÃ¢€ €™SQL search + explain-why for every decision.
+Novelty: grounded NL¢â€ â€™SQL search + explain-why for every decision.
 
-Ã¢Å“¨ WhatÃ¢‚¬„¢s New
+¢Å“Â¨ What¢â‚¬â„¢s New
 Enhanced Agent Chat (Natural Language Explanations)
 
-Ask questions without IDs Ã¢‚¬€ the agent detects and fetches relevant transactions.
+Ask questions without IDs ¢â‚¬â€ the agent detects and fetches relevant transactions.
 
 # Before: explicit txn id
 curl -X POST http://127.0.0.1:8000/agent/chat \
@@ -46,16 +46,16 @@ Generates an actionable plan for the latest month:
 
 Categorize top unknowns
 
-Seed merchantÃ¢€ €™category rules
+Seed merchant¢â€ â€™category rules
 
 Suggest budget limits
 
 One-click Export Excel/PDF
 
-POST /agent/plan/preview Ã¢€ €™ plan items
-POST /agent/plan/apply Ã¢€ €™ applies selected actions and returns a friendly ack
+POST /agent/plan/preview ¢â€ â€™ plan items
+POST /agent/plan/apply ¢â€ â€™ applies selected actions and returns a friendly ack
 
-Ã°Å¸€“¥ Web UI (ChatDock)
+°Å¸â€“Â¥ Web UI (ChatDock)
 
 Unified messages; persisted + cross-tab sync.
 
@@ -65,7 +65,7 @@ Tool mode badges (Transactions/Charts/Report/Budgets).
 
 Inline Download CSV when listing transactions.
 
-Model picker (per-tab) Ã¢‚¬€ leave blank for backend default.
+Model picker (per-tab) ¢â‚¬â€ leave blank for backend default.
 
 Quickstart
 Prereqs
@@ -101,7 +101,7 @@ pnpm dev   # http://localhost:5173/app/
 
 In the UI, open CSV Ingest and upload apps/backend/app/data/samples/transactions_sample.csv.
 
-Ã°Å¸§  Agent Chat API (Types)
+°Å¸Â§Â  Agent Chat API (Types)
 // apps/web/src/lib/api.ts
 type AgentChatRequest = {
   messages: { role: 'system'|'user'|'assistant'; content: string }[];
@@ -121,22 +121,22 @@ type AgentChatResponse = {
   model: string;
 };
 
-Ã°Å¸€œÅ  Agent Tools & Reports
+°Å¸â€œÅ  Agent Tools & Reports
 Charts (month required)
 
-POST /charts/month_summary Ã¢€ €™ totals & net
+POST /charts/month_summary ¢â€ â€™ totals & net
 
-POST /charts/month_merchants Ã¢€ €™ top spend by merchant
+POST /charts/month_merchants ¢â€ â€™ top spend by merchant
 
-POST /charts/month_flows Ã¢€ €™ income vs spend
+POST /charts/month_flows ¢â€ â€™ income vs spend
 
-POST /charts/spending_trends Ã¢€ €™ multi-month trends
+POST /charts/spending_trends ¢â€ â€™ multi-month trends
 
 Reports
 
-GET /report/excel Ã¢‚¬€ XLSX (optionally include transactions, split AÃ¢‚¬€œM/NÃ¢‚¬€œZ)
+GET /report/excel ¢â‚¬â€ XLSX (optionally include transactions, split A¢â‚¬â€œM/N¢â‚¬â€œZ)
 
-GET /report/pdf Ã¢‚¬€ PDF summary
+GET /report/pdf ¢â‚¬â€ PDF summary
 
 Budgets
 
@@ -152,7 +152,7 @@ POST /rules to seed merchant/category rules
 
 Feedback loops feed incremental ML retraining
 
-Ã°Å¸€ Security & Privacy
+°Å¸â€Â Security & Privacy
 
 Local-first: point to your own LLM server via OPENAI_BASE_URL; no cloud required.
 
@@ -162,7 +162,7 @@ RBAC roles: admin, analyst, user.
 
 PII redaction in logs; minimal telemetry.
 
-Ã°Å¸³ Docker Compose (Dev)
+°Å¸ÂÂ³ Docker Compose (Dev)
 docker compose down -v   # optional reset
 docker compose up --build
 # then run DB migrations inside backend container:
@@ -175,7 +175,7 @@ curl.exe -X POST `
   -F "file=@C:\ai-finance-agent-oss\apps\backend\app\data\samples\transactions_sample.csv" `
   "http://127.0.0.1:8000/ingest?replace=true"
 
-Ã¢Å“€¦ Expected Behavior
+¢Å“â€¦ Expected Behavior
 
 UI initializes to the latest month (auto-detected).
 
@@ -185,35 +185,35 @@ NL queries route to deterministic tools when grounded; LLM fallback stays availa
 
 Expenses normalized; charts use positive magnitudes for spend.
 
-Ã°Å¸§ª Tests
+°Å¸Â§Âª Tests
 
 Fast, hermetic test suite (no external keys).
 
-Coverage includes agent chat routing, NLÃ¢€ €™SQL transactions, charts, reports, budgets, and planner smoke tests.
+Coverage includes agent chat routing, NL¢â€ â€™SQL transactions, charts, reports, budgets, and planner smoke tests.
 
 Run a subset:
 
 cd apps/backend
 .\.venv\Scripts\python.exe -m pytest -q tests/test_agent_chat_*.py
 
-Ã°Å¸§© Troubleshooting
+°Å¸Â§Â© Troubleshooting
 
-relation "transactions" does not exist Ã¢€ €™ run Alembic migrations.
+relation "transactions" does not exist ¢â€ â€™ run Alembic migrations.
 
-CORS/CSRF Ã¢€ €™ ensure FE at http://127.0.0.1:5173, allow_credentials=True, and X-CSRF-Token header on unsafe methods.
+CORS/CSRF ¢â€ â€™ ensure FE at http://127.0.0.1:5173, allow_credentials=True, and X-CSRF-Token header on unsafe methods.
 
-LLM down Ã¢€ €™ set DEV_ALLOW_NO_LLM=1 to enable deterministic fallbacks.
+LLM down ¢â€ â€™ set DEV_ALLOW_NO_LLM=1 to enable deterministic fallbacks.
 
-Ã°Å¸§­ Project Story
+°Å¸Â§Â­ Project Story
 
-I built LedgerMind because my parents taught me the importance of budgeting. Whenever they lent me money, they asked me to make a budget Ã¢‚¬€ and it became tedious fast, especially since I didnÃ¢‚¬„¢t know Excel well. I wanted something simple, private, and adaptive: a tool that learns my habits, explains why it makes decisions, and runs entirely on my machine. LedgerMind is that agent Ã¢‚¬€ private, transparent, and smarter with every click.
+I built LedgerMind because my parents taught me the importance of budgeting. Whenever they lent me money, they asked me to make a budget ¢â‚¬â€ and it became tedious fast, especially since I didn¢â‚¬â„¢t know Excel well. I wanted something simple, private, and adaptive: a tool that learns my habits, explains why it makes decisions, and runs entirely on my machine. LedgerMind is that agent ¢â‚¬â€ private, transparent, and smarter with every click.
 
 Why this will impress judges
 
 Applies gpt-oss uniquely: on-device, function-calling agent with explain-why reasoning.
 
-Grounded + Explainable: NLÃ¢€ €™SQL search + clear rationale for every decision.
+Grounded + Explainable: NL¢â€ â€™SQL search + clear rationale for every decision.
 
 Production touches: auth, CSRF, RBAC, robust tests, Dockerized dev.
 
-Real utility: from CSV to charts, budgets, reports, and an actionable Planner Ã¢‚¬€ in minutes, fully local.
+Real utility: from CSV to charts, budgets, reports, and an actionable Planner ¢â‚¬â€ in minutes, fully local.
