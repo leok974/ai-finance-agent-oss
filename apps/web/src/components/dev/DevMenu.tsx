@@ -6,7 +6,6 @@ import {
 import { Wrench, FileText, Bug, Link2, RefreshCw } from "lucide-react";
 import { agentPlanStatus } from "@/lib/api";
 import React from "react";
-import PlannerApplyPanel from "@/components/dev/PlannerApplyPanel";
 
 export default function DevMenu() {
   const isDev = import.meta.env.MODE !== "production";

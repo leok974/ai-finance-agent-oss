@@ -119,7 +119,11 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
           <EmptyState title="No transactions yet" note="Once you upload, charts will populate automatically." />
         </div>
       )}
-      <Card title={`Overview — ${resolvedMonth}`} right={<ExportMenu month={resolvedMonth} />}>
+      <Card>
+        <div className="flex items-center justify-between mb-2">
+          <h3 className="font-semibold">{`Overview — ${resolvedMonth}`}</h3>
+          <ExportMenu month={resolvedMonth} />
+        </div>
         {loading && (
           <div className="grid grid-cols-3 gap-4 text-sm">
             {[0, 1, 2].map((i) => (

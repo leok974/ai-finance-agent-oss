@@ -1,20 +1,20 @@
 import React, { useCallback, useState } from "react";
-import { agentPlanPreview, agentPlanApply, type PlannerPlan, type PlannerPlanItem, downloadReportExcel, getAckText } from "@/lib/api";
-import { handleApply as handleApplyExport } from "@/lib/planHandleApply";
+import { agentPlanPreview, agentPlanApply, downloadReportExcel, type PlannerPlanItem } from "@/lib/api";
+import { handleApply as handleApplyExport } from "@/components/dev/PlannerDevPanel";
 import { Button } from "@/components/ui/button";
 import { useOkErrToast } from "@/lib/toast-helpers";
 
 export default function PlannerApplyPanel() {
   const [loading, setLoading] = useState(false);
   const [applying, setApplying] = useState(false);
-  const [plan, setPlan] = useState<PlannerPlan | null>(null);
+  const [plan, setPlan] = useState<any | null>(null);
   const [selected, setSelected] = useState<Record<number, boolean>>({});
   const { ok, err } = (useOkErrToast as any)?.() ?? { ok: console.log, err: console.error };
 
   const preview = useCallback(async () => {
     setLoading(true);
     try {
-      const p = await agentPlanPreview(undefined);
+  const p = await agentPlanPreview({ month: null });
       setPlan(p);
       setSelected({});
     } catch (e: any) {
@@ -27,16 +27,16 @@ export default function PlannerApplyPanel() {
   const apply = useCallback(async () => {
     if (!plan || applying) return;
     const picked: PlannerPlanItem[] = [];
-    (plan.items || []).forEach((it, idx) => {
-      if (selected[idx]) picked.push(it);
+    (plan.items || []).forEach((it: any, idx: number) => {
+      if (selected[idx]) picked.push(it as any);
     });
     const wantsExport = picked.some((a) => a.kind === "export_report");
     const actions: PlannerPlanItem[] = picked; // backend no-ops export_report, safe to send
     setLoading(true);
     setApplying(true);
     try {
-      const res: any = await agentPlanApply(plan?.month, actions);
-      ok?.(getAckText(res?.ack) || "Applied.");
+  const res: any = await agentPlanApply({ month: plan?.month ?? null, actions });
+  ok?.("Applied.");
       if (wantsExport) {
         await handleApplyExport({ res, month: plan?.month, selected: actions as any });
       }
@@ -73,7 +73,7 @@ export default function PlannerApplyPanel() {
       )}
       {plan && (
         <ul className="space-y-2">
-          {plan.items.map((it, idx) => (
+          {plan.items.map((it: any, idx: number) => (
             <li key={idx} className="flex items-start gap-2">
               <input type="checkbox" id={`plan-${idx}`} checked={!!selected[idx]} onChange={(e) => setSelected(s => ({ ...s, [idx]: e.target.checked }))} />
               <label htmlFor={`plan-${idx}`} className="cursor-pointer ml-2">
