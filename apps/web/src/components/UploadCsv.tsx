@@ -1,6 +1,10 @@
 import React, { useCallback, useRef, useState } from "react";
-import { uploadCsv, fetchLatestMonth, getReport, agentTools } from "../lib/api"; // uses your existing helpers
+import { uploadCsv, fetchLatestMonth, agentTools } from "../lib/api"; // uses your existing helpers
+import { useToast } from "@/hooks/use-toast";
+import { ToastAction } from "@/components/ui/toast";
+import { scrollToId } from "@/lib/scroll";
 import { useMonth } from "../context/MonthContext";
+import Card from "./Card";
 
 type UploadResult = {
   ok: boolean;
@@ -34,10 +38,10 @@ const UploadCsv: React.FC<UploadCsvProps> = ({ onUploaded, defaultReplace = true
   const [file, setFile] = useState<File | null>(null);
   const [replace, setReplace] = useState<boolean>(defaultReplace);
   const [dragOver, setDragOver] = useState(false);
-  const [expensesArePositive, setExpensesArePositive] = useState<boolean>(false);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<UploadResult | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const { toast } = useToast();
 
   const onPick = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0] ?? null;
@@ -71,13 +75,18 @@ const UploadCsv: React.FC<UploadCsvProps> = ({ onUploaded, defaultReplace = true
   const handleUploadSuccess = useCallback(async () => {
     try {
       const latest = await fetchLatestMonth();
-      const resolved = latest || month;
-      if (resolved && resolved !== month) setMonth(resolved);
+      // Only update month if we got a meaningful result that's different from current
+      // Avoid overwriting a carefully resolved month from boot unless truly necessary
+      if (latest && latest !== month && latest.length >= 7) {
+        console.debug("[upload] updating month from", month, "to", latest);
+        setMonth(latest);
+      }
 
+      // Use the resolved month (prefer current context month over latest)
+      const resolved = month || latest;
       if (resolved) {
         // fire-and-forget to avoid blocking UI
         void Promise.allSettled([
-          getReport(resolved),
           agentTools.chartsSummary({ month: resolved }),
           agentTools.chartsMerchants({ month: resolved, limit: 10 }),
           agentTools.chartsFlows({ month: resolved }),
@@ -95,12 +104,28 @@ const UploadCsv: React.FC<UploadCsvProps> = ({ onUploaded, defaultReplace = true
     setResult(null);
     try {
       // Uses your existing API helper; falls back to direct fetch if needed.
-  const data = await uploadCsv(file, replace, expensesArePositive);
+      const data = await uploadCsv(file, replace); // Auto-inference enabled
       const r: UploadResult = { ok: true, data, message: "CSV ingested successfully." };
       setResult(r);
       onUploaded?.(r);
   // snap month + refetch dashboards (non-blocking)
   void handleUploadSuccess();
+      // Success toast with dual CTAs
+      toast({
+        title: "Import complete",
+        description: "Transactions imported successfully.",
+        duration: 4000,
+        action: (
+          <div className="flex gap-2">
+            <ToastAction altText="View unknowns" onClick={() => scrollToId("unknowns-panel")}>
+              View unknowns
+            </ToastAction>
+            <ToastAction altText="View charts" onClick={() => scrollToId("charts-panel")}>
+              View charts
+            </ToastAction>
+          </div>
+        ),
+      });
       // optional: reset file after success
       // reset();
     } catch (err: any) {
@@ -119,9 +144,9 @@ const UploadCsv: React.FC<UploadCsvProps> = ({ onUploaded, defaultReplace = true
 
   return (
     <div className={`w-full ${className ?? ""}`}>
-      <div className="rounded-2xl border border-gray-700 bg-gray-900/60 p-4 shadow-sm">
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-white">Upload Transactions CSV</h2>
+      <Card>
+        <header className="flex items-center justify-between border-b border-border pb-1">
+          <h2 className="text-lg font-semibold">Upload Transactions CSV</h2>
           <div className="flex items-center gap-3">
             <label className="inline-flex items-center gap-2 text-sm text-gray-300">
               <input
@@ -135,19 +160,19 @@ const UploadCsv: React.FC<UploadCsvProps> = ({ onUploaded, defaultReplace = true
             <button
               onClick={reset}
               type="button"
-              className="rounded-xl border border-gray-700 px-3 py-1.5 text-sm text-gray-300 hover:bg-gray-800"
+              className="btn btn-sm"
             >
               Reset
             </button>
           </div>
-        </div>
+        </header>
 
         <label
           onDragOver={onDrag}
           onDragLeave={onDrag}
           onDrop={onDrop}
           className={`mt-4 block cursor-pointer rounded-xl border-2 border-dashed p-6 text-center transition
-            ${dragOver ? "border-indigo-400 bg-indigo-500/10" : "border-gray-700 hover:bg-gray-800/40"}`}
+            ${dragOver ? "border-indigo-400 bg-indigo-500/10" : "border-border hover:bg-background/40"}`}
         >
           <input
             ref={inputRef}
@@ -157,11 +182,11 @@ const UploadCsv: React.FC<UploadCsvProps> = ({ onUploaded, defaultReplace = true
             onChange={onPick}
           />
           <div className="space-y-2">
-            <div className="text-sm font-medium text-gray-200">
+            <div className="text-sm font-medium">
               {file ? (
                 <>
                   Selected: <span className="text-indigo-300">{file.name}</span>{" "}
-                  <span className="text-gray-400">({prettyBytes(file.size)})</span>
+                  <span className="opacity-70">({prettyBytes(file.size)})</span>
                 </>
               ) : dragOver ? (
                 "Drop your CSV to upload"
@@ -170,7 +195,7 @@ const UploadCsv: React.FC<UploadCsvProps> = ({ onUploaded, defaultReplace = true
               )}
             </div>
             {!file && (
-              <p className="text-xs text-gray-400">
+              <p className="text-xs opacity-70">
                 Accepts <code>.csv</code> • Example: <code>transactions_sample.csv</code>
               </p>
             )}
@@ -178,32 +203,17 @@ const UploadCsv: React.FC<UploadCsvProps> = ({ onUploaded, defaultReplace = true
         </label>
 
         <div className="mt-4 flex items-center justify-between">
-          <div className="text-xs text-gray-400">
-            Endpoint: <code className="text-gray-300">/ingest?replace={String(replace)}&expenses_are_positive={String(expensesArePositive)}</code>
+          <div className="text-xs opacity-70">
+            Endpoint: <code className="opacity-90">/ingest?replace={String(replace)}</code> (auto-detects expense signs)
           </div>
           <button
             type="button"
             disabled={disabled}
             onClick={doUpload}
-            className={`rounded-xl px-4 py-2 text-sm font-medium transition
-              ${disabled
-                ? "cursor-not-allowed bg-gray-800 text-gray-500"
-                : "bg-indigo-600 text-white hover:bg-indigo-500"}`}
+            className="btn"
           >
             {busy ? "Uploading…" : "Upload CSV"}
           </button>
-        </div>
-
-        <div className="mt-3 flex items-center gap-3">
-          <label className="inline-flex items-center gap-2 text-sm text-gray-300">
-            <input
-              type="checkbox"
-              className="h-4 w-4 rounded border-gray-600 bg-gray-800 text-indigo-500 focus:ring-indigo-500"
-              checked={expensesArePositive}
-              onChange={(e) => setExpensesArePositive(e.target.checked)}
-            />
-            Expenses are positive
-          </label>
         </div>
 
         {/* Progress / Result */}
@@ -235,10 +245,10 @@ const UploadCsv: React.FC<UploadCsvProps> = ({ onUploaded, defaultReplace = true
             )}
           </div>
         )}
-        <div className="mt-3 text-xs text-gray-400">
+        <div className="mt-3 text-xs opacity-70">
           Hint: If your bank exports expenses as positive numbers, check “Expenses are positive” so we’ll normalize them during import. Income stays positive.
         </div>
-      </div>
+      </Card>
     </div>
   );
 };

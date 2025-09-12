@@ -9,7 +9,7 @@ from typing import Dict, Any
 
 from sqlalchemy.orm import Session
 
-from app.db import SessionLocal
+from app.db import SessionLocal, Base, engine
 from app.orm_models import Transaction
 
 
@@ -53,6 +53,12 @@ def _row_to_txn(row: Dict[str, Any]) -> Transaction:
 
 
 def seed(csv_path: Path, replace: bool = False) -> int:
+    # Ensure DB schema exists (useful for fresh SQLite files)
+    try:
+        Base.metadata.create_all(bind=engine)
+    except Exception:
+        # Non-fatal: if migrations manage schema elsewhere, continue
+        pass
     sess: Session = SessionLocal()
     try:
         if replace:

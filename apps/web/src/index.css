@@ -2,6 +2,180 @@
 @tailwind components;
 @tailwind utilities;
 
+/* shadcn-style design tokens (HSL variables) */
+:root{
+  --background: 240 5% 6%;
+  --foreground: 220 13% 95%;
+  --card: 220 10% 9%;
+  --card-foreground: 220 13% 95%;
+  --popover: 220 10% 9%;
+  --popover-foreground: 220 13% 95%;
+  --primary: 221 83% 53%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 240 4% 16%;
+  --secondary-foreground: 220 13% 95%;
+  --muted: 240 4% 16%;
+  --muted-foreground: 240 5% 64%;
+  --accent: 240 4% 18%;
+  --accent-foreground: 220 13% 95%;
+  --destructive: 0 84% 60%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 240 4% 24%;
+  --input: 240 4% 24%;
+  --ring: 221 83% 53%;
+  --radius: 0.75rem;
+}
+
 :root { color-scheme: dark; }
+
+/* ---------- Global tooltip look & feel ---------- */
+@layer components {
+  /* Panels */
+  .panel {
+  @apply p-6 rounded-2xl shadow bg-card text-card-foreground;
+  }
+
+  /* Form grid + fields */
+  .form-grid {
+  @apply grid gap-x-4 gap-y-5 mb-6;
+  }
+  .field {
+    @apply flex flex-col gap-1;
+  }
+  .field-label {
+    @apply text-xs opacity-70 leading-5 flex items-center gap-1;
+  }
+  .label-nowrap {
+    @apply whitespace-nowrap overflow-hidden text-ellipsis;
+  }
+  .field-input {
+  @apply w-full min-w-0 px-3 h-10 rounded-xl border bg-background;
+  }
+  /* Generic input (legacy utility used in a few places) */
+  .input { @apply bg-background border border-border rounded-xl px-3 py-2; }
+  .field-help {
+    @apply text-xs opacity-70;
+  }
+
+  /* Action rows */
+  .actions-row {
+    @apply flex flex-wrap items-center gap-3;
+  }
+
+  /* Buttons */
+  .btn {
+    @apply inline-flex items-center justify-center h-10 px-3 rounded-xl border font-medium whitespace-nowrap;
+  }
+
+  .btn-sm {
+    @apply h-8 px-2 text-sm;
+  }
+
+  .btn-lg {
+    @apply h-12 px-4 text-base;
+  }
+
+  /* Button-like checkbox label */
+  .btn-toggle {
+    @apply btn btn-sm select-none gap-2;
+  }
+  .btn-toggle input[type="checkbox"] {
+    /* keep visible & accessible but sized neatly */
+    @apply h-4 w-4;
+  }
+
+  .ui-tooltip {
+    @apply rounded-xl border shadow-lg px-3 py-2 text-sm leading-snug z-50
+      max-w-64 break-words
+      bg-white text-gray-900 border-gray-200;
+  }
+
+  /* Optional: dark mode emphasis */
+  .dark .ui-tooltip {
+    @apply bg-neutral-900 text-neutral-50 border-neutral-800 shadow-black/20;
+  }
+}
+
+/* === Global dark theme tokens === */
+:root {
+  /* surfaces */
+  --bg-app:        #0b0b0d;   /* page background */
+  --bg-card:       #0f0f13;   /* cards/panels */
+  --bg-card-alt:   #141419;   /* zebra rows / subtler blocks */
+  --bg-elevated:   #0f0f13;   /* modals, dock */
+
+  /* borders & grid lines */
+  --border-subtle: #2f3037;   /* neutral-700ish */
+  --grid-line:     #25262c;
+
+  /* text */
+  --text-strong:   #fafafa;   /* titles/figures */
+  --text:          #e6e6e7;   /* body */
+  --text-muted:    #a6a7ad;   /* captions/labels */
+
+  /* accents */
+  --accent-good:   #34d399;   /* emerald-400 */
+  --accent-bad:    #fb7185;   /* rose-400 */
+  --accent-warn:   #f59e0b;   /* amber-500 */
+
+  /* badges / chips */
+  --chip-warn-bg:  rgba(245, 158, 11, 0.15);
+  --chip-warn-br:  rgba(245, 158, 11, 0.4);
+
+  /* tooltip */
+  --tooltip-bg:    #0b0b0d;
+  --tooltip-br:    #2f3037;
+  --tooltip-text:  #e6e6e7;
+}
+
 body { @apply bg-neutral-950 text-neutral-100; }
-.card { @apply bg-[color:var(--card,#111418)] rounded-2xl shadow p-4; }
+.card { @apply bg-card border border-border rounded-2xl; }
+
+/* Utility wrappers (optional but handy) */
+.card-dark {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  color: var(--text);
+  border-radius: 1rem; /* ≈ rounded-2xl */
+  box-shadow: 0 6px 20px rgba(0,0,0,0.35);
+}
+.card-title   { color: var(--text); font-weight: 600; }
+.card-subtle  { color: var(--text-muted); }
+.badge-warn {
+  display: inline-flex; align-items: center; gap: .25rem;
+  background: var(--chip-warn-bg);
+  border: 1px solid var(--chip-warn-br);
+  color: var(--accent-warn);
+  border-radius: 9999px; padding: .125rem .5rem; font-size: .75rem;
+}
+
+/* Tailwind utility: fade-out animation for transient badges/notes */
+@layer utilities {
+  @keyframes fadeOut {
+    0% { opacity: 1; }
+    80% { opacity: 1; }
+    100% { opacity: 0; }
+  }
+  .animate-fade-out {
+    animation: fadeOut 4.5s forwards;
+  }
+}
+
+/* Grounded badge styling for AgentChat */
+.chat-badge-grounded {
+  display: inline-block;
+  font-size: 10px;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  border-radius: 9999px;
+  border: 1px solid hsl(var(--border));
+  background: linear-gradient(0deg, hsla(var(--muted-foreground), .06), hsla(var(--muted-foreground), .10));
+  margin-right: .5rem;
+}
+
+/* Demo polish: hide noisy chart footnotes that clip */
+[data-testid="chart-tip"],
+.card .tip { display: none !important; }
+
+

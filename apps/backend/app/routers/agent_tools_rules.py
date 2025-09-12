@@ -1,11 +1,12 @@
 from typing import List, Literal, Dict, Any
 from fastapi import APIRouter, Depends
+from app.utils.csrf import csrf_protect
 from pydantic import BaseModel, Field, conint
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.orm_models import Transaction
+from app.transactions import Transaction
 
 router = APIRouter(prefix="/agent/tools/rules", tags=["agent-tools:rules"])
 
@@ -98,7 +99,7 @@ def test_rule(body: RuleBody, db: Session = Depends(get_db)) -> TestResp:
     )
 
 
-@router.post("/apply", response_model=ApplyResp)
+@router.post("/apply", response_model=ApplyResp, dependencies=[Depends(csrf_protect)])
 def apply_rule(body: RuleBody, db: Session = Depends(get_db)) -> ApplyResp:
     like = f"%{body.pattern}%"
     column = Transaction.merchant if body.target == "merchant" else Transaction.description

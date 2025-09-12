@@ -12,7 +12,7 @@ from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.linear_model import LogisticRegression
+from sklearn.linear_model import SGDClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, f1_score
 import joblib
@@ -26,7 +26,7 @@ def _ensure_dirs() -> None:
 
 def _fetch_labeled_rows(db: Session, month: Optional[str]) -> List[Dict[str, Any]]:
     try:
-        from app.orm_models import Transaction  # type: ignore
+        from app.transactions import Transaction  # type: ignore
         q = (
             db.query(Transaction)
             .filter(Transaction.category.isnot(None))
@@ -86,10 +86,13 @@ def _make_pipeline() -> Pipeline:
         remainder="drop",
         sparse_threshold=0.3,
     )
-    clf = LogisticRegression(
-        solver="lbfgs",
-        max_iter=200,
-        class_weight="balanced",
+    # SGD with log_loss approximates logistic regression and supports partial_fit for incremental updates
+    clf = SGDClassifier(
+        loss="log_loss",
+        alpha=1e-4,
+        max_iter=5,
+        tol=None,
+        random_state=42,
     )
     return Pipeline(steps=[("pre", pre), ("clf", clf)])
 
@@ -202,3 +205,118 @@ def train_on_db(
         return {"status": "ok", **meta}
     except Exception as e:
         return {"status": "error", "error": f"{e}", "error_type": type(e).__name__}
+
+
+# ---------- Incremental update (best-effort) ----------
+def _load_pipeline() -> Pipeline:
+    """Load the latest pipeline or raise if missing."""
+    if not os.path.exists(LATEST_MODEL_PATH):
+        raise FileNotFoundError(f"No model at {LATEST_MODEL_PATH}")
+    pipe = joblib.load(LATEST_MODEL_PATH)
+    return pipe
+
+
+def _save_pipeline(pipe: Pipeline) -> None:
+    """Atomically save pipeline to latest path via a tmp file."""
+    tmp = LATEST_MODEL_PATH + ".tmp"
+    joblib.dump(pipe, tmp)
+    try:
+        if os.path.exists(LATEST_MODEL_PATH):
+            os.remove(LATEST_MODEL_PATH)
+    except Exception:
+        # best-effort; proceed to replace
+        pass
+    os.replace(tmp, LATEST_MODEL_PATH)
+
+
+def incremental_update(texts: List[str], labels: List[str]) -> Dict[str, Any]:
+    """
+    Perform partial_fit on the pipeline's classifier if supported.
+    Assumes the pipeline ends with a classifier that implements partial_fit.
+
+    Inputs:
+    - texts: list of transaction text (merchant + description)
+    - labels: list of categories (same length as texts)
+
+    Returns: { updated: bool, reason?: str, classes?: list[str] }
+    """
+    if not texts or not labels or len(texts) != len(labels):
+        return {"updated": False, "reason": "invalid_inputs"}
+
+    pipe = _load_pipeline()
+    # Get classifier (last step)
+    clf = None
+    try:
+        clf = pipe.named_steps.get("clf")  # type: ignore[attr-defined]
+    except Exception:
+        pass
+    if clf is None and hasattr(pipe, "steps") and pipe.steps:
+        clf = pipe.steps[-1][1]
+
+    if not hasattr(clf, "partial_fit"):
+        return {"updated": False, "reason": "classifier_has_no_partial_fit"}
+
+    # Determine whether this is the first call (no classes_ yet)
+    existing_classes = getattr(clf, "classes_", None)
+    is_first_fit = existing_classes is None
+    if is_first_fit:
+        # On first fit, compute classes from provided labels
+        classes_ = np.array(sorted(list(set(labels))))
+        if classes_.size == 0:
+            return {"updated": False, "reason": "no_labels_to_initialize_classes"}
+        labels_to_use = labels
+        texts_to_use = texts
+    else:
+        # If model is already initialized, ensure ALL incoming labels are known; otherwise reject with hint.
+        known = set(existing_classes.tolist()) if hasattr(existing_classes, "tolist") else set(existing_classes)
+        new_labels = sorted(list(set(labels) - known))
+        if new_labels:
+            return {
+                "updated": False,
+                "reason": "label_not_in_model",
+                "missing_labels": new_labels,
+                "known_classes": sorted(list(known)),
+            }
+        labels_to_use = labels
+        texts_to_use = texts
+
+    # Build a minimal DataFrame to satisfy the pipeline's preprocessor
+    # Our pipeline expects columns: text, num0, num1
+    # Use only the subset we kept (or all when first fit)
+    tx = texts_to_use
+    n = len(tx)
+    X_df = pd.DataFrame({
+        "text": tx,
+        "num0": np.zeros(n, dtype=float),
+        "num1": np.zeros(n, dtype=float),
+    })
+
+    # Transform with preprocessor if available
+    Xt = X_df
+    pre = None
+    try:
+        pre = pipe.named_steps.get("pre")  # type: ignore[attr-defined]
+    except Exception:
+        pass
+    if pre is not None and hasattr(pre, "transform"):
+        Xt = pre.transform(X_df)
+    elif hasattr(pipe, "__getitem__"):
+        try:
+            pre_only = pipe[:-1]  # slice pipeline excluding last step
+            if hasattr(pre_only, "transform"):
+                Xt = pre_only.transform(X_df)
+        except Exception:
+            pass
+
+    # Update classifier incrementally
+    if is_first_fit:
+        clf.partial_fit(Xt, labels_to_use, classes=classes_)
+    else:
+        # Do not pass classes once the classifier is initialized
+        clf.partial_fit(Xt, labels_to_use)
+    _save_pipeline(pipe)
+    try:
+        out_classes = list(getattr(clf, "classes_", classes_))
+    except Exception:
+        out_classes = list(classes_)
+    return {"updated": True, "classes": out_classes}

@@ -1,7 +1,8 @@
 FROM python:3.11-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/app
 
 WORKDIR /app
 RUN apt-get update \
@@ -17,8 +18,9 @@ RUN if [ -f requirements.txt ]; then \
 
 # App code
 COPY . .
-RUN sed -i 's/\r$//' /app/start.sh
+
+# Normalize CRLF and make entrypoint executable
+RUN sed -i 's/\r$//' /app/start.sh && chmod +x /app/start.sh
 
 EXPOSE 8000
-RUN chmod +x /app/start.sh
 CMD ["/app/start.sh"]

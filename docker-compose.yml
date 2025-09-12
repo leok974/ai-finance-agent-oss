@@ -17,6 +17,10 @@ services:
       dockerfile: Dockerfile
     environment:
       DATABASE_URL: postgresql+psycopg://myuser:password@postgres:5432/finance
+      OPENAI_BASE_URL: http://host.docker.internal:11434/v1
+      OPENAI_API_KEY: ollama
+      MODEL: gpt-oss:20b
+      DEV_ALLOW_NO_LLM: "1"
       FRONTEND_ORIGIN: http://127.0.0.1:5173
       DEMO_MODE: "1"
       DEMO_LOGIN_EMAIL: admin@local
@@ -26,6 +30,8 @@ services:
       - postgres
     ports:
       - "8000:8000"
+    volumes:
+      - ./apps/backend:/app
     restart: unless-stopped
 
   web:
@@ -38,6 +44,9 @@ services:
       - backend
     ports:
       - "5173:5173"
+    volumes:
+      - ./apps/web:/app
+    command: ["pnpm", "dev", "--host"]
     restart: unless-stopped
 
 volumes:

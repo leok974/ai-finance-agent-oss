@@ -2,12 +2,14 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import './index.css'
 import App from './App'
-import { ToastProvider } from "./components/Toast";
+import { Toaster } from "@/components/ui/toaster";
+import Providers from "@/components/Providers";
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <ToastProvider>
+    <Providers>
       <App />
-    </ToastProvider>
+      <Toaster />
+    </Providers>
   </React.StrictMode>
 )

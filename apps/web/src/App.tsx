@@ -1,137 +1,252 @@
-import React, { useMemo, useState, useCallback, useEffect } from "react";
+import React, { useMemo, useState, useCallback, useEffect, useRef } from "react";
 import { MonthContext } from "./context/MonthContext";
 import UploadCsv from "./components/UploadCsv";
 import UnknownsPanel from "./components/UnknownsPanel";
 import SuggestionsPanel from "./components/SuggestionsPanel";
-import RuleTesterPanel from "./components/RuleTesterPanel";
-import InsightsCard from "./components/InsightsCard";
-import { useToast } from "./components/Toast";
+// import RuleTesterPanel from "./components/RuleTesterPanel"; // rendered only inside DevDock
+import { AgentResultRenderer } from "./components/AgentResultRenderers";
+import { useOkErrToast } from "@/lib/toast-helpers";
 // import RulesPanel from "./components/RulesPanel";
-import { getReport, getInsights, getAlerts, getMonthSummary, getMonthMerchants, getMonthFlows, fetchLatestMonth, agentTools } from './lib/api'
+import { getAlerts, getMonthSummary, getMonthMerchants, getMonthFlows, agentTools, meta, getHealthz, api, charts, resolveMonthFromCharts } from './lib/api'
+import DbRevBadge from './components/DbRevBadge';
+import { flags } from "@/lib/flags";
+import AboutDrawer from './components/AboutDrawer';
 import RulesPanel from "./components/RulesPanel";
 import ChatDock from "./components/ChatDock";
+import DevDock from "@/components/dev/DevDock";
+import { ChatDockProvider } from "./context/ChatDockContext";
 import ChartsPanel from "./components/ChartsPanel";
 import TopEmptyBanner from "./components/TopEmptyBanner";
-import AgentChat from "./components/AgentChat";
+// import MLStatusCard from "./components/MLStatusCard"; // rendered only inside DevDock
+import NetActivityBlip from "@/components/NetActivityBlip";
+import LoginForm from "@/components/LoginForm";
+import { useAuth } from "@/state/auth";
+// import AgentChat from "./components/AgentChat"; // legacy chat bubble disabled
+import { setGlobalMonth } from "./state/month";
+// Providers are applied at the top-level (main.tsx)
+import RuleSuggestionsPersistentPanel from "@/components/RuleSuggestionsPersistentPanel";
+import InsightsAnomaliesCard from "./components/InsightsAnomaliesCard";
+import ErrorBoundary from "@/components/ErrorBoundary";
+import DevFab from "@/components/dev/DevFab";
+
+// Log frontend version info
+console.info("[Web] branch=", __WEB_BRANCH__, "commit=", __WEB_COMMIT__);
 
 
 const App: React.FC = () => {
-  const { push } = useToast();
+  const { ok } = useOkErrToast();
   const [month, setMonth] = useState<string>("");
-  const [monthReady, setMonthReady] = useState<boolean>(false);
+  const [ready, setReady] = useState<boolean>(false);
   const [refreshKey, setRefreshKey] = useState<number>(0);
-  const [report, setReport] = useState<any>(null)
+  // Legacy report removed: using expanded insights and charts exclusively
   const [insights, setInsights] = useState<any>(null)
   const [alerts, setAlerts] = useState<any>(null)
   const [empty, setEmpty] = useState<boolean>(false)
   const [bannerDismissed, setBannerDismissed] = useState<boolean>(false)
+  const booted = useRef(false)
+  const [dbRev, setDbRev] = useState<string | null>(null);
+  const [inSync, setInSync] = useState<boolean | undefined>(undefined);
 
-  // Resolve month on startup from backend (transactions.search), with calendar fallback
-  useEffect(() => { (async () => {
-    try {
-      const m = await fetchLatestMonth();
-      if (m) {
-        setMonth(m);
-      } else {
-        const now = new Date();
-        const fallback = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-        setMonth(fallback);
-      }
-    } finally {
-      setMonthReady(true);
-    }
-  })() }, []);
-
-  useEffect(()=>{ (async()=>{
-    if (!monthReady || !month) return;
-    try {
-      setReport(await getReport(month))
-      setInsights(await getInsights(month))
-      setAlerts(await getAlerts(month))
-      await Promise.all([
-        getMonthSummary(month),
-        getMonthMerchants(month),
-        getMonthFlows(month)
-      ])
-      // Ensure charts agent endpoint is also exercised with an explicit month
-      void agentTools.chartsSummary({ month })
-    } catch {}
-  })() }, [monthReady, month, refreshKey])
-
-  // Ensure app reloads charts/insights when the month changes (background, non-blocking)
+  // Quick keyboard toggle for Dev UI: Ctrl+Shift+D
   useEffect(() => {
-    if (!month) return;
+    const onKey = (e: KeyboardEvent) => {
+      try {
+        if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === "d") {
+          const v = (localStorage.getItem("DEV_UI") === "1") ? "0" : "1";
+          localStorage.setItem("DEV_UI", v);
+          location.reload();
+        }
+      } catch {}
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  // Initialize month once
+  async function resolveMonth(): Promise<string> {
+    // prefer GET-only resolver to avoid 422s from some branches
+    const viaCharts = await resolveMonthFromCharts();
+    if (viaCharts) return viaCharts;
+    try {
+      const g = await charts.monthSummary();
+      return (g as any)?.month;
+    } catch {
+      return "";
+    }
+  }
+
+  useEffect(() => {
+    if (booted.current) return; // guard re-run in dev (StrictMode)
+    booted.current = true;
+    (async () => {
+      console.info("[boot] resolving month…");
+      const m = (await resolveMonth())
+        ?? (() => {
+             const now = new Date();
+             return `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}`;
+           })();
+      console.info("[boot] resolved month =", m);
+      setMonth(m);
+      setReady(true);
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const { user, authReady } = useAuth();
+  const authOk = !!user;
+  // Load dashboard data whenever month changes (only when authenticated)
+  useEffect(() => {
+    if (!authOk || !month) return;
+    console.info("[boot] loading dashboards for month", month);
     void Promise.allSettled([
-      getReport(month),
       agentTools.chartsSummary({ month }),
       agentTools.chartsMerchants({ month, limit: 10 }),
       agentTools.chartsFlows({ month }),
-      agentTools.chartsSpendingTrends({ month, months_back: 6 } as any),
+      agentTools.chartsSpendingTrends({ month, months_back: 6 }),
     ]);
-  }, [month]);
+  }, [authOk, month]);
+
+  // Log DB health once after CORS/DB are good (boot complete) and capture db revision
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const h = await getHealthz();
+        if (!alive) return;
+  const db = h?.db_engine || 'unknown-db';
+  const mig = h?.alembic_ok ?? h?.alembic?.in_sync ?? 'unknown';
+  const models = h?.models_ok ?? 'unknown';
+        setDbRev((h as any)?.db_revision ?? (h as any)?.alembic?.db_revision ?? null);
+        setInSync((h as any)?.alembic_ok ?? (h as any)?.alembic?.in_sync);
+        console.log(`[db] ${db} loaded | alembic_ok=${String(mig)} | models_ok=${String(models)}`);
+      } catch (e) {
+        console.warn('[db] healthz failed:', e);
+      }
+    })();
+    return () => { alive = false; };
+  }, []);
+
+  // Load insights and alerts separately for state management
+  useEffect(()=>{ (async()=>{
+  if (!authOk || !ready || !month) return;
+    try {
+      setInsights(await agentTools.insightsExpanded({ month, large_limit: 10 }))
+      setAlerts(await getAlerts(month))
+    } catch {}
+  })() }, [authOk, ready, month, refreshKey])
 
   // Probe backend emptiness (latest by default). If charts summary returns null or month:null, show banner.
   useEffect(() => { (async () => {
-    if (!monthReady || !month) return;
+  if (!authOk || !ready || !month) return;
     try {
       const s = await getMonthSummary(month);
       setEmpty(!s || s?.month == null);
     } catch {
       setEmpty(true);
     }
-  })() }, [monthReady, month, refreshKey])
+  })() }, [authOk, ready, month, refreshKey])
 
   const onCsvUploaded = useCallback(() => {
     setRefreshKey((k) => k + 1);
-    push({ title: "CSV ingested", message: "Transactions imported. Panels refreshed." });
-  }, [push]);
+    ok("Transactions imported. Panels refreshed.", "CSV ingested");
+  }, [ok]);
 
-  if (!monthReady) {
-    return <div className="p-6 text-gray-600">Loading…</div>;
+  
+
+  if (!ready || !authReady) {
+    return <div className="p-6 text-[color:var(--text-muted)]">Loading…</div>;
+  }
+
+  if (!authOk) {
+    return (
+      <div className="p-6">
+        <div className="max-w-md mx-auto">
+          <LoginForm />
+        </div>
+      </div>
+    );
   }
 
   return (
-    <MonthContext.Provider value={{ month, setMonth }}>
+  <MonthContext.Provider value={{ month, setMonth }}>
+      <ChatDockProvider>
+  <NetActivityBlip />
       <div className="min-h-screen bg-gray-50 text-gray-900 p-6 dark:bg-gray-950 dark:text-gray-100">
-        <div className="relative">
+  {/* Ensure this container is relative so ChatDock (absolute) positions within it */}
+  <div className="relative">
           <div className="mx-auto max-w-6xl space-y-6">
         <header className="flex items-center justify-between">
           <h1 className="text-3xl font-bold">Finance Agent</h1>
           <div className="flex items-center gap-3">
-            <input type="month" className="bg-neutral-900 border border-neutral-800 rounded px-3 py-2" value={month} onChange={e=>setMonth(e.target.value)} />
-            <button className="px-3 py-2 rounded bg-neutral-800" onClick={()=>setRefreshKey(k=>k+1)}>Refresh</button>
+            <LoginForm />
+            {/* DEV badge */}
+            {flags.dev && (
+              <span
+                title="Dev mode — press Ctrl+Shift+D to toggle"
+                className="ml-2 rounded-full border border-emerald-400/30 bg-emerald-400/10 px-2 py-0.5 text-[11px] font-medium text-emerald-300"
+              >
+                DEV
+              </span>
+            )}
+            <DbRevBadge dbRevision={dbRev ?? undefined} inSync={inSync} />
+            <AboutDrawer />
+            <input type="month" className="bg-neutral-900 border border-neutral-800 rounded px-3 py-2" value={month} onChange={e=>{ setMonth(e.target.value); setGlobalMonth(e.target.value); }} />
+            <button className="btn btn-sm hover:bg-accent" onClick={()=>setRefreshKey(k=>k+1)}>Refresh</button>
+            <a href="#rule-suggestions" className="btn btn-ghost btn-sm" title="Jump to persistent Rule Suggestions">Suggestions</a>
           </div>
         </header>
 
         {!bannerDismissed && empty && (
-          <TopEmptyBanner onDismiss={() => setBannerDismissed(true)} />
+          <TopEmptyBanner dbRev={dbRev ?? undefined} inSync={inSync} onDismiss={() => setBannerDismissed(true)} />
         )}
 
         {/* Upload CSV */}
   <UploadCsv defaultReplace={true} onUploaded={onCsvUploaded} />
 
         {/* Insights */}
-  <InsightsCard insights={insights} />
-        {/* Agent chat box */}
-        <AgentChat />
+        {insights && <AgentResultRenderer tool="insights.expanded" data={insights} />}
+        {/* Anomalies quick card */}
+        <InsightsAnomaliesCard />
+  {/* Agent chat box (legacy) — disabled; use ChatDock instead */}
+  {/* <AgentChat /> */}
   {/* ChartsPanel now requires month; always pass the selected month */}
   <ChartsPanel month={month} refreshKey={refreshKey} />
 
         {/* Main grid */}
         <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
           <UnknownsPanel month={month} refreshKey={refreshKey} />
-          <SuggestionsPanel month={month} refreshKey={refreshKey} />
+          <SuggestionsPanel />
+        </div>
+
+        {/* Persistent rule suggestions table */}
+        <div id="rule-suggestions">
+          <ErrorBoundary fallback={(e)=> <div className="text-sm text-red-500">Failed to render suggestions: {String(e?.message||e)}</div>}>
+            <RuleSuggestionsPersistentPanel />
+          </ErrorBoundary>
         </div>
 
         {/* Rules + Tester */}
         <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
           <RulesPanel refreshKey={refreshKey} />
-          <RuleTesterPanel onChanged={() => setRefreshKey((k) => k + 1)} />
+          {/* Dev tools only in DevDock now */}
+          </div>
+
+          {/* Status / Recent (right-side style) */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="hidden md:block" />
+            {/* Dev tools only in DevDock now */}
           </div>
           <ChatDock />
+          {flags.dev && (
+            <>
+              <DevDock />    {/* collapsible Dev panel */}
+              <DevFab />     {/* floating button bottom-right */}
+            </>
+          )}
         </div>
       </div>
   </div>
+  </ChatDockProvider>
     </MonthContext.Provider>
   );
 };

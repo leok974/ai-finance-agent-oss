@@ -2,7 +2,8 @@
 from sqlalchemy.orm import Session
 from sqlalchemy import or_, and_
 from typing import Iterable, Optional, Tuple, Dict, Any, List
-from app.orm_models import Transaction, Rule
+from app.transactions import Transaction
+from app.models import Rule
 
 UNLABELED_VALUES = ("", "Unknown")
 
@@ -14,8 +15,46 @@ def is_unlabeled_expr():
     )
 
 def latest_month_from_data(db: Session) -> Optional[str]:
-    row = db.query(Transaction).order_by(Transaction.date.desc()).first()
-    return row.date.strftime("%Y-%m") if row and row.date else None
+    """Resolve latest month from transactions, preferring explicit month column if present.
+    Falls back to deriving from date.
+    """
+    # First, try to find the latest month that still has unlabeled transactions
+    from sqlalchemy import or_
+    unlabeled_row = (
+        db.query(Transaction.month)
+        .filter(
+            or_(
+                Transaction.category.is_(None),
+                Transaction.category == "",
+            )
+        )
+        .order_by(Transaction.month.desc())
+        .first()
+    )
+    if unlabeled_row:
+        try:
+            mval = getattr(unlabeled_row, "month", None)
+        except Exception:
+            mval = unlabeled_row[0] if isinstance(unlabeled_row, (list, tuple)) else unlabeled_row
+        if mval:
+            return str(mval)
+
+    # Fallback: absolute latest by date
+    row = (
+        db.query(Transaction.month, Transaction.date)
+        .order_by(Transaction.date.desc(), Transaction.id.desc())
+        .first()
+    )
+    if not row:
+        return None
+    try:
+        m = getattr(row, "month", None)
+        d = getattr(row, "date", None)
+    except Exception:
+        m, d = row[0], row[1] if isinstance(row, (list, tuple)) and len(row) >= 2 else (None, None)
+    if m:
+        return str(m)
+    return d.strftime("%Y-%m") if d else None
 
 def _rule_matches_txn(rule: Rule, txn: Transaction) -> bool:
     """Extra safety when we match in-Python (primary filtering done in SQL)."""

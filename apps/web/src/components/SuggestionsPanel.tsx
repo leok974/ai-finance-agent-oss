@@ -1,131 +1,231 @@
-import React, { useEffect, useMemo, useState } from 'react'
-import Card from './Card'
-import { getSuggestions, categorizeTxn, getExplain } from '../lib/api'
-import EmptyState from './EmptyState'
+import * as React from "react";
+import { useRef } from "react";
+import {
+  fetchRuleSuggestConfig,
+  type RuleSuggestConfig,
+  listRuleSuggestionsSummary,
+  applyRuleSuggestion,
+  ignoreRuleSuggestion,
+  type MinedRuleSuggestion,
+} from "@/api";
+import { useCoalescedRefresh } from "@/utils/refreshBus";
+import InfoDot from "@/components/InfoDot";
+import { useOkErrToast } from "@/lib/toast-helpers";
+import Card from "./Card";
+import { Skeleton } from "@/components/ui/skeleton";
 
-type Suggestion = { txn_id: number; merchant?: string; description?: string; topk: Array<{ category: string; confidence: number }> }
+type Suggestion = MinedRuleSuggestion;
 
-export default function SuggestionsPanel({ month, refreshKey = 0 }: { month?: string; refreshKey?: number }) {
-  const [items, setItems] = useState<Suggestion[]>([])
-  const [selected, setSelected] = useState<Record<number, string>>({})
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [resolvedMonth, setResolvedMonth] = useState<string | null>(null)
-  const [empty, setEmpty] = useState(false)
+export default function SuggestionsPanel() {
+  const [rows, setRows] = React.useState<Suggestion[]>([]);
+  const [loading, setLoading] = React.useState(false);
+  const [recentMonth, setRecentMonth] = React.useState<string | null>(null);
+  const [selected, setSelected] = React.useState<Set<string>>(new Set());
+  const [pending, setPending] = React.useState<Set<string>>(new Set());
+  const [bulkBusy, setBulkBusy] = React.useState(false);
+  const [cfg, setCfg] = React.useState<RuleSuggestConfig | null>(null);
+  const { ok, err } = (useOkErrToast as any)?.() ?? { ok: console.log, err: console.error };
+  const errRef = React.useRef(err);
+  React.useEffect(() => { errRef.current = err; }, [err]);
+  const loadingRef = useRef(false);
 
-  useEffect(()=>{ (async()=>{
-    setLoading(true); setError(null); setEmpty(false)
+  const refresh = React.useCallback(async () => {
+    if (loadingRef.current) return; // prevent overlap
+    loadingRef.current = true;
+    setLoading(true);
     try {
-      const res = await getSuggestions(month)
-      // empty boot state
-      if (!res) { setEmpty(true); setItems([]); setResolvedMonth(null); return }
-      setResolvedMonth(res?.month ?? null)
-      // normalize various server shapes -> list of { txn_id, merchant, description, topk[] }
-      const arr: any[] = Array.isArray(res?.results)
-        ? res.results
-        : Array.isArray(res?.items)
-        ? res.items
-        : Array.isArray(res?.suggestions)
-        ? res.suggestions
-        : Array.isArray(res)
-        ? res
-        : []
-      // map to Suggestion shape
-      const mapped: Suggestion[] = arr.map((s: any) => {
-        const txn = s.txn || s.txn_obj || s
-        const suggs = s.suggestions || s.topk || []
-        const dedup = new Map<string, any>((suggs ?? []).map((x: any) => [String(x.category), x]))
-        const topk = Array.from(dedup.values()).slice(0, 3).map((v: any) => ({
-          category: String(v.category),
-          confidence: Number(v.confidence ?? v.score ?? 0)
-        }))
-        return {
-          txn_id: txn?.txn_id ?? txn?.id ?? s.txn_id ?? s.id,
-          merchant: txn?.merchant ?? s.merchant,
-          description: txn?.description ?? s.description,
-          topk
-        }
-      })
-      // coalesce by txn (one card per txn)
-      const byTxn = new Map<number, Suggestion>()
-      for (const s of mapped) {
-        const prev = byTxn.get(s.txn_id)
-        if (!prev) { byTxn.set(s.txn_id, s); continue }
-        const cats = new Map(prev.topk.map(x=>[x.category,x]))
-        for (const t of s.topk) if (!cats.has(t.category)) cats.set(t.category,t)
-        prev.topk = Array.from(cats.values()).slice(0,3)
-      }
-      setItems(Array.from(byTxn.values()))
-    } catch (e: any) {
-      setError(e?.message ?? String(e))
-    } finally { setLoading(false) }
-  })() }, [month, refreshKey])
-
-  const canApply = useMemo(()=> Object.keys(selected).length>0, [selected])
-
-  async function applySelected() {
-    const entries = Object.entries(selected)
-    await Promise.all(entries.map(([id,cat])=>categorizeTxn(Number(id), cat)))
-    setItems(list => list.filter(it => !(it.txn_id in selected)))
-    setSelected({})
-  }
-
-  async function autoApplyBest(threshold=0.85) {
-    const picks: Record<number,string> = {}
-    for (const it of items) {
-      const best = [...it.topk].sort((a,b)=>b.confidence-a.confidence)[0]
-      if (best && best.confidence>=threshold) picks[it.txn_id] = best.category
+      const data = await listRuleSuggestionsSummary({}); // { window_days, min_count, suggestions }
+      const list = (data?.suggestions ?? []) as Suggestion[];
+      setRows(list);
+      // derive the most recent month key across suggestions
+      const mk = list.find((s) => s.recent_month_key)?.recent_month_key ?? null;
+      setRecentMonth(mk ?? null);
+      setSelected(new Set());
+    } catch (e) {
+      // use ref to avoid re-creating callback and effect loops
+      errRef.current?.("Could not fetch suggestions.", "Failed to load");
+    } finally {
+      loadingRef.current = false;
+      setLoading(false);
     }
-    const pairs = Object.entries(picks)
-    if (!pairs.length) return
-    await Promise.all(pairs.map(([id,cat])=>categorizeTxn(Number(id), cat)))
-    setItems(list => list.filter(it => !(it.txn_id in picks)))
-  }
+  }, []);
+
+  // Coalesced refresh to batch rapid apply actions across this tab
+  const scheduleSuggestionsRefresh = useCoalescedRefresh('suggestions-refresh', () => refresh(), 450);
+
+  React.useEffect(() => {
+    // run once on mount
+    refresh();
+  fetchRuleSuggestConfig().then(setCfg).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const keyFor = (s: Suggestion) => `${s.merchant}||${s.category}`;
+  const toggle = (key: string, on: boolean) => {
+    const next = new Set(selected);
+    if (on) next.add(key);
+    else next.delete(key);
+    setSelected(next);
+  };
+  const acceptOne = async (s: Suggestion) => {
+    const key = keyFor(s);
+    const nextPending = new Set(pending); nextPending.add(key); setPending(nextPending);
+    try {
+      const res = await applyRuleSuggestion({ merchant: s.merchant, category: s.category, backfill_month: s.recent_month_key ?? undefined });
+      ok(`Rule created (#${res.rule_id})`, `${s.merchant} → ${s.category}`);
+      setRows((prev) => prev.filter((r) => keyFor(r) !== key));
+      setSelected((prev) => { const c = new Set(prev); c.delete(key); return c; });
+    } catch (e) {
+      err("Failed to apply suggestion.", "Action failed");
+    } finally {
+      setPending((prev) => { const c = new Set(prev); c.delete(key); return c; });
+    }
+    scheduleSuggestionsRefresh();
+  };
+
+  const applySelected = async () => {
+    const keys = Array.from(selected);
+    if (keys.length === 0) return err("No rows selected", "Select some suggestions first.");
+    setBulkBusy(true);
+    const mapByKey = new Map(rows.map((r) => [keyFor(r), r] as const));
+    const targets = keys.map((k) => mapByKey.get(k)).filter(Boolean) as Suggestion[];
+    const pend = new Set(pending); targets.forEach((t) => pend.add(keyFor(t))); setPending(pend);
+    const results = await Promise.allSettled(targets.map((s) =>
+      applyRuleSuggestion({ merchant: s.merchant, category: s.category, backfill_month: s.recent_month_key ?? undefined })
+    ));
+    const okCount = results.filter((r) => r.status === 'fulfilled').length;
+    const failCount = results.length - okCount;
+    setRows((prev) => prev.filter((r) => !keys.includes(keyFor(r))));
+    setSelected(new Set());
+    setPending(new Set());
+    if (okCount) ok(`Applied ${okCount} ${okCount === 1 ? 'item' : 'items'}`, failCount ? `${failCount} failed` : 'All succeeded');
+    if (!okCount && failCount) err('Nothing applied', `${failCount} failed`);
+    setBulkBusy(false);
+    scheduleSuggestionsRefresh();
+  };
+
+  const ignoreOne = async (s: Suggestion) => {
+    const key = keyFor(s);
+    const nextPending = new Set(pending); nextPending.add(key); setPending(nextPending);
+    try {
+      await ignoreRuleSuggestion({ merchant: s.merchant, category: s.category });
+      setRows((prev) => prev.filter((r) => keyFor(r) !== key));
+      ok("Ignored", `${s.merchant} → ${s.category}`);
+    } catch (e) {
+      err("Failed to ignore", "Action failed");
+    } finally {
+      setPending((prev) => { const c = new Set(prev); c.delete(key); return c; });
+    }
+    scheduleSuggestionsRefresh();
+  };
 
   return (
-  <Card title={`ML Suggestions — ${resolvedMonth ?? '(latest)'}`} right={
-      <div className="flex gap-2">
-        <button className="px-2 py-1 rounded bg-blue-700 disabled:opacity-40" disabled={!canApply} onClick={applySelected}>Apply selected</button>
-        <button className="px-2 py-1 rounded bg-emerald-700" onClick={()=>autoApplyBest(0.85)}>Auto‑apply best ≥ 0.85</button>
-      </div>
-    }>
-      {loading && <div className="opacity-70">Loading…</div>}
-      {error && !empty && <p className="text-sm text-rose-300">Error: {error}</p>}
-      {empty && !error && (
-        <EmptyState title="No suggestions yet" note="Upload a CSV to generate category/merchant suggestions." />
-      )}
-      <ul className="space-y-2">
-        {items.map(it => (
-          <li key={it.txn_id} className="rounded-lg border border-neutral-800 p-3 bg-neutral-900">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <div className="font-medium">{it.merchant ?? '—'}</div>
-                <div className="text-sm opacity-70">{it.description ?? ''}</div>
-              </div>
-              <div className="flex-1">
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                  {it.topk.map(opt => (
-                    <label key={opt.category} className="flex items-center gap-2 rounded border border-neutral-800 p-2 bg-neutral-950">
-                      <input type="radio" name={`pick-${it.txn_id}`} onChange={()=>setSelected(s=>({ ...s, [it.txn_id]: opt.category }))} />
-                      <span className="flex-1">{opt.category}</span>
-                      <span className="text-xs opacity-70">{(opt.confidence*100).toFixed(1)}%</span>
-                    </label>
-                  ))}
+    <Card>
+      {/* Header: title+tooltip left; actions pushed right */}
+      <header className="flex items-center gap-3 pb-1 mb-3 border-b border-border">
+        <div className="flex items-center gap-2">
+          <h3 className="text-base font-semibold">ML Suggestions</h3>
+          <InfoDot title="Predicted categories with confidence. Review, select, apply or auto-apply." />
+          {recentMonth && <span className="text-sm opacity-70">— {recentMonth}</span>}
+        </div>
+        <div className="ml-auto flex items-center gap-2">
+          {cfg && (
+            <span className="text-xs opacity-70 mr-2">
+              feedback window: {cfg.window_days ?? "∞"}d
+            </span>
+          )}
+          <button
+            className="btn btn-ghost btn-sm"
+            onClick={refresh}
+            disabled={loading}
+            aria-label="Refresh suggestions"
+            title="Refresh suggestions"
+          >
+            {loading ? "Refreshing…" : "Refresh"}
+          </button>
+          <button
+            className="btn btn-sm"
+            onClick={() => applySelected()}
+            title="Apply checked suggestions"
+            disabled={bulkBusy}
+          >
+            {bulkBusy ? 'Applying…' : `Apply selected${selected.size ? ` (${selected.size})` : ''}`}
+          </button>
+          {/* Auto-apply by confidence removed; mined suggestions have no probability */}
+        </div>
+      </header>
+
+  {/* List */}
+      <div className="space-y-2">
+        {loading && (
+          <div className="space-y-2">
+            {[0,1,2,3].map(i => (
+              <div key={i} className="rounded-xl border border-[hsl(var(--border))] bg-card/60 px-3 py-2">
+                <div className="flex items-center gap-3">
+                  <Skeleton className="w-4 h-4 rounded" />
+                  <div className="min-w-0 flex-1">
+                    <Skeleton className="h-4 w-40" />
+                    <div className="mt-1">
+                      <Skeleton className="h-3 w-24" />
+                    </div>
+                  </div>
+                  <Skeleton className="h-6 w-48" />
                 </div>
               </div>
-              <div>
-                <button className="text-sm opacity-80 underline" onClick={async()=>{
-                  const r = await getExplain(it.txn_id)
-                  alert(r?.explanation ?? JSON.stringify(r))
-                }}>Explain</button>
+            ))}
+          </div>
+        )}
+        {rows.map((r, idx) => {
+          const key = keyFor(r);
+          const disabled = pending.has(key);
+          return (
+          <div
+            key={key || `${r.merchant}-${r.category}-${idx}`}
+            className="rounded-xl border border-[hsl(var(--border))] bg-card/60 px-3 py-2"
+          >
+            <div className="flex items-center gap-3">
+              <input
+                type="checkbox"
+                className="shrink-0 w-4 h-4 accent-[hsl(var(--primary))]"
+                checked={selected.has(key)}
+                onChange={(e) => toggle(key, e.target.checked)}
+                aria-label={`Select ${r.merchant} → ${r.category}`}
+              />
+              <div className="min-w-0">
+                <div className="font-medium truncate">{r.merchant || "—"}</div>
+                <div className="text-xs opacity-70 truncate">{recentMonth ? `Most recent: ${recentMonth}` : " "}</div>
+              </div>
+              <div className="ml-auto flex items-center gap-3">
+                <span className="text-sm">
+                  <span className="opacity-70">Suggest: </span>
+                  <span className="font-medium">{r.category}</span>
+                  <span className="opacity-70"> · {r.count}× in {r.window_days}d</span>
+                </span>
+                <button
+                  className="btn btn-sm"
+                  title="Accept suggestion"
+                  onClick={() => acceptOne(r)}
+                  disabled={disabled}
+                >
+                  {disabled ? "Applying…" : "Accept"}
+                </button>
+                <button
+                  className="btn btn-ghost btn-sm"
+                  title="Ignore this pair"
+                  onClick={() => ignoreOne(r)}
+                  disabled={disabled}
+                >
+                  Ignore
+                </button>
               </div>
             </div>
-          </li>
-        ))}
-      </ul>
-      {!loading && !error && !empty && items.length === 0 && (
-        <p className="text-sm text-gray-400">No suggestions.</p>
-      )}
-    </Card>
-  )
+          </div>
+          );
+        })}
+  {!loading && rows.length === 0 && (
+          <div className="text-sm opacity-70 py-4 text-center">No suggestions right now.</div>
+        )}
+      </div>
+  </Card>
+  );
 }

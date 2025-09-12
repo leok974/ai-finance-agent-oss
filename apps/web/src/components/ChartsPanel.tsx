@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import Card from "./Card";
+import ExportMenu from "./ExportMenu";
 import EmptyState from "./EmptyState";
 import * as RC from "recharts";
 import {
@@ -8,6 +9,7 @@ import {
   getMonthFlows,
   getSpendingTrends,
 } from "../lib/api";
+import { Skeleton } from "@/components/ui/skeleton";
 
 // Cast so TS treats them as FCs (safe for now)
 const ResponsiveContainer = RC.ResponsiveContainer as unknown as React.FC<any>;
@@ -38,6 +40,8 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
   const [trends, setTrends] = useState<any | null>(null);
   const [empty, setEmpty] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [monthsWindow, setMonthsWindow] = useState<number>(6);
 
   // resolvedMonth prefers server-returned month, falls back to prop
   const resolvedMonth = summary?.month ?? month;
@@ -83,6 +87,23 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
     };
   }, [month, refreshKey]);
 
+  // Optional: allow opening a specific category chart from AgentChat
+  useEffect(() => {
+    function onOpenChart(e: Event) {
+      const { category, months } = (e as CustomEvent).detail || {};
+      if (category) {
+        try {
+          setSelectedCategory(String(category));
+          setMonthsWindow(Number(months ?? 6));
+          // Scroll to this panel's root
+          document.getElementById('charts-panel')?.scrollIntoView?.({ behavior: 'smooth' });
+        } catch {}
+      }
+    }
+    window.addEventListener('open-category-chart', onOpenChart as any);
+    return () => window.removeEventListener('open-category-chart', onOpenChart as any);
+  }, []);
+
   const categoriesData = useMemo(() => summary?.categories ?? [], [summary]);
   const merchantsData = useMemo(() => merchants?.merchants ?? [], [merchants]);
   const flowsData = useMemo(() => flows?.series ?? [], [flows]);
@@ -92,14 +113,25 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
   );
 
   return (
-    <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+    <div id="charts-panel" className="grid grid-cols-1 gap-6 lg:grid-cols-2">
       {empty && !error && (
         <div className="lg:col-span-2">
           <EmptyState title="No transactions yet" note="Once you upload, charts will populate automatically." />
         </div>
       )}
-  <Card title={`Overview — ${resolvedMonth}`}>
-        {loading && <p className="text-sm text-gray-400">Loading charts…</p>}
+      <Card title={`Overview — ${resolvedMonth}`} right={<ExportMenu month={resolvedMonth} />}>
+        {loading && (
+          <div className="grid grid-cols-3 gap-4 text-sm">
+            {[0, 1, 2].map((i) => (
+              <div key={i} className="rounded-xl bg-gray-800/50 p-3">
+                <Skeleton className="h-4 w-24" />
+                <div className="mt-2">
+                  <Skeleton className="h-6 w-28" />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
         {error && !empty && <p className="text-sm text-rose-300">Error: {error}</p>}
         {!loading && !error && summary && (
           <div className="grid grid-cols-3 gap-4 text-sm">
@@ -126,7 +158,15 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
       </Card>
 
       <Card title="Top Categories (expenses)">
-        {loading && <p className="text-sm text-gray-400">Loading…</p>}
+        {loading && (
+          <div className="h-64">
+            <div className="h-full w-full flex items-end gap-2">
+              {[...Array(8)].map((_, i) => (
+                <Skeleton key={i} className="w-8" style={{ height: `${20 + (i % 5) * 12}%` }} />
+              ))}
+            </div>
+          </div>
+        )}
         {!loading && categoriesData.length === 0 && (
           <p className="text-sm text-gray-400">No category data.</p>
         )}
@@ -134,8 +174,21 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={categoriesData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="name" /><YAxis /><Tooltip /><Legend />
+                <CartesianGrid stroke="var(--grid-line)" />
+                <XAxis dataKey="name" tick={{ fill: "var(--text-muted)" }} stroke="var(--border-subtle)" />
+                <YAxis
+                  tick={{ fill: "var(--text-muted)" }}
+                  stroke="var(--border-subtle)"
+                  label={{ value: "Spend (absolute)", angle: -90, position: "insideLeft", fill: "var(--text-muted)" }}
+                />
+                <Tooltip
+                  contentStyle={{
+                    background: "var(--tooltip-bg)",
+                    borderColor: "var(--tooltip-br)",
+                    color: "var(--tooltip-text)",
+                  }}
+                />
+                <Legend />
                 <Bar dataKey="amount" name="Spend" />
               </BarChart>
             </ResponsiveContainer>
@@ -144,7 +197,15 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
       </Card>
 
       <Card title="Top Merchants (expenses)">
-        {loading && <p className="text-sm text-gray-400">Loading…</p>}
+        {loading && (
+          <div className="h-64">
+            <div className="h-full w-full flex items-end gap-2">
+              {[...Array(8)].map((_, i) => (
+                <Skeleton key={i} className="w-8" style={{ height: `${18 + (i % 4) * 14}%` }} />
+              ))}
+            </div>
+          </div>
+        )}
         {!loading && merchantsData.length === 0 && (
           <p className="text-sm text-gray-400">No merchant data.</p>
         )}
@@ -152,17 +213,37 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={merchantsData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="merchant" /><YAxis /><Tooltip /><Legend />
+                <CartesianGrid stroke="var(--grid-line)" />
+                <XAxis dataKey="merchant" tick={{ fill: "var(--text-muted)" }} stroke="var(--border-subtle)" />
+                <YAxis
+                  tick={{ fill: "var(--text-muted)" }}
+                  stroke="var(--border-subtle)"
+                  label={{ value: "Spend (absolute)", angle: -90, position: "insideLeft", fill: "var(--text-muted)" }}
+                />
+                <Tooltip
+                  contentStyle={{
+                    background: "var(--tooltip-bg)",
+                    borderColor: "var(--tooltip-br)",
+                    color: "var(--tooltip-text)",
+                  }}
+                />
+                <Legend />
                 <Bar dataKey="amount" name="Spend" />
               </BarChart>
             </ResponsiveContainer>
+            <div className="text-xs opacity-70 mt-1">Tip: Open Insights → Large Transactions or use the Unknowns panel to explain individual transactions.</div>
           </div>
         )}
       </Card>
 
       <Card title="Daily Flows">
-        {loading && <p className="text-sm text-gray-400">Loading…</p>}
+        {loading && (
+          <div className="h-64">
+            <div className="h-full w-full flex items-center">
+              <Skeleton className="h-32 w-full" />
+            </div>
+          </div>
+        )}
         {!loading && flowsData.length === 0 && (
           <p className="text-sm text-gray-400">No flow data.</p>
         )}
@@ -170,8 +251,21 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={flowsData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="date" /><YAxis /><Tooltip /><Legend />
+                <CartesianGrid stroke="var(--grid-line)" />
+                <XAxis dataKey="date" tick={{ fill: "var(--text-muted)" }} stroke="var(--border-subtle)" />
+                <YAxis
+                  tick={{ fill: "var(--text-muted)" }}
+                  stroke="var(--border-subtle)"
+                  label={{ value: "Amount", angle: -90, position: "insideLeft", fill: "var(--text-muted)" }}
+                />
+                <Tooltip
+                  contentStyle={{
+                    background: "var(--tooltip-bg)",
+                    borderColor: "var(--tooltip-br)",
+                    color: "var(--tooltip-text)",
+                  }}
+                />
+                <Legend />
                 <Line type="monotone" dataKey="in" name="In" />
                 <Line type="monotone" dataKey="out" name="Out" />
                 <Line type="monotone" dataKey="net" name="Net" />
@@ -182,7 +276,13 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
       </Card>
 
       <Card title="Spending Trends (last 6 months)">
-        {loading && <p className="text-sm text-gray-400">Loading…</p>}
+        {loading && (
+          <div className="h-64">
+            <div className="h-full w-full flex items-center">
+              <Skeleton className="h-32 w-full" />
+            </div>
+          </div>
+        )}
         {!loading && trendsData.length === 0 && (
           <p className="text-sm text-gray-400">No historical data.</p>
         )}
@@ -190,10 +290,20 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={trendsData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="month" />
-                <YAxis />
-                <Tooltip />
+                <CartesianGrid stroke="var(--grid-line)" />
+                <XAxis dataKey="month" tick={{ fill: "var(--text-muted)" }} stroke="var(--border-subtle)" />
+                <YAxis
+                  tick={{ fill: "var(--text-muted)" }}
+                  stroke="var(--border-subtle)"
+                  label={{ value: "Spend (absolute)", angle: -90, position: "insideLeft", fill: "var(--text-muted)" }}
+                />
+                <Tooltip
+                  contentStyle={{
+                    background: "var(--tooltip-bg)",
+                    borderColor: "var(--tooltip-br)",
+                    color: "var(--tooltip-text)",
+                  }}
+                />
                 <Legend />
                 <Line type="monotone" dataKey="spent" name="Spent" />
               </LineChart>

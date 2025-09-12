@@ -3,11 +3,14 @@ from sqlalchemy import text, select
 from sqlalchemy.orm import Session
 from alembic.script import ScriptDirectory
 from alembic.config import Config as AlembicConfig
+from alembic.runtime.migration import MigrationContext
 import os
 import json, urllib.request
 
 from app.db import get_db
-from app.orm_models import Transaction
+from app.transactions import Transaction
+from app.config import settings
+from sqlalchemy.engine import make_url
 
 router = APIRouter(tags=["health"])
 
@@ -91,10 +94,33 @@ def healthz(db: Session = Depends(get_db)):
     except Exception:
         models_ok = False
 
-    alembic = _alembic_status(db)
+    # Prefer Alembic runtime MigrationContext to read current DB revision and compare with code head
+    try:
+        conn = db.connection()
+        context = MigrationContext.configure(conn)
+        current_rev = context.get_current_revision()
+        # Code head from alembic scripts
+        alembic_ini = os.path.join(os.getcwd(), "alembic.ini")
+        cfg = AlembicConfig(alembic_ini) if os.path.exists(alembic_ini) else AlembicConfig()
+        script = ScriptDirectory.from_config(cfg)
+        head_rev = script.get_current_head()
+        alembic = {"db_revision": current_rev, "code_head": head_rev, "in_sync": (current_rev == head_rev and current_rev is not None)}
+    except Exception:
+        alembic = _alembic_status(db)
     status = "ok" if ok and models_ok and alembic["in_sync"] else "degraded"
+    # DB engine string without sensitive details
+    try:
+        url = make_url(settings.DATABASE_URL)
+        db_engine = f"{url.get_backend_name()}+{url.get_driver_name()}"
+    except Exception:
+        db_engine = None
     return {
         "status": status,
         "db": {"reachable": ok, "models_ok": models_ok},
         "alembic": alembic,
+        # Convenience shorthand fields for UI logs
+        "db_engine": db_engine,
+        "models_ok": models_ok,
+    "alembic_ok": bool(alembic.get("in_sync")),
+    "db_revision": alembic.get("db_revision"),
     }

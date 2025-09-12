@@ -8,7 +8,7 @@ import datetime as dt
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 
-from app.orm_models import Transaction
+from app.transactions import Transaction
 
 UNLABELED = {"", "Unknown", None}
 

@@ -5,7 +5,7 @@ import math
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from app.services.ml_train import load_latest_model
-from app.orm_models import Transaction
+from app.transactions import Transaction
 import pandas as pd
 
 HEURISTIC_MAP: List[Tuple[str, str]] = [

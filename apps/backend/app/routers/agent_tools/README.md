@@ -1,19 +1,30 @@
 # Agent Tools
 
-This directory contains HTTP endpoints exposed for agent-friendly operations (search, categorize, budgets, insights, etc.).
+This directory contains HTTP endpoints exposed for agent-friendly operat- `-m insights` → run only insights agent tool tests (expanded insights)
+
+### Examples
+
+Run just **expanded insights** tests:
+
+```powershell
+cd apps/backend
+..\.venv\Scripts\python.exe -m pytest -m insights -q
+```ch, categorize, budgets, insights, etc.).
 
 ## Agent Tools: Insights
 
-POST `/agent/tools/insights/summary`
+⚠️ **Deprecated**: POST `/agent/tools/insights/summary` is deprecated. Use `/expanded` instead.
+
+### Expanded Insights (MoM + anomalies)
+
+POST `/agent/tools/insights/expanded`
 
 Request:
 
 ```json
 {
   "month": "2025-08",
-  "top_n": 3,
-  "large_txn_threshold": 200.0,
-  "include_unknown": true
+  "large_limit": 10
 }
 ```
 
@@ -22,59 +33,59 @@ Response shape:
 ```json
 {
   "month": "2025-08",
-  "insights": [
+  "prev_month": "2025-07",
+  "summary": {
+    "income": 5000.0,
+    "spend": -645.49,
+    "net": 4354.51
+  },
+  "mom": {
+    "income": {"prev": 4800.0, "curr": 5000.0, "delta": 200.0, "pct": 0.042},
+    "spend": {"prev": -580.0, "curr": -645.49, "delta": -65.49, "pct": 0.113},
+    "net": {"prev": 4220.0, "curr": 4354.51, "delta": 134.51, "pct": 0.032}
+  },
+  "top_categories": [
+    {"category": "Travel", "amount": -400.0},
+    {"category": "Groceries", "amount": -120.0}
+  ],
+  "top_merchants": [
+    {"merchant": "Delta", "amount": -400.0},
+    {"merchant": "Costco", "amount": -120.0}
+  ],
+  "large_transactions": [
     {
-      "id": "summary",
-      "kind": "summary",
-      "title": "Summary for 2025-08",
-      "detail": "Inflows $..., outflows $..., net $...",
-      "severity": "info",
-      "metrics": {"inflows": 0, "outflows": 0, "net": 0, "unknown_count": 0}
-    },
-    {
-      "id": "unknown-spend",
-      "kind": "unknown_spend",
-      "title": "Uncategorized/Unknown spending detected",
-      "detail": "You have $X.YZ of spend without a category...",
-      "severity": "warn",
-      "metrics": {"unknown_spend": 123.45}
-    },
-    {
-      "id": "top-categories",
-      "kind": "top_categories",
-      "title": "Top N categories by spend",
-      "detail": "Groceries: $..., Transport: $..., ...",
-      "severity": "info",
-      "metrics": {"items": [{"category":"Groceries","spend":...}, ...]}
-    },
-    {
-      "id": "top-merchants",
-      "kind": "top_merchants",
-      "title": "Top N merchants by spend",
-      "detail": "Costco: $..., Uber: $..., ...",
-      "severity": "info",
-      "metrics": {"items": [{"merchant":"Costco","spend":...}, ...]}
-    },
-    {
-      "id": "large-transactions",
-      "kind": "large_transaction",
-      "title": "K large transaction(s) ≥ $T",
-      "detail": "Merchant $Amount on YYYY-MM-DD; ...",
-      "severity": "warn",
-      "metrics": {"threshold": 200.0, "items":[{"id":1,"date":"...","merchant":"...", "amount":-400.0, "category":"..."}]}
+      "id": 5,
+      "date": "2025-08-05",
+      "merchant": "Delta",
+      "category": "Travel",
+      "amount": -400.0
     }
-  ]
+  ],
+  "unknown_spend": {
+    "amount": -230.5,
+    "count": 3
+  },
+  "anomalies": {
+    "categories": [
+      {"key": "Dining", "prev": 120.0, "curr": 280.0, "delta": 160.0, "pct": 1.33}
+    ],
+    "merchants": [
+      {"key": "Restaurant Co", "prev": 0.0, "curr": 180.0, "delta": 180.0, "pct": null}
+    ]
+  }
 }
 ```
 
 ---
 
-## 4) Run just these tests
+## 4) Run expanded insights tests
 
 ```powershell
 cd apps/backend
-.\.venv\Scripts\python.exe -m pytest -q tests/test_agent_tools_insights.py --maxfail=1
+.\.venv\Scripts\python.exe -m pytest -q tests/test_agent_tools_insights.py::test_insights_expanded --maxfail=1
 ```
+
+Note: The summary endpoint tests are deprecated and skipped.
 
 ---
 

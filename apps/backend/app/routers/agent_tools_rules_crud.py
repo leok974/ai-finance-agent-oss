@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
+from app.utils.csrf import csrf_protect
 from pydantic import BaseModel, Field
 from typing import Optional, List
 from sqlalchemy.orm import Session
@@ -25,7 +26,7 @@ def list_rules(db: Session = Depends(get_db)):
         "pattern": r.pattern, "category": r.category, "active": r.active
     }) for r in rows]
 
-@router.post("", response_model=RuleOut)
+@router.post("", response_model=RuleOut, dependencies=[Depends(csrf_protect)])
 def create_rule(body: RuleIn, db: Session = Depends(get_db)):
     row = Rule(
         merchant=body.merchant, description=body.description,
@@ -35,7 +36,7 @@ def create_rule(body: RuleIn, db: Session = Depends(get_db)):
     return RuleOut(id=row.id, merchant=row.merchant, description=row.description,
                    pattern=row.pattern, category=row.category, active=row.active)
 
-@router.put("/{rule_id}", response_model=RuleOut)
+@router.put("/{rule_id}", response_model=RuleOut, dependencies=[Depends(csrf_protect)])
 def update_rule(rule_id: int, body: RuleIn, db: Session = Depends(get_db)):
     row = db.query(Rule).get(rule_id)
     if not row: raise HTTPException(404, "Rule not found")
@@ -47,7 +48,7 @@ def update_rule(rule_id: int, body: RuleIn, db: Session = Depends(get_db)):
     return RuleOut(id=row.id, merchant=row.merchant, description=row.description,
                    pattern=row.pattern, category=row.category, active=row.active)
 
-@router.delete("/{rule_id}")
+@router.delete("/{rule_id}", dependencies=[Depends(csrf_protect)])
 def delete_rule(rule_id: int, db: Session = Depends(get_db)):
     row = db.query(Rule).get(rule_id)
     if not row: raise HTTPException(404, "Rule not found")
