@@ -48,6 +48,24 @@ export async function resolveMonthFromCharts(): Promise<string> {
   }
 }
 
+// Old behavior: try POST tool route first, then fall back to GET charts/month_summary
+export async function resolveMonth(): Promise<string> {
+  try {
+    const r = await api(`/agent/tools/charts/summary`, {
+      method: 'POST',
+      body: JSON.stringify({ month: null }),
+    });
+    return (r as any)?.month;
+  } catch {
+    try {
+      const r = await charts.monthSummary();
+      return (r as any)?.month;
+    } catch {
+      return "";
+    }
+  }
+}
+
 // Optional bearer fallback: keep a transient token if needed (e.g., dev/testing)
 let accessToken: string | null = null;
 export const setAccessToken = (t: string | null) => { accessToken = t; };

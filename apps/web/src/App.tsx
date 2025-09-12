@@ -7,13 +7,16 @@ import SuggestionsPanel from "./components/SuggestionsPanel";
 import { AgentResultRenderer } from "./components/AgentResultRenderers";
 import { useOkErrToast } from "@/lib/toast-helpers";
 // import RulesPanel from "./components/RulesPanel";
-import { getAlerts, getMonthSummary, getMonthMerchants, getMonthFlows, agentTools, meta, getHealthz, api, charts, resolveMonthFromCharts } from './lib/api'
+import { getAlerts, getMonthSummary, getMonthMerchants, getMonthFlows, agentTools, meta, getHealthz, api, charts, resolveMonth as resolveMonthApi, resolveMonthFromCharts } from './lib/api'
 import DbRevBadge from './components/DbRevBadge';
 import { flags } from "@/lib/flags";
 import AboutDrawer from './components/AboutDrawer';
 import RulesPanel from "./components/RulesPanel";
 import ChatDock from "./components/ChatDock";
 import DevDock from "@/components/dev/DevDock";
+import PlannerDevPanel from "@/components/dev/PlannerDevPanel";
+import RuleTesterPanel from "@/components/RuleTesterPanel";
+import MLStatusCard from "@/components/MLStatusCard";
 import { ChatDockProvider } from "./context/ChatDockContext";
 import ChartsPanel from "./components/ChartsPanel";
 import TopEmptyBanner from "./components/TopEmptyBanner";
@@ -64,15 +67,12 @@ const App: React.FC = () => {
 
   // Initialize month once
   async function resolveMonth(): Promise<string> {
-    // prefer GET-only resolver to avoid 422s from some branches
+    // Preferred: tool route first, with GET fallback inside helper
+    const m = await resolveMonthApi();
+    if (m) return m;
+    // Extra safety: try GET-only path directly if helper returned empty
     const viaCharts = await resolveMonthFromCharts();
-    if (viaCharts) return viaCharts;
-    try {
-      const g = await charts.monthSummary();
-      return (g as any)?.month;
-    } catch {
-      return "";
-    }
+    return viaCharts || "";
   }
 
   useEffect(() => {
@@ -237,12 +237,28 @@ const App: React.FC = () => {
             {/* Dev tools only in DevDock now */}
           </div>
           <ChatDock />
+
+          {/* Developer Tools section (old layout) */}
           {flags.dev && (
-            <>
-              <DevDock />    {/* collapsible Dev panel */}
-              <DevFab />     {/* floating button bottom-right */}
-            </>
+            <section className="mt-8 rounded-2xl border border-white/10 bg-black/20 p-4">
+              <div className="text-sm font-medium opacity-80 mb-3">Developer Tools</div>
+
+              {flags.planner && (
+                <div className="mb-6">
+                  <PlannerDevPanel />   {/* Preview Plan / Plan & Run + status + items */}
+                </div>
+              )}
+
+              <div className="grid gap-6 md:grid-cols-2">
+                {flags.ruleTester && <RuleTesterPanel />}
+                {flags.mlSelftest && <MLStatusCard />}
+              </div>
+            </section>
           )}
+
+          {/* Floating dock for quick access (like before) */}
+          {flags.dev && <DevDock />}
+          {flags.dev && <DevFab />}
         </div>
       </div>
   </div>
