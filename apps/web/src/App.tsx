@@ -31,6 +31,7 @@ import RuleSuggestionsPersistentPanel from "@/components/RuleSuggestionsPersiste
 import InsightsAnomaliesCard from "./components/InsightsAnomaliesCard";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import DevFab from "@/components/dev/DevFab";
+import DevBadge from "@/components/dev/DevBadge";
 
 // Log frontend version info
 console.info("[Web] branch=", __WEB_BRANCH__, "commit=", __WEB_COMMIT__);
@@ -179,15 +180,8 @@ const App: React.FC = () => {
           <h1 className="text-3xl font-bold">Finance Agent</h1>
           <div className="flex items-center gap-3">
             <LoginForm />
-            {/* DEV badge */}
-            {flags.dev && (
-              <span
-                title="Dev mode — press Ctrl+Shift+D to toggle"
-                className="ml-2 rounded-full border border-emerald-400/30 bg-emerald-400/10 px-2 py-0.5 text-[11px] font-medium text-emerald-300"
-              >
-                DEV
-              </span>
-            )}
+            {/* DEV badge dropdown */}
+            {flags.dev && <DevBadge />}
             <DbRevBadge dbRevision={dbRev ?? undefined} inSync={inSync} />
             <AboutDrawer />
             <input type="month" className="bg-neutral-900 border border-neutral-800 rounded px-3 py-2" value={month} onChange={e=>{ setMonth(e.target.value); setGlobalMonth(e.target.value); }} />

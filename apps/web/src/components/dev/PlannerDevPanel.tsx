@@ -81,7 +81,7 @@ export default function PlannerDevPanel({ className }: { className?: string }) {
   } as { mode?: string; steps?: number; throttle?: string };
 
   return (
-    <Card className={cn("rounded-2xl border border-white/10 bg-white/5", className)}>
+  <Card className={cn("panel p-0", className)}>
       <CardHeader className="pb-3">
         <CardTitle className="text-base">
           Planner DevTool <span className="ml-2 text-xs opacity-60">dev-only</span>
@@ -95,7 +95,7 @@ export default function PlannerDevPanel({ className }: { className?: string }) {
           <textarea
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
-            className="w-full min-h-[120px] rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm placeholder:text-white/40 outline-none focus:ring-2 focus:ring-sky-500/40"
+            className="input-muted w-full min-h-[120px] text-sm placeholder:text-white/40"
             placeholder='e.g., "Give me my top merchants for July and generate a PDF"'
           />
           <div className="mt-3 flex items-center gap-2">
@@ -126,7 +126,7 @@ export default function PlannerDevPanel({ className }: { className?: string }) {
                     <li key={i} className="grid grid-cols-[auto_1fr_auto] items-center gap-2 rounded-lg bg-white/5 px-2 py-1">
                       <span className="text-xs opacity-70">{it.kind}</span>
                       <span className="text-xs truncate">{(it as any).title ?? (it as any).description ?? (it as any).path ?? ""}</span>
-                      <span className="text-[10px] rounded-full border border-white/15 px-2 py-[2px] opacity-70">{(it as any).status ?? "pending"}</span>
+                      <span className="pill">{(it as any).status ?? "pending"}</span>
                     </li>
                   ))}
                 </ul>
