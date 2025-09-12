@@ -55,6 +55,7 @@ export default function RuleSuggestionsPersistentPanel() {
   React.useEffect(() => { load(); }, [load]);
 
   return (
+    <section className="panel p-4">
     <Card>
       <header className="flex items-center gap-3 pb-1 mb-3 border-b border-border">
         <h3 className="text-base font-semibold">Rule Suggestions</h3>
@@ -88,7 +89,8 @@ export default function RuleSuggestionsPersistentPanel() {
           <SuggestionIgnoresPanel />
         </div>
       )}
-    </Card>
+  </Card>
+  </section>
   );
 }
 

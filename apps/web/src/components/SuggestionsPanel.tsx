@@ -120,6 +120,7 @@ export default function SuggestionsPanel() {
   };
 
   return (
+    <section className="panel p-4">
     <Card>
       {/* Header: title+tooltip left; actions pushed right */}
       <header className="flex items-center gap-3 pb-1 mb-3 border-b border-border">
@@ -227,5 +228,6 @@ export default function SuggestionsPanel() {
         )}
       </div>
   </Card>
+  </section>
   );
 }

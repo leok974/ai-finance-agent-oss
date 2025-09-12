@@ -88,7 +88,7 @@ export default function UnknownsPanel({ month, onSeedRule, onChanged, refreshKey
 
   const titleMonth = (currentMonth ?? month) ? `— ${currentMonth ?? month}` : '— (latest)'
   return (
-      <div id="unknowns-panel">
+      <section id="unknowns-panel" className="panel p-4">
         <Card title={`Unknowns ${titleMonth}`}>
       {loading && (
         <div className="space-y-2">
@@ -174,7 +174,7 @@ export default function UnknownsPanel({ month, onSeedRule, onChanged, refreshKey
       </ul>
       <ExplainSignalDrawer txnId={explainTxnId} open={explainOpen} onOpenChange={setExplainOpen} />
       </Card>
-    </div>
+    </section>
   )
 }
 

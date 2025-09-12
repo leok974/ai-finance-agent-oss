@@ -32,7 +32,7 @@
 @layer components {
   /* Soft, uniform cards everywhere */
   .panel {
-  @apply rounded-2xl border border-white/10 bg-white/5;
+  @apply rounded-2xl border border-white/10 bg-white/5 shadow-sm;
   }
   /* Optional muted helpers */
   .card-muted { @apply rounded-2xl border border-white/10 bg-white/5; }
@@ -62,12 +62,12 @@
 
   /* Inputs inside panels (muted) */
   .input-muted {
-  @apply rounded-xl border border-white/10 bg-white/5 outline-none focus:ring-2 focus:ring-sky-500/40;
+  @apply rounded-xl border border-white/10 bg-white/[0.04] focus:outline-none focus:ring-2 focus:ring-white/20;
   }
 
   /* Tiny pill for tags/status */
   .pill {
-  @apply rounded-full border border-white/15 px-2 py-[2px] text-[10px] opacity-70;
+  @apply inline-flex items-center rounded-full border border-white/15 px-2 py-0.5 text-xs opacity-80;
   }
 
   /* Action rows */

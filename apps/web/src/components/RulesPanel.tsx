@@ -174,6 +174,7 @@ function RulesPanelImpl({ month, refreshKey }: Props) {
   }
 
   return (
+    <section className="panel p-4">
     <Card>
       {/* Header grid prevents overlap and keeps a tidy top-right Actions area */}
       <header className="grid grid-cols-[1fr_auto] gap-3 pb-3 mb-3 border-b border-border">
@@ -361,6 +362,7 @@ function RulesPanelImpl({ month, refreshKey }: Props) {
         </div>
       )}
   </Card>
+  </section>
   );
 }
 
