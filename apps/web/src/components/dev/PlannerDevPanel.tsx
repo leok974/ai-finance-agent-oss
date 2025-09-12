@@ -1,13 +1,8 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { agentPlanPreview, agentPlanApply, agentPlanStatus, type PlannerPlanItem, downloadReportExcel } from "@/lib/api";
-import { Button } from "@/components/ui/button";
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
-import { Checkbox } from "@/components/ui/checkbox";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Card } from "@/components/Card";
-import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import { Wand2, Play, FileSpreadsheet, RefreshCcw, Beaker, Copy, MessageSquareText, ListChecks, Sparkles, PiggyBank, CheckSquare } from "lucide-react";
 
 export default function PlannerDevPanel({ className }: { className?: string }) {
   const [prompt, setPrompt] = useState<string>(() => localStorage.getItem("planner:q") || "Give me my top merchants for July and generate a PDF");
@@ -20,7 +15,6 @@ export default function PlannerDevPanel({ className }: { className?: string }) {
     return urlBypass || saved;
   });
   const [throttle, setThrottle] = useState<{ rate_per_min: number; capacity: number; tokens: number } | null>(null);
-  const [statusRefreshing, setStatusRefreshing] = useState(false);
   const [selected, setSelected] = useState<PlannerPlanItem[]>([]);
 
   useEffect(() => {
@@ -60,13 +54,10 @@ export default function PlannerDevPanel({ className }: { className?: string }) {
 
   const loadStatus = useCallback(async () => {
     try {
-      setStatusRefreshing(true);
       const r = await agentPlanStatus();
       setThrottle(r.throttle);
     } catch {
       // ignore
-    } finally {
-      setStatusRefreshing(false);
     }
   }, []);
   useEffect(() => { loadStatus(); }, [loadStatus]);
@@ -77,8 +68,6 @@ export default function PlannerDevPanel({ className }: { className?: string }) {
     await navigator.clipboard.writeText(data);
   }, [plan, prompt, bypassThrottle]);
 
-  const chars = prompt.length;
-  const charHint = chars > 240 ? "text-amber-400" : "text-muted-foreground";
   const allSelected = (plan?.items?.length || 0) > 0 && selected.length === (plan?.items?.length || 0);
 
   function toggleItem(item: PlannerPlanItem) {
@@ -90,148 +79,56 @@ export default function PlannerDevPanel({ className }: { className?: string }) {
   }
 
   return (
-    <Card className={cn("mt-6", className)}>
-      {/* Header */}
-      <div className="flex items-center justify-between border-b border-border pb-2">
-        <div className="flex items-center gap-2">
-          <h2 className="text-lg font-semibold">Planner DevTool</h2>
-          <span className="text-xs font-medium px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground">dev-only</span>
-        </div>
-        <Button
-          variant="ghost"
-          className="h-9 w-9 rounded-md"
-          onClick={loadStatus}
-          disabled={statusRefreshing}
-          aria-label="Refresh status"
-        >
-          <RefreshCcw className={cn("h-4 w-4", statusRefreshing && "animate-spin")} />
-        </Button>
-      </div>
+    <Card className={cn("col-span-12 lg:col-span-7", className)}>
+      <CardHeader className="py-3">
+        <CardTitle className="text-base">
+          Planner DevTool <span className="ml-2 text-[10px] rounded bg-white/10 px-1.5 py-0.5 opacity-70">dev-only</span>
+        </CardTitle>
+      </CardHeader>
 
-      {/* Body */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 pt-3">
-        {/* Left: Prompt (prettier textarea) */}
-        <div className="lg:col-span-2">
-          <label htmlFor="planner-prompt" className="text-sm text-muted-foreground block mb-1">
-            Natural-language planner prompt
-          </label>
-          <div className="relative">
-            <div className="pointer-events-none absolute left-3 top-2.5 text-muted-foreground/70">
-              <MessageSquareText className="h-4 w-4" />
-            </div>
-            <textarea
-              id="planner-prompt"
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              rows={4}
-              className="w-full rounded-xl bg-background text-foreground border border-border pl-9 pr-14 py-2
-                         placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/40"
-              placeholder='e.g., "Give me my top merchants for July and generate a PDF"'
-            />
-            <div className={cn("absolute right-3 bottom-2 text-xs", charHint)}>{chars}</div>
-          </div>
+      <CardContent className="space-y-3">
+        {/* prompt textarea */}
+        <textarea
+          value={prompt}
+          onChange={e => setPrompt(e.target.value)}
+          rows={4}
+          className="w-full rounded-md border border-white/10 bg-neutral-900/60 px-3 py-2 text-sm outline-none focus:border-white/20"
+          placeholder="Give me my top merchants for July and generate a PDF"
+        />
 
-          {/* Advanced toggles */}
-          <div className="mt-3 flex items-center gap-3">
-            <div className="flex items-center gap-2">
-              <Switch id="planner-throttle" checked={bypassThrottle} onCheckedChange={setBypassThrottle} />
-              <label htmlFor="planner-throttle" className="text-sm text-muted-foreground">Bypass planner throttle</label>
-            </div>
-          </div>
-        </div>
+        {/* throttle switch */}
+        <label className="flex items-center gap-2 text-sm">
+          <Switch checked={bypassThrottle} onCheckedChange={setBypassThrottle} />
+          Bypass planner throttle
+        </label>
 
-        {/* Right: Plan meta + compact items */}
-        <div className="rounded-xl border border-border p-3 bg-muted/30">
-          <div className="flex items-center justify-between mb-2">
-            <div className="text-sm text-muted-foreground">Planner status</div>
-            <Button variant="ghost" className="h-7 px-2 py-1 text-xs" onClick={toggleAll} disabled={!plan?.items?.length}>
-              {allSelected ? "Unselect all" : "Select all"}
-            </Button>
-          </div>
-
-          <div className="space-y-1 text-sm mb-3">
-            <div><span className="text-muted-foreground">Month:</span> {plan?.month ?? "—"}</div>
-            <div><span className="text-muted-foreground">Items:</span> {plan?.items?.length ?? 0}</div>
-            <div>
-              <span className="text-muted-foreground">Throttle:</span>{" "}
-              {throttle ? `${Math.floor(throttle.tokens)}/${throttle.capacity} • ${throttle.rate_per_min}/min` : "—"}
-            </div>
-          </div>
-
-          {/* Compact plan items */}
-          <div className="text-sm text-muted-foreground mb-1">Plan items</div>
-          <div className="rounded-lg border border-border bg-background/60">
-            <ScrollArea className="h-44">
-              {!plan?.items?.length ? (
-                <div className="p-3 text-sm text-muted-foreground/70">No plan yet. Click <b>Preview Plan</b>.</div>
-              ) : (
-                <ul className="divide-y divide-border">
-                  {plan.items.map((it: PlannerPlanItem, idx: number) => {
-                    const checked = selected.includes(it);
-                    return (
-                      <li key={idx} className="flex items-center gap-3 px-3 py-2 hover:bg-muted/40">
-                        <Checkbox checked={checked} onCheckedChange={() => toggleItem(it)} />
-                        <div className="shrink-0 text-muted-foreground">
-                          {it.kind === "categorize_unknowns" ? (
-                            <ListChecks className="h-4 w-4" />
-                          ) : it.kind === "seed_rule" ? (
-                            <Sparkles className="h-4 w-4" />
-                          ) : it.kind === "budget_limit" ? (
-                            <PiggyBank className="h-4 w-4" />
-                          ) : it.kind === "export_report" ? (
-                            <FileSpreadsheet className="h-4 w-4" />
-                          ) : (
-                            <CheckSquare className="h-4 w-4" />
-                          )}
-                        </div>
-                        <div className="flex-1">
-                          <div className="line-clamp-1">{(it as any).title ? (it as any).title : it.kind}</div>
-                          <div className="text-xs text-muted-foreground">
-                            {it.kind === "categorize_unknowns" && Array.isArray((it as any).txn_ids) ? `${(it as any).txn_ids.length} txns` : null}
-                            {it.kind === "budget_limit" && (it as any).category ? ` • ${(it as any).category} → ${(it as any).limit}` : null}
-                          </div>
-                        </div>
-                        {(it as any).impact ? (
-                          <Badge variant="secondary" className="shrink-0">{(it as any).impact}</Badge>
-                        ) : null}
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-            </ScrollArea>
-          </div>
-        </div>
-      </div>
-
-      {/* Footer actions */}
-      <div className="mt-4 flex flex-wrap items-center gap-2">
-        <Button onClick={onPreview} disabled={previewing} className="gap-2">
-          <Wand2 className="h-4 w-4" />
-          {previewing ? "Previewing…" : "Preview Plan"}
-        </Button>
-
-        <Button onClick={onApply} disabled={!plan || !selected.length || applying} className="gap-2" variant="secondary">
-          <Play className={cn("h-4 w-4", applying && "animate-pulse")} />
-          {applying ? "Applying…" : `Apply Selected (${selected.length || 0})`}
-        </Button>
-
-        <Button onClick={copyJson} variant="ghost" className="gap-2">
-          <Copy className="h-4 w-4" />
-          Copy JSON
-        </Button>
-
-        <div className="ml-auto flex items-center gap-2">
-          <Button variant="ghost" className="gap-2 h-8 px-2" onClick={onPreview} disabled={previewing}>
-            <Wand2 className="h-4 w-4" />
-            Plan
-          </Button>
-          <Button variant="ghost" className="gap-2 h-8 px-2" onClick={onApply} disabled={!plan || !selected.length || applying}>
-            <FileSpreadsheet className="h-4 w-4" />
+        {/* buttons */}
+        <div className="flex flex-wrap items-center gap-2">
+          <button onClick={onPreview} className="inline-flex items-center gap-2 rounded-md border border-white/10 bg-white/5 px-3 py-1.5 text-sm hover:bg-white/10">
+            Preview Plan
+          </button>
+          <button onClick={onApply} className="inline-flex items-center gap-2 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 text-sm text-emerald-300 hover:bg-emerald-500/15">
             Plan &amp; Run
-          </Button>
+          </button>
         </div>
-      </div>
+
+        {/* compact plan items */}
+        <div className="rounded-lg border border-white/10 bg-neutral-900/40 p-2">
+          {!plan?.items?.length ? (
+            <div className="text-sm opacity-70">No plan yet. Click <span className="underline">Preview Plan</span>.</div>
+          ) : (
+            <ul className="space-y-1 text-sm leading-tight">
+              {plan.items.map((it: PlannerPlanItem, i: number) => (
+                <li key={i} className="grid grid-cols-12 items-center gap-2 rounded-md bg-white/5 px-2 py-1.5">
+                  <span className="col-span-6 truncate">{(it as any).title ?? it.kind}</span>
+                  <span className="col-span-3 text-xs opacity-70">{it.kind}</span>
+                  <span className="col-span-3 text-right text-xs opacity-70">{(it as any).status ?? "queued"}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </CardContent>
     </Card>
   );
 }

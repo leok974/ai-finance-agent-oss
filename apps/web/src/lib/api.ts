@@ -38,6 +38,16 @@ export const charts = {
   monthSummary: () => api(`/charts/month_summary`),
 };
 
+// prefer GET-only month resolution to avoid 422s on some branches
+export async function resolveMonthFromCharts(): Promise<string> {
+  try {
+    const r = await charts.monthSummary();
+    return (r as any)?.month ?? "";
+  } catch {
+    return "";
+  }
+}
+
 // Optional bearer fallback: keep a transient token if needed (e.g., dev/testing)
 let accessToken: string | null = null;
 export const setAccessToken = (t: string | null) => { accessToken = t; };

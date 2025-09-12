@@ -7,7 +7,7 @@ import SuggestionsPanel from "./components/SuggestionsPanel";
 import { AgentResultRenderer } from "./components/AgentResultRenderers";
 import { useOkErrToast } from "@/lib/toast-helpers";
 // import RulesPanel from "./components/RulesPanel";
-import { getAlerts, getMonthSummary, getMonthMerchants, getMonthFlows, agentTools, meta, getHealthz, api, charts } from './lib/api'
+import { getAlerts, getMonthSummary, getMonthMerchants, getMonthFlows, agentTools, meta, getHealthz, api, charts, resolveMonthFromCharts } from './lib/api'
 import DbRevBadge from './components/DbRevBadge';
 import { flags } from "@/lib/flags";
 import AboutDrawer from './components/AboutDrawer';
@@ -64,15 +64,15 @@ const App: React.FC = () => {
 
   // Initialize month once
   async function resolveMonth(): Promise<string> {
+    // prefer GET-only resolver to avoid 422s from some branches
+    const viaCharts = await resolveMonthFromCharts();
+    if (viaCharts) return viaCharts;
     try {
-      const r = await api<{ month: string }>("/agent/tools/charts/summary", {
-        method: "POST",
-        body: JSON.stringify({ month: null }),
-      });
-      if (r?.month) return r.month;
-    } catch {}
-    const g = await charts.monthSummary();
-    return g.month;
+      const g = await charts.monthSummary();
+      return (g as any)?.month;
+    } catch {
+      return "";
+    }
   }
 
   useEffect(() => {
@@ -179,18 +179,14 @@ const App: React.FC = () => {
           <h1 className="text-3xl font-bold">Finance Agent</h1>
           <div className="flex items-center gap-3">
             <LoginForm />
+            {/* DEV badge */}
             {flags.dev && (
-              <button
-                title="Toggle Dev Dock (Ctrl+Shift+D also works)"
-                className="ml-2 rounded-full border px-2 py-0.5 text-[10px] tracking-wide opacity-80 hover:opacity-100"
-                onClick={() => {
-                  const v = localStorage.getItem("DEV_DOCK") === "1" ? "0" : "1";
-                  localStorage.setItem("DEV_DOCK", v);
-                  location.reload(); // simple + reliable
-                }}
+              <span
+                title="Dev mode — press Ctrl+Shift+D to toggle"
+                className="ml-2 rounded-full border border-emerald-400/30 bg-emerald-400/10 px-2 py-0.5 text-[11px] font-medium text-emerald-300"
               >
                 DEV
-              </button>
+              </span>
             )}
             <DbRevBadge dbRevision={dbRev ?? undefined} inSync={inSync} />
             <AboutDrawer />
@@ -241,8 +237,12 @@ const App: React.FC = () => {
             {/* Dev tools only in DevDock now */}
           </div>
           <ChatDock />
-          {flags.dev && <DevDock />}
-          {flags.dev && <DevFab />}
+          {flags.dev && (
+            <>
+              <DevDock />    {/* collapsible Dev panel */}
+              <DevFab />     {/* floating button bottom-right */}
+            </>
+          )}
         </div>
       </div>
   </div>

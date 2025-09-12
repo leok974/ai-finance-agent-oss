@@ -174,4 +174,8 @@ body { @apply bg-neutral-950 text-neutral-100; }
   margin-right: .5rem;
 }
 
+/* Demo polish: hide noisy chart footnotes that clip */
+[data-testid="chart-tip"],
+.card .tip { display: none !important; }
+
 
