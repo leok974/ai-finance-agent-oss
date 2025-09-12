@@ -39,6 +39,7 @@ console.info("[Web] branch=", __WEB_BRANCH__, "commit=", __WEB_COMMIT__);
 
 const App: React.FC = () => {
   const { ok } = useOkErrToast();
+  const [devDockOpen, setDevDockOpen] = useState<boolean>(() => (import.meta as any).env?.VITE_DEV_UI === '1' || localStorage.getItem('DEV_DOCK') !== '0');
   const [month, setMonth] = useState<string>("");
   const [ready, setReady] = useState<boolean>(false);
   const [refreshKey, setRefreshKey] = useState<number>(0);
@@ -180,13 +181,22 @@ const App: React.FC = () => {
           <h1 className="text-3xl font-bold">Finance Agent</h1>
           <div className="flex items-center gap-3">
             <LoginForm />
-            {/* DEV badge dropdown */}
-            {flags.dev && <DevBadge />}
             <DbRevBadge dbRevision={dbRev ?? undefined} inSync={inSync} />
             <AboutDrawer />
             <input type="month" className="bg-neutral-900 border border-neutral-800 rounded px-3 py-2" value={month} onChange={e=>{ setMonth(e.target.value); setGlobalMonth(e.target.value); }} />
             <button className="btn btn-sm hover:bg-accent" onClick={()=>setRefreshKey(k=>k+1)}>Refresh</button>
             <a href="#rule-suggestions" className="btn btn-ghost btn-sm" title="Jump to persistent Rule Suggestions">Suggestions</a>
+            {flags.dev && (
+              <DevBadge
+                // show branch/commit if available via globals
+                branch={String((globalThis as any).__WEB_BRANCH__ ?? '')}
+                commit={String((globalThis as any).__WEB_COMMIT__ ?? '')}
+                openDevDock={devDockOpen}
+                onToggleDevDock={() => {
+                  const next = !devDockOpen; setDevDockOpen(next); try { localStorage.setItem('DEV_DOCK', next ? '1' : '0'); } catch {}
+                }}
+              />
+            )}
           </div>
         </header>
 
@@ -195,7 +205,9 @@ const App: React.FC = () => {
         )}
 
         {/* Upload CSV */}
-  <UploadCsv defaultReplace={true} onUploaded={onCsvUploaded} />
+        <section className="panel p-4">
+          <UploadCsv defaultReplace={true} onUploaded={onCsvUploaded} />
+        </section>
 
         {/* Insights */}
         {insights && <AgentResultRenderer tool="insights.expanded" data={insights} />}
@@ -222,36 +234,24 @@ const App: React.FC = () => {
         {/* Rules + Tester */}
         <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
           <RulesPanel refreshKey={refreshKey} />
-          {/* Dev tools only in DevDock now */}
+          {/* Keep Rule Tester in main grid (right column) when enabled */}
+          {flags.ruleTester ? <RuleTesterPanel /> : <div className="hidden md:block" />}
           </div>
 
           {/* Status / Recent (right-side style) */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="hidden md:block" />
-            {/* Dev tools only in DevDock now */}
+            {/* Keep ML Status in right column when enabled */}
+            {flags.mlSelftest ? <MLStatusCard /> : <div className="hidden md:block" />}
           </div>
           <ChatDock />
 
-          {/* Developer Tools section (old layout) */}
+          {/* Dev Dock at very bottom: only Planner DevTool */}
           {flags.dev && (
-            <section className="mt-8 rounded-2xl border border-white/10 bg-black/20 p-4">
-              <div className="text-sm font-medium opacity-80 mb-3">Developer Tools</div>
-
-              {flags.planner && (
-                <div className="mb-6">
-                  <PlannerDevPanel />   {/* Preview Plan / Plan & Run + status + items */}
-                </div>
-              )}
-
-              <div className="grid gap-6 md:grid-cols-2">
-                {flags.ruleTester && <RuleTesterPanel />}
-                {flags.mlSelftest && <MLStatusCard />}
-              </div>
-            </section>
+            <DevDock open={devDockOpen}>
+              {flags.planner && <PlannerDevPanel />}
+            </DevDock>
           )}
-
-          {/* Floating dock for quick access (like before) */}
-          {flags.dev && <DevDock />}
           {flags.dev && <DevFab />}
         </div>
       </div>

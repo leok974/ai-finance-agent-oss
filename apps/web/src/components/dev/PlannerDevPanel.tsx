@@ -81,14 +81,13 @@ export default function PlannerDevPanel({ className }: { className?: string }) {
   } as { mode?: string; steps?: number; throttle?: string };
 
   return (
-  <Card className={cn("panel p-0", className)}>
-      <CardHeader className="pb-3">
-        <CardTitle className="text-base">
-          Planner DevTool <span className="ml-2 text-xs opacity-60">dev-only</span>
-        </CardTitle>
-      </CardHeader>
+    <section id="planner-dev" className={cn("panel p-4", className)}>
+      <div className="flex items-center gap-2 mb-3">
+        <h2 className="text-lg font-semibold">Planner DevTool</h2>
+        <span className="pill">dev-only</span>
+      </div>
 
-      <CardContent className="grid gap-4 md:grid-cols-2">
+      <div className="grid gap-4 md:grid-cols-2">
         {/* LEFT: Prompt */}
         <div>
           <div className="text-sm opacity-80 mb-2">Natural-language planner prompt</div>
@@ -136,17 +135,16 @@ export default function PlannerDevPanel({ className }: { className?: string }) {
             </div>
           </div>
         </div>
-      </CardContent>
+      </div>
 
-      <CardFooter className="flex flex-wrap items-center gap-2 justify-between">
+      <div className="flex flex-wrap items-center gap-2 justify-between mt-4">
         <div className="flex items-center gap-2">
           <Button onClick={onPreview} className="px-3 py-1.5 text-sm">Preview Plan</Button>
           <Button variant="secondary" onClick={onPlanAndRun} className="px-3 py-1.5 text-sm">Plan &amp; Run</Button>
           <Button variant="ghost" onClick={onCopyJson} className="px-3 py-1.5 text-sm">Copy JSON</Button>
         </div>
-        {/* keep your tiny inline Plan/Plan&Run buttons if you still want them; otherwise this footer replaces them */}
-      </CardFooter>
-    </Card>
+      </div>
+    </section>
   );
 }
 

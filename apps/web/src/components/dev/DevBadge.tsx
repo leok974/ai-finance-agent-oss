@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { GitBranch, Check, Rocket, ShieldCheck, Settings2 } from "lucide-react"
+import { GitBranch, Check, Rocket, ShieldCheck, Settings2, Wrench } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -24,7 +24,14 @@ function write(key: string, on: boolean) {
   localStorage.setItem(key, on ? "1" : "0")
 }
 
-export default function DevBadge() {
+type Props = {
+  branch?: string;
+  commit?: string;
+  openDevDock?: boolean;
+  onToggleDevDock?: () => void;
+}
+
+export default function DevBadge({ branch, commit, openDevDock, onToggleDevDock }: Props) {
   const [flags, setFlags] = useState<Flags>({ dev: true, ruleTester: true, mlSelftest: true, planner: true })
 
   useEffect(() => {
@@ -46,13 +53,24 @@ export default function DevBadge() {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="secondary" className="h-7 gap-1 rounded-full border-white/15 bg-white/5 px-2 py-0 text-xs">
+        <Button
+          variant="secondary"
+          className="h-7 gap-1 rounded-full border-white/15 bg-white/5 px-2 py-0 text-xs"
+          title={branch ? `branch: ${branch}${commit ? ` @ ${commit.slice(0,7)}` : ''}` : undefined}
+        >
           <GitBranch className="h-3.5 w-3.5" />
           <span>DEV</span>
         </Button>
       </DropdownMenuTrigger>
 
       <DropdownMenuContent align="end" className="min-w-[220px]">
+        {onToggleDevDock && (
+          <DropdownMenuItem onClick={onToggleDevDock}>
+            <Wrench className="mr-2 h-4 w-4" />
+            Toggle Dev Dock {openDevDock ? <Check className="ml-auto h-4 w-4 opacity-70" /> : null}
+          </DropdownMenuItem>
+        )}
+        {onToggleDevDock && <DropdownMenuSeparator />}
         <DropdownMenuItem onClick={() => { write("DEV_UI", !flags.dev); reload() }}>
           <Settings2 className="mr-2 h-4 w-4" />
           Toggle Dev UI {flags.dev && <Check className="ml-auto h-4 w-4 opacity-70" />}

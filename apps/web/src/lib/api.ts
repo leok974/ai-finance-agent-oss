@@ -1259,7 +1259,13 @@ export async function agentPlanApply(body: {
 export async function agentPlanStatus() {
   try {
     return await api("/agent/plan/status");
-  } catch (e) {
+  } catch (e: any) {
+    // If 404 or route missing, return a benign default without throwing
+    const msg = String(e?.message || e || "");
+    if (/\b404\b/.test(msg) || /Not Found/i.test(msg)) {
+      return { mode: "deterministic", steps: 0, throttle: null, available: false };
+    }
+    // For other errors, still return default to avoid dev console noise
     return { mode: "deterministic", steps: 0, throttle: null, available: false };
   }
 }
