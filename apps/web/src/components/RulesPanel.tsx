@@ -174,7 +174,8 @@ function RulesPanelImpl({ month, refreshKey }: Props) {
   }
 
   return (
-    <Card>
+    <section className="panel p-4 md:p-5">
+    <div>
       {/* Header grid prevents overlap and keeps a tidy top-right Actions area */}
       <header className="grid grid-cols-[1fr_auto] gap-3 pb-3 mb-3 border-b border-border">
         <div className="flex items-center gap-2 min-w-0">
@@ -291,13 +292,13 @@ function RulesPanelImpl({ month, refreshKey }: Props) {
       )}
 
       {!!rules?.length && (
-        <div className="space-y-3">
+  <div className="space-y-3">
           {rules.map(rule => {
             const isBudget = ((rule as any).kind === 'budget' || String(rule.id).startsWith('budget:'));
             const category = (rule as any).category as string | undefined;
             const amountFromDesc = typeof (rule as any).amount === 'number' ? (rule as any).amount : parseAmountFromDescription((rule as any).description);
             return (
-              <div key={rule.id} className="p-3 rounded-xl border flex items-center justify-between">
+              <div key={rule.id} className="panel-tight md:p-5 lg:p-6 flex items-center justify-between">
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
                     <span className="font-medium truncate">{rule.display_name}</span>
@@ -360,7 +361,8 @@ function RulesPanelImpl({ month, refreshKey }: Props) {
           })}
         </div>
       )}
-  </Card>
+  </div>
+  </section>
   );
 }
 

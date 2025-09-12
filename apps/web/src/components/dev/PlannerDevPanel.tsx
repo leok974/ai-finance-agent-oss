@@ -1,7 +1,9 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { agentPlanPreview, agentPlanApply, agentPlanStatus, type PlannerPlanItem, downloadReportExcel } from "@/lib/api";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { Card, CardHeader, CardTitle, CardContent, CardFooter } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 
 export default function PlannerDevPanel({ className }: { className?: string }) {
@@ -68,68 +70,81 @@ export default function PlannerDevPanel({ className }: { className?: string }) {
     await navigator.clipboard.writeText(data);
   }, [plan, prompt, bypassThrottle]);
 
-  const allSelected = (plan?.items?.length || 0) > 0 && selected.length === (plan?.items?.length || 0);
-
-  function toggleItem(item: PlannerPlanItem) {
-    setSelected((prev) => (prev.includes(item) ? prev.filter((p) => p !== item) : [...prev, item]));
-  }
-  function toggleAll() {
-    if (!plan?.items?.length) return;
-    setSelected(allSelected ? [] : [...plan.items]);
-  }
+  // Derived UI aliases (no logic change)
+  const planItems: PlannerPlanItem[] = (plan?.items as PlannerPlanItem[] | undefined) ?? [];
+  const onPlanAndRun = onApply;
+  const onCopyJson = copyJson;
+  const status = {
+    mode: (plan as any)?.mode,
+    steps: planItems.length,
+    throttle: throttle ? `${throttle.rate_per_min}/min · cap ${throttle.capacity} · tokens ${throttle.tokens}` : undefined,
+  } as { mode?: string; steps?: number; throttle?: string };
 
   return (
-    <Card className={cn("col-span-12 lg:col-span-7", className)}>
-      <CardHeader className="py-3">
-        <CardTitle className="text-base">
-          Planner DevTool <span className="ml-2 text-[10px] rounded bg-white/10 px-1.5 py-0.5 opacity-70">dev-only</span>
-        </CardTitle>
-      </CardHeader>
+  <section id="planner-dev" className={cn("panel-tight md:p-5 lg:p-6", className)}>
+      <div className="flex items-center gap-2 mb-3">
+        <h2 className="text-lg font-semibold">Planner DevTool</h2>
+        <span className="pill">dev-only</span>
+      </div>
 
-      <CardContent className="space-y-3">
-        {/* prompt textarea */}
-        <textarea
-          value={prompt}
-          onChange={e => setPrompt(e.target.value)}
-          rows={4}
-          className="w-full rounded-md border border-white/10 bg-neutral-900/60 px-3 py-2 text-sm outline-none focus:border-white/20"
-          placeholder="Give me my top merchants for July and generate a PDF"
-        />
-
-        {/* throttle switch */}
-        <label className="flex items-center gap-2 text-sm">
-          <Switch checked={bypassThrottle} onCheckedChange={setBypassThrottle} />
-          Bypass planner throttle
-        </label>
-
-        {/* buttons */}
-        <div className="flex flex-wrap items-center gap-2">
-          <button onClick={onPreview} className="inline-flex items-center gap-2 rounded-md border border-white/10 bg-white/5 px-3 py-1.5 text-sm hover:bg-white/10">
-            Preview Plan
-          </button>
-          <button onClick={onApply} className="inline-flex items-center gap-2 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 text-sm text-emerald-300 hover:bg-emerald-500/15">
-            Plan &amp; Run
-          </button>
+      <div className="grid gap-4 md:grid-cols-2">
+        {/* LEFT: Prompt */}
+        <div>
+          <div className="text-sm opacity-80 mb-2">Natural-language planner prompt</div>
+          <textarea
+            value={prompt}
+            onChange={(e) => setPrompt(e.target.value)}
+            className="input-muted w-full min-h-[120px] text-sm placeholder:text-white/40"
+            placeholder='e.g., "Give me my top merchants for July and generate a PDF"'
+          />
+          <div className="mt-3 flex items-center gap-2">
+            <Switch id="bypass" checked={bypassThrottle} onCheckedChange={setBypassThrottle} />
+            <Label htmlFor="bypass" className="text-sm select-none">Bypass planner throttle</Label>
+          </div>
         </div>
 
-        {/* compact plan items */}
-        <div className="rounded-lg border border-white/10 bg-neutral-900/40 p-2">
-          {!plan?.items?.length ? (
-            <div className="text-sm opacity-70">No plan yet. Click <span className="underline">Preview Plan</span>.</div>
-          ) : (
-            <ul className="space-y-1 text-sm leading-tight">
-              {plan.items.map((it: PlannerPlanItem, i: number) => (
-                <li key={i} className="grid grid-cols-12 items-center gap-2 rounded-md bg-white/5 px-2 py-1.5">
-                  <span className="col-span-6 truncate">{(it as any).title ?? it.kind}</span>
-                  <span className="col-span-3 text-xs opacity-70">{it.kind}</span>
-                  <span className="col-span-3 text-right text-xs opacity-70">{(it as any).status ?? "queued"}</span>
-                </li>
-              ))}
-            </ul>
-          )}
+        {/* RIGHT: Status */}
+        <div>
+          <div className="text-sm opacity-80 mb-2 flex items-center justify-between">
+            <span>Planner status</span>
+            {/* keep your little refresh/search icon button if you had one */}
+          </div>
+
+          <div className="rounded-xl border border-white/10 bg-white/5 p-3 text-sm">
+            <div className="grid grid-cols-3 gap-2">
+              <div className="opacity-70">Mode:</div><div className="col-span-2">{status?.mode ?? "—"}</div>
+              <div className="opacity-70">Steps:</div><div className="col-span-2">{status?.steps ?? 0}</div>
+              <div className="opacity-70">Throttle:</div><div className="col-span-2">{status?.throttle ?? "—"}</div>
+            </div>
+
+            <div className="mt-3 border-t border-white/10 pt-3">
+              <div className="mb-2 text-sm opacity-80">Plan items</div>
+              {planItems?.length ? (
+                <ul className="space-y-1">
+                  {planItems.map((it, i) => (
+                    <li key={i} className="grid grid-cols-[auto_1fr_auto] items-center gap-2 rounded-lg bg-white/5 px-2 py-1">
+                      <span className="text-xs opacity-70">{it.kind}</span>
+                      <span className="text-xs truncate">{(it as any).title ?? (it as any).description ?? (it as any).path ?? ""}</span>
+                      <span className="pill">{(it as any).status ?? "pending"}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <div className="text-xs opacity-70">No plan yet. Click <span className="font-medium">Preview Plan</span>.</div>
+              )}
+            </div>
+          </div>
         </div>
-      </CardContent>
-    </Card>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2 justify-between mt-4">
+        <div className="flex items-center gap-2">
+          <Button onClick={onPreview} className="px-3 py-1.5 text-sm">Preview Plan</Button>
+          <Button variant="secondary" onClick={onPlanAndRun} className="px-3 py-1.5 text-sm">Plan &amp; Run</Button>
+          <Button variant="ghost" onClick={onCopyJson} className="px-3 py-1.5 text-sm">Copy JSON</Button>
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -138,7 +153,7 @@ export default function PlannerDevPanel({ className }: { className?: string }) {
  * Prefer backend `report_url` if present; otherwise fall back to client Excel builder.
  * Designed to be unit-tested.
  */
-export async function handleApply(args: {
+async function handleApply(args: {
   res: any;                 // response from agentPlanApply(...)
   month?: string;           // month string like "2025-08"
   selected: PlannerPlanItem[];

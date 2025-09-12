@@ -222,7 +222,7 @@ export default function RuleTesterPanel({ onChanged }: { onChanged?: () => void 
   }
 
   return (
-    <div className="panel" id="rule-tester-anchor">
+  <div className="panel-tight md:p-5 lg:p-6" id="rule-tester-anchor">
       <div className="flex items-center justify-between mb-3">
         {/* left: title + tooltip (baseline aligned) */}
         <div className="flex items-baseline gap-2">

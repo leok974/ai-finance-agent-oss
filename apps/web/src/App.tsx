@@ -7,8 +7,7 @@ import SuggestionsPanel from "./components/SuggestionsPanel";
 import { AgentResultRenderer } from "./components/AgentResultRenderers";
 import { useOkErrToast } from "@/lib/toast-helpers";
 // import RulesPanel from "./components/RulesPanel";
-import { getAlerts, getMonthSummary, getMonthMerchants, getMonthFlows, agentTools, meta, getHealthz, api, charts, resolveMonth as resolveMonthApi, resolveMonthFromCharts } from './lib/api'
-import DbRevBadge from './components/DbRevBadge';
+import { getAlerts, getMonthSummary, getMonthMerchants, getMonthFlows, agentTools, meta, getHealthz, api, resolveMonthFromCharts } from './lib/api'
 import { flags } from "@/lib/flags";
 import AboutDrawer from './components/AboutDrawer';
 import RulesPanel from "./components/RulesPanel";
@@ -31,6 +30,7 @@ import RuleSuggestionsPersistentPanel from "@/components/RuleSuggestionsPersiste
 import InsightsAnomaliesCard from "./components/InsightsAnomaliesCard";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import DevFab from "@/components/dev/DevFab";
+import DevBadge from "@/components/dev/DevBadge";
 
 // Log frontend version info
 console.info("[Web] branch=", __WEB_BRANCH__, "commit=", __WEB_COMMIT__);
@@ -38,6 +38,7 @@ console.info("[Web] branch=", __WEB_BRANCH__, "commit=", __WEB_COMMIT__);
 
 const App: React.FC = () => {
   const { ok } = useOkErrToast();
+  const [devDockOpen, setDevDockOpen] = useState<boolean>(() => (import.meta as any).env?.VITE_DEV_UI === '1' || localStorage.getItem('DEV_DOCK') !== '0');
   const [month, setMonth] = useState<string>("");
   const [ready, setReady] = useState<boolean>(false);
   const [refreshKey, setRefreshKey] = useState<number>(0);
@@ -67,10 +68,7 @@ const App: React.FC = () => {
 
   // Initialize month once
   async function resolveMonth(): Promise<string> {
-    // Preferred: tool route first, with GET fallback inside helper
-    const m = await resolveMonthApi();
-    if (m) return m;
-    // Extra safety: try GET-only path directly if helper returned empty
+    // GET-only path compatible with older backend
     const viaCharts = await resolveMonthFromCharts();
     return viaCharts || "";
   }
@@ -179,20 +177,21 @@ const App: React.FC = () => {
           <h1 className="text-3xl font-bold">Finance Agent</h1>
           <div className="flex items-center gap-3">
             <LoginForm />
-            {/* DEV badge */}
-            {flags.dev && (
-              <span
-                title="Dev mode — press Ctrl+Shift+D to toggle"
-                className="ml-2 rounded-full border border-emerald-400/30 bg-emerald-400/10 px-2 py-0.5 text-[11px] font-medium text-emerald-300"
-              >
-                DEV
-              </span>
-            )}
-            <DbRevBadge dbRevision={dbRev ?? undefined} inSync={inSync} />
             <AboutDrawer />
             <input type="month" className="bg-neutral-900 border border-neutral-800 rounded px-3 py-2" value={month} onChange={e=>{ setMonth(e.target.value); setGlobalMonth(e.target.value); }} />
             <button className="btn btn-sm hover:bg-accent" onClick={()=>setRefreshKey(k=>k+1)}>Refresh</button>
             <a href="#rule-suggestions" className="btn btn-ghost btn-sm" title="Jump to persistent Rule Suggestions">Suggestions</a>
+            {flags.dev && (
+              <DevBadge
+                // show branch/commit if available via globals
+                branch={String((globalThis as any).__WEB_BRANCH__ ?? '')}
+                commit={String((globalThis as any).__WEB_COMMIT__ ?? '')}
+                openDevDock={devDockOpen}
+                onToggleDevDock={() => {
+                  const next = !devDockOpen; setDevDockOpen(next); try { localStorage.setItem('DEV_DOCK', next ? '1' : '0'); } catch {}
+                }}
+              />
+            )}
           </div>
         </header>
 
@@ -201,63 +200,56 @@ const App: React.FC = () => {
         )}
 
         {/* Upload CSV */}
-  <UploadCsv defaultReplace={true} onUploaded={onCsvUploaded} />
+        <section className="panel p-4 md:p-5">
+          <UploadCsv defaultReplace={true} onUploaded={onCsvUploaded} />
+        </section>
 
         {/* Insights */}
-        {insights && <AgentResultRenderer tool="insights.expanded" data={insights} />}
-        {/* Anomalies quick card */}
-        <InsightsAnomaliesCard />
+        <div className="section">
+          {insights && <AgentResultRenderer tool="insights.expanded" data={insights} />}
+          {/* Anomalies quick card */}
+          <InsightsAnomaliesCard />
+        </div>
   {/* Agent chat box (legacy) — disabled; use ChatDock instead */}
   {/* <AgentChat /> */}
   {/* ChartsPanel now requires month; always pass the selected month */}
   <ChartsPanel month={month} refreshKey={refreshKey} />
 
         {/* Main grid */}
-        <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-          <UnknownsPanel month={month} refreshKey={refreshKey} />
-          <SuggestionsPanel />
+        <div className="section">
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+            <UnknownsPanel month={month} refreshKey={refreshKey} />
+            <SuggestionsPanel />
+          </div>
         </div>
 
         {/* Persistent rule suggestions table */}
-        <div id="rule-suggestions">
+        <div id="rule-suggestions" className="section">
           <ErrorBoundary fallback={(e)=> <div className="text-sm text-red-500">Failed to render suggestions: {String(e?.message||e)}</div>}>
             <RuleSuggestionsPersistentPanel />
           </ErrorBoundary>
         </div>
 
-        {/* Rules + Tester */}
-        <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-          <RulesPanel refreshKey={refreshKey} />
-          {/* Dev tools only in DevDock now */}
+        {/* Rules + Rule Tester + ML Status */}
+        <div className="section">
+          <div className="grid gap-6 lg:grid-cols-2">
+            <RulesPanel refreshKey={refreshKey} />
+            {flags.ruleTester ? <RuleTesterPanel /> : <div className="hidden lg:block" />}
+            {flags.mlSelftest ? (
+              <div className="lg:col-span-2">
+                <MLStatusCard />
+              </div>
+            ) : null}
           </div>
-
-          {/* Status / Recent (right-side style) */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="hidden md:block" />
-            {/* Dev tools only in DevDock now */}
-          </div>
+        </div>
           <ChatDock />
 
-          {/* Developer Tools section (old layout) */}
+          {/* Dev Dock at very bottom: only Planner DevTool */}
           {flags.dev && (
-            <section className="mt-8 rounded-2xl border border-white/10 bg-black/20 p-4">
-              <div className="text-sm font-medium opacity-80 mb-3">Developer Tools</div>
-
-              {flags.planner && (
-                <div className="mb-6">
-                  <PlannerDevPanel />   {/* Preview Plan / Plan & Run + status + items */}
-                </div>
-              )}
-
-              <div className="grid gap-6 md:grid-cols-2">
-                {flags.ruleTester && <RuleTesterPanel />}
-                {flags.mlSelftest && <MLStatusCard />}
-              </div>
-            </section>
+            <DevDock open={devDockOpen}>
+              {flags.planner && <PlannerDevPanel />}
+            </DevDock>
           )}
-
-          {/* Floating dock for quick access (like before) */}
-          {flags.dev && <DevDock />}
           {flags.dev && <DevFab />}
         </div>
       </div>

@@ -371,7 +371,7 @@ export function InsightsExpandedCard({ data }: { data: InsightsExpandedResult })
   const merch = data.anomalies?.merchants ?? [];
 
   return (
-    <div className="space-y-3">
+  <section className="panel p-4 space-y-3">
       <div className="rounded-2xl border border-[color:var(--border-subtle)] bg-[var(--bg-card)] p-4 shadow-lg text-[var(--text)]">
         <div className="flex items-baseline justify-between mb-2">
           <h3 className="text-sm font-semibold text-[var(--text)]">
@@ -543,7 +543,7 @@ export function InsightsExpandedCard({ data }: { data: InsightsExpandedResult })
           )}
         </Card>
       </div>
-    </div>
+  </section>
   );
 }
 

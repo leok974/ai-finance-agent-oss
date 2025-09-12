@@ -120,7 +120,8 @@ export default function SuggestionsPanel() {
   };
 
   return (
-    <Card>
+    <section className="panel p-4 md:p-5">
+    <div>
       {/* Header: title+tooltip left; actions pushed right */}
       <header className="flex items-center gap-3 pb-1 mb-3 border-b border-border">
         <div className="flex items-center gap-2">
@@ -181,7 +182,7 @@ export default function SuggestionsPanel() {
           return (
           <div
             key={key || `${r.merchant}-${r.category}-${idx}`}
-            className="rounded-xl border border-[hsl(var(--border))] bg-card/60 px-3 py-2"
+            className="panel-tight"
           >
             <div className="flex items-center gap-3">
               <input
@@ -226,6 +227,7 @@ export default function SuggestionsPanel() {
           <div className="text-sm opacity-70 py-4 text-center">No suggestions right now.</div>
         )}
       </div>
-  </Card>
+  </div>
+  </section>
   );
 }
