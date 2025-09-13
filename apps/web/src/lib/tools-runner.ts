@@ -11,8 +11,7 @@ export async function runToolWithRephrase<T>(
   console.debug(`[tools] ${tool} → fetch`);
   setThinking(true);
   try {
-    // small placeholder so users see activity immediately
-    appendAssistant("(thinking…)", { ephemeral: true, tool });
+  // No text placeholder; rely on UI spinner via setThinking(true)
 
     const data = await fetcher();
     let prompt = "";

@@ -176,7 +176,6 @@ const App: React.FC = () => {
             <LoginForm />
             <AboutDrawer />
             <input type="month" className="bg-neutral-900 border border-neutral-800 rounded px-3 py-2" value={month} onChange={e=>{ setMonth(e.target.value); setGlobalMonth(e.target.value); }} />
-            <button className="btn btn-sm hover:bg-accent" onClick={()=>setRefreshKey(k=>k+1)}>Refresh</button>
             <a href="#rule-suggestions" className="btn btn-ghost btn-sm" title="Jump to persistent Rule Suggestions">Suggestions</a>
             {flags.dev && (
               <DevBadge

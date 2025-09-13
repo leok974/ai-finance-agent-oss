@@ -1,11 +1,14 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import RobotThinking from "@/components/ui/RobotThinking";
+import EnvAvatar from "@/components/EnvAvatar";
+import { useAuth } from "@/state/auth";
 import { createPortal } from "react-dom";
 import { ChevronUp, Wrench } from "lucide-react";
-import { agentTools, agentChat, getAgentModels, type AgentChatRequest, type AgentChatResponse, type AgentModelsResponse, type ChatMessage, mlSelftest, txnsQuery, txnsQueryCsv, type TxnQueryResult, explainTxnForChat, agentRephrase, getMonthSummary, getMonthMerchants, getMonthFlows, getSpendingTrends, getBudgetCheck } from "../lib/api";
+import { agentTools, agentChat, getAgentModels, type AgentChatRequest, type AgentChatResponse, type AgentModelsResponse, type ChatMessage, txnsQuery, txnsQueryCsv, type TxnQueryResult, explainTxnForChat, agentRephrase, getMonthSummary, getMonthMerchants, getMonthFlows, getSpendingTrends, getBudgetCheck } from "../lib/api";
 import { fmtMonthSummary, fmtTopMerchants, fmtCashflow, fmtTrends } from "../lib/formatters";
 import { runToolWithRephrase } from "../lib/tools-runner";
 import { saveAs } from "../utils/save";
-import { useOkErrToast } from "../lib/toast-helpers";
+// import { useOkErrToast } from "../lib/toast-helpers";
 import RestoredBadge from "./RestoredBadge";
 import remarkGfm from "remark-gfm";
 import Markdown from "./Markdown";
@@ -171,10 +174,7 @@ export default function ChatDock() {
   const [showTools, setShowTools] = useState<boolean>(true);
   const [activePreset, setActivePreset] = useState<ToolPresetKey>('insights_expanded');
   const [toolPayload, setToolPayload] = useState<string>(() => JSON.stringify(TOOL_PRESETS['insights_expanded'].defaultPayload ?? {}, null, 2));
-  // ML selftest UI state
-  const { ok, err } = useOkErrToast?.() ?? { ok: console.log, err: console.error } as any;
-  const [selftestBusy, setSelftestBusy] = useState(false);
-  const [selftestNote, setSelftestNote] = useState<string | null>(null);
+  // ML selftest UI removed
   // Undo snackbar (animated) for destructive actions like Clear
   const [undoVisible, setUndoVisible] = React.useState(false);
   const [undoClosing, setUndoClosing] = React.useState(false);
@@ -218,30 +218,7 @@ export default function ChatDock() {
       syncFromStore();
     }, ms);
   }, [syncFromStore]);
-  const hydratedRef = useRef(false);
-  useEffect(() => {
-    if (hydratedRef.current) return;
-    hydratedRef.current = true;
-    chatStore.initCrossTab();
-    const unsub = chatStore.subscribe((_basic: { role: string; content: string; createdAt: number }[]) => {
-      // Debounce store-driven updates to avoid re-render bursts
-      syncFromStoreDebounced(120);
-      // scroll to bottom after initial hydration will occur after sync
-      setTimeout(() => { bottomRef.current?.scrollIntoView({ block: 'end' }); }, 0);
-    });
-    // seed on mount (in case subscribe callback races)
-    try {
-      const basic = chatStore.get() || [];
-      setUiMessages(cur => {
-        if (sameTimeline(cur, basic as any)) return cur;
-        const mapped: Msg[] = (basic || []).map((b: { role: string; content: string; createdAt: number }) => ({ role: (b.role === 'assistant' ? 'assistant' : 'user') as MsgRole, text: String(b.content || ''), ts: Number(b.createdAt) || Date.now() }));
-        return mapped;
-      });
-    } catch {}
-    return () => { try { unsub(); } catch {} };
-  }, [sameTimeline]);
 
-  // Smooth auto-scroll to bottom on new messages or when busy changes
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
   }, [uiMessages, busy]);
@@ -279,6 +256,9 @@ export default function ChatDock() {
     return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   };
 
+  const { user } = useAuth();
+  const userName = user?.email?.split("@")[0] ?? "You";
+
   // Build rendered list with day dividers and per-message timestamps
   const renderedMessages = React.useMemo(() => {
     const out: React.ReactNode[] = [];
@@ -296,35 +276,40 @@ export default function ChatDock() {
           </div>
         );
       }
+      const isUser = m.role === 'user';
       out.push(
-        <div key={`${m.role}-${ts}-${i}`} className="px-3 py-2">
-          <div className={m.role === 'user' ? 'text-primary' : ''}>
-            <div className="prose prose-invert max-w-none">
-              {m.role === 'assistant' ? (
-                <div className="chat-markdown"><Markdown>{m.text}</Markdown></div>
-              ) : (
-                <>{m.text}</>
-              )}
-            </div>
-            {/* Meta line: citations/model/month + time */}
-            <div className="mt-2 text-xs opacity-70 flex items-center gap-2 flex-wrap">
-              {m.role === 'assistant' && (m as any)?.meta?.citations?.length ? (
-                <>
-                  <span>
-                    Used data: {(m as any).meta.citations.map((c: any) => c.count ? `${c.type} ${c.count}` : `${c.type}`).join(' · ')}
-                  </span>
-                  {(m as any).meta?.ctxMonth ? <span>· month {(m as any).meta.ctxMonth}</span> : null}
-                  {(m as any).meta?.model ? <span>· {(m as any).meta.model}</span> : null}
-                </>
-              ) : null}
-              <span className="ml-auto text-neutral-400">{toTimeHM(ts)}</span>
-            </div>
+        <div key={`${m.role}-${ts}-${i}`} className={`px-3 py-2 my-1 flex items-end gap-2 ${isUser ? 'justify-end' : 'justify-start'}`}>
+          {!isUser && <EnvAvatar who="agent" className="size-7" />}
+          <div className={`max-w-[72%] rounded-2xl px-3 py-2 text-sm leading-relaxed ${isUser ? 'bg-blue-600 text-white rounded-br-sm' : 'bg-slate-800 text-slate-100 rounded-bl-sm'}`}>
+            {(m as any).thinking ? (
+              <div className="py-1"><span className="sr-only">Thinking…</span><RobotThinking size={32} /></div>
+            ) : (
+              m.role === 'assistant' ? <div className="chat-markdown"><Markdown>{m.text}</Markdown></div> : <>{m.text}</>
+            )}
+          </div>
+          {isUser && <EnvAvatar who="user" className="size-7" title={userName} />}
+        </div>
+      );
+      // Meta line under each message
+      out.push(
+        <div key={`${m.role}-${ts}-${i}-meta`} className="px-3">
+          <div className="mt-2 text-xs opacity-70 flex items-center gap-2 flex-wrap">
+            {m.role === 'assistant' && (m as any)?.meta?.citations?.length ? (
+              <>
+                <span>
+                  Used data: {(m as any).meta.citations.map((c: any) => c.count ? `${c.type} ${c.count}` : `${c.type}`).join(' · ')}
+                </span>
+                {(m as any).meta?.ctxMonth ? <span>· month {(m as any).meta.ctxMonth}</span> : null}
+                {(m as any).meta?.model ? <span>· {(m as any).meta.model}</span> : null}
+              </>
+            ) : null}
+            <span className="ml-auto text-neutral-400">{toTimeHM(ts)}</span>
           </div>
         </div>
       );
     });
     return out;
-  }, [uiMessages]);
+  }, [uiMessages, userName]);
 
   // Event delegation for Explain buttons inside rendered markdown
   useEffect(() => {
@@ -1057,14 +1042,14 @@ export default function ChatDock() {
             {showTools ? <ChevronUp size={14}/> : <Wrench size={14}/>}
             {showTools ? 'Hide tools' : 'Agent Tools'}
           </button>
-          {modelsInfo ? (
+      {modelsInfo ? (
             <button
               onPointerDown={(e) => e.stopPropagation()}
               onClick={(e) => { e.stopPropagation(); setShowAdvanced(v=>!v); }}
               className="px-2 py-1 rounded-lg bg-neutral-800 text-neutral-200 border border-neutral-700 hover:bg-neutral-700"
-              title="Advanced (models)"
+        title="Models"
             >
-              {showAdvanced ? 'Hide advanced' : 'Advanced'}
+        {showAdvanced ? 'Hide models' : 'Models'}
             </button>
           ) : null}
           <button
@@ -1256,48 +1241,10 @@ export default function ChatDock() {
             >
               Next page (NL) ▶
             </button>
-            <button
-              type="button"
-              disabled={selftestBusy}
-              className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50"
-              title="Run an end-to-end incremental learning smoke test"
-              onClick={async () => {
-                try {
-                  setSelftestBusy(true);
-                  setSelftestNote(null);
-                  const t0 = performance.now();
-                  const res = await mlSelftest();
-                  const dt = Math.round(performance.now() - t0);
-                  const bumped = !!res?.mtime_bumped;
-                  const label = res?.label_used ?? '—';
-                  const usedId = res?.used_txn_id ?? '—';
-                  const classesAfter = Array.isArray(res?.classes_after) ? res.classes_after.join(', ') : '—';
-                  const msg = bumped
-                    ? `Selftest OK in ${dt}ms — label=${label}, txn=${usedId}, classes=[${classesAfter}]`
-                    : `Selftest ran but model timestamp didn’t change.`;
-                  setSelftestNote(
-                    bumped
-                      ? `mtime: ${(res?.mtime_before ?? '∅')} → ${(res?.mtime_after ?? '∅')}`
-                      : `no mtime bump; reason: ${res?.reason ?? 'unknown'}`
-                  );
-                  (bumped ? ok : err)(msg);
-                } catch (e: any) {
-                  err(`Selftest failed: ${e?.message ?? String(e)}`);
-                  setSelftestNote('request failed');
-                } finally {
-                  setSelftestBusy(false);
-                  window.setTimeout(() => setSelftestNote(null), 4500);
-                }
-              }}
-            >
-              {selftestBusy ? 'Running ML Selftest…' : 'Run ML Selftest'}
-            </button>
+            {/* Selftest button removed */}
           </div>
           <div className="text-[11px] opacity-60">Tip: Hold Alt to run without context.</div>
 
-          {selftestNote && (
-            <div className="text-[11px] text-neutral-400 mt-1">{selftestNote}</div>
-          )}
 
           {ENABLE_LEGACY_TOOL_FORM ? (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -1342,16 +1289,11 @@ export default function ChatDock() {
   {/* Inline quick tools removed — use top-bar buttons only to prevent duplication */}
 
       {/* Messages list (scrollable) with day dividers & timestamps */}
-      <div className="flex-1 overflow-auto" ref={listRef}>
+  <div className="flex-1 overflow-auto chat-scroll" ref={listRef}>
         {renderedMessages}
         {busy && (
           <div className="px-3 py-2">
-            <div className="inline-block max-w-[85%] rounded-2xl px-3 py-2 shadow-sm bg-neutral-800/60 border border-neutral-700">
-              <div className="text-sm flex items-center gap-2 text-neutral-300">
-                <span className="inline-block w-2 h-2 rounded-full bg-neutral-400 animate-pulse" />
-                <span>Thinking…</span>
-              </div>
-            </div>
+            <RobotThinking size={64} />
           </div>
         )}
         <div id="chatdock-scroll-anchor" ref={bottomRef} />
@@ -1391,7 +1333,7 @@ export default function ChatDock() {
       <div className="p-3 border-t bg-background sticky bottom-0 z-10 flex items-end gap-2">
         <textarea
           rows={1}
-          placeholder={busy ? 'Thinking…' : 'Ask the agent…'}
+          placeholder={'Ask the agent…'}
           className="flex-1 resize-none px-3 py-2 rounded-md border bg-background text-sm"
           value={input}
           onChange={(e) => setInput(e.target.value)}
