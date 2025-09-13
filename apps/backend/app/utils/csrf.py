@@ -1,3 +1,4 @@
+import os
 import secrets
 from fastapi import Header, Request, HTTPException, status
 from fastapi.responses import Response
@@ -5,6 +6,7 @@ from typing import Optional
 
 # Reuse cookie settings from auth utils
 from app.utils.auth import _cookie_secure, _cookie_samesite, _cookie_domain
+from app.utils.env import is_test
 
 
 def issue_csrf_cookie(response: Response, max_age_seconds: int = 60 * 60 * 8) -> str:
@@ -35,6 +37,10 @@ def csrf_protect(request: Request, x_csrf_token: Optional[str] = Header(default=
     - Only enforced for unsafe methods (POST/PUT/PATCH/DELETE)
     - Allows specific auth routes which cannot have CSRF pre-login
     """
+    # Test/dev bypass: allow disabling CSRF for hermetic tests
+    if os.getenv("DEV_ALLOW_NO_CSRF") in ("1", "true", "True", 1, True) or is_test():
+        return
+
     method = request.method.upper()
     if method in _SAFE:
         return

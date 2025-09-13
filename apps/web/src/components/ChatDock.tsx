@@ -1,7 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ChevronUp, Wrench } from "lucide-react";
-import { agentTools, agentChat, getAgentModels, type AgentChatRequest, type AgentChatResponse, type AgentModelsResponse, type ChatMessage, mlSelftest, txnsQuery, txnsQueryCsv, type TxnQueryResult, explainTxnForChat } from "../lib/api";
+import { agentTools, agentChat, getAgentModels, type AgentChatRequest, type AgentChatResponse, type AgentModelsResponse, type ChatMessage, mlSelftest, txnsQuery, txnsQueryCsv, type TxnQueryResult, explainTxnForChat, agentRephrase, getMonthSummary, getMonthMerchants, getMonthFlows, getSpendingTrends, getBudgetCheck } from "../lib/api";
+import { fmtMonthSummary, fmtTopMerchants, fmtCashflow, fmtTrends } from "../lib/formatters";
+import { runToolWithRephrase } from "../lib/tools-runner";
 import { saveAs } from "../utils/save";
 import { useOkErrToast } from "../lib/toast-helpers";
 import RestoredBadge from "./RestoredBadge";
@@ -112,7 +114,28 @@ const TOOL_PRESETS: Record<ToolPresetKey, { label: string; intent: 'general'|'ex
   },
 };
 
+declare global { interface Window { __CHATDOCK_MOUNT_COUNT__?: number } }
+
+// Module-scoped singleton tracker
+let __CHATDOCK_ACTIVE__: symbol | null = null;
+
 export default function ChatDock() {
+  // Safe singleton: claim primary in effect; always run hooks, render only if primary
+  const idRef = useRef(Symbol("chatdock"));
+  const [isPrimary, setIsPrimary] = useState(false);
+  useEffect(() => {
+    if (__CHATDOCK_ACTIVE__ === null) {
+      __CHATDOCK_ACTIVE__ = idRef.current;
+      setIsPrimary(true);
+    } else {
+      setIsPrimary(__CHATDOCK_ACTIVE__ === idRef.current);
+    }
+    return () => {
+      if (__CHATDOCK_ACTIVE__ === idRef.current) {
+        __CHATDOCK_ACTIVE__ = null;
+      }
+    };
+  }, []);
   const { month } = useMonth();
   const chat = useChatDock();
   const [open, setOpen] = React.useState<boolean>(false);
@@ -225,9 +248,11 @@ export default function ChatDock() {
 
   // quick sanity ping so you can confirm the file actually recompiled
   useEffect(() => {
-    console.log("[ChatDock] v0906f loaded");
+    if (isPrimary) {
+      console.log("[ChatDock] v0906f loaded");
+    }
     return () => { if (syncTimerRef.current) window.clearTimeout(syncTimerRef.current); };
-  }, []);
+  }, [isPrimary]);
 
   // If chat was restored very recently (in this tab), briefly show a Restored badge
   useEffect(() => {
@@ -569,6 +594,49 @@ export default function ChatDock() {
         default: throw new Error("Unknown tool");
       }
       setState({ loading: false, error: null, data });
+
+      // 2) Force LLM rephrase to show the thinking bubble in chat
+      try {
+        setBusy(true);
+        const pretty = (function prettyFormat(toolKey: ToolKey, payload: any): string {
+          try {
+            if (toolKey === 'charts.summary' && payload) {
+              const m = payload?.month ? ` — ${payload.month}` : '';
+              const income = payload?.income ?? payload?.total_income ?? 0;
+              const spend = payload?.spend ?? payload?.total_spend ?? 0;
+              const net = payload?.net ?? (income - Math.abs(spend));
+              return `Month summary${m}\n\n- Income: $${Number(income).toFixed(0)}\n- Spend: $${Math.abs(Number(spend)).toFixed(0)}\n- Net: $${Number(net).toFixed(0)}\n\nOne recommendation:`;
+            }
+            if (toolKey === 'charts.merchants' && Array.isArray(payload?.merchants)) {
+              const m = payload?.month ? ` — ${payload.month}` : '';
+              const lines = payload.merchants.slice(0, 5).map((it: any) => `- ${it.merchant}: $${Math.abs(Number(it.amount||0)).toFixed(0)}`);
+              return `Top merchants${m}\n\n${lines.join('\n')}\n\nSummarize and suggest one action.`;
+            }
+            if (toolKey === 'charts.trends' && Array.isArray(payload?.series)) {
+              const lines = payload.series.slice(-6).map((it: any) => `- ${it.month}: income $${Number(it.income||0).toFixed(0)}, spend $${Math.abs(Number(it.spend||it.spending||0)).toFixed(0)}, net $${Number(it.net||0).toFixed(0)}`);
+              return `Spending trends\n\n${lines.join('\n')}\n\nSummarize the trend in 3 bullets and one next step.`;
+            }
+            if (toolKey === 'insights.expanded' && payload) {
+              const m = payload?.month ? ` — ${payload.month}` : '';
+              const inc = payload?.summary?.income ?? 0;
+              const spd = payload?.summary?.spend ?? 0;
+              const unk = payload?.unknown_spend?.amount ? Math.abs(Number(payload.unknown_spend.amount)).toFixed(0) : null;
+              const bullets = [
+                `Income: $${Number(inc).toFixed(0)}`,
+                `Spend: $${Math.abs(Number(spd)).toFixed(0)}`,
+              ];
+              if (unk) bullets.push(`Unknown spend: $${unk}`);
+              return `Expanded insights${m}\n\n- ${bullets.join('\n- ')}\n\nRephrase clearly with MoM highlights if present, then one actionable tip.`;
+            }
+          } catch {}
+          // Generic fallback: pretty JSON
+          return `Rephrase this result for the user, concise and clear.\n\n${JSON.stringify(payload, null, 2)}`;
+        })(tool, data);
+        const llm = await agentRephrase(pretty);
+        appendAssistant(llm.reply, { model: llm.model });
+      } finally {
+        setBusy(false);
+      }
     } catch (e: any) {
       if (e?.name !== "AbortError") {
         setState({ loading: false, error: e?.message ?? "Request failed", data: null });
@@ -632,24 +700,30 @@ export default function ChatDock() {
   }, [handleSend]);
 
   // --- ONE-CLICK TOOL RUNNERS (top bar) ---
-  const runMonthSummary = React.useCallback(async (ev?: React.MouseEvent) => {
+  const runMonthSummary = React.useCallback(async (_ev?: React.MouseEvent) => {
     if (busy) return;
     setBusy(true);
     try {
       appendUser('Summarize my spending this month in 4 bullets and one action.');
-      const req: AgentChatRequest = {
-        messages: [{ role: 'user', content: 'Summarize my spending this month in 4 bullets and one action.' }],
-        intent: 'general',
-    context: getContext(ev),
-        ...(selectedModel ? { model: selectedModel } : {})
-      };
-  const resp = await agentChat(req);
-  handleAgentResponse(resp);
-  syncFromStoreDebounced(120);
-    } finally {
-      setBusy(false);
-    }
-  }, [busy, selectedModel, handleAgentResponse]);
+      await runToolWithRephrase(
+  'charts.month_summary',
+        () => agentTools.chartsSummary({ month: month || '', include_daily: false } as any),
+        (raw: any) => {
+          const norm = {
+            income_total: raw?.total_inflows ?? 0,
+            spend_total: raw?.total_outflows ?? 0,
+            net: raw?.net ?? (raw?.total_inflows ?? 0) - Math.abs(raw?.total_outflows ?? 0),
+            categories: [],
+          };
+          return fmtMonthSummary(month || '', norm);
+        },
+  (msg, meta) => appendAssistant(msg, { ...meta, ctxMonth: month }),
+  (on) => setBusy(on),
+  () => ({ context: getContext(), ...(selectedModel ? { model: selectedModel } : {}) })
+      );
+      syncFromStoreDebounced(120);
+    } finally { setBusy(false); }
+  }, [busy, month, appendAssistant]);
 
   const runFindSubscriptions = React.useCallback(async (ev?: React.MouseEvent) => {
     if (busy) return;
@@ -662,7 +736,9 @@ export default function ChatDock() {
     context: getContext(ev),
         ...(selectedModel ? { model: selectedModel } : {})
       };
+  console.debug('[chat] find_subscriptions → /agent/chat', { preview: req.messages[0]?.content?.slice(0, 80) });
   const resp = await agentChat(req);
+  console.debug('[chat] find_subscriptions ← ok', { model: resp?.model });
   handleAgentResponse(resp);
   syncFromStoreDebounced(120);
     } finally {
@@ -671,107 +747,121 @@ export default function ChatDock() {
   }, [busy, selectedModel, handleAgentResponse]);
 
   // Additional one-click runners shown in the tools tray
-  const runTopMerchants = React.useCallback(async (ev?: React.MouseEvent) => {
+  const runTopMerchants = React.useCallback(async (_ev?: React.MouseEvent) => {
     if (busy) return;
     setBusy(true);
     try {
       appendUser('Show top merchants for the current month.');
-      const req: AgentChatRequest = {
-        messages: [{ role: 'user', content: 'List the top merchants for the selected month with totals.' }],
-        intent: 'general',
-        context: getContext(ev),
-        ...(selectedModel ? { model: selectedModel } : {})
-      };
-  const resp = await agentChat(req);
-  handleAgentResponse(resp);
-  syncFromStoreDebounced(120);
+      await runToolWithRephrase(
+        'charts.month_merchants',
+  // Use Agent Tools POST to ensure auth + month-aware behavior
+  () => agentTools.chartsMerchants({ month: month || '', limit: 10 }),
+        (raw: any) => fmtTopMerchants(month || '', raw?.merchants || raw || []),
+  (msg, meta) => appendAssistant(msg, { ...meta, ctxMonth: month }),
+  (on) => setBusy(on),
+  () => ({ context: getContext(), ...(selectedModel ? { model: selectedModel } : {}) })
+      );
+      syncFromStoreDebounced(120);
     } finally { setBusy(false); }
-  }, [busy, selectedModel, handleAgentResponse]);
+  }, [busy, month, appendAssistant]);
 
-  const runCashflow = React.useCallback(async (ev?: React.MouseEvent) => {
+  const runCashflow = React.useCallback(async (_ev?: React.MouseEvent) => {
     if (busy) return;
     setBusy(true);
     try {
       appendUser('Show my cashflow (inflows vs outflows).');
-      const req: AgentChatRequest = {
-        messages: [{ role: 'user', content: 'Show monthly cashflow (inflows vs outflows) for the selected month.' }],
-        intent: 'general',
-        context: getContext(ev),
-        ...(selectedModel ? { model: selectedModel } : {})
-      };
-  const resp = await agentChat(req);
-  handleAgentResponse(resp);
-  syncFromStoreDebounced(120);
+      await runToolWithRephrase(
+        'charts.month_flows',
+  // Use Agent Tools POST to avoid GET auth issues
+  () => agentTools.chartsFlows({ month: month || '' }),
+        (raw) => fmtCashflow(month || '', raw as any),
+  (msg, meta) => appendAssistant(msg, { ...meta, ctxMonth: month }),
+  (on) => setBusy(on),
+  () => ({ context: getContext(), ...(selectedModel ? { model: selectedModel } : {}) })
+      );
+      syncFromStoreDebounced(120);
     } finally { setBusy(false); }
-  }, [busy, selectedModel, handleAgentResponse]);
+  }, [busy, month, appendAssistant]);
 
-  const runTrends = React.useCallback(async (ev?: React.MouseEvent) => {
+  const runTrends = React.useCallback(async (_ev?: React.MouseEvent) => {
     if (busy) return;
     setBusy(true);
     try {
       appendUser('Show my spending trends.');
-      const req: AgentChatRequest = {
-        messages: [{ role: 'user', content: 'Show spending trends over recent months with notable changes.' }],
-        intent: 'general',
-        context: getContext(ev),
-        ...(selectedModel ? { model: selectedModel } : {})
-      };
-  const resp = await agentChat(req);
-  handleAgentResponse(resp);
-  syncFromStoreDebounced(120);
+      await runToolWithRephrase(
+        'charts.spending_trends',
+  // Prefer Agent Tools POST with selected month and months_back window
+  () => agentTools.chartsSpendingTrends({ month: month || '', months_back: 6 }) as any,
+  (raw: any) => fmtTrends(raw?.trends || raw?.series || raw || []),
+  (msg, meta) => appendAssistant(msg, { ...meta, ctxMonth: month }),
+  (on) => setBusy(on),
+  () => ({ context: getContext(), ...(selectedModel ? { model: selectedModel } : {}) })
+      );
+      syncFromStoreDebounced(120);
     } finally { setBusy(false); }
-  }, [busy, selectedModel, handleAgentResponse]);
+  }, [busy, month, appendAssistant]);
 
-  const runInsightsSummary = React.useCallback(async (ev?: React.MouseEvent) => {
+  // Debug: confirm onClick bindings are in place for the current month
+  useEffect(() => {
+    console.debug('[bind] Month summary handler attached', month);
+    console.debug('[bind] Top merchants handler attached', month);
+    console.debug('[bind] Cashflow handler attached', month);
+    console.debug('[bind] Trends handler attached', month);
+    console.debug('[bind] Insights (summary/expanded) handlers attached', month);
+    console.debug('[bind] Budget check handler attached', month);
+  }, [month]);
+
+  const runInsightsSummary = React.useCallback(async (_ev?: React.MouseEvent) => {
     if (busy) return;
     setBusy(true);
     try {
       appendUser('Summarize key insights for this month.');
-      const req: AgentChatRequest = {
-        messages: [{ role: 'user', content: 'Provide a concise insights summary for the selected month.' }],
-        intent: 'general',
-        context: getContext(ev),
-        ...(selectedModel ? { model: selectedModel } : {})
-      };
-  const resp = await agentChat(req);
-  handleAgentResponse(resp);
-  syncFromStore();
+      await runToolWithRephrase(
+        'insights.expanded',
+        () => agentTools.insightsExpanded({ month }),
+        (raw) => `Turn these insights for ${month} into a friendly paragraph with one recommendation: ${JSON.stringify(raw)}`,
+  (msg, meta) => appendAssistant(msg, { ...meta, ctxMonth: month }),
+  (on) => setBusy(on),
+  () => ({ context: getContext(), ...(selectedModel ? { model: selectedModel } : {}) })
+      );
+      syncFromStore();
     } finally { setBusy(false); }
-  }, [busy, selectedModel, handleAgentResponse]);
+  }, [busy, month, appendAssistant]);
 
-  const runInsightsExpanded = React.useCallback(async (ev?: React.MouseEvent) => {
+  const runInsightsExpanded = React.useCallback(async (_ev?: React.MouseEvent) => {
     if (busy) return;
     setBusy(true);
     try {
       appendUser('Expand insights (month-over-month + anomalies).');
-      const req: AgentChatRequest = {
-        messages: [{ role: 'user', content: 'Expand insights with month-over-month changes and anomalies.' }],
-        intent: 'general',
-        context: getContext(ev),
-        ...(selectedModel ? { model: selectedModel } : {})
-      };
-  const resp = await agentChat(req);
-  handleAgentResponse(resp);
-  syncFromStore();
+      await runToolWithRephrase(
+        'insights.expanded',
+        () => agentTools.insightsExpanded({ month }),
+        (raw) => `Expand insights for ${month} with MoM and anomalies: ${JSON.stringify(raw)}`,
+  (msg, meta) => appendAssistant(msg, { ...meta, ctxMonth: month }),
+  (on) => setBusy(on),
+  () => ({ context: getContext(), ...(selectedModel ? { model: selectedModel } : {}) })
+      );
+      syncFromStore();
     } finally { setBusy(false); }
-  }, [busy, selectedModel, handleAgentResponse]);
+  }, [busy, month, appendAssistant]);
 
-  const runBudgetCheck = React.useCallback(async (ev?: React.MouseEvent) => {
+  const runBudgetCheck = React.useCallback(async (_ev?: React.MouseEvent) => {
     if (busy) return;
     setBusy(true);
     try {
       appendUser('Check my budget status for this month.');
-      const req: AgentChatRequest = {
-        messages: [{ role: 'user', content: 'Run a budget check for the selected month and flag overspends.' }],
-        intent: 'general',
-        context: getContext(ev),
-        ...(selectedModel ? { model: selectedModel } : {})
-      };
-  const resp = await agentChat(req);
-  handleAgentResponse(resp);
-  syncFromStore();
+      await runToolWithRephrase(
+        'budget.check',
+  // Use Agent Tools POST variant with month
+  () => agentTools.budgetCheck({ month: month || '' }),
+        (raw) => `Summarize this budget status for ${month}: ${JSON.stringify(raw)}`,
+  (msg, meta) => appendAssistant(msg, { ...meta, ctxMonth: month }),
+  (on) => setBusy(on),
+  () => ({ context: getContext(), ...(selectedModel ? { model: selectedModel } : {}) })
+      );
+      syncFromStore();
     } finally { setBusy(false); }
-  }, [busy, selectedModel, handleAgentResponse]);
+  }, [busy, month, appendAssistant]);
 
   const runAlerts = React.useCallback(async (ev?: React.MouseEvent) => {
     if (busy) return;
@@ -784,7 +874,9 @@ export default function ChatDock() {
         context: getContext(ev),
         ...(selectedModel ? { model: selectedModel } : {})
       };
-      const resp = await agentChat(req);
+  console.debug('[chat] alerts → /agent/chat', { preview: req.messages[0]?.content?.slice(0, 80) });
+  const resp = await agentChat(req);
+  console.debug('[chat] alerts ← ok', { model: resp?.model });
       handleAgentResponse(resp);
     } finally { setBusy(false); }
   }, [busy, selectedModel, handleAgentResponse]);
@@ -795,6 +887,8 @@ export default function ChatDock() {
 
   // Auto-run on month change with debouncing and in-flight protection
   useEffect(() => {
+    // Skip legacy auto-run when legacy form is disabled
+    if (!ENABLE_LEGACY_TOOL_FORM) return;
     if (!month || !monthReady) return;
 
     // Debounce 300ms to avoid double-run from rapid state updates
@@ -852,14 +946,19 @@ export default function ChatDock() {
   }, [rb]);
 
   const bubbleEl = (
-    <div
-  className="fixed z-[80] rounded-full shadow-lg bg-black text-white w-12 h-12 flex items-center justify-center hover:opacity-90 select-none"
-  style={{ right: rb.right, bottom: rb.bottom, cursor: "grab", position: 'fixed' as const }}
-      onPointerDown={(e) => startDragRB(e, BUBBLE, BUBBLE, () => setOpen(true))}
+    <button
+      type="button"
+      className="fixed z-[80] rounded-full shadow-lg bg-black text-white w-12 h-12 flex items-center justify-center hover:opacity-90 select-none"
+      style={{ right: rb.right, bottom: rb.bottom, cursor: "grab", position: 'fixed' as const }}
+      data-chatdock-root
+      data-chatdock-bubble
+      onPointerDown={(e) => startDragRB(e, BUBBLE, BUBBLE)}
+      onClick={() => setOpen(true)}
       title="Open Agent Tools (Ctrl+Shift+K)"
     >
-      💬
-    </div>
+      <span className="text-base" aria-hidden>💬</span>
+      <span className="sr-only">Open agent chat</span>
+    </button>
   );
 
   const panelEl = open && (
@@ -867,6 +966,7 @@ export default function ChatDock() {
       ref={panelRef}
   className="fixed z-[70] w-[min(760px,calc(100vw-2rem))] max-h-[80vh] rounded-2xl border border-neutral-700 shadow-xl bg-neutral-900/95 backdrop-blur p-4 flex flex-col min-h-[320px]"
   style={{ right: rb.right, bottom: rb.bottom, position: 'fixed' as const }}
+  data-chatdock-root
     >
       <div
         className="flex items-center justify-between mb-2 select-none border-b border-border pb-1"
@@ -1018,28 +1118,31 @@ export default function ChatDock() {
               onClick={async (e) => {
                 e.preventDefault();
                 if (busy) return;
-                try {
-                  const tips = "Tips: MTD, YTD, WTD, last N months/weeks/days, since YYYY-MM-DD";
-                  const q = window.prompt(
-                    `Ask about your transactions:\n- "Starbucks last month over $10"\n- "top 5 merchants MTD"\n- "how much on groceries in July?"\n\n${tips}`
-                  );
-                  if (!q) return;
-                  setBusy(true);
-                  const flowChoice = window.prompt('Flow filter? Type one of: "expenses", "income", "all" (or leave blank for all)');
-                  const flow = (flowChoice === "expenses" || flowChoice === "income" || flowChoice === "all") ? flowChoice : undefined;
-                  const res = await txnsQuery(q, { flow, page: 1, page_size: 50 });
-                  let text = formatTxnQueryResult(q, res);
-                  if ((res as any)?.intent === "list") {
-                    text += "\n\nTip: Use the 'Export CSV (last NL query)' button to download these rows.";
-                  }
-                  appendAssistant(text);
-                  // Persist for quick CSV export and paging (store resolved filters so export matches exactly)
-                  lastNlqRef.current = { q, flow, filters: (res as any)?.filters ?? {}, intent: (res as any)?.intent };
-                } catch (err: any) {
-                  appendAssistant(`**NL Transactions Query failed:** ${err?.message || String(err)}`);
-                } finally {
-                  setBusy(false);
-                }
+                const tips = "Tips: MTD, YTD, WTD, last N months/weeks/days, since YYYY-MM-DD";
+                const q = window.prompt(
+                  `Ask about your transactions:\n- "Starbucks last month over $10"\n- "top 5 merchants MTD"\n- "how much on groceries in July?"\n\n${tips}`
+                );
+                if (!q) return;
+                const flowChoice = window.prompt('Flow filter? Type one of: "expenses", "income", "all" (or leave blank for all)');
+                const flow = (flowChoice === "expenses" || flowChoice === "income" || flowChoice === "all") ? flowChoice : undefined;
+                await runToolWithRephrase(
+                  'transactions.nl_query',
+                  async () => {
+                    const res = await txnsQuery(q, { flow, page: 1, page_size: 50 });
+                    // Persist for CSV export and paging (use resolved filters)
+                    lastNlqRef.current = { q, flow, filters: (res as any)?.filters ?? {}, intent: (res as any)?.intent };
+                    return res as any;
+                  },
+                  (res: any) => {
+                    let text = formatTxnQueryResult(q, res);
+                    if ((res as any)?.intent === 'list') {
+                      text += "\n\nTip: Use the 'Export CSV (last NL query)' button to download these rows.";
+                    }
+                    return text;
+                  },
+                  (msg, meta) => appendAssistant(msg, { ...meta, ctxMonth: month }),
+                  (on) => setBusy(on)
+                );
               }}
               disabled={busy}
               className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50"
@@ -1086,26 +1189,29 @@ export default function ChatDock() {
                 const last = lastNlqRef.current;
                 if (!last) { window.alert("No previous NL query found."); return; }
                 if ((last.intent || '').toLowerCase() !== 'list') { window.alert("Paging applies to list results only."); return; }
-                try {
-                  setBusy(true);
-                  const page = Math.max(1, Number(last.filters?.page || 1) - 1);
-                  const page_size = Number(last.filters?.page_size || 50);
-                  const res = await txnsQuery(last.q, {
-                    start: last.filters?.start,
-                    end: last.filters?.end,
-                    page, page_size,
-                    ...(last.flow ? { flow: last.flow as any } : {}),
-                  });
-                  appendAssistant(formatTxnQueryResult(last.q, res));
-                  lastNlqRef.current = {
-                    q: last.q,
-                    flow: last.flow,
-                    filters: (res as any)?.filters ?? { ...(last.filters || {}), page, page_size },
-                    intent: (res as any)?.intent,
-                  };
-                } catch (err: any) {
-                  appendAssistant(`**Page failed:** ${err?.message || String(err)}`);
-                } finally { setBusy(false); }
+                const page = Math.max(1, Number(last.filters?.page || 1) - 1);
+                const page_size = Number(last.filters?.page_size || 50);
+                await runToolWithRephrase(
+                  'transactions.nl_page_prev',
+                  async () => {
+                    const res = await txnsQuery(last.q, {
+                      start: last.filters?.start,
+                      end: last.filters?.end,
+                      page, page_size,
+                      ...(last.flow ? { flow: last.flow as any } : {}),
+                    });
+                    lastNlqRef.current = {
+                      q: last.q,
+                      flow: last.flow,
+                      filters: (res as any)?.filters ?? { ...(last.filters || {}), page, page_size },
+                      intent: (res as any)?.intent,
+                    };
+                    return res as any;
+                  },
+                  (res: any) => formatTxnQueryResult(last.q, res),
+                  (msg, meta) => appendAssistant(msg, { ...meta, ctxMonth: month }),
+                  (on) => setBusy(on)
+                );
               }}
               disabled={busy || !lastNlqRef.current || (lastNlqRef.current?.intent || '').toLowerCase() !== 'list' || Number((lastNlqRef.current?.filters || {}).page || 1) <= 1}
               className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50"
@@ -1120,26 +1226,29 @@ export default function ChatDock() {
                 const last = lastNlqRef.current;
                 if (!last) { window.alert("No previous NL query found."); return; }
                 if ((last.intent || '').toLowerCase() !== 'list') { window.alert("Paging applies to list results only."); return; }
-                try {
-                  setBusy(true);
-                  const page = Math.max(1, Number(last.filters?.page || 1) + 1);
-                  const page_size = Number(last.filters?.page_size || 50);
-                  const res = await txnsQuery(last.q, {
-                    start: last.filters?.start,
-                    end: last.filters?.end,
-                    page, page_size,
-                    ...(last.flow ? { flow: last.flow as any } : {}),
-                  });
-                  appendAssistant(formatTxnQueryResult(last.q, res));
-                  lastNlqRef.current = {
-                    q: last.q,
-                    flow: last.flow,
-                    filters: (res as any)?.filters ?? { ...(last.filters || {}), page, page_size },
-                    intent: (res as any)?.intent,
-                  };
-                } catch (err: any) {
-                  appendAssistant(`**Page failed:** ${err?.message || String(err)}`);
-                } finally { setBusy(false); }
+                const page = Math.max(1, Number(last.filters?.page || 1) + 1);
+                const page_size = Number(last.filters?.page_size || 50);
+                await runToolWithRephrase(
+                  'transactions.nl_page_next',
+                  async () => {
+                    const res = await txnsQuery(last.q, {
+                      start: last.filters?.start,
+                      end: last.filters?.end,
+                      page, page_size,
+                      ...(last.flow ? { flow: last.flow as any } : {}),
+                    });
+                    lastNlqRef.current = {
+                      q: last.q,
+                      flow: last.flow,
+                      filters: (res as any)?.filters ?? { ...(last.filters || {}), page, page_size },
+                      intent: (res as any)?.intent,
+                    };
+                    return res as any;
+                  },
+                  (res: any) => formatTxnQueryResult(last.q, res),
+                  (msg, meta) => appendAssistant(msg, { ...meta, ctxMonth: month }),
+                  (on) => setBusy(on)
+                );
               }}
               disabled={busy || !lastNlqRef.current || (lastNlqRef.current?.intent || '').toLowerCase() !== 'list'}
               className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50"
@@ -1302,6 +1411,8 @@ export default function ChatDock() {
   );
 
   // Render via portal; show bubble when closed, panel when open
+  // Render only the primary instance
+  if (!isPrimary) return null;
   return createPortal(<>{open ? panelEl : bubbleEl}</>, document.body);
 }
 

@@ -10,7 +10,8 @@ services:
       DEMO_MODE: "1"           # optional: enables /auth/demo_login if your branch has it
       DEMO_LOGIN_TOKEN: "let-judges-in"
       FRONTEND_ORIGIN: "http://127.0.0.1:5173"
-      # database URL stays the same; uses the postgres service from base compose
+  APP_ENV: "dev"
+  DATABASE_URL: "postgresql+psycopg://myuser:password@postgres:5432/finance"
     command: >
       sh -lc
       "alembic -c /app/alembic.ini upgrade head &&

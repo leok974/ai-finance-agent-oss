@@ -4,7 +4,7 @@ import re
 import logging
 from typing import Any, Dict, List, Optional, Tuple, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Header
 from starlette.responses import JSONResponse, RedirectResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
@@ -172,6 +172,11 @@ class AgentChatRequest(BaseModel):
     context: Optional[Dict[str, Any]] = None
     intent: Literal["general", "explain_txn", "budget_help", "rule_seed"] = "general"
     txn_id: Optional[str] = None
+    # Optional mode override from client to bypass deterministic router
+    # e.g., "rephrase", "charts.month_summary", etc.
+    mode: Optional[str] = None
+    # Explicit flag to force bypassing router (matches suggested API)
+    force_llm: Optional[bool] = False
     model: str = "gpt-oss:20b"
     temperature: float = 0.2
     top_p: float = 0.9
@@ -270,6 +275,9 @@ def agent_chat(
     req: AgentChatRequest,
     db: Session = Depends(get_db),
     debug: bool = Query(False, description="Return raw CONTEXT in response (dev only)"),
+    mode_override: Optional[str] = Query(default=None, alias="mode"),
+    bypass_router: bool = Query(False, alias="bypass_router"),
+    x_bypass_router: Optional[str] = Header(default=None, alias="X-Bypass-Router"),
 ):
     try:
         # Log request (with PII redacted)
@@ -280,8 +288,67 @@ def agent_chat(
         # Always capture the latest user-authored message early for routing
         last_user_msg = next((msg.content for msg in reversed(req.messages) if msg.role == "user"), "")
 
+        # Router bypass: allow explicit modes and header toggle
+        override_modes = {
+            "rephrase",
+            "charts.month_summary",
+            "charts.month_merchants",
+            "charts.month_flows",
+            "charts.spending_trends",
+            "insights.expanded",
+            "budget.check",
+        }
+        effective_mode = (req.mode or mode_override or "").strip()
+        hard_bypass = (
+            bool(req.force_llm)
+            or bool(bypass_router)
+            or (str(x_bypass_router).lower() in {"1", "true", "yes"})
+            or (effective_mode in override_modes)
+        )
+        bypass = hard_bypass
+        logging.getLogger("uvicorn").debug(
+            "agent.chat mode=%s routed=%s",
+            effective_mode or "(none)",
+            "llm" if bypass else "router",
+        )
+
+        # If bypass is requested, call the LLM directly without deterministic router
+        if bypass:
+            intent_hint = INTENT_HINTS.get(req.intent, INTENT_HINTS["general"])
+            enhanced_system_prompt = f"{SYSTEM_PROMPT}\n\n{intent_hint}"
+            final_messages = [{"role": "system", "content": enhanced_system_prompt}] + [
+                {"role": msg.role, "content": msg.content} for msg in req.messages
+            ]
+            trimmed_ctx = trim_ctx_for_prompt(ctx, max_chars=8000)
+            ctx_str = json.dumps(trimmed_ctx, default=str)
+            if len(ctx_str) > 10000:
+                ctx_str = ctx_str[:10000] + " …(hard-trimmed)"
+            final_messages.append({"role": "system", "content": f"## CONTEXT\n{ctx_str}\n## INTENT: {req.intent}"})
+
+            requested_model = req.model if req.model else settings.DEFAULT_LLM_MODEL
+            model = MODEL_ALIASES.get(requested_model, requested_model)
+            if model is None:
+                model = settings.DEFAULT_LLM_MODEL
+
+            reply, tool_trace = llm_mod.call_local_llm(
+                model=model,
+                messages=final_messages,
+                temperature=req.temperature,
+                top_p=req.top_p,
+            )
+            resp = {
+                "reply": reply,
+                "citations": [],
+                "used_context": {"month": ctx.get("month")},
+                "tool_trace": tool_trace,
+                "model": model,
+            }
+            if debug and getattr(settings, "ENV", "dev") != "prod":
+                resp["__debug_context"] = ctx
+            return JSONResponse(resp)
+
         # First: deterministic tool routing (transactions/charts/reports/budgets)
-        if req.intent in ("general", "budget_help"):
+        if (not bypass) and req.intent in ("general", "budget_help"):
             tool_resp = route_to_tool(last_user_msg, db)
             if tool_resp is not None:
                 # Deterministic summary string for tool output
@@ -311,7 +378,7 @@ def agent_chat(
         # Short-circuit: detect if the last user message is a transactions NL query
         # Only for general/budget_help intents; do not intercept explain_txn or rule_seed flows
         is_txn, nlq = detect_txn_query(last_user_msg)
-        if is_txn and req.intent in ("general", "budget_help"):
+        if (not bypass) and is_txn and req.intent in ("general", "budget_help"):
             # Propagate flow if detectable
             flow = infer_flow(last_user_msg)
             if flow:
@@ -442,6 +509,49 @@ def agent_chat(
         print(f"Agent chat error: {str(e)}")
         print(f"Request context: {redact_pii(req.dict() if hasattr(req, 'dict') else {})}")
         raise HTTPException(status_code=500, detail=f"Chat error: {str(e)}")
+
+
+@router.post("/rephrase")
+def agent_rephrase(
+    req: AgentChatRequest,
+    db: Session = Depends(get_db),
+    debug: bool = Query(False, description="Return raw CONTEXT in response (dev only)"),
+):
+    """Clean endpoint to always hit the LLM path without tool/router logic."""
+    # Minimal enrichment (keep same helpers for consistency)
+    ctx = _enrich_context(db, req.context, req.txn_id)
+    intent_hint = INTENT_HINTS.get(req.intent, INTENT_HINTS["general"])
+    enhanced_system_prompt = f"{SYSTEM_PROMPT}\n\n{intent_hint}"
+    final_messages = [{"role": "system", "content": enhanced_system_prompt}] + [
+        {"role": m.role, "content": m.content} for m in req.messages
+    ]
+    trimmed_ctx = trim_ctx_for_prompt(ctx, max_chars=8000)
+    ctx_str = json.dumps(trimmed_ctx, default=str)
+    if len(ctx_str) > 10000:
+        ctx_str = ctx_str[:10000] + " …(hard-trimmed)"
+    final_messages.append({"role": "system", "content": f"## CONTEXT\n{ctx_str}\n## INTENT: {req.intent}"})
+
+    requested_model = req.model if req.model else settings.DEFAULT_LLM_MODEL
+    model = MODEL_ALIASES.get(requested_model, requested_model)
+    if model is None:
+        model = settings.DEFAULT_LLM_MODEL
+
+    reply, tool_trace = llm_mod.call_local_llm(
+        model=model,
+        messages=final_messages,
+        temperature=req.temperature,
+        top_p=req.top_p,
+    )
+    resp = {
+        "reply": reply,
+        "citations": [],
+        "used_context": {"month": ctx.get("month")},
+        "tool_trace": tool_trace,
+        "model": model,
+    }
+    if debug and getattr(settings, "ENV", "dev") != "prod":
+        resp["__debug_context"] = ctx
+    return JSONResponse(resp)
 
 
 def _fmt_usd(v: float) -> str:

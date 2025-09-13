@@ -31,7 +31,11 @@ $ollama = Start-Job -Name Ollama -ScriptBlock {
 $backend = Start-Job -Name Backend -ScriptBlock {
   param($repo,$Py)
   Set-Location "$repo/apps/backend"
+  # Prefer Postgres in dev (matches docker-compose postgres service)
+  $env:DATABASE_URL = "postgresql+psycopg://myuser:password@localhost:5432/finance"
+  $env:APP_ENV = "dev"
   $env:PYTHONNOUSERSITE = "1"
+  Write-Host "[Backend] Using DATABASE_URL=$env:DATABASE_URL"
   & $Py -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 } -ArgumentList $repo,$Py
 
