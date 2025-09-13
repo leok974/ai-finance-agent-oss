@@ -80,6 +80,38 @@ CORS allowlist
 
 ---
 
+## LLM configuration (OpenAI-compatible)
+
+The backend talks to any OpenAI-compatible server. Defaults target a local Ollama:
+
+- `OPENAI_BASE_URL` — default `http://localhost:11434/v1` (Ollama shim path)
+- `OPENAI_API_KEY` — default `ollama` (dummy for Ollama; real key for OpenAI/vLLM with auth)
+- `MODEL` — default `gpt-oss:20b` (Ollama tag or OpenAI model id)
+- `DEFAULT_LLM_PROVIDER` — `ollama` or `openai` (mostly informational; discovery uses it)
+
+Examples
+- Ollama: `OPENAI_BASE_URL=http://localhost:11434/v1`, `OPENAI_API_KEY=ollama`, `MODEL=gpt-oss:20b`
+- OpenAI: `OPENAI_BASE_URL=https://api.openai.com/v1`, `OPENAI_API_KEY=sk-...`, `MODEL=gpt-4o-mini`
+- vLLM: `OPENAI_BASE_URL=http://127.0.0.1:8001/v1`, `OPENAI_API_KEY=anything`, `MODEL=<your-model>`
+
+Notes
+- Chat calls route through `app/utils/llm.py` or `app/services/llm.py` and honor these envs.
+- Model listing uses provider-aware endpoints (Ollama `/api/tags`, OpenAI `/models`).
+
+---
+
+## Test/dev bypass flags
+
+Only for local/dev and hermetic tests; never enable in prod:
+
+- `DEV_ALLOW_NO_AUTH=1` — bypasses auth guards in tests/dev utilities
+- `DEV_ALLOW_NO_CSRF=1` — disables CSRF checks (unsafe methods) for hermetic tests
+- `DEV_ALLOW_NO_LLM=1` — forces deterministic stub replies from the LLM client
+
+These are read by `app/utils/csrf.py`, `app/services/llm.py`, and some test helpers.
+
+---
+
 ## Explain endpoint (Sep 2025)
 
 Deterministic, DB-backed transaction explanations with optional LLM polish.

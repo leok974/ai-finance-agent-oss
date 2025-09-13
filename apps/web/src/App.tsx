@@ -12,6 +12,7 @@ import { flags } from "@/lib/flags";
 import AboutDrawer from './components/AboutDrawer';
 import RulesPanel from "./components/RulesPanel";
 import ChatDock from "./components/ChatDock";
+import { useChatDockStore } from "./stores/chatdock";
 import DevDock from "@/components/dev/DevDock";
 import PlannerDevPanel from "@/components/dev/PlannerDevPanel";
 import RuleTesterPanel from "@/components/RuleTesterPanel";
@@ -151,19 +152,15 @@ const App: React.FC = () => {
 
   
 
-  if (!ready || !authReady) {
-    return <div className="p-6 text-[color:var(--text-muted)]">Loading…</div>;
-  }
+  const showChatDock = useChatDockStore(s => s.visible);
 
-  if (!authOk) {
-    return (
-      <div className="p-6">
-        <div className="max-w-md mx-auto">
-          <LoginForm />
-        </div>
-      </div>
-    );
-  }
+  // Always call hooks above; render gates below
+  if (!ready || !authReady) return <div className="p-6 text-[color:var(--text-muted)]">Loading…</div>;
+  if (!authOk) return (
+    <div className="p-6">
+      <div className="max-w-md mx-auto"><LoginForm /></div>
+    </div>
+  );
 
   return (
   <MonthContext.Provider value={{ month, setMonth }}>
@@ -242,7 +239,7 @@ const App: React.FC = () => {
             ) : null}
           </div>
         </div>
-          <ChatDock />
+          {showChatDock && <ChatDock data-chatdock-root />}
 
           {/* Dev Dock at very bottom: only Planner DevTool */}
           {flags.dev && (

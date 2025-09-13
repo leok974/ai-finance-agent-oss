@@ -21,6 +21,7 @@ from app.routers import agent_txns  # NEW
 from .routers import transactions as transactions_router
 from .routers import dev as dev_router
 from .routers import health as health_router
+from .routers import agent_plan as agent_plan_router
 from .utils.state import load_state, save_state
 import logging
 import subprocess
@@ -130,6 +131,7 @@ app.include_router(rules_apply_all_router.router)
 app.include_router(meta_router.router)
 app.include_router(meta.router)
 app.include_router(agent_txns.router)  # NEW
+app.include_router(agent_plan_router.router)
 
 # Mount health router at root so /healthz is available at top-level
 app.include_router(health_router.router)  # exposes GET /healthz

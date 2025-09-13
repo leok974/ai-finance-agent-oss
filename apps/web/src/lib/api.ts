@@ -800,6 +800,16 @@ export async function agentStatusOk(): Promise<boolean> {
   }
 }
 
+// --- Force LLM rephrase of plain text via /agent/chat ---
+export const agentRephrase = (text: string, meta?: Record<string, any>) =>
+  http<{ reply: string; model: string }>("/agent/chat", {
+    method: "POST",
+    body: JSON.stringify({
+      messages: [{ role: "user", content: `Rephrase for a user:\n\n${text}` }],
+      ...(meta ?? {}),
+    }),
+  });
+
 // ---------- ML: selftest ----------
 export async function mlSelftest(): Promise<any> {
   return http('/ml/selftest', { method: 'POST' });
