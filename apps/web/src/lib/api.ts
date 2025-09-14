@@ -346,6 +346,37 @@ export async function getSpendingTrends(months = 6) {
   return fetchJson(`/charts/spending_trends?months=${months}`);
 }
 
+// ---------- Analytics (agent tools) ----------
+export const analytics = {
+  kpis: (month?: string, lookback_months = 6) =>
+    apiPost(`/agent/tools/analytics/kpis`, { month, lookback_months }),
+  forecast: (
+    month?: string,
+    horizon = 3,
+    opts?: { model?: "auto" | "ema" | "sarimax"; ciLevel?: 0 | 0.8 | 0.9 | 0.95 }
+  ) => {
+    const body: any = { month, horizon };
+    if (opts?.model) body.model = opts.model;
+    if (opts?.ciLevel && opts.ciLevel > 0) body.alpha = 1 - opts.ciLevel; // 0.8 -> alpha 0.2
+    return apiPost(`/agent/tools/analytics/forecast/cashflow`, body);
+  },
+  anomalies: (month?: string, lookback_months = 6) =>
+    apiPost(`/agent/tools/analytics/anomalies`, { month, lookback_months }),
+  recurring: (month?: string, lookback_months = 6) =>
+    apiPost(`/agent/tools/analytics/recurring`, { month, lookback_months }),
+  subscriptions: (month?: string, lookback_months = 6) =>
+    apiPost(`/agent/tools/analytics/subscriptions`, { month, lookback_months }),
+  budgetSuggest: (month?: string, lookback_months = 6) =>
+    apiPost(`/agent/tools/analytics/budget/suggest`, { month, lookback_months }),
+  whatif: (payload: any) => apiPost(`/agent/tools/analytics/whatif`, payload),
+};
+
+// ---------- UI Help ----------
+export const uiHelp = {
+  describe: (key: string, month?: string, withContext = false) =>
+    apiPost(`/agent/tools/help/ui/describe`, { key, month, with_context: withContext }),
+};
+
 // ---------- Budgets ----------
 export const budgetCheck = (month?: string) => {
   const qs = month ? `?month=${encodeURIComponent(month)}` : "";

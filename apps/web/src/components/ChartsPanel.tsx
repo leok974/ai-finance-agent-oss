@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useState } from "react";
 import Card from "./Card";
 import ExportMenu from "./ExportMenu";
+import HelpBadge from "./HelpBadge";
+import CardHeaderRow from "./CardHeaderRow";
 import EmptyState from "./EmptyState";
 import * as RC from "recharts";
 import {
@@ -156,12 +158,15 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
           <EmptyState title="No transactions yet" note="Once you upload, charts will populate automatically." />
         </div>
       )}
-  <div className="chart-card">
+  <div className="chart-card" data-explain-key="cards.overview" data-month={resolvedMonth}>
   <Card className="border-0 bg-transparent shadow-none p-0">
-        <div className="flex items-center justify-between mb-2">
-          <h3 className="chart-title">{`Overview — ${resolvedMonth}`}</h3>
-          <ExportMenu month={resolvedMonth} />
-        </div>
+        <CardHeaderRow
+          title={`Overview — ${resolvedMonth}`}
+          helpKey="cards.overview"
+          month={resolvedMonth}
+          actions={<ExportMenu month={resolvedMonth} />}
+          className="mb-2"
+        />
         {loading && (
           <div className="grid grid-cols-3 gap-4 text-sm">
             {[0, 1, 2].map((i) => (
@@ -200,10 +205,13 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
   </Card>
   </div>
 
-  <div className="chart-card">
+  <div className="chart-card" data-explain-key="charts.top_categories" data-month={resolvedMonth}>
   <Card className="border-0 bg-transparent shadow-none p-0">
         <div className="flex items-center justify-between mb-2">
-          <h3 className="chart-title">{`Top Categories — ${resolvedMonth}`}</h3>
+          <h3 className="chart-title flex items-center">
+            {`Top Categories — ${resolvedMonth}`}
+            <HelpBadge k="charts.top_categories" month={resolvedMonth} />
+          </h3>
         </div>
         {loading && (
           <div className="h-64">
@@ -242,11 +250,14 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
   </Card>
   </div>
 
-  <div className="chart-card">
+  <div className="chart-card" data-explain-key="charts.month_merchants" data-month={resolvedMonth}>
   <Card className="border-0 bg-transparent shadow-none p-0">
-        <div className="flex items-center justify-between mb-2">
-          <h3 className="chart-title">{`Top Merchants — ${resolvedMonth}`}</h3>
-        </div>
+        <CardHeaderRow
+          title={`Top Merchants — ${resolvedMonth}`}
+          helpKey="charts.month_merchants"
+          month={resolvedMonth}
+          className="mb-2"
+        />
         {loading && (
           <div className="h-64">
             <div className="h-full w-full flex items-end gap-2">
@@ -285,10 +296,13 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
   </Card>
   </div>
 
-  <div className="chart-card">
+  <div className="chart-card" data-explain-key="charts.daily_flows" data-month={resolvedMonth}>
   <Card className="border-0 bg-transparent shadow-none p-0">
         <div className="flex items-center justify-between mb-2">
-          <h3 className="chart-title">{`Daily Flows — ${resolvedMonth}`}</h3>
+          <h3 className="chart-title flex items-center">
+            {`Daily Flows — ${resolvedMonth}`}
+            <HelpBadge k="charts.daily_flows" month={resolvedMonth} />
+          </h3>
         </div>
         {loading && (
           <div className="h-64">
@@ -323,10 +337,13 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
   </Card>
   </div>
 
-  <div className="chart-card">
+  <div className="chart-card" data-explain-key="charts.spending_trends">
   <Card className="border-0 bg-transparent shadow-none p-0">
         <div className="flex items-center justify-between mb-2">
-          <h3 className="chart-title">{`Spending Trends — last ${monthsWindow} months`}</h3>
+          <h3 className="chart-title flex items-center">
+            {`Spending Trends — last ${monthsWindow} months`}
+            <HelpBadge k="charts.spending_trends" month={resolvedMonth} />
+          </h3>
         </div>
         {loading && (
           <div className="h-64">

@@ -15,6 +15,7 @@ import LearnedBadge from './LearnedBadge'
 import ExplainSignalDrawer from './ExplainSignalDrawer'
 import { useUnknowns } from '@/hooks/useUnknowns'
 import { Skeleton } from '@/components/ui/skeleton'
+import HelpBadge from './HelpBadge'
 
 export default function UnknownsPanel({ month, onSeedRule, onChanged, refreshKey }: {
   month?: string
@@ -88,7 +89,7 @@ export default function UnknownsPanel({ month, onSeedRule, onChanged, refreshKey
 
   const titleMonth = (currentMonth ?? month) ? `— ${currentMonth ?? month}` : '— (latest)'
   return (
-      <section id="unknowns-panel" className="panel p-4 md:p-5">
+  <section id="unknowns-panel" className="panel p-4 md:p-5" data-explain-key="cards.unknowns">
         <Card title={`Unknowns ${titleMonth}`} className="border-0 bg-transparent shadow-none p-0">
   {loading && (
         <div className="space-y-2">
@@ -116,7 +117,10 @@ export default function UnknownsPanel({ month, onSeedRule, onChanged, refreshKey
       )}
       <div className="flex items-center justify-between mb-2 text-sm font-medium">
         <div className="flex items-center gap-2">
-          <span>Uncategorized transactions</span>
+          <span className="flex items-center">
+            Uncategorized transactions
+            <HelpBadge k="cards.unknowns" className="ml-2" />
+          </span>
           <Tooltip>
             <TooltipTrigger asChild>
               <InfoDot />

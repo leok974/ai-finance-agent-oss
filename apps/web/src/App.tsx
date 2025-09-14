@@ -32,6 +32,9 @@ import InsightsAnomaliesCard from "./components/InsightsAnomaliesCard";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import DevFab from "@/components/dev/DevFab";
 import DevBadge from "@/components/dev/DevBadge";
+import HelpMode from "@/components/HelpMode";
+import HelpExplainListener from "@/components/HelpExplainListener";
+import ForecastCard from "@/components/ForecastCard";
 
 // Log frontend version info
 console.info("[Web] branch=", __WEB_BRANCH__, "commit=", __WEB_COMMIT__);
@@ -167,6 +170,8 @@ const App: React.FC = () => {
       <ChatDockProvider>
   <NetActivityBlip />
       <div className="min-h-screen bg-gray-50 text-gray-900 p-6 dark:bg-gray-950 dark:text-gray-100">
+        <HelpMode />
+  <HelpExplainListener />
   {/* Ensure this container is relative so ChatDock (absolute) positions within it */}
   <div className="relative">
           <div className="mx-auto max-w-6xl space-y-6">
@@ -176,7 +181,6 @@ const App: React.FC = () => {
             <LoginForm />
             <AboutDrawer />
             <input type="month" className="bg-neutral-900 border border-neutral-800 rounded px-3 py-2" value={month} onChange={e=>{ setMonth(e.target.value); setGlobalMonth(e.target.value); }} />
-            <button className="btn btn-sm hover:bg-accent" onClick={()=>setRefreshKey(k=>k+1)}>Refresh</button>
             <a href="#rule-suggestions" className="btn btn-ghost btn-sm" title="Jump to persistent Rule Suggestions">Suggestions</a>
             {flags.dev && (
               <DevBadge
@@ -211,6 +215,11 @@ const App: React.FC = () => {
   {/* <AgentChat /> */}
   {/* ChartsPanel now requires month; always pass the selected month */}
   <ChartsPanel month={month} refreshKey={refreshKey} />
+
+        {/* Forecast (model + CI controls) */}
+        <div className="section">
+          <ForecastCard />
+        </div>
 
         {/* Main grid */}
         <div className="section">

@@ -3,6 +3,7 @@ import Card from "./Card";
 import BudgetRecommendationsPanel from "./BudgetRecommendationsPanel";
 import { getBudgetCheck } from "../lib/api";
 import EmptyState from "./EmptyState";
+import HelpBadge from "./HelpBadge";
 
 interface Props {
   /** Optional. If omitted, backend uses latest month. */
@@ -42,6 +43,12 @@ const BudgetsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
       <Card title={`Budgets — ${resolvedMonth}`}>
+        <div className="flex items-center justify-between mb-2">
+          <h3 className="text-base font-semibold flex items-center">
+            Budgets — {resolvedMonth}
+            <HelpBadge k="cards.budgets" className="ml-2" />
+          </h3>
+        </div>
         {loading && <p className="text-sm text-gray-400">Loading budgets…</p>}
         {error && !empty && <p className="text-sm text-rose-300">Error: {error}</p>}
         {empty && !error && (
@@ -75,7 +82,9 @@ const BudgetsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
           </div>
         )}
       </Card>
-      <BudgetRecommendationsPanel />
+      <div data-explain-key="cards.budget_check">
+        <BudgetRecommendationsPanel />
+      </div>
     </div>
   );
 };

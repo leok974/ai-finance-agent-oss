@@ -235,3 +235,20 @@ body { @apply bg-neutral-950 text-neutral-100; }
 .card .tip { display: none !important; }
 
 
+/* Robot thinking animations */
+@keyframes robot-blink { 0%, 8%, 100% { transform: scaleY(1) } 4% { transform: scaleY(.1) } }
+@keyframes robot-float { 0%,100% { transform: translateY(0) } 50% { transform: translateY(-4px) } }
+@keyframes robot-mouth { 0% { transform: scaleY(.25) } 50% { transform: scaleY(1) } 100% { transform: scaleY(.25) } }
+@keyframes robot-glow  { 0%,100% { opacity:.4 } 50% { opacity:.9 } }
+
+.robot-animate-blink  { animation: robot-blink 3.2s infinite; transform-origin: center }
+.robot-animate-float  { animation: robot-float 3s ease-in-out infinite }
+.robot-animate-mouth  { animation: robot-mouth 1.2s ease-in-out infinite; transform-origin: bottom }
+.robot-animate-mouth2 { animation: robot-mouth 1.2s ease-in-out .15s infinite; transform-origin: bottom }
+.robot-animate-mouth3 { animation: robot-mouth 1.2s ease-in-out .30s infinite; transform-origin: bottom }
+.robot-animate-glow   { animation: robot-glow 2.2s ease-in-out infinite }
+
+/* Tiny polish: smooth chat autoscroll */
+.chat-scroll { scroll-behavior: smooth; }
+
+

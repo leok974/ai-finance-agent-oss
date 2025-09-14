@@ -1,11 +1,14 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import RobotThinking from "@/components/ui/RobotThinking";
+import EnvAvatar from "@/components/EnvAvatar";
+import { useAuth } from "@/state/auth";
 import { createPortal } from "react-dom";
 import { ChevronUp, Wrench } from "lucide-react";
-import { agentTools, agentChat, getAgentModels, type AgentChatRequest, type AgentChatResponse, type AgentModelsResponse, type ChatMessage, mlSelftest, txnsQuery, txnsQueryCsv, type TxnQueryResult, explainTxnForChat, agentRephrase, getMonthSummary, getMonthMerchants, getMonthFlows, getSpendingTrends, getBudgetCheck } from "../lib/api";
+import { agentTools, agentChat, getAgentModels, type AgentChatRequest, type AgentChatResponse, type AgentModelsResponse, type ChatMessage, txnsQuery, txnsQueryCsv, type TxnQueryResult, explainTxnForChat, agentRephrase, getMonthSummary, getMonthMerchants, getMonthFlows, getSpendingTrends, getBudgetCheck, analytics } from "../lib/api";
 import { fmtMonthSummary, fmtTopMerchants, fmtCashflow, fmtTrends } from "../lib/formatters";
 import { runToolWithRephrase } from "../lib/tools-runner";
 import { saveAs } from "../utils/save";
-import { useOkErrToast } from "../lib/toast-helpers";
+// import { useOkErrToast } from "../lib/toast-helpers";
 import RestoredBadge from "./RestoredBadge";
 import remarkGfm from "remark-gfm";
 import Markdown from "./Markdown";
@@ -16,6 +19,7 @@ import { useMonth } from "../context/MonthContext";
 import { useChatDock } from "../context/ChatDockContext";
 import { exportThreadAsJSON, exportThreadAsMarkdown } from "../utils/chatExport";
 import { chatStore, type BasicMsg, snapshot as chatSnapshot, restoreFromSnapshot as chatRestoreFromSnapshot, discardSnapshot as chatDiscardSnapshot } from "../utils/chatStore";
+import runAndRephrase from "./agent-tools/runAndRephrase";
 // --- layout constants (right/bottom anchored) ---
 const MARGIN = 24;     // default bottom-right margin
 const BUBBLE = 48;     // bubble size (px)
@@ -171,10 +175,7 @@ export default function ChatDock() {
   const [showTools, setShowTools] = useState<boolean>(true);
   const [activePreset, setActivePreset] = useState<ToolPresetKey>('insights_expanded');
   const [toolPayload, setToolPayload] = useState<string>(() => JSON.stringify(TOOL_PRESETS['insights_expanded'].defaultPayload ?? {}, null, 2));
-  // ML selftest UI state
-  const { ok, err } = useOkErrToast?.() ?? { ok: console.log, err: console.error } as any;
-  const [selftestBusy, setSelftestBusy] = useState(false);
-  const [selftestNote, setSelftestNote] = useState<string | null>(null);
+  // ML selftest UI removed
   // Undo snackbar (animated) for destructive actions like Clear
   const [undoVisible, setUndoVisible] = React.useState(false);
   const [undoClosing, setUndoClosing] = React.useState(false);
@@ -218,30 +219,7 @@ export default function ChatDock() {
       syncFromStore();
     }, ms);
   }, [syncFromStore]);
-  const hydratedRef = useRef(false);
-  useEffect(() => {
-    if (hydratedRef.current) return;
-    hydratedRef.current = true;
-    chatStore.initCrossTab();
-    const unsub = chatStore.subscribe((_basic: { role: string; content: string; createdAt: number }[]) => {
-      // Debounce store-driven updates to avoid re-render bursts
-      syncFromStoreDebounced(120);
-      // scroll to bottom after initial hydration will occur after sync
-      setTimeout(() => { bottomRef.current?.scrollIntoView({ block: 'end' }); }, 0);
-    });
-    // seed on mount (in case subscribe callback races)
-    try {
-      const basic = chatStore.get() || [];
-      setUiMessages(cur => {
-        if (sameTimeline(cur, basic as any)) return cur;
-        const mapped: Msg[] = (basic || []).map((b: { role: string; content: string; createdAt: number }) => ({ role: (b.role === 'assistant' ? 'assistant' : 'user') as MsgRole, text: String(b.content || ''), ts: Number(b.createdAt) || Date.now() }));
-        return mapped;
-      });
-    } catch {}
-    return () => { try { unsub(); } catch {} };
-  }, [sameTimeline]);
 
-  // Smooth auto-scroll to bottom on new messages or when busy changes
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
   }, [uiMessages, busy]);
@@ -279,6 +257,9 @@ export default function ChatDock() {
     return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   };
 
+  const { user } = useAuth();
+  const userName = user?.email?.split("@")[0] ?? "You";
+
   // Build rendered list with day dividers and per-message timestamps
   const renderedMessages = React.useMemo(() => {
     const out: React.ReactNode[] = [];
@@ -296,35 +277,45 @@ export default function ChatDock() {
           </div>
         );
       }
+      const isUser = m.role === 'user';
+      const currentMeta = i === (uiMessages.length - 1) ? chatResp as any : undefined;
       out.push(
-        <div key={`${m.role}-${ts}-${i}`} className="px-3 py-2">
-          <div className={m.role === 'user' ? 'text-primary' : ''}>
-            <div className="prose prose-invert max-w-none">
-              {m.role === 'assistant' ? (
-                <div className="chat-markdown"><Markdown>{m.text}</Markdown></div>
-              ) : (
-                <>{m.text}</>
-              )}
-            </div>
-            {/* Meta line: citations/model/month + time */}
-            <div className="mt-2 text-xs opacity-70 flex items-center gap-2 flex-wrap">
-              {m.role === 'assistant' && (m as any)?.meta?.citations?.length ? (
-                <>
-                  <span>
-                    Used data: {(m as any).meta.citations.map((c: any) => c.count ? `${c.type} ${c.count}` : `${c.type}`).join(' · ')}
-                  </span>
-                  {(m as any).meta?.ctxMonth ? <span>· month {(m as any).meta.ctxMonth}</span> : null}
-                  {(m as any).meta?.model ? <span>· {(m as any).meta.model}</span> : null}
-                </>
-              ) : null}
-              <span className="ml-auto text-neutral-400">{toTimeHM(ts)}</span>
-            </div>
+        <div key={`${m.role}-${ts}-${i}`} className={`px-3 py-2 my-1 flex items-end gap-2 ${isUser ? 'justify-end' : 'justify-start'}`}>
+          {!isUser && <EnvAvatar who="agent" className="size-7" />}
+          <div className={`max-w-[72%] rounded-2xl px-3 py-2 text-sm leading-relaxed ${isUser ? 'bg-blue-600 text-white rounded-br-sm' : 'bg-slate-800 text-slate-100 rounded-bl-sm'}`}>
+            {(m as any).thinking ? (
+              <div className="py-1"><span className="sr-only">Thinking…</span><RobotThinking size={32} /></div>
+            ) : (
+              m.role === 'assistant' ? <div className="chat-markdown"><Markdown>{m.text}</Markdown></div> : <>{m.text}</>
+            )}
           </div>
+          {isUser && <EnvAvatar who="user" className="size-7" title={userName} />}
+        </div>
+      );
+      // Meta line under each message (add ModeChip + ForecastFollowUps when applicable)
+      out.push(
+        <div key={`${m.role}-${ts}-${i}-meta`} className="px-3">
+          <div className="mt-2 text-xs opacity-70 flex items-center gap-2 flex-wrap">
+            {m.role === 'assistant' && (chatResp as any)?.citations?.length ? (
+              <>
+                <span>
+                  Used data: {(chatResp as any).citations.map((c: any) => c.count ? `${c.type} ${c.count}` : `${c.type}`).join(' · ')}
+                </span>
+                {(chatResp as any)?.used_context?.month ? <span>· month {(chatResp as any).used_context.month}</span> : null}
+                {(chatResp as any)?.model ? <span>· {(chatResp as any).model}</span> : null}
+              </>
+            ) : null}
+            {m.role === 'assistant' ? <ModeChip mode={(chatResp as any)?.mode} args={(chatResp as any)?.args} /> : null}
+            <span className="ml-auto text-neutral-400">{toTimeHM(ts)}</span>
+          </div>
+          {m.role === 'assistant' && (chatResp as any)?.mode === 'analytics.forecast' ? (
+            <ForecastFollowUps month={(chatResp as any)?.used_context?.month} append={appendAssistant} setThinking={setBusy} />
+          ) : null}
         </div>
       );
     });
     return out;
-  }, [uiMessages]);
+  }, [uiMessages, userName, chatResp]);
 
   // Event delegation for Explain buttons inside rendered markdown
   useEffect(() => {
@@ -376,18 +367,18 @@ export default function ChatDock() {
   function appendAssistant(text: string, meta?: any) {
     const ts = Date.now();
     setUiMessages(cur => [...cur, { role: 'assistant', text, ts }]); // optimistic UI
-    // Persist minimal assistant message to cross-tab store
     chatStore.append({ role: 'assistant', content: text, createdAt: ts });
-  // Discard any stale snapshot after conversation continues
-  try { chatDiscardSnapshot(); } catch { /* ignore */ }
-    // Keep most recent response metadata in memory for current tab rendering
+    try { chatDiscardSnapshot(); } catch { /* ignore */ }
+    // capture response meta for current tab rendering, including mode/args/tool_trace
     setChatResp({
       reply: text,
       citations: meta?.citations || [],
       used_context: { month: meta?.ctxMonth },
-      tool_trace: meta?.trace || [],
+      tool_trace: meta?.trace || meta?.tool_trace || [],
       model: meta?.model || "",
-    } as AgentChatResponse);
+      mode: meta?.mode,
+      args: meta?.args,
+    } as any);
   }
 
   // History toggle (reads directly from messages)
@@ -725,26 +716,24 @@ export default function ChatDock() {
     } finally { setBusy(false); }
   }, [busy, month, appendAssistant]);
 
-  const runFindSubscriptions = React.useCallback(async (ev?: React.MouseEvent) => {
+  const runFindSubscriptions = React.useCallback(async (_ev?: React.MouseEvent) => {
     if (busy) return;
     setBusy(true);
     try {
       appendUser('Identify recurring subscriptions this month and suggest which I could cancel.');
-      const req: AgentChatRequest = {
-        messages: [{ role: 'user', content: 'Identify recurring subscriptions this month and suggest which I could cancel.' }],
-        intent: 'general',
-    context: getContext(ev),
-        ...(selectedModel ? { model: selectedModel } : {})
-      };
-  console.debug('[chat] find_subscriptions → /agent/chat', { preview: req.messages[0]?.content?.slice(0, 80) });
-  const resp = await agentChat(req);
-  console.debug('[chat] find_subscriptions ← ok', { model: resp?.model });
-  handleAgentResponse(resp);
-  syncFromStoreDebounced(120);
+      await runToolWithRephrase(
+        'analytics.subscriptions',
+        () => analytics.subscriptions(month),
+        (raw: any) => `Identify likely subscriptions for ${month} and which to cancel, with reasons:\n\n${JSON.stringify(raw)}`,
+        (msg, meta) => appendAssistant(msg, { ...meta, ctxMonth: month }),
+        (on) => setBusy(on),
+        () => ({ context: getContext(), ...(selectedModel ? { model: selectedModel } : {}) })
+      );
+      syncFromStoreDebounced(120);
     } finally {
       setBusy(false);
     }
-  }, [busy, selectedModel, handleAgentResponse]);
+  }, [busy, month, appendAssistant, selectedModel]);
 
   // Additional one-click runners shown in the tools tray
   const runTopMerchants = React.useCallback(async (_ev?: React.MouseEvent) => {
@@ -862,6 +851,113 @@ export default function ChatDock() {
       syncFromStore();
     } finally { setBusy(false); }
   }, [busy, month, appendAssistant]);
+
+  // ---------- Analytics quick buttons ----------
+  const runAnalyticsKpis = React.useCallback(async (_ev?: React.MouseEvent) => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      appendUser('Show KPIs for this month.');
+      await runToolWithRephrase(
+        'analytics.kpis',
+        () => analytics.kpis(month),
+        (raw: any) => `Summarize these KPIs for ${month} in 3 bullets and one suggestion:\n\n${JSON.stringify(raw)}`,
+        (msg, meta) => appendAssistant(msg, { ...meta, ctxMonth: month }),
+        (on) => setBusy(on),
+        () => ({ context: getContext(), ...(selectedModel ? { model: selectedModel } : {}) })
+      );
+      syncFromStoreDebounced(120);
+    } finally { setBusy(false); }
+  }, [busy, month, appendAssistant, selectedModel]);
+
+  const runAnalyticsForecast = React.useCallback(async (_ev?: React.MouseEvent) => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      appendUser('Forecast my next 3 months cashflow.');
+      await runToolWithRephrase(
+        'analytics.forecast',
+  () => analytics.forecast(month, 3, { model: "auto", ciLevel: 0.8 }),
+        (raw: any) => `Explain this cashflow forecast for ${month} and what it means:\n\n${JSON.stringify(raw)}`,
+        (msg, meta) => appendAssistant(msg, { ...meta, ctxMonth: month }),
+        (on) => setBusy(on),
+        () => ({ context: getContext(), ...(selectedModel ? { model: selectedModel } : {}) })
+      );
+      syncFromStoreDebounced(120);
+    } finally { setBusy(false); }
+  }, [busy, month, appendAssistant, selectedModel]);
+
+  const runAnalyticsAnomalies = React.useCallback(async (_ev?: React.MouseEvent) => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      appendUser('Find anomalies this month.');
+      await runToolWithRephrase(
+        'analytics.anomalies',
+        () => analytics.anomalies(month),
+        (raw: any) => `List any spending anomalies for ${month} and suggest actions:\n\n${JSON.stringify(raw)}`,
+        (msg, meta) => appendAssistant(msg, { ...meta, ctxMonth: month }),
+        (on) => setBusy(on),
+        () => ({ context: getContext(), ...(selectedModel ? { model: selectedModel } : {}) })
+      );
+      syncFromStoreDebounced(120);
+    } finally { setBusy(false); }
+  }, [busy, month, appendAssistant, selectedModel]);
+
+  const runAnalyticsRecurring = React.useCallback(async (_ev?: React.MouseEvent) => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      appendUser('Detect recurring charges.');
+      await runToolWithRephrase(
+        'analytics.recurring',
+        () => analytics.recurring(month),
+        (raw: any) => `Summarize recurring charges for ${month}, with likely subscriptions highlighted:\n\n${JSON.stringify(raw)}`,
+        (msg, meta) => appendAssistant(msg, { ...meta, ctxMonth: month }),
+        (on) => setBusy(on),
+        () => ({ context: getContext(), ...(selectedModel ? { model: selectedModel } : {}) })
+      );
+      syncFromStoreDebounced(120);
+    } finally { setBusy(false); }
+  }, [busy, month, appendAssistant, selectedModel]);
+
+  const runAnalyticsBudgetSuggest = React.useCallback(async (_ev?: React.MouseEvent) => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      appendUser('Suggest budget targets.');
+      await runToolWithRephrase(
+        'analytics.budget_suggest',
+        () => analytics.budgetSuggest(month),
+        (raw: any) => `Propose budget targets for ${month} from these stats, in a short list:\n\n${JSON.stringify(raw)}`,
+        (msg, meta) => appendAssistant(msg, { ...meta, ctxMonth: month }),
+        (on) => setBusy(on),
+        () => ({ context: getContext(), ...(selectedModel ? { model: selectedModel } : {}) })
+      );
+      syncFromStoreDebounced(120);
+    } finally { setBusy(false); }
+  }, [busy, month, appendAssistant, selectedModel]);
+
+  const runAnalyticsWhatIf = React.useCallback(async () => {
+    if (busy) return;
+    const cat = window.prompt('Category to cut? e.g., "Dining out"', 'Dining out');
+    if (!cat) return;
+    const pctStr = window.prompt('Cut percent (0-100)', '20');
+    const pct = Math.max(0, Math.min(100, Number(pctStr || 0)));
+    setBusy(true);
+    try {
+      appendUser(`What if I cut ${cat} by ${pct}%?`);
+      await runToolWithRephrase(
+        'analytics.whatif',
+        () => analytics.whatif({ month, cuts: [{ category: cat, pct }]}),
+        (raw: any) => `Explain this what-if simulation for ${month} (cut ${cat} by ${pct}%):\n\n${JSON.stringify(raw)}`,
+        (msg, meta) => appendAssistant(msg, { ...meta, ctxMonth: month }),
+        (on) => setBusy(on),
+        () => ({ context: getContext(), ...(selectedModel ? { model: selectedModel } : {}) })
+      );
+      syncFromStoreDebounced(120);
+    } finally { setBusy(false); }
+  }, [busy, month, appendAssistant, selectedModel]);
 
   const runAlerts = React.useCallback(async (ev?: React.MouseEvent) => {
     if (busy) return;
@@ -1057,14 +1153,14 @@ export default function ChatDock() {
             {showTools ? <ChevronUp size={14}/> : <Wrench size={14}/>}
             {showTools ? 'Hide tools' : 'Agent Tools'}
           </button>
-          {modelsInfo ? (
+      {modelsInfo ? (
             <button
               onPointerDown={(e) => e.stopPropagation()}
               onClick={(e) => { e.stopPropagation(); setShowAdvanced(v=>!v); }}
               className="px-2 py-1 rounded-lg bg-neutral-800 text-neutral-200 border border-neutral-700 hover:bg-neutral-700"
-              title="Advanced (models)"
+        title="Models"
             >
-              {showAdvanced ? 'Hide advanced' : 'Advanced'}
+        {showAdvanced ? 'Hide models' : 'Models'}
             </button>
           ) : null}
           <button
@@ -1112,6 +1208,13 @@ export default function ChatDock() {
             <button type="button" onClick={(e) => runInsightsExpanded(e as any)} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50">Insights: Expanded</button>
             <button type="button" onClick={(e) => runBudgetCheck(e as any)} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50">Budget check</button>
             <button type="button" onClick={(e) => runAlerts(e as any)} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50">Alerts</button>
+            {/* Analytics quick buttons */}
+            <button type="button" onClick={(e) => runAnalyticsKpis(e as any)} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50">KPIs</button>
+            <button type="button" onClick={(e) => runAnalyticsForecast(e as any)} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50">Forecast</button>
+            <button type="button" onClick={(e) => runAnalyticsAnomalies(e as any)} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50">Anomalies</button>
+            <button type="button" onClick={(e) => runAnalyticsRecurring(e as any)} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50">Recurring</button>
+            <button type="button" onClick={(e) => runAnalyticsBudgetSuggest(e as any)} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50">Budget suggest</button>
+            <button type="button" onClick={() => runAnalyticsWhatIf()} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50">What if…</button>
             {/* Legacy non-NL search removed */}
             <button
               type="button"
@@ -1256,48 +1359,10 @@ export default function ChatDock() {
             >
               Next page (NL) ▶
             </button>
-            <button
-              type="button"
-              disabled={selftestBusy}
-              className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50"
-              title="Run an end-to-end incremental learning smoke test"
-              onClick={async () => {
-                try {
-                  setSelftestBusy(true);
-                  setSelftestNote(null);
-                  const t0 = performance.now();
-                  const res = await mlSelftest();
-                  const dt = Math.round(performance.now() - t0);
-                  const bumped = !!res?.mtime_bumped;
-                  const label = res?.label_used ?? '—';
-                  const usedId = res?.used_txn_id ?? '—';
-                  const classesAfter = Array.isArray(res?.classes_after) ? res.classes_after.join(', ') : '—';
-                  const msg = bumped
-                    ? `Selftest OK in ${dt}ms — label=${label}, txn=${usedId}, classes=[${classesAfter}]`
-                    : `Selftest ran but model timestamp didn’t change.`;
-                  setSelftestNote(
-                    bumped
-                      ? `mtime: ${(res?.mtime_before ?? '∅')} → ${(res?.mtime_after ?? '∅')}`
-                      : `no mtime bump; reason: ${res?.reason ?? 'unknown'}`
-                  );
-                  (bumped ? ok : err)(msg);
-                } catch (e: any) {
-                  err(`Selftest failed: ${e?.message ?? String(e)}`);
-                  setSelftestNote('request failed');
-                } finally {
-                  setSelftestBusy(false);
-                  window.setTimeout(() => setSelftestNote(null), 4500);
-                }
-              }}
-            >
-              {selftestBusy ? 'Running ML Selftest…' : 'Run ML Selftest'}
-            </button>
+            {/* Selftest button removed */}
           </div>
           <div className="text-[11px] opacity-60">Tip: Hold Alt to run without context.</div>
 
-          {selftestNote && (
-            <div className="text-[11px] text-neutral-400 mt-1">{selftestNote}</div>
-          )}
 
           {ENABLE_LEGACY_TOOL_FORM ? (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -1342,16 +1407,11 @@ export default function ChatDock() {
   {/* Inline quick tools removed — use top-bar buttons only to prevent duplication */}
 
       {/* Messages list (scrollable) with day dividers & timestamps */}
-      <div className="flex-1 overflow-auto" ref={listRef}>
+  <div className="flex-1 overflow-auto chat-scroll" ref={listRef}>
         {renderedMessages}
         {busy && (
           <div className="px-3 py-2">
-            <div className="inline-block max-w-[85%] rounded-2xl px-3 py-2 shadow-sm bg-neutral-800/60 border border-neutral-700">
-              <div className="text-sm flex items-center gap-2 text-neutral-300">
-                <span className="inline-block w-2 h-2 rounded-full bg-neutral-400 animate-pulse" />
-                <span>Thinking…</span>
-              </div>
-            </div>
+            <RobotThinking size={64} />
           </div>
         )}
         <div id="chatdock-scroll-anchor" ref={bottomRef} />
@@ -1391,7 +1451,7 @@ export default function ChatDock() {
       <div className="p-3 border-t bg-background sticky bottom-0 z-10 flex items-end gap-2">
         <textarea
           rows={1}
-          placeholder={busy ? 'Thinking…' : 'Ask the agent…'}
+          placeholder={'Ask the agent…'}
           className="flex-1 resize-none px-3 py-2 rounded-md border bg-background text-sm"
           value={input}
           onChange={(e) => setInput(e.target.value)}
@@ -1460,5 +1520,93 @@ function formatTxnQueryResult(q: string, res: TxnQueryResult & { meta?: any }): 
   // list
   const items = Array.isArray((res as any).result) ? (res as any).result : [];
   const table = tableForListWithExplain(items);
-  return `**NL Query:** ${q}${windowStr}\n${table}\n\n_Use \"Export CSV (NL Result)\" in tools to download rows._\n${hintStr}`;
+  return `**NL Query:** ${q}${windowStr}\n${table}\n\n_Use "Export CSV (NL Result)" in tools to download rows._\n${hintStr}`;
+}
+
+// Small UI chip to show grounded mode/args (e.g., Forecast horizon)
+export function ModeChip({ mode, args }: { mode?: string; args?: any }) {
+  if (!mode) return null;
+  const norm = String(mode);
+  const pretty = (() => {
+    // Analytics
+    if (norm === "analytics.forecast") {
+      const h = Math.max(1, Math.min(12, Number(args?.horizon || 3)));
+      return `Analytics · Forecast (${h}m)`;
+    }
+    if (norm === "analytics.kpis") return "Analytics · KPIs";
+    if (norm === "analytics.anomalies") return "Analytics · Anomalies";
+    if (norm === "analytics.recurring") return "Analytics · Recurring";
+    if (norm === "analytics.subscriptions") return "Analytics · Subscriptions";
+    if (norm === "analytics.budget_suggest") return "Analytics · Budget suggest";
+    if (norm === "analytics.whatif") return "Analytics · What-if";
+    // Charts
+    if (norm === "charts.summary") return "Charts · Summary";
+    if (norm === "charts.flows") return "Charts · Flows";
+    if (norm === "charts.merchants") return "Charts · Merchants";
+    if (norm === "charts.categories") return "Charts · Categories";
+    if (norm === "charts.category") return "Charts · Category";
+    // Transactions (NL)
+    if (norm === "nl_txns") return "Transactions · NL";
+    // Budgets & Reports & Insights
+    if (norm === "budgets.recommendations") return "Budgets · Recommendations";
+    if (norm === "budgets.temp") return "Budgets · Temp";
+    if (norm === "report.link") return "Report · Link";
+    if (norm === "insights.anomalies") return "Insights · Anomalies";
+    if (norm === "insights.anomalies.ignore") return "Insights · Ignore Anomalies";
+    // Fallback
+    return norm
+      .replace("analytics.", "Analytics · ")
+      .replace("charts.", "Charts · ")
+      .replace("insights.", "Insights · ")
+      .replace("budgets.", "Budgets · ")
+      .replace("report.", "Report · ")
+      .replace("_", " ");
+  })();
+  return (
+    <span className="ml-2 text-xs px-2 py-0.5 rounded bg-neutral-800/70 text-foreground/80 border border-neutral-700">
+      {pretty}
+    </span>
+  );
+}
+
+// Inline follow-ups under forecast reply
+export function ForecastFollowUps({ month, append, setThinking }: { month?: string; append: (msg: string, meta?: any) => void; setThinking: (b: boolean) => void; }) {
+  if (!month) return null;
+  return (
+    <div className="mt-2 flex flex-wrap gap-2">
+      <button
+        className="text-xs px-2 py-1 rounded border border-neutral-700 hover:bg-neutral-800"
+        onClick={() => runAndRephrase(
+          "analytics.forecast",
+          async () => analytics.forecast(month, 6, { model: "auto", ciLevel: 0.8 }),
+          () => "Extend forecast to 6 months.",
+          (msg, meta) => append(msg, meta),
+          setThinking,
+          () => ({})
+        )}
+      >Extend to 6 months</button>
+      <button
+        className="text-xs px-2 py-1 rounded border border-neutral-700 hover:bg-neutral-800"
+        onClick={() => runAndRephrase(
+          "analytics.anomalies",
+          async () => analytics.anomalies(month, 6),
+          () => "Check anomalies for this month.",
+          (msg, meta) => append(msg, meta),
+          setThinking,
+          () => ({})
+        )}
+      >Check anomalies</button>
+      <button
+        className="text-xs px-2 py-1 rounded border border-neutral-700 hover:bg-neutral-800"
+        onClick={() => runAndRephrase(
+          "analytics.budget_suggest",
+          async () => analytics.budgetSuggest(month, 6),
+          () => "Draft budget suggestions (p75).",
+          (msg, meta) => append(msg, meta),
+          setThinking,
+          () => ({})
+        )}
+      >Draft budget (p75)</button>
+    </div>
+  );
 }

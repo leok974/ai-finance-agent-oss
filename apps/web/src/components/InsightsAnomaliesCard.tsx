@@ -2,6 +2,7 @@ import * as React from "react";
 import Card from "./Card";
 import { getAnomalies, type Anomaly } from "@/lib/api";
 import { useMonth } from "@/context/MonthContext";
+import HelpBadge from "./HelpBadge";
 
 export default function InsightsAnomaliesCard() {
   const [loading, setLoading] = React.useState(false);
@@ -30,10 +31,10 @@ export default function InsightsAnomaliesCard() {
   }, [selectedMonth]);
 
   return (
-    <div className="panel-no-border p-3 md:p-4">
+    <div className="panel-no-border p-3 md:p-4" data-explain-key="cards.insights" data-month={month || undefined}>
       <Card className="border-0 bg-transparent shadow-none p-0">
       <div className="flex items-center justify-between mb-2">
-        <h3 className="text-lg font-semibold">⚠ Unusual this month</h3>
+        <h3 className="text-lg font-semibold flex items-center">⚠ Unusual this month <HelpBadge k="cards.insights" className="ml-2" /></h3>
         {month && <span className="text-xs opacity-70">{month}</span>}
       </div>
 

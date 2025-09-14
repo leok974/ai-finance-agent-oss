@@ -11,8 +11,7 @@ export async function runToolWithRephrase<T>(
   console.debug(`[tools] ${tool} → fetch`);
   setThinking(true);
   try {
-    // small placeholder so users see activity immediately
-    appendAssistant("(thinking…)", { ephemeral: true, tool });
+  // No text placeholder; rely on UI spinner via setThinking(true)
 
     const data = await fetcher();
     let prompt = "";
@@ -27,7 +26,8 @@ export async function runToolWithRephrase<T>(
   const llm = await agentRephrase(prompt, { mode: tool, ...extra });
   console.debug(`[tools] ${tool} ← /agent/chat ok`, { model: llm?.model });
 
-    appendAssistant(llm.reply ?? "", { model: llm.model, grounded: true, tool });
+    // Surface mode/args/tool to the UI so ModeChip can render
+    appendAssistant(llm.reply ?? "", { model: llm.model, grounded: true, tool, mode: tool, ...extra });
   } catch (e: any) {
     console.error(`[tools] ${tool} failed`, e);
     appendAssistant(`Sorry, ${tool} failed: ${e?.message ?? e}`, { severity: "error", tool });

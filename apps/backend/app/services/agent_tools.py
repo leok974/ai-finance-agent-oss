@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 # New imports for deterministic tool routing
 from app.services.txns_nl_query import parse_nl_query, run_txn_query
-from app.services.agent_detect import detect_txn_query
+from app.services.agent_detect import detect_txn_query, detect_analytics_intent
 from app.services.charts_data import (
     latest_month_str,
     get_month_summary,
@@ -21,6 +21,7 @@ from app.services.agent_detect import detect_budget_recommendation, extract_mont
 from app.utils.state import TEMP_BUDGETS, ANOMALY_IGNORES, current_month_key
 from app.services.charts_data import get_category_timeseries
 from app.services.insights_anomalies import compute_anomalies
+from app.services import analytics as analytics_svc
 
 def tool_specs():
     return [
@@ -383,13 +384,63 @@ def route_to_tool(user_text: str, db: Session) -> Optional[Dict[str, Any]]:
 
     # (moved) anomalies ignore handled above
 
-    # 5) Transactions NL — use conservative detector to avoid generic messages
+    # 5) Analytics intents — quick deterministic matches (before NL txns)
+    hit = detect_analytics_intent(user_text)
+    if hit:
+        mode, args = hit
+        # Resolve month context via charts latest if available
+        month = latest_month_str(db) or current_month_key()
+
+        if mode == "analytics.kpis":
+            lookback = int(args.get("lookback_months") or 6)
+            lookback = max(1, min(24, lookback))
+            data = analytics_svc.compute_kpis(db, month=month, lookback=lookback)
+            return {"mode": mode, "filters": {"month": month, "lookback_months": lookback}, "result": data}
+
+        if mode == "analytics.forecast":
+            horizon = int(args.get("horizon") or 3)
+            horizon = max(1, min(12, horizon))
+            data = analytics_svc.forecast_cashflow(db, month=month, horizon=horizon)
+            return {"mode": mode, "filters": {"month": month, "horizon": horizon}, "result": data}
+
+        if mode == "analytics.anomalies":
+            lookback = int(args.get("lookback_months") or 6)
+            lookback = max(1, min(24, lookback))
+            data = analytics_svc.find_anomalies(db, month=month, lookback=lookback)
+            return {"mode": mode, "filters": {"month": month, "lookback_months": lookback}, "result": data}
+
+        if mode == "analytics.recurring":
+            lookback = int(args.get("lookback_months") or 6)
+            lookback = max(1, min(24, lookback))
+            data = analytics_svc.detect_recurring(db, month=month, lookback=lookback)
+            return {"mode": mode, "filters": {"month": month, "lookback_months": lookback}, "result": data}
+
+        if mode == "analytics.subscriptions":
+            lookback = int(args.get("lookback_months") or 6)
+            lookback = max(1, min(24, lookback))
+            data = analytics_svc.find_subscriptions(db, month=month, lookback=lookback)
+            return {"mode": mode, "filters": {"month": month, "lookback_months": lookback}, "result": data}
+
+        if mode == "analytics.budget_suggest":
+            lookback = int(args.get("lookback_months") or 6)
+            lookback = max(1, min(24, lookback))
+            data = analytics_svc.budget_suggest(db, month=month, lookback=lookback)
+            return {"mode": mode, "filters": {"month": month, "lookback_months": lookback}, "result": data}
+
+        if mode == "analytics.whatif":
+            payload = dict(args)
+            if "month" not in payload:
+                payload["month"] = month
+            data = analytics_svc.whatif_sim(db, payload)
+            return {"mode": mode, "filters": {"month": payload.get("month")}, "args": args, "result": data}
+
+    # 6) Transactions NL — use conservative detector to avoid generic messages
     is_txn, nlq = detect_txn_query(user_text)
     if is_txn and nlq is not None:
         res = run_txn_query(db, nlq)
         return {"mode": "nl_txns", "filters": res.get("filters"), "result": res}
 
-    # 6) Charts (summary/flows/merchants/categories)
+    # 7) Charts (summary/flows/merchants/categories)
     charts_kind: Optional[str] = None
     if any(k in text_low for k in ["trend", "spending trend", "series", "by day", "by week", "by month", "time series", "flows", "cash flow", "net flow", "inflow", "outflow"]):
         charts_kind = "flows"
@@ -418,7 +469,7 @@ def route_to_tool(user_text: str, db: Session) -> Optional[Dict[str, Any]]:
             data = get_month_categories(db, month)
             return {"mode": "charts.categories", "filters": {"month": month}, "result": data}
 
-    # 7) Reports (Excel/PDF) — return a link to existing endpoints
+    # 8) Reports (Excel/PDF) — return a link to existing endpoints
     if any(k in text_low for k in ["export", "download", "report", "excel", "xlsx", "pdf"]):
         month = _extract_month(user_text) or latest_month_str(db)
         qs = []
@@ -435,7 +486,7 @@ def route_to_tool(user_text: str, db: Session) -> Optional[Dict[str, Any]]:
             url = "/report/pdf" + ("?" + "&".join(qs) if qs else "")
             return {"mode": "report.link", "filters": {"month": month}, "url": url, "meta": {"kind": "pdf"}}
 
-    # 8) Budgets placeholder
+    # 9) Budgets placeholder
     if detect_budget_recommendation(user_text):
         months = extract_months_or_default(user_text, default=6)
         recs = compute_recommendations(db, months=months)
