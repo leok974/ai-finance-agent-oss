@@ -9,6 +9,7 @@ node_modules/
 dist/
 .vite/
 .docusaurus/
+build/
 
 # OS
 .DS_Store
@@ -23,3 +24,15 @@ dist/
 *.sqlite3
 *.db-wal
 *.db-shm
+
+# Env overrides
+apps/web/.env.local
+
+# ML models
+*.joblib
+apps/backend/app/data/models/
+
+# Reports/exports
+reports/
+*.xlsx
+*.pdf
