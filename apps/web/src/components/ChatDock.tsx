@@ -4,7 +4,7 @@ import EnvAvatar from "@/components/EnvAvatar";
 import { useAuth } from "@/state/auth";
 import { createPortal } from "react-dom";
 import { ChevronUp, Wrench } from "lucide-react";
-import { agentTools, agentChat, getAgentModels, type AgentChatRequest, type AgentChatResponse, type AgentModelsResponse, type ChatMessage, txnsQuery, txnsQueryCsv, type TxnQueryResult, explainTxnForChat, agentRephrase, getMonthSummary, getMonthMerchants, getMonthFlows, getSpendingTrends, getBudgetCheck } from "../lib/api";
+import { agentTools, agentChat, getAgentModels, type AgentChatRequest, type AgentChatResponse, type AgentModelsResponse, type ChatMessage, txnsQuery, txnsQueryCsv, type TxnQueryResult, explainTxnForChat, agentRephrase, getMonthSummary, getMonthMerchants, getMonthFlows, getSpendingTrends, getBudgetCheck, analytics } from "../lib/api";
 import { fmtMonthSummary, fmtTopMerchants, fmtCashflow, fmtTrends } from "../lib/formatters";
 import { runToolWithRephrase } from "../lib/tools-runner";
 import { saveAs } from "../utils/save";
@@ -19,6 +19,7 @@ import { useMonth } from "../context/MonthContext";
 import { useChatDock } from "../context/ChatDockContext";
 import { exportThreadAsJSON, exportThreadAsMarkdown } from "../utils/chatExport";
 import { chatStore, type BasicMsg, snapshot as chatSnapshot, restoreFromSnapshot as chatRestoreFromSnapshot, discardSnapshot as chatDiscardSnapshot } from "../utils/chatStore";
+import runAndRephrase from "./agent-tools/runAndRephrase";
 // --- layout constants (right/bottom anchored) ---
 const MARGIN = 24;     // default bottom-right margin
 const BUBBLE = 48;     // bubble size (px)
@@ -277,6 +278,7 @@ export default function ChatDock() {
         );
       }
       const isUser = m.role === 'user';
+      const currentMeta = i === (uiMessages.length - 1) ? chatResp as any : undefined;
       out.push(
         <div key={`${m.role}-${ts}-${i}`} className={`px-3 py-2 my-1 flex items-end gap-2 ${isUser ? 'justify-end' : 'justify-start'}`}>
           {!isUser && <EnvAvatar who="agent" className="size-7" />}
@@ -290,26 +292,30 @@ export default function ChatDock() {
           {isUser && <EnvAvatar who="user" className="size-7" title={userName} />}
         </div>
       );
-      // Meta line under each message
+      // Meta line under each message (add ModeChip + ForecastFollowUps when applicable)
       out.push(
         <div key={`${m.role}-${ts}-${i}-meta`} className="px-3">
           <div className="mt-2 text-xs opacity-70 flex items-center gap-2 flex-wrap">
-            {m.role === 'assistant' && (m as any)?.meta?.citations?.length ? (
+            {m.role === 'assistant' && (chatResp as any)?.citations?.length ? (
               <>
                 <span>
-                  Used data: {(m as any).meta.citations.map((c: any) => c.count ? `${c.type} ${c.count}` : `${c.type}`).join(' · ')}
+                  Used data: {(chatResp as any).citations.map((c: any) => c.count ? `${c.type} ${c.count}` : `${c.type}`).join(' · ')}
                 </span>
-                {(m as any).meta?.ctxMonth ? <span>· month {(m as any).meta.ctxMonth}</span> : null}
-                {(m as any).meta?.model ? <span>· {(m as any).meta.model}</span> : null}
+                {(chatResp as any)?.used_context?.month ? <span>· month {(chatResp as any).used_context.month}</span> : null}
+                {(chatResp as any)?.model ? <span>· {(chatResp as any).model}</span> : null}
               </>
             ) : null}
+            {m.role === 'assistant' ? <ModeChip mode={(chatResp as any)?.mode} args={(chatResp as any)?.args} /> : null}
             <span className="ml-auto text-neutral-400">{toTimeHM(ts)}</span>
           </div>
+          {m.role === 'assistant' && (chatResp as any)?.mode === 'analytics.forecast' ? (
+            <ForecastFollowUps month={(chatResp as any)?.used_context?.month} append={appendAssistant} setThinking={setBusy} />
+          ) : null}
         </div>
       );
     });
     return out;
-  }, [uiMessages, userName]);
+  }, [uiMessages, userName, chatResp]);
 
   // Event delegation for Explain buttons inside rendered markdown
   useEffect(() => {
@@ -361,18 +367,18 @@ export default function ChatDock() {
   function appendAssistant(text: string, meta?: any) {
     const ts = Date.now();
     setUiMessages(cur => [...cur, { role: 'assistant', text, ts }]); // optimistic UI
-    // Persist minimal assistant message to cross-tab store
     chatStore.append({ role: 'assistant', content: text, createdAt: ts });
-  // Discard any stale snapshot after conversation continues
-  try { chatDiscardSnapshot(); } catch { /* ignore */ }
-    // Keep most recent response metadata in memory for current tab rendering
+    try { chatDiscardSnapshot(); } catch { /* ignore */ }
+    // capture response meta for current tab rendering, including mode/args/tool_trace
     setChatResp({
       reply: text,
       citations: meta?.citations || [],
       used_context: { month: meta?.ctxMonth },
-      tool_trace: meta?.trace || [],
+      tool_trace: meta?.trace || meta?.tool_trace || [],
       model: meta?.model || "",
-    } as AgentChatResponse);
+      mode: meta?.mode,
+      args: meta?.args,
+    } as any);
   }
 
   // History toggle (reads directly from messages)
@@ -710,26 +716,24 @@ export default function ChatDock() {
     } finally { setBusy(false); }
   }, [busy, month, appendAssistant]);
 
-  const runFindSubscriptions = React.useCallback(async (ev?: React.MouseEvent) => {
+  const runFindSubscriptions = React.useCallback(async (_ev?: React.MouseEvent) => {
     if (busy) return;
     setBusy(true);
     try {
       appendUser('Identify recurring subscriptions this month and suggest which I could cancel.');
-      const req: AgentChatRequest = {
-        messages: [{ role: 'user', content: 'Identify recurring subscriptions this month and suggest which I could cancel.' }],
-        intent: 'general',
-    context: getContext(ev),
-        ...(selectedModel ? { model: selectedModel } : {})
-      };
-  console.debug('[chat] find_subscriptions → /agent/chat', { preview: req.messages[0]?.content?.slice(0, 80) });
-  const resp = await agentChat(req);
-  console.debug('[chat] find_subscriptions ← ok', { model: resp?.model });
-  handleAgentResponse(resp);
-  syncFromStoreDebounced(120);
+      await runToolWithRephrase(
+        'analytics.subscriptions',
+        () => analytics.subscriptions(month),
+        (raw: any) => `Identify likely subscriptions for ${month} and which to cancel, with reasons:\n\n${JSON.stringify(raw)}`,
+        (msg, meta) => appendAssistant(msg, { ...meta, ctxMonth: month }),
+        (on) => setBusy(on),
+        () => ({ context: getContext(), ...(selectedModel ? { model: selectedModel } : {}) })
+      );
+      syncFromStoreDebounced(120);
     } finally {
       setBusy(false);
     }
-  }, [busy, selectedModel, handleAgentResponse]);
+  }, [busy, month, appendAssistant, selectedModel]);
 
   // Additional one-click runners shown in the tools tray
   const runTopMerchants = React.useCallback(async (_ev?: React.MouseEvent) => {
@@ -847,6 +851,113 @@ export default function ChatDock() {
       syncFromStore();
     } finally { setBusy(false); }
   }, [busy, month, appendAssistant]);
+
+  // ---------- Analytics quick buttons ----------
+  const runAnalyticsKpis = React.useCallback(async (_ev?: React.MouseEvent) => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      appendUser('Show KPIs for this month.');
+      await runToolWithRephrase(
+        'analytics.kpis',
+        () => analytics.kpis(month),
+        (raw: any) => `Summarize these KPIs for ${month} in 3 bullets and one suggestion:\n\n${JSON.stringify(raw)}`,
+        (msg, meta) => appendAssistant(msg, { ...meta, ctxMonth: month }),
+        (on) => setBusy(on),
+        () => ({ context: getContext(), ...(selectedModel ? { model: selectedModel } : {}) })
+      );
+      syncFromStoreDebounced(120);
+    } finally { setBusy(false); }
+  }, [busy, month, appendAssistant, selectedModel]);
+
+  const runAnalyticsForecast = React.useCallback(async (_ev?: React.MouseEvent) => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      appendUser('Forecast my next 3 months cashflow.');
+      await runToolWithRephrase(
+        'analytics.forecast',
+  () => analytics.forecast(month, 3, { model: "auto", ciLevel: 0.8 }),
+        (raw: any) => `Explain this cashflow forecast for ${month} and what it means:\n\n${JSON.stringify(raw)}`,
+        (msg, meta) => appendAssistant(msg, { ...meta, ctxMonth: month }),
+        (on) => setBusy(on),
+        () => ({ context: getContext(), ...(selectedModel ? { model: selectedModel } : {}) })
+      );
+      syncFromStoreDebounced(120);
+    } finally { setBusy(false); }
+  }, [busy, month, appendAssistant, selectedModel]);
+
+  const runAnalyticsAnomalies = React.useCallback(async (_ev?: React.MouseEvent) => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      appendUser('Find anomalies this month.');
+      await runToolWithRephrase(
+        'analytics.anomalies',
+        () => analytics.anomalies(month),
+        (raw: any) => `List any spending anomalies for ${month} and suggest actions:\n\n${JSON.stringify(raw)}`,
+        (msg, meta) => appendAssistant(msg, { ...meta, ctxMonth: month }),
+        (on) => setBusy(on),
+        () => ({ context: getContext(), ...(selectedModel ? { model: selectedModel } : {}) })
+      );
+      syncFromStoreDebounced(120);
+    } finally { setBusy(false); }
+  }, [busy, month, appendAssistant, selectedModel]);
+
+  const runAnalyticsRecurring = React.useCallback(async (_ev?: React.MouseEvent) => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      appendUser('Detect recurring charges.');
+      await runToolWithRephrase(
+        'analytics.recurring',
+        () => analytics.recurring(month),
+        (raw: any) => `Summarize recurring charges for ${month}, with likely subscriptions highlighted:\n\n${JSON.stringify(raw)}`,
+        (msg, meta) => appendAssistant(msg, { ...meta, ctxMonth: month }),
+        (on) => setBusy(on),
+        () => ({ context: getContext(), ...(selectedModel ? { model: selectedModel } : {}) })
+      );
+      syncFromStoreDebounced(120);
+    } finally { setBusy(false); }
+  }, [busy, month, appendAssistant, selectedModel]);
+
+  const runAnalyticsBudgetSuggest = React.useCallback(async (_ev?: React.MouseEvent) => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      appendUser('Suggest budget targets.');
+      await runToolWithRephrase(
+        'analytics.budget_suggest',
+        () => analytics.budgetSuggest(month),
+        (raw: any) => `Propose budget targets for ${month} from these stats, in a short list:\n\n${JSON.stringify(raw)}`,
+        (msg, meta) => appendAssistant(msg, { ...meta, ctxMonth: month }),
+        (on) => setBusy(on),
+        () => ({ context: getContext(), ...(selectedModel ? { model: selectedModel } : {}) })
+      );
+      syncFromStoreDebounced(120);
+    } finally { setBusy(false); }
+  }, [busy, month, appendAssistant, selectedModel]);
+
+  const runAnalyticsWhatIf = React.useCallback(async () => {
+    if (busy) return;
+    const cat = window.prompt('Category to cut? e.g., "Dining out"', 'Dining out');
+    if (!cat) return;
+    const pctStr = window.prompt('Cut percent (0-100)', '20');
+    const pct = Math.max(0, Math.min(100, Number(pctStr || 0)));
+    setBusy(true);
+    try {
+      appendUser(`What if I cut ${cat} by ${pct}%?`);
+      await runToolWithRephrase(
+        'analytics.whatif',
+        () => analytics.whatif({ month, cuts: [{ category: cat, pct }]}),
+        (raw: any) => `Explain this what-if simulation for ${month} (cut ${cat} by ${pct}%):\n\n${JSON.stringify(raw)}`,
+        (msg, meta) => appendAssistant(msg, { ...meta, ctxMonth: month }),
+        (on) => setBusy(on),
+        () => ({ context: getContext(), ...(selectedModel ? { model: selectedModel } : {}) })
+      );
+      syncFromStoreDebounced(120);
+    } finally { setBusy(false); }
+  }, [busy, month, appendAssistant, selectedModel]);
 
   const runAlerts = React.useCallback(async (ev?: React.MouseEvent) => {
     if (busy) return;
@@ -1097,6 +1208,13 @@ export default function ChatDock() {
             <button type="button" onClick={(e) => runInsightsExpanded(e as any)} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50">Insights: Expanded</button>
             <button type="button" onClick={(e) => runBudgetCheck(e as any)} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50">Budget check</button>
             <button type="button" onClick={(e) => runAlerts(e as any)} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50">Alerts</button>
+            {/* Analytics quick buttons */}
+            <button type="button" onClick={(e) => runAnalyticsKpis(e as any)} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50">KPIs</button>
+            <button type="button" onClick={(e) => runAnalyticsForecast(e as any)} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50">Forecast</button>
+            <button type="button" onClick={(e) => runAnalyticsAnomalies(e as any)} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50">Anomalies</button>
+            <button type="button" onClick={(e) => runAnalyticsRecurring(e as any)} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50">Recurring</button>
+            <button type="button" onClick={(e) => runAnalyticsBudgetSuggest(e as any)} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50">Budget suggest</button>
+            <button type="button" onClick={() => runAnalyticsWhatIf()} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50">What if…</button>
             {/* Legacy non-NL search removed */}
             <button
               type="button"
@@ -1402,5 +1520,93 @@ function formatTxnQueryResult(q: string, res: TxnQueryResult & { meta?: any }): 
   // list
   const items = Array.isArray((res as any).result) ? (res as any).result : [];
   const table = tableForListWithExplain(items);
-  return `**NL Query:** ${q}${windowStr}\n${table}\n\n_Use \"Export CSV (NL Result)\" in tools to download rows._\n${hintStr}`;
+  return `**NL Query:** ${q}${windowStr}\n${table}\n\n_Use "Export CSV (NL Result)" in tools to download rows._\n${hintStr}`;
+}
+
+// Small UI chip to show grounded mode/args (e.g., Forecast horizon)
+export function ModeChip({ mode, args }: { mode?: string; args?: any }) {
+  if (!mode) return null;
+  const norm = String(mode);
+  const pretty = (() => {
+    // Analytics
+    if (norm === "analytics.forecast") {
+      const h = Math.max(1, Math.min(12, Number(args?.horizon || 3)));
+      return `Analytics · Forecast (${h}m)`;
+    }
+    if (norm === "analytics.kpis") return "Analytics · KPIs";
+    if (norm === "analytics.anomalies") return "Analytics · Anomalies";
+    if (norm === "analytics.recurring") return "Analytics · Recurring";
+    if (norm === "analytics.subscriptions") return "Analytics · Subscriptions";
+    if (norm === "analytics.budget_suggest") return "Analytics · Budget suggest";
+    if (norm === "analytics.whatif") return "Analytics · What-if";
+    // Charts
+    if (norm === "charts.summary") return "Charts · Summary";
+    if (norm === "charts.flows") return "Charts · Flows";
+    if (norm === "charts.merchants") return "Charts · Merchants";
+    if (norm === "charts.categories") return "Charts · Categories";
+    if (norm === "charts.category") return "Charts · Category";
+    // Transactions (NL)
+    if (norm === "nl_txns") return "Transactions · NL";
+    // Budgets & Reports & Insights
+    if (norm === "budgets.recommendations") return "Budgets · Recommendations";
+    if (norm === "budgets.temp") return "Budgets · Temp";
+    if (norm === "report.link") return "Report · Link";
+    if (norm === "insights.anomalies") return "Insights · Anomalies";
+    if (norm === "insights.anomalies.ignore") return "Insights · Ignore Anomalies";
+    // Fallback
+    return norm
+      .replace("analytics.", "Analytics · ")
+      .replace("charts.", "Charts · ")
+      .replace("insights.", "Insights · ")
+      .replace("budgets.", "Budgets · ")
+      .replace("report.", "Report · ")
+      .replace("_", " ");
+  })();
+  return (
+    <span className="ml-2 text-xs px-2 py-0.5 rounded bg-neutral-800/70 text-foreground/80 border border-neutral-700">
+      {pretty}
+    </span>
+  );
+}
+
+// Inline follow-ups under forecast reply
+export function ForecastFollowUps({ month, append, setThinking }: { month?: string; append: (msg: string, meta?: any) => void; setThinking: (b: boolean) => void; }) {
+  if (!month) return null;
+  return (
+    <div className="mt-2 flex flex-wrap gap-2">
+      <button
+        className="text-xs px-2 py-1 rounded border border-neutral-700 hover:bg-neutral-800"
+        onClick={() => runAndRephrase(
+          "analytics.forecast",
+          async () => analytics.forecast(month, 6, { model: "auto", ciLevel: 0.8 }),
+          () => "Extend forecast to 6 months.",
+          (msg, meta) => append(msg, meta),
+          setThinking,
+          () => ({})
+        )}
+      >Extend to 6 months</button>
+      <button
+        className="text-xs px-2 py-1 rounded border border-neutral-700 hover:bg-neutral-800"
+        onClick={() => runAndRephrase(
+          "analytics.anomalies",
+          async () => analytics.anomalies(month, 6),
+          () => "Check anomalies for this month.",
+          (msg, meta) => append(msg, meta),
+          setThinking,
+          () => ({})
+        )}
+      >Check anomalies</button>
+      <button
+        className="text-xs px-2 py-1 rounded border border-neutral-700 hover:bg-neutral-800"
+        onClick={() => runAndRephrase(
+          "analytics.budget_suggest",
+          async () => analytics.budgetSuggest(month, 6),
+          () => "Draft budget suggestions (p75).",
+          (msg, meta) => append(msg, meta),
+          setThinking,
+          () => ({})
+        )}
+      >Draft budget (p75)</button>
+    </div>
+  );
 }

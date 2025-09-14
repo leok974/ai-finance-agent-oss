@@ -6,6 +6,72 @@ from app.services.txns_nl_query import parse_nl_query, NLQuery
 from app.config import settings
 import re as _re
 
+# --- analytics intent detection ---------------------------------------------
+import re as __re
+from typing import Optional, Tuple
+
+ANALYTICS_HINTS = {
+    "analytics.kpis": [
+        r"\b(kpi|kpis|metrics|indicators)\b", r"\bsavings rate\b", r"\bburn rate\b", r"\bincome volatility\b",
+    ],
+    "analytics.forecast": [
+        r"\bforecast\b", r"\bprojection(s)?\b", r"\bnext\s+\d+\s+mo(?:nths)?\b", r"\bproject(ed)? cash(flow)?\b"
+    ],
+    "analytics.anomalies": [
+        r"\banomal(y|ies)\b", r"\boutlier(s)?\b", r"\bunusual\b"
+    ],
+    "analytics.recurring": [
+        r"\brecurring\b", r"\brepeat(ed)? charges?\b", r"\bmonthly\b"
+    ],
+    "analytics.subscriptions": [
+        r"\bsubscription(s)?\b", r"\bsubs\b", r"\bmanage subscriptions\b"
+    ],
+    "analytics.budget_suggest": [
+    r"\bbudget\b.+\b(suggest|suggestion|suggestions|limit|limits|recommend|recommendation|recommendations|cap|caps)\b",
+    r"\bauto-?budget\b"
+    ],
+    "analytics.whatif": [
+        r"\bwhat if\b", r"\b(cut|reduce)\b.+\bby\b\s*\d+\s*(%|percent)\b"
+    ],
+}
+
+def detect_analytics_intent(text: str) -> Optional[Tuple[str, Dict[str, Any]]]:
+    t = (text or "").lower().strip()
+    if not t:
+        return None
+    # Precedence: what-if, then budget_suggest, then others (subs last)
+    if any(__re.search(p, t) for p in ANALYTICS_HINTS["analytics.whatif"]):
+        args: Dict[str, Any] = {}
+        # Extract % or 'percent' (allow punctuation after %)
+        m_pct = __re.search(r"(\d{1,3})\s*(?:%|percent\b)", t)
+        if m_pct:
+            pct_val = int(m_pct.group(1))
+        else:
+            pct_val = None
+        # Heuristic category/merchant capture (between 'cut/reduce' and 'by')
+        m_cat = __re.search(r"\b(?:cut|reduce)\s+(.+?)\s+by\b", t)
+        target = (m_cat.group(1).strip() if m_cat else "Subscriptions")
+        cut = {"pct": pct_val or 0}
+        # naive mapping to category field; UI can refine
+        cut["category"] = target.title()
+        args["cuts"] = [cut]
+        return "analytics.whatif", args
+    # Budget suggest next
+    if any(__re.search(p, t) for p in ANALYTICS_HINTS["analytics.budget_suggest"]):
+        return "analytics.budget_suggest", {}
+    # Then the rest
+    for mode, patterns in ANALYTICS_HINTS.items():
+        if mode in ("analytics.whatif", "analytics.budget_suggest"):
+            continue
+        if any(__re.search(p, t) for p in patterns):
+            args: Dict[str, Any] = {}
+            if mode == "analytics.forecast":
+                m = __re.search(r"\b(?:next|for)\s+(\d{1,2})\s+(?:mo|mos|month|months)\b", t)
+                if m:
+                    args["horizon"] = max(1, min(12, int(m.group(1))))
+            return mode, args
+    return None
+
 def detect_txn_query(user_text: str) -> Tuple[bool, NLQuery]:
     """
     Heuristic: reuse the NL parser; if it finds any strong signals, we treat this as a txn query.

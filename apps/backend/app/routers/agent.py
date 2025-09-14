@@ -22,6 +22,7 @@ from app.config import settings
 from app.services.agent_detect import detect_txn_query, summarize_txn_result, infer_flow, try_llm_rephrase_summary
 from app.services.txns_nl_query import run_txn_query
 from app.services.agent_tools import route_to_tool
+import time
 
 router = APIRouter()  # <-- no prefix here (main.py supplies /agent)
 
@@ -349,8 +350,10 @@ def agent_chat(
 
         # First: deterministic tool routing (transactions/charts/reports/budgets)
         if (not bypass) and req.intent in ("general", "budget_help"):
+            t0 = time.perf_counter()
             tool_resp = route_to_tool(last_user_msg, db)
             if tool_resp is not None:
+                dt_ms = int((time.perf_counter() - t0) * 1000)
                 # Deterministic summary string for tool output
                 summary = _summarize_tool_result(tool_resp)
                 # Optional rephrase via LLM (safe, short, numbers unchanged); default to deterministic
@@ -364,11 +367,18 @@ def agent_chat(
                     "summary": summary,
                     "rephrased": rephrased,
                     "filters": tool_resp.get("filters"),
+                    "args": tool_resp.get("args"),
                     "result": tool_resp.get("result"),
                     "url": tool_resp.get("url"),
                     "citations": [{"type": "summary", "count": 1}],
                     "used_context": {"month": ctx.get("month")},
-                    "tool_trace": [{"tool": "router", "status": "short_circuit"}],
+                    "tool_trace": [{
+                        "tool": "router",
+                        "mode": tool_resp.get("mode"),
+                        "args": tool_resp.get("args"),
+                        "duration_ms": dt_ms,
+                        "status": "short_circuit"
+                    }],
                     "model": "deterministic",
                 }
                 if debug and getattr(settings, "ENV", "dev") != "prod":

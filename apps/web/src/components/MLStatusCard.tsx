@@ -2,6 +2,7 @@ import * as React from 'react';
 import { getMlStatus, mlSelftest } from '../lib/api';
 import { useOkErrToast } from '@/lib/toast-helpers';
 import { useCoalescedRefresh } from '@/utils/refreshBus';
+import HelpBadge from './HelpBadge';
 
 type MlStatus = {
   classes?: string[];
@@ -97,9 +98,9 @@ export default function MLStatusCard() {
     status?.classes && status.classes.length > 0 ? status.classes.join(', ') : '—';
 
   return (
-  <div className="panel-tight md:p-5 lg:p-6">
+  <div className="panel-tight md:p-5 lg:p-6" data-explain-key="cards.ml_status">
       <div className="flex items-center justify-between border-b border-border pb-1">
-        <h3 className="text-sm font-medium">ML Status</h3>
+        <h3 className="text-sm font-medium flex items-center">ML Status <HelpBadge k="cards.ml_status" className="ml-2" /></h3>
         <button
           className="text-xs opacity-80 hover:opacity-100"
           onClick={scheduleMlStatusRefresh}

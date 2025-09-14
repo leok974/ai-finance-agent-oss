@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 import os
 from .routers import ingest, txns, rules, ml, report, budget, alerts, insights, agent, explain
+from app.routers import analytics
 from .routers import meta
 from app.routers import agent_tools_transactions as agent_tools_txn
 from app.routers import agent_tools_budget as agent_tools_budget
@@ -18,6 +19,7 @@ from .routers import charts
 from app.routers import auth as auth_router
 from app.routers import auth_oauth as auth_oauth_router
 from app.routers import agent_txns  # NEW
+from app.routers import help_ui as help_ui_router
 from .routers import transactions as transactions_router
 from .routers import dev as dev_router
 from .routers import health as health_router
@@ -132,6 +134,9 @@ app.include_router(meta_router.router)
 app.include_router(meta.router)
 app.include_router(agent_txns.router)  # NEW
 app.include_router(agent_plan_router.router)
+# Analytics endpoints (agent tools)
+app.include_router(analytics.router)
+app.include_router(help_ui_router.router)
 
 # Mount health router at root so /healthz is available at top-level
 app.include_router(health_router.router)  # exposes GET /healthz

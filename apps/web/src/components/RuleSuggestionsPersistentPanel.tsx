@@ -11,6 +11,7 @@ import {
   ignoreRuleSuggestion,
 } from "@/lib/api";
 import type { RuleSuggestion } from "@/types/rules";
+import HelpBadge from "./HelpBadge";
 
 type RowModel =
   | ({ kind: "persisted"; id: number; status: "new" | "accepted" | "dismissed" } & Pick<RuleSuggestion, "merchant" | "category" | "count" | "window_days">)
@@ -55,10 +56,13 @@ export default function RuleSuggestionsPersistentPanel() {
   React.useEffect(() => { load(); }, [load]);
 
   return (
-    <section className="panel p-4 md:p-5">
+    <section className="panel p-4 md:p-5" data-explain-key="cards.rule_suggestions">
     <div>
       <header className="flex items-center gap-3 pb-1 mb-3 border-b border-border">
-        <h3 className="text-base font-semibold">Rule Suggestions</h3>
+        <h3 className="text-base font-semibold flex items-center">
+          Rule Suggestions
+          <HelpBadge k="cards.rule_suggestions" className="ml-2" />
+        </h3>
         <div className="ml-auto flex items-end gap-2">
           <button
             className="btn btn-ghost btn-sm"

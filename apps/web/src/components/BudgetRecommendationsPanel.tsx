@@ -2,6 +2,7 @@ import React from "react";
 import { getBudgetRecommendations, type BudgetRecommendation, applyBudgets, downloadReportPdf } from "@/lib/api";
 import Card from "./Card";
 import { showToast } from "@/lib/toast-helpers";
+import HelpBadge from "./HelpBadge";
 
 const LS_KEY = "budgets_lookback_months";
 
@@ -64,6 +65,12 @@ export default function BudgetRecommendationsPanel() {
 
   return (
     <Card className="w-full" title="Smart Budget Recommendations">
+      <div className="flex items-center justify-between mb-2">
+        <h3 className="text-base font-semibold flex items-center">
+          Smart Budget Recommendations
+          <HelpBadge k="cards.budget_recommendations" className="ml-2" />
+        </h3>
+      </div>
       <div className="flex flex-col gap-3 pb-2 mb-3">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-2">
