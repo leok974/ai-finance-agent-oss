@@ -9,6 +9,20 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "ollama")
 MODEL = os.getenv("MODEL", "gpt-oss:20b")
 DEV_ALLOW_NO_LLM = os.getenv("DEV_ALLOW_NO_LLM", "0") == "1"
 
+"""CORS allowlist (dev defaults include both localhost + 127.0.0.1 on 5173/5174).
+Read from env and split on commas; strip whitespace and any stray quotes per item.
+"""
+_cors_env = os.getenv(
+	"CORS_ALLOW_ORIGINS",
+	"http://127.0.0.1:5173,http://127.0.0.1:5174,http://localhost:5173,http://localhost:5174",
+)
+CORS_ALLOW_ORIGINS = _cors_env
+ALLOW_ORIGINS = [
+	o.strip().strip('"').strip("'")
+	for o in (_cors_env.split(",") if _cors_env else [])
+	if o and o.strip().strip('"').strip("'")
+]
+
 
 class Settings(BaseSettings):
 	DATABASE_URL: str = "sqlite:///./data/finance.db"

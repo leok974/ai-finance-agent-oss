@@ -19,6 +19,11 @@ class Transaction(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
     # NEW: SQL-side canonical merchant (indexed)
     merchant_canonical: Mapped[str | None] = mapped_column(String(256), index=True, nullable=True)
+    # NEW: Soft-delete and edit/relationship metadata
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    note: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    split_parent_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    transfer_group: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
 
     __table_args__ = (
         UniqueConstraint("date", "amount", "description", name="uq_txn_dedup"),

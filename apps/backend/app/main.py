@@ -4,6 +4,7 @@ from sqlalchemy import inspect
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 import os
+from . import config as app_config
 from .routers import ingest, txns, rules, ml, report, budget, alerts, insights, agent, explain
 from app.routers import analytics
 from .routers import meta
@@ -16,6 +17,7 @@ from app.routers import agent_tools_rules_crud as rules_crud_router
 from app.routers import agent_tools_rules_apply_all as rules_apply_all_router
 from app.routers import agent_tools_meta as meta_router
 from .routers import charts
+from app.routers import txns_edit as txns_edit_router
 from app.routers import auth as auth_router
 from app.routers import auth_oauth as auth_oauth_router
 from app.routers import agent_txns  # NEW
@@ -60,15 +62,8 @@ def _create_tables_dev():
         # Ignore in dev if engine misconfigured
         pass
 
-# Allow Vite dev origins explicitly (browser CORS) and expose filename header
-DEV_ORIGINS = [
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-]
-
-# In production, prefer explicit allowlist via CORS_ALLOW_ORIGINS env (comma-separated)
-origins_env = os.environ.get("CORS_ALLOW_ORIGINS")
-ALLOW_ORIGINS = [o.strip() for o in origins_env.split(",") if o.strip()] if origins_env else DEV_ORIGINS
+# CORS allowlist from settings (defaults include 5173/5174 on localhost + 127.0.0.1)
+ALLOW_ORIGINS = app_config.ALLOW_ORIGINS
 
 app.add_middleware(
     CORSMiddleware,
@@ -137,6 +132,7 @@ app.include_router(agent_plan_router.router)
 # Analytics endpoints (agent tools)
 app.include_router(analytics.router)
 app.include_router(help_ui_router.router)
+app.include_router(txns_edit_router.router)
 
 # Mount health router at root so /healthz is available at top-level
 app.include_router(health_router.router)  # exposes GET /healthz

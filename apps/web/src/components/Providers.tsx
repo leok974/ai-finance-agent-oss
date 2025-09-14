@@ -1,8 +1,8 @@
-import React from "react";
+import { ReactNode } from "react";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider } from "@/state/auth";
 
-export const Providers: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+export function Providers({ children }: { children: ReactNode }) {
   return (
     <AuthProvider>
       <TooltipProvider delayDuration={200}>
@@ -10,6 +10,6 @@ export const Providers: React.FC<{ children: React.ReactNode }> = ({ children })
       </TooltipProvider>
     </AuthProvider>
   );
-};
+}
 
 export default Providers;

@@ -16,17 +16,19 @@ services:
       context: ./apps/backend
       dockerfile: Dockerfile
     environment:
-      DATABASE_URL: "postgresql+psycopg://myuser:password@postgres:5432/finance"
-      APP_ENV: "dev"
-      OPENAI_BASE_URL: "http://host.docker.internal:11434/v1"
-      OPENAI_API_KEY: "ollama"
-      MODEL: "gpt-oss:20b"
+      DATABASE_URL: postgresql+psycopg://myuser:mypassword@postgres:5432/finance
+      APP_ENV: dev
+      OPENAI_BASE_URL: http://host.docker.internal:11434/v1
+      OPENAI_API_KEY: ollama
+      MODEL: gpt-oss:20b
       DEV_ALLOW_NO_LLM: "1"
-      FRONTEND_ORIGIN: "http://127.0.0.1:5173"
+      DEV_ALLOW_NO_AUTH: "1"
+      FRONTEND_ORIGIN: http://127.0.0.1:5173
+      CORS_ALLOW_ORIGINS: http://127.0.0.1:5173,http://localhost:5173,http://127.0.0.1:5174,http://localhost:5174
       DEMO_MODE: "1"
-      DEMO_LOGIN_EMAIL: "admin@local"
-      DEMO_LOGIN_PASSWORD: "admin123"
-      DEMO_LOGIN_TOKEN: "let-judges-in"
+      DEMO_LOGIN_EMAIL: admin@local
+      DEMO_LOGIN_PASSWORD: admin123
+      DEMO_LOGIN_TOKEN: let-judges-in
     depends_on:
       - postgres
     ports:

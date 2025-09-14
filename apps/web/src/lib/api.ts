@@ -1198,6 +1198,62 @@ export type ApplyBudgetsReq = {
   categories_exclude?: string[] | null;
   months?: number;
 };
+
+// ---------- Transactions (Edit & Manage) ----------
+// Backend routes live under /txns/edit to avoid conflicts with legacy /txns
+export async function listTxns(params: {
+  q?: string;
+  month?: string;
+  category?: string;
+  merchant?: string;
+  include_deleted?: boolean;
+  limit?: number;
+  offset?: number;
+  sort?: string;
+}) {
+  const usp = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) {
+    if (v === undefined || v === null || v === "") continue;
+    usp.set(k, String(v));
+  }
+  const qs = usp.toString();
+  return http<{ items: any[]; total: number; limit: number; offset: number }>(`/txns/edit${qs ? `?${qs}` : ""}`);
+}
+
+export function getTxn(id: number) {
+  return http(`/txns/edit/${id}`);
+}
+
+export function patchTxn(id: number, patch: any) {
+  return http(`/txns/edit/${id}`, { method: "PATCH", body: JSON.stringify(patch) });
+}
+
+export function bulkPatchTxns(ids: number[], patch: any) {
+  return http(`/txns/edit/bulk`, { method: "POST", body: JSON.stringify({ ids, patch }) });
+}
+
+export function deleteTxn(id: number) {
+  return http(`/txns/edit/${id}`, { method: "DELETE" });
+}
+
+export function restoreTxn(id: number) {
+  return http(`/txns/edit/${id}/restore`, { method: "POST" });
+}
+
+export function splitTxn(
+  id: number,
+  parts: { amount: number | string; category?: string; note?: string }[]
+) {
+  return http(`/txns/edit/${id}/split`, { method: "POST", body: JSON.stringify({ parts }) });
+}
+
+export function mergeTxns(ids: number[], merged_note?: string) {
+  return http(`/txns/edit/merge`, { method: "POST", body: JSON.stringify({ ids, merged_note }) });
+}
+
+export function linkTransfer(id: number, counterpart_id: number, group?: string) {
+  return http(`/txns/edit/${id}/transfer`, { method: "POST", body: JSON.stringify({ counterpart_id, group }) });
+}
 export type ApplyBudgetsResp = {
   ok: boolean;
   applied: Array<{ category: string; amount: number }>;

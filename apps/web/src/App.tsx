@@ -35,6 +35,7 @@ import DevBadge from "@/components/dev/DevBadge";
 import HelpMode from "@/components/HelpMode";
 import HelpExplainListener from "@/components/HelpExplainListener";
 import ForecastCard from "@/components/ForecastCard";
+import TransactionsPanel from "@/components/TransactionsPanel";
 
 // Log frontend version info
 console.info("[Web] branch=", __WEB_BRANCH__, "commit=", __WEB_COMMIT__);
@@ -51,6 +52,7 @@ const App: React.FC = () => {
   const [alerts, setAlerts] = useState<any>(null)
   const [empty, setEmpty] = useState<boolean>(false)
   const [bannerDismissed, setBannerDismissed] = useState<boolean>(false)
+  const [txPanelOpen, setTxPanelOpen] = useState<boolean>(false)
   const booted = useRef(false)
   const [dbRev, setDbRev] = useState<string | null>(null);
   const [inSync, setInSync] = useState<boolean | undefined>(undefined);
@@ -180,6 +182,13 @@ const App: React.FC = () => {
           <div className="flex items-center gap-3">
             <LoginForm />
             <AboutDrawer />
+            <button
+              onClick={() => setTxPanelOpen(true)}
+              className="inline-flex items-center gap-2 rounded-2xl border px-3 py-1.5 text-sm bg-card border-border hover:bg-accent/20 transition"
+              title="Open Transactions"
+            >
+              Transactions
+            </button>
             <input type="month" className="bg-neutral-900 border border-neutral-800 rounded px-3 py-2" value={month} onChange={e=>{ setMonth(e.target.value); setGlobalMonth(e.target.value); }} />
             <a href="#rule-suggestions" className="btn btn-ghost btn-sm" title="Jump to persistent Rule Suggestions">Suggestions</a>
             {flags.dev && (
@@ -260,6 +269,18 @@ const App: React.FC = () => {
         </div>
       </div>
   </div>
+      {txPanelOpen && (
+        <div className="fixed inset-0 z-50 flex">
+          <div className="absolute inset-0 bg-black/50" onClick={() => setTxPanelOpen(false)} />
+          <div className="ml-auto h-full w-full max-w-5xl bg-background border-l border-border p-4 overflow-auto">
+            <div className="flex items-center justify-between mb-2">
+              <div className="text-lg font-semibold">Transactions</div>
+              <button className="text-sm opacity-70 hover:opacity-100" onClick={() => setTxPanelOpen(false)}>Close</button>
+            </div>
+            <TransactionsPanel />
+          </div>
+        </div>
+      )}
   </ChatDockProvider>
     </MonthContext.Provider>
   );

@@ -23,3 +23,18 @@ dist/
 *.sqlite3
 *.db-wal
 *.db-shm
+
+# Build outputs
+build/
+
+# Local env overrides
+.env.local
+
+# ML artifacts
+*.joblib
+/models/
+
+# Reports / exports
+reports/
+*.xlsx
+*.pdf

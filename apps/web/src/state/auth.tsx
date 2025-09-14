@@ -1,4 +1,5 @@
-import React, { createContext, useContext, useMemo, useState, useEffect } from "react";
+import { createContext, useContext, useMemo, useState, useEffect } from "react";
+import type { ReactNode } from "react";
 import { apiGet, apiPost } from "../lib/api";
 
 export type User = { email: string; roles: string[]; is_active?: boolean } | null;
@@ -14,7 +15,7 @@ export const AuthContext = createContext<{
   refresh: () => Promise<boolean>;
 } | null>(null);
 
-export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User>(null);
   const [authReady, setAuthReady] = useState(false);
 
@@ -65,11 +66,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const value = useMemo(() => ({ user, authReady, login, register, logout, refresh }), [user, authReady]);
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
-};
+}
 
 export function useAuth() {
   const ctx = useContext(AuthContext);
-  if (!ctx) throw new Error("useAuth must be used within AuthProvider");
+  if (!ctx) throw new Error("useAuth must be used within <AuthProvider>");
   return ctx;
 }
 

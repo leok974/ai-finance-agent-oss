@@ -24,6 +24,8 @@ export default defineConfig({
       // ✅ force lowercase import resolution
       Recharts: "recharts",
     },
+  // Ensure a single copy of React in the bundle and during HMR
+  dedupe: ["react", "react-dom"],
   },
   test: {
     environment: 'jsdom',
