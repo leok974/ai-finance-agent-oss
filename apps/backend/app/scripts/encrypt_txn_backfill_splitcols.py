@@ -16,24 +16,40 @@ import os
 
 
 def _ensure_crypto_initialized():
-    # Initialize crypto singleton similar to app startup
+    """
+    Initialize crypto singleton similar to app startup.
+    Ensures a persistent EncryptionKey row exists for the active label and
+    loads the unwrapped DEK into process state. This avoids ephemeral DEKs
+    so that separate processes can decrypt previously written data.
+    """
     crypto = EnvelopeCrypto.from_env(os.environ)
     set_crypto(crypto)
     label = os.environ.get("ENCRYPTION_ACTIVE_LABEL", "active")
     set_active_label(label)
-    # Use existing EncryptionKey row if any, else make a transient DEK
+    # Ensure an EncryptionKey exists; create+persist if missing
     try:
         from app.orm_models import EncryptionKey
         from app.db import SessionLocal
         with SessionLocal() as s:
             ek = s.query(EncryptionKey).filter(EncryptionKey.label == label).one_or_none()
-            if ek:
+            if not ek:
+                dek = EnvelopeCrypto.new_dek()
+                wrapped, nonce = crypto.wrap_dek(dek)
+                ek = EncryptionKey(label=label, dek_wrapped=wrapped, dek_wrap_nonce=nonce)
+                s.add(ek)
+                s.commit()
+            # unwrap DEK and cache in process
+            try:
                 set_data_key(crypto.unwrap_dek(ek.dek_wrapped, ek.dek_wrap_nonce))
-                return
+            except Exception as e:
+                # If a key exists but unwrap fails, KEK is wrong; fail fast.
+                raise RuntimeError("KEK mismatch while unwrapping DEK. Update ENCRYPTION_MASTER_KEY_BASE64 (or MASTER_KEK_B64) to current KEK.") from e
+            return
+    except RuntimeError:
+        raise
     except Exception:
-        pass
-    # fallback: ephemeral DEK for this run
-    set_data_key(EnvelopeCrypto.new_dek())
+        # As a last resort, use an ephemeral DEK to keep script usable in dev when DB is unreachable
+        set_data_key(EnvelopeCrypto.new_dek())
 
 
 def run():
