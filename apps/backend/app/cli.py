@@ -8,6 +8,7 @@ from sqlalchemy import text
 # Initializer ensures encryption_keys row exists + caches DEK
 from app.scripts.encrypt_txn_backfill_splitcols import _ensure_crypto_initialized
 from app.scripts.dek_rotation import begin_new_dek, run_rotation, finalize_rotation, rotation_status
+from app.core.crypto_state import set_write_label, get_write_label
 
 
 def cmd_crypto_init(args):
@@ -130,9 +131,13 @@ def main():
     r.set_defaults(fn=cmd_kek_rewrap)
 
     # DEK rotation commands
+    def cmd_dek_rotate_begin(a):
+        new_label = begin_new_dek(a.label)
+        set_write_label(new_label)
+        print({"new_label": new_label, "write_label": get_write_label()})
     r0 = sub.add_parser("dek-rotate-begin")
     r0.add_argument("--label", help="Optional new label (default rotating::<UTC timestamp>)")
-    r0.set_defaults(fn=lambda a: print({"new_label": begin_new_dek(a.label)}))
+    r0.set_defaults(fn=cmd_dek_rotate_begin)
 
     r1 = sub.add_parser("dek-rotate-run")
     r1.add_argument("--new-label", required=True)
@@ -141,13 +146,24 @@ def main():
     r1.add_argument("--dry-run", action="store_true")
     r1.set_defaults(fn=lambda a: print(run_rotation(a.new_label, a.batch_size, a.max_batches, a.dry_run)))
 
+    def cmd_dek_rotate_finalize(a):
+        labels = finalize_rotation(a.new_label)
+        set_write_label("active")
+        print({"labels": labels, "write_label": get_write_label()})
     r2 = sub.add_parser("dek-rotate-finalize")
     r2.add_argument("--new-label", required=True)
-    r2.set_defaults(fn=lambda a: print({"labels": finalize_rotation(a.new_label)}))
+    r2.set_defaults(fn=cmd_dek_rotate_finalize)
 
     r3 = sub.add_parser("dek-rotate-status")
     r3.add_argument("--new-label", required=False)
     r3.set_defaults(fn=lambda a: print(rotation_status(a.new_label)))
+
+    # write label controls
+    wl_g = sub.add_parser("write-label-get")
+    wl_g.set_defaults(fn=lambda a: print({"write_label": get_write_label()}))
+    wl_s = sub.add_parser("write-label-set")
+    wl_s.add_argument("--label", required=True)
+    wl_s.set_defaults(fn=lambda a: (set_write_label(a.label), print({"write_label": get_write_label()})))
 
     args = p.parse_args()
     if not getattr(args, "cmd", None):

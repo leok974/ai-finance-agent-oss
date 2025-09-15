@@ -1,7 +1,9 @@
 from sqlalchemy import String, Integer, Float, Date, DateTime, Text, UniqueConstraint, func, Numeric, ForeignKey, Boolean, Index, JSON, LargeBinary
 from sqlalchemy.orm import Mapped, mapped_column, relationship, synonym, validates
 from sqlalchemy.ext.hybrid import hybrid_property
-from app.core.crypto_state import get_crypto, get_data_key, get_active_label
+from app.core.crypto_state import get_dek_for_label, get_write_label
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+import os
 from app.db import Base
 from datetime import datetime, date
 from app.utils.text import canonicalize_merchant
@@ -41,8 +43,10 @@ class Transaction(Base):
     def description_text(self) -> str | None:
         if not self.description_enc or not self.description_nonce:
             return None
-        dek = get_data_key()
-        return get_crypto().aesgcm_decrypt(dek, self.description_enc, self.description_nonce, aad=AAD).decode("utf-8")
+        label = self.enc_label or "active"
+        dek = get_dek_for_label(label)
+        pt = AESGCM(dek).decrypt(self.description_nonce, self.description_enc, AAD)
+        return pt.decode("utf-8")
 
     @description_text.setter
     def description_text(self, value: str | None):
@@ -51,18 +55,22 @@ class Transaction(Base):
             self.description_nonce = None
             self.enc_label = None
             return
-        dek = get_data_key()
-        ct, nonce = get_crypto().aesgcm_encrypt(dek, value.encode("utf-8"), aad=AAD)
-        self.description_enc = ct
-        self.description_nonce = nonce
-        self.enc_label = get_active_label()
+    label = get_write_label()
+    dek = get_dek_for_label(label)
+    nonce = os.urandom(12)
+    ct = AESGCM(dek).encrypt(nonce, value.encode("utf-8"), AAD)
+    self.description_enc = ct
+    self.description_nonce = nonce
+    self.enc_label = label
 
     @hybrid_property
     def merchant_raw_text(self) -> str | None:
         if not self.merchant_raw_enc or not self.merchant_raw_nonce:
             return None
-        dek = get_data_key()
-        return get_crypto().aesgcm_decrypt(dek, self.merchant_raw_enc, self.merchant_raw_nonce, aad=AAD).decode("utf-8")
+        label = self.enc_label or "active"
+        dek = get_dek_for_label(label)
+        pt = AESGCM(dek).decrypt(self.merchant_raw_nonce, self.merchant_raw_enc, AAD)
+        return pt.decode("utf-8")
 
     @merchant_raw_text.setter
     def merchant_raw_text(self, value: str | None):
@@ -71,18 +79,22 @@ class Transaction(Base):
             self.merchant_raw_nonce = None
             # don't clear enc_label here; description/note may still be set
             return
-        dek = get_data_key()
-        ct, nonce = get_crypto().aesgcm_encrypt(dek, value.encode("utf-8"), aad=AAD)
-        self.merchant_raw_enc = ct
-        self.merchant_raw_nonce = nonce
-        self.enc_label = get_active_label()
+    label = get_write_label()
+    dek = get_dek_for_label(label)
+    nonce = os.urandom(12)
+    ct = AESGCM(dek).encrypt(nonce, value.encode("utf-8"), AAD)
+    self.merchant_raw_enc = ct
+    self.merchant_raw_nonce = nonce
+    self.enc_label = label
 
     @hybrid_property
     def note_text(self) -> str | None:
         if not self.note_enc or not self.note_nonce:
             return None
-        dek = get_data_key()
-        return get_crypto().aesgcm_decrypt(dek, self.note_enc, self.note_nonce, aad=AAD).decode("utf-8")
+        label = self.enc_label or "active"
+        dek = get_dek_for_label(label)
+        pt = AESGCM(dek).decrypt(self.note_nonce, self.note_enc, AAD)
+        return pt.decode("utf-8")
 
     @note_text.setter
     def note_text(self, value: str | None):
@@ -91,11 +103,13 @@ class Transaction(Base):
             self.note_nonce = None
             # don't clear enc_label here; description/merchant may still be set
             return
-        dek = get_data_key()
-        ct, nonce = get_crypto().aesgcm_encrypt(dek, value.encode("utf-8"), aad=AAD)
-        self.note_enc = ct
-        self.note_nonce = nonce
-        self.enc_label = get_active_label()
+    label = get_write_label()
+    dek = get_dek_for_label(label)
+    nonce = os.urandom(12)
+    ct = AESGCM(dek).encrypt(nonce, value.encode("utf-8"), AAD)
+    self.note_enc = ct
+    self.note_nonce = nonce
+    self.enc_label = label
 
     __table_args__ = (
         UniqueConstraint("date", "amount", "description", name="uq_txn_dedup"),
