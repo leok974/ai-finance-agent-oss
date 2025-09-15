@@ -11,6 +11,7 @@ from app.db import get_db
 from app.transactions import Transaction
 from app.config import settings
 from sqlalchemy.engine import make_url
+from app.core.crypto_state import get_write_label
 
 router = APIRouter(tags=["health"])
 
@@ -123,4 +124,28 @@ def healthz(db: Session = Depends(get_db)):
         "models_ok": models_ok,
     "alembic_ok": bool(alembic.get("in_sync")),
     "db_revision": alembic.get("db_revision"),
+    }
+
+
+@router.get("/encryption/status")
+def encryption_status(db: Session = Depends(get_db)):
+    """Debug endpoint: shows current write_label and available encryption key labels."""
+    wl = None
+    try:
+        wl = get_write_label()
+    except Exception:
+        wl = None
+    try:
+        rows = db.execute(text("SELECT label, created_at FROM encryption_keys ORDER BY created_at DESC")).fetchall()
+        keys = [
+            {"label": r.label, "created_at": (r.created_at.isoformat() if getattr(r, "created_at", None) else None)}
+            for r in rows
+        ]
+    except Exception:
+        keys = []
+    return {
+        "write_label": wl or "active",
+        "keys": keys,
+        "active_present": any((k.get("label") == "active") for k in keys),
+        "total_keys": len(keys),
     }
