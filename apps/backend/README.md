@@ -36,6 +36,37 @@ Migrations hardening
 - `feedback.created_at` is NOT NULL with a DB default (now/CURRENT_TIMESTAMP). Indexes are guarded.
 - The `merchant_canonical` migration includes a note: if the util changes later, rerun the recanonicalize script or add a follow-up migration.
 
+### Encryption CLI (quick start)
+
+Utilities are available under `python -m app.cli` inside the backend container.
+
+PowerShell helpers (Windows):
+
+```powershell
+$BE=(docker ps --format "{{.Names}}" | Select-String -Pattern "backend"  | % { $_.ToString() })
+$PG=(docker ps --format "{{.Names}}" | Select-String -Pattern "postgres" | % { $_.ToString() })
+
+# Init + status (creates/loads a wrapped DEK for the active label)
+docker exec -it $BE python -m app.cli crypto-init
+docker exec -it $BE python -m app.cli crypto-status
+
+# Demo write/read (uses hybrid properties to encrypt/decrypt)
+docker exec -it $BE python -m app.cli txn-demo --desc "Cappuccino" --raw "Blue Bottle #42" --note "extra foam"
+docker exec -it $BE python -m app.cli txn-show-latest
+
+# KEK rotation (rewrap only; fast — data stays under same DEK)
+$NEW=[Convert]::ToBase64String((1..32 | % { Get-Random -Min 0 -Max 256 }))
+docker exec -it $BE python -m app.cli kek-rewrap --new-kek-b64 $NEW
+
+# After rewrap, use the NEW KEK for any decrypting command (until container env is updated/restarted):
+docker exec -it -e ENCRYPTION_MASTER_KEY_BASE64=$NEW -e MASTER_KEK_B64=$NEW $BE python -m app.cli txn-show-latest
+```
+
+Notes
+- Rewrap rotates the KEK only. Data remains encrypted with the same DEK; only the DEK wrapper is changed.
+- If decrypt fails with InvalidTag after rewrap, ensure your process/env uses the new KEK (update compose env and restart, or inject via `docker exec -e ...`).
+- Backup `encryption_keys` along with your data. Don’t index encrypted blobs; index plaintext analytics columns (date, amount, merchant_canonical, category).
+
 ### Environment flags
 
 The backend uses `APP_ENV` (preferred) or `ENV` to decide behavior:
