@@ -16,7 +16,13 @@ def _unwrap_dek(dek_wrap_nonce: bytes, dek_wrapped: bytes) -> bytes:
     kek = _kek_b64()
     if not kek:
         raise RuntimeError("KEK env not set (MASTER_KEK_B64 / ENCRYPTION_MASTER_KEY_BASE64)")
-    return AESGCM(base64.b64decode(kek)).decrypt(dek_wrap_nonce, dek_wrapped, b"dek")
+    aes = AESGCM(base64.b64decode(kek))
+    for aad in (None, b"dek"):
+        try:
+            return aes.decrypt(dek_wrap_nonce, dek_wrapped, aad)
+        except Exception:
+            pass
+    raise RuntimeError("Failed to unwrap DEK (KEK mismatch or AAD mismatch)")
 
 
 def begin_new_dek(label: Optional[str] = None) -> str:
@@ -29,13 +35,14 @@ def begin_new_dek(label: Optional[str] = None) -> str:
 
     new_dek = os.urandom(32)
     nonce = os.urandom(12)
-    wrapped = AESGCM(base64.b64decode(kek)).encrypt(nonce, new_dek, b"dek")
+    # New wraps: no AAD going forward
+    wrapped = AESGCM(base64.b64decode(kek)).encrypt(nonce, new_dek, None)
 
     db: Session = next(get_db())
     db.execute(text(
         """
-        INSERT INTO encryption_keys(label, dek_wrapped, dek_wrap_nonce, created_at)
-        VALUES(:l, :w, :n, NOW())
+        INSERT INTO encryption_keys(label, dek_wrapped, dek_wrap_nonce)
+        VALUES(:l, :w, :n)
         """
     ), {"l": new_label, "w": wrapped, "n": nonce})
     db.commit()

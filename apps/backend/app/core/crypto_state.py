@@ -23,7 +23,14 @@ def _kek_b64() -> str:
 def _unwrap_with_kek(nonce: bytes, wrapped: bytes) -> bytes:
     kek = _kek_b64()
     assert kek, "KEK env not set"
-    return AESGCM(base64.b64decode(kek)).decrypt(nonce, wrapped, b"dek")
+    aes = AESGCM(base64.b64decode(kek))
+    # Try current policy first (no AAD), then legacy (b"dek")
+    for aad in (None, b"dek"):
+        try:
+            return aes.decrypt(nonce, wrapped, aad)
+        except Exception:
+            pass
+    raise RuntimeError("Failed to unwrap DEK (KEK mismatch or AAD mismatch)")
 
 def set_crypto(c: EnvelopeCrypto) -> None:
     global _crypto
@@ -88,10 +95,14 @@ def get_write_label() -> str:
 def set_write_label(new_label: str) -> None:
     """Set write label globally and warm DEK cache for the label."""
     db: Session = next(get_db())
-    db.execute(text(
-        "INSERT INTO encryption_settings(id, write_label) VALUES (1, :l) "
-        "ON CONFLICT (id) DO UPDATE SET write_label=:l, updated_at=NOW()"
-    ), {"l": new_label})
+    # DB-agnostic upsert: try update first, then insert if no row
+    res = db.execute(text("UPDATE encryption_settings SET write_label=:l WHERE id=1"), {"l": new_label})
+    if getattr(res, "rowcount", 0) == 0:
+        try:
+            db.execute(text("INSERT INTO encryption_settings (id, write_label) VALUES (1, :l)"), {"l": new_label})
+        except Exception:
+            # If raced, fallback to update
+            db.execute(text("UPDATE encryption_settings SET write_label=:l WHERE id=1"), {"l": new_label})
     db.commit()
     _write_label_cache.update(label=new_label, ts=time.monotonic())
     try:

@@ -55,13 +55,13 @@ class Transaction(Base):
             self.description_nonce = None
             self.enc_label = None
             return
-    label = get_write_label()
-    dek = get_dek_for_label(label)
-    nonce = os.urandom(12)
-    ct = AESGCM(dek).encrypt(nonce, value.encode("utf-8"), AAD)
-    self.description_enc = ct
-    self.description_nonce = nonce
-    self.enc_label = label
+        label = get_write_label()
+        dek = get_dek_for_label(label)
+        nonce = os.urandom(12)
+        ct = AESGCM(dek).encrypt(nonce, value.encode("utf-8"), AAD)
+        self.description_enc = ct
+        self.description_nonce = nonce
+        self.enc_label = label
 
     @hybrid_property
     def merchant_raw_text(self) -> str | None:
@@ -79,13 +79,13 @@ class Transaction(Base):
             self.merchant_raw_nonce = None
             # don't clear enc_label here; description/note may still be set
             return
-    label = get_write_label()
-    dek = get_dek_for_label(label)
-    nonce = os.urandom(12)
-    ct = AESGCM(dek).encrypt(nonce, value.encode("utf-8"), AAD)
-    self.merchant_raw_enc = ct
-    self.merchant_raw_nonce = nonce
-    self.enc_label = label
+        label = get_write_label()
+        dek = get_dek_for_label(label)
+        nonce = os.urandom(12)
+        ct = AESGCM(dek).encrypt(nonce, value.encode("utf-8"), AAD)
+        self.merchant_raw_enc = ct
+        self.merchant_raw_nonce = nonce
+        self.enc_label = label
 
     @hybrid_property
     def note_text(self) -> str | None:
@@ -103,13 +103,13 @@ class Transaction(Base):
             self.note_nonce = None
             # don't clear enc_label here; description/merchant may still be set
             return
-    label = get_write_label()
-    dek = get_dek_for_label(label)
-    nonce = os.urandom(12)
-    ct = AESGCM(dek).encrypt(nonce, value.encode("utf-8"), AAD)
-    self.note_enc = ct
-    self.note_nonce = nonce
-    self.enc_label = label
+        label = get_write_label()
+        dek = get_dek_for_label(label)
+        nonce = os.urandom(12)
+        ct = AESGCM(dek).encrypt(nonce, value.encode("utf-8"), AAD)
+        self.note_enc = ct
+        self.note_nonce = nonce
+        self.enc_label = label
 
     __table_args__ = (
         UniqueConstraint("date", "amount", "description", name="uq_txn_dedup"),
@@ -244,6 +244,13 @@ class EncryptionKey(Base):
     dek_wrapped: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
     dek_wrap_nonce: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+# --- NEW: EncryptionSettings (broadcast current write label) -------------
+class EncryptionSettings(Base):
+    __tablename__ = "encryption_settings"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    write_label: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 # --- NEW: Budget -------------------------------------------------------------
 class Budget(Base):
