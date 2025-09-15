@@ -7,6 +7,7 @@ from sqlalchemy import text
 
 # Initializer ensures encryption_keys row exists + caches DEK
 from app.scripts.encrypt_txn_backfill_splitcols import _ensure_crypto_initialized
+from app.scripts.dek_rotation import begin_new_dek, run_rotation, finalize_rotation, rotation_status
 
 
 def cmd_crypto_init(args):
@@ -127,6 +128,26 @@ def main():
     r = sub.add_parser("kek-rewrap")
     r.add_argument("--new-kek-b64", required=True)
     r.set_defaults(fn=cmd_kek_rewrap)
+
+    # DEK rotation commands
+    r0 = sub.add_parser("dek-rotate-begin")
+    r0.add_argument("--label", help="Optional new label (default rotating::<UTC timestamp>)")
+    r0.set_defaults(fn=lambda a: print({"new_label": begin_new_dek(a.label)}))
+
+    r1 = sub.add_parser("dek-rotate-run")
+    r1.add_argument("--new-label", required=True)
+    r1.add_argument("--batch-size", type=int, default=1000)
+    r1.add_argument("--max-batches", type=int, default=0, help="0=one batch; N=run N batches then stop")
+    r1.add_argument("--dry-run", action="store_true")
+    r1.set_defaults(fn=lambda a: print(run_rotation(a.new_label, a.batch_size, a.max_batches, a.dry_run)))
+
+    r2 = sub.add_parser("dek-rotate-finalize")
+    r2.add_argument("--new-label", required=True)
+    r2.set_defaults(fn=lambda a: print({"labels": finalize_rotation(a.new_label)}))
+
+    r3 = sub.add_parser("dek-rotate-status")
+    r3.add_argument("--new-label", required=False)
+    r3.set_defaults(fn=lambda a: print(rotation_status(a.new_label)))
 
     args = p.parse_args()
     if not getattr(args, "cmd", None):
