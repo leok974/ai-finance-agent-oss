@@ -29,6 +29,10 @@ services:
       DEMO_LOGIN_EMAIL: admin@local
       DEMO_LOGIN_PASSWORD: admin123
       DEMO_LOGIN_TOKEN: let-judges-in
+  # Encryption (dev): set a stable KEK to allow decryption across restarts
+  ENCRYPTION_ENABLED: "1"
+  ENCRYPTION_MASTER_KEY_BASE64: ""
+  ENCRYPTION_ACTIVE_LABEL: active
     depends_on:
       - postgres
     ports:

@@ -1,5 +1,10 @@
 # Backend notes: Merchant canonicalization and suggestions
 
+## Encryption (dev)
+- Set ENCRYPTION_ENABLED=1 and ENCRYPTION_MASTER_KEY_BASE64 to a 32-byte base64 key for stable encrypt/decrypt across restarts.
+- Run Alembic upgrade, start backend once (creates a wrapped DEK), then run: `python -m app.scripts.backfill_encrypt`.
+- Tests: `pytest tests/test_crypto_envelope.py`.
+
 This backend stores a canonical form of `Transaction.merchant` in `transactions.merchant_canonical`.
 
 - Canonicalization function: `app/utils/text.py` → `canonicalize_merchant(s: str) -> str | None`

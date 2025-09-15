@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Optional
 
 from app.db import get_db
-from app.models import Transaction
+from app.orm_models import Transaction
 from app.schemas.txns_edit import (
     TxnPatch,
     TxnBulkPatch,

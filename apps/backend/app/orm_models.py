@@ -1,8 +1,11 @@
-from sqlalchemy import String, Integer, Float, Date, DateTime, Text, UniqueConstraint, func, Numeric, ForeignKey, Boolean, Index, JSON
+from sqlalchemy import String, Integer, Float, Date, DateTime, Text, UniqueConstraint, func, Numeric, ForeignKey, Boolean, Index, JSON, LargeBinary
 from sqlalchemy.orm import Mapped, mapped_column, relationship, synonym, validates
+from sqlalchemy.ext.hybrid import hybrid_property
+from app.core.crypto_state import get_crypto, get_data_key
 from app.db import Base
 from datetime import datetime, date
 from app.utils.text import canonicalize_merchant
+AAD = b"txn:v1"
 
 class Transaction(Base):
     __tablename__ = "transactions"
@@ -24,6 +27,69 @@ class Transaction(Base):
     note: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     split_parent_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
     transfer_group: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    # Encrypted fields (envelope)
+    merchant_raw_enc: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    merchant_raw_nonce: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    description_enc: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    description_nonce: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    note_enc: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    note_nonce: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    enc_label: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
+
+    # ---- Encrypted views (no schema change) ----
+    @hybrid_property
+    def description_text(self) -> str | None:
+        if not self.description_enc or not self.description_nonce:
+            return None
+        dek = get_data_key()
+        return get_crypto().aesgcm_decrypt(dek, self.description_enc, self.description_nonce, aad=AAD).decode("utf-8")
+
+    @description_text.setter
+    def description_text(self, value: str | None):
+        if value is None:
+            self.description_enc = None
+            self.description_nonce = None
+            return
+        dek = get_data_key()
+        ct, nonce = get_crypto().aesgcm_encrypt(dek, value.encode("utf-8"), aad=AAD)
+        self.description_enc = ct
+        self.description_nonce = nonce
+
+    @hybrid_property
+    def merchant_raw_text(self) -> str | None:
+        if not self.merchant_raw_enc or not self.merchant_raw_nonce:
+            return None
+        dek = get_data_key()
+        return get_crypto().aesgcm_decrypt(dek, self.merchant_raw_enc, self.merchant_raw_nonce, aad=AAD).decode("utf-8")
+
+    @merchant_raw_text.setter
+    def merchant_raw_text(self, value: str | None):
+        if value is None:
+            self.merchant_raw_enc = None
+            self.merchant_raw_nonce = None
+            return
+        dek = get_data_key()
+        ct, nonce = get_crypto().aesgcm_encrypt(dek, value.encode("utf-8"), aad=AAD)
+        self.merchant_raw_enc = ct
+        self.merchant_raw_nonce = nonce
+
+    @hybrid_property
+    def note_text(self) -> str | None:
+        if not self.note_enc or not self.note_nonce:
+            return None
+        dek = get_data_key()
+        return get_crypto().aesgcm_decrypt(dek, self.note_enc, self.note_nonce, aad=AAD).decode("utf-8")
+
+    @note_text.setter
+    def note_text(self, value: str | None):
+        if value is None:
+            self.note_enc = None
+            self.note_nonce = None
+            return
+        dek = get_data_key()
+        ct, nonce = get_crypto().aesgcm_encrypt(dek, value.encode("utf-8"), aad=AAD)
+        self.note_enc = ct
+        self.note_nonce = nonce
 
     __table_args__ = (
         UniqueConstraint("date", "amount", "description", name="uq_txn_dedup"),
@@ -149,6 +215,15 @@ class RuleSuggestion(Base):
     __table_args__ = (
         Index("ix_rule_suggestions_unique_pair", "merchant_norm", "category", unique=True),
     )
+
+# --- NEW: EncryptionKey (wrapped DEKs) -----------------------------------
+class EncryptionKey(Base):
+    __tablename__ = "encryption_keys"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    label: Mapped[str] = mapped_column(String(32), unique=True, index=True, nullable=False)
+    dek_wrapped: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    dek_wrap_nonce: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 # --- NEW: Budget -------------------------------------------------------------
 class Budget(Base):

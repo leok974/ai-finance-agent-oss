@@ -29,6 +29,12 @@ from .routers import agent_plan as agent_plan_router
 from .utils.state import load_state, save_state
 import logging
 import subprocess
+from app.services.crypto import EnvelopeCrypto
+from app.core.crypto_state import set_crypto, set_active_label, set_data_key
+from sqlalchemy.orm import Session
+from app.db import SessionLocal
+from app.orm_models import EncryptionKey
+import base64
 
 # Print git info on boot
 try:
@@ -92,6 +98,28 @@ app.state.user_labels = []
 @app.on_event("startup")
 async def _startup_load_state():
     load_state(app)
+    # Initialize encryption if enabled
+    try:
+        enabled = os.environ.get("ENCRYPTION_ENABLED", "1") == "1"
+        if enabled:
+            crypto = EnvelopeCrypto.from_env(os.environ)
+            set_crypto(crypto)
+            label = os.environ.get("ENCRYPTION_ACTIVE_LABEL", "active")
+            set_active_label(label)
+            # Ensure an active key exists and load DEK into process state
+            with SessionLocal() as s:
+                ek = s.query(EncryptionKey).filter(EncryptionKey.label == label).one_or_none()
+                if not ek:
+                    dek = EnvelopeCrypto.new_dek()
+                    wrapped, nonce = crypto.wrap_dek(dek)
+                    ek = EncryptionKey(label=label, dek_wrapped=wrapped, dek_wrap_nonce=nonce)
+                    s.add(ek)
+                    s.commit()
+                # unwrap DEK and cache in process
+                set_data_key(crypto.unwrap_dek(ek.dek_wrapped, ek.dek_wrap_nonce))
+    except Exception:
+        # Non-fatal in dev
+        pass
 
 @app.on_event("shutdown")
 async def _shutdown_save_state():
