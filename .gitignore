@@ -1,4 +1,5 @@
-# Python
+cloudflared/*.json
+!.keep# Python
 __pycache__/
 *.pyc
 .venv/
@@ -38,3 +39,6 @@ build/
 reports/
 *.xlsx
 *.pdf
+ 
+# Let's Encrypt certs (local)
+ops/letsencrypt/

@@ -1,0 +1,28 @@
+services:
+  nginx:
+    volumes:
+      # Ensure SPA build is mounted (already present in base; re-declared here is fine)
+      - ./apps/web/dist:/usr/share/nginx/html:ro
+      # Use existing repo path for nginx conf
+      - ./ops/nginx/conf.d:/etc/nginx/conf.d:ro
+
+      # Persist SSL certs (Let’s Encrypt) — webroot not needed for DNS-01
+      - letsencrypt:/etc/letsencrypt
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    command: >
+      tunnel run
+      --no-autoupdate
+      --token ${CLOUDFLARE_TUNNEL_TOKEN}
+      --edge-ip-version 4
+      --protocol http2
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
+    restart: unless-stopped
+    depends_on:
+      - nginx
+
+volumes:
+  letsencrypt:
