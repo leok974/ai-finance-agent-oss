@@ -11,12 +11,8 @@ services:
 
   cloudflared:
     image: cloudflare/cloudflared:latest
-    command: >
-      tunnel run
-      --no-autoupdate
-      --token ${CLOUDFLARE_TUNNEL_TOKEN}
-      --edge-ip-version 4
-      --protocol http2
+    # Order matters: flags before subcommand; use exec form to avoid parsing issues
+    command: ["cloudflared", "--no-autoupdate", "tunnel", "run", "--token", "${CLOUDFLARE_TUNNEL_TOKEN}", "--edge-ip-version", "4", "--protocol", "http2"]
     dns:
       - 1.1.1.1
       - 8.8.8.8
