@@ -42,3 +42,7 @@ reports/
  
 # Let's Encrypt certs (local)
 ops/letsencrypt/
+
+# Secrets & credentials
+secrets/
+!secrets/.keep
