@@ -19,7 +19,7 @@ from app.utils.state import TEMP_BUDGETS, ANOMALY_IGNORES, current_month_key
 from app.services.charts_data import get_category_timeseries
 from app.services.insights_anomalies import compute_anomalies
 from app.services import analytics as analytics_svc
-from .common import no_data_msg
+from .common import no_data_msg, no_data_kpis, no_data_anomalies, reply
 
 
 def _human_period_label(month: Optional[str], lookback: Optional[int]) -> str:
@@ -146,8 +146,13 @@ def route_to_tool(user_text: str, db: Session) -> Optional[Dict[str, Any]]:
 			data = analytics_svc.compute_kpis(db, month=month, lookback=lookback)
 			filters = {"month": month, "lookback_months": lookback}
 			if not data.get("months"):
-				return _no_data_response(mode, filters, data, month=month, lookback=lookback, tool_label="KPIs")
-			return {"mode": mode, "filters": filters, "result": data}
+				return no_data_kpis(month)
+			return reply(
+				"Here are your KPIs.",
+				mode="analytics.kpis",
+				result=data,
+				filters=filters,
+			)
 		if mode == "analytics.forecast":
 			horizon = int(args.get("horizon") or 3)
 			horizon = max(1, min(12, horizon))
@@ -161,9 +166,15 @@ def route_to_tool(user_text: str, db: Session) -> Optional[Dict[str, Any]]:
 			lookback = max(1, min(24, lookback))
 			data = analytics_svc.find_anomalies(db, month=month, lookback=lookback)
 			filters = {"month": month, "lookback_months": lookback}
-			if not (data.get("items") or []):
-				return _no_data_response(mode, filters, data, month=month, lookback=lookback, tool_label="KPIs")
-			return {"mode": mode, "filters": filters, "result": data}
+			items = data.get("items") or []
+			if not items:
+				return no_data_anomalies(month)
+			return reply(
+				f"Found **{len(items)}** anomalies for {month}.",
+				mode="insights.anomalies",
+				result=data,
+				filters=filters,
+			)
 		if mode == "analytics.recurring":
 			lookback = int(args.get("lookback_months") or 6)
 			lookback = max(1, min(24, lookback))
