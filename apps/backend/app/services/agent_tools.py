@@ -431,11 +431,19 @@ def route_to_tool(user_text: str, db: Session) -> Optional[Dict[str, Any]]:
         if mode == "analytics.kpis":
             lookback = int(args.get("lookback_months") or 6)
             lookback = max(1, min(24, lookback))
-            data = analytics_svc.compute_kpis(db, month=month, lookback=lookback)
-            filters = {"month": month, "lookback_months": lookback}
+            user_month = _extract_month(user_text) or month
+            data = analytics_svc.compute_kpis(db, month=user_month, lookback=lookback)
+            filters = {"month": user_month, "lookback_months": lookback}
             if not data.get("months"):
-                return _no_data_response(mode, filters, data, month=month, lookback=lookback, tool_label="KPIs")
-            return {"mode": mode, "filters": filters, "result": data}
+                from app.services.agent_tools.common import no_data_kpis, reply
+                return no_data_kpis(user_month)
+            from app.services.agent_tools.common import reply
+            return reply(
+                "Here are your KPIs.",
+                mode="analytics.kpis",
+                result=data,
+                filters=filters,
+            )
 
         if mode == "analytics.forecast":
             horizon = int(args.get("horizon") or 3)
@@ -449,11 +457,20 @@ def route_to_tool(user_text: str, db: Session) -> Optional[Dict[str, Any]]:
         if mode == "analytics.anomalies":
             lookback = int(args.get("lookback_months") or 6)
             lookback = max(1, min(24, lookback))
-            data = analytics_svc.find_anomalies(db, month=month, lookback=lookback)
-            filters = {"month": month, "lookback_months": lookback}
-            if not (data.get("items") or []):
-                return _no_data_response(mode, filters, data, month=month, lookback=lookback, tool_label="KPIs")
-            return {"mode": mode, "filters": filters, "result": data}
+            user_month = _extract_month(user_text) or month
+            data = analytics_svc.find_anomalies(db, month=user_month, lookback=lookback)
+            filters = {"month": user_month, "lookback_months": lookback}
+            items = data.get("items") or []
+            if not items:
+                from app.services.agent_tools.common import no_data_anomalies
+                return no_data_anomalies(user_month)
+            from app.services.agent_tools.common import reply
+            return reply(
+                f"Found **{len(items)}** anomalies for {user_month}.",
+                mode="insights.anomalies",
+                result=data,
+                filters=filters,
+            )
 
         if mode == "analytics.recurring":
             lookback = int(args.get("lookback_months") or 6)

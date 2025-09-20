@@ -60,7 +60,8 @@ def _no_data_response(
 
 
 def _extract_month(text: str) -> Optional[str]:
-	m = re.search(r"in\s+([A-Za-z]+)\s*(\d{4})?", text, re.IGNORECASE)
+	# Support 'in <Month> [Year]' or 'for <Month> [Year]'
+	m = re.search(r"(?:in|for)\s+([A-Za-z]+)\s*(\d{4})?", text, re.IGNORECASE)
 	if not m:
 		return None
 	try:
@@ -143,6 +144,10 @@ def route_to_tool(user_text: str, db: Session) -> Optional[Dict[str, Any]]:
 		if mode == "analytics.kpis":
 			lookback = int(args.get("lookback_months") or 6)
 			lookback = max(1, min(24, lookback))
+			# Allow explicit month override if user specified one (including future)
+			user_month = _extract_month(user_text)
+			if user_month:
+				month = user_month
 			data = analytics_svc.compute_kpis(db, month=month, lookback=lookback)
 			filters = {"month": month, "lookback_months": lookback}
 			if not data.get("months"):
@@ -164,6 +169,9 @@ def route_to_tool(user_text: str, db: Session) -> Optional[Dict[str, Any]]:
 		if mode == "analytics.anomalies":
 			lookback = int(args.get("lookback_months") or 6)
 			lookback = max(1, min(24, lookback))
+			user_month = _extract_month(user_text)
+			if user_month:
+				month = user_month
 			data = analytics_svc.find_anomalies(db, month=month, lookback=lookback)
 			filters = {"month": month, "lookback_months": lookback}
 			items = data.get("items") or []
