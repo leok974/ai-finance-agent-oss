@@ -223,7 +223,7 @@ class SplitIn(BaseModel):
 @router.post("/{txn_id}/split", dependencies=[Depends(csrf_protect)])
 def create_or_replace_splits(txn_id: int, payload: SplitIn, db: Session = Depends(get_db)):
     try:
-        legs = upsert_splits(db, txn_id, [l.dict() for l in payload.legs])
+        legs = upsert_splits(db, txn_id, [l.model_dump() for l in payload.legs])
         return {"status": "ok", "count": len(legs)}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -231,7 +231,7 @@ def create_or_replace_splits(txn_id: int, payload: SplitIn, db: Session = Depend
 
 @router.delete("/{txn_id}/split/{split_id}", dependencies=[Depends(csrf_protect)])
 def delete_split_leg(txn_id: int, split_id: int, db: Session = Depends(get_db)):
-    leg = db.query(TransactionSplitORM).get(split_id)
+    leg = db.get(TransactionSplitORM, split_id)
     if not leg or leg.parent_txn_id != txn_id:
         raise HTTPException(status_code=404, detail="Split not found")
     db.delete(leg)

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import text, select
 from sqlalchemy.orm import Session
 from alembic.script import ScriptDirectory
@@ -11,7 +11,7 @@ from app.db import get_db
 from app.transactions import Transaction
 from app.config import settings
 from sqlalchemy.engine import make_url
-from app.core.crypto_state import get_write_label
+from app.core.crypto_state import get_write_label, get_crypto_status
 
 router = APIRouter(tags=["health"])
 
@@ -45,7 +45,9 @@ def _alembic_status(db: Session):
 
 def _ollama_tags():
     try:
-        with urllib.request.urlopen("http://127.0.0.1:11434/api/tags", timeout=1.0) as resp:
+        base_ollama = getattr(settings, "OLLAMA_BASE_URL", "http://ollama:11434").rstrip('/')
+        url = f"{base_ollama}/api/tags"
+        with urllib.request.urlopen(url, timeout=1.0) as resp:
             data = json.loads(resp.read().decode("utf-8", errors="ignore"))
             models = []
             if isinstance(data, dict) and isinstance(data.get("models"), list):
@@ -60,8 +62,10 @@ def _ollama_tags():
 def _ollama_generate_ping(model="gpt-oss:20b"):
     try:
         body = json.dumps({"model": model, "prompt": "ping", "stream": False})
+        base_ollama = getattr(settings, "OLLAMA_BASE_URL", "http://ollama:11434").rstrip('/')
+        url = f"{base_ollama}/api/generate"
         req = urllib.request.Request(
-            "http://127.0.0.1:11434/api/generate",
+            url,
             data=body.encode("utf-8"),
             headers={"Content-Type": "application/json"},
             method="POST",
@@ -115,6 +119,7 @@ def healthz(db: Session = Depends(get_db)):
         db_engine = f"{url.get_backend_name()}+{url.get_driver_name()}"
     except Exception:
         db_engine = None
+    crypto = get_crypto_status(db)
     return {
         "status": status,
         "db": {"reachable": ok, "models_ok": models_ok},
@@ -124,6 +129,11 @@ def healthz(db: Session = Depends(get_db)):
         "models_ok": models_ok,
     "alembic_ok": bool(alembic.get("in_sync")),
     "db_revision": alembic.get("db_revision"),
+    # crypto details
+    "crypto_ready": crypto.get("ready"),
+    "crypto_mode": crypto.get("mode"),
+    "crypto_label": crypto.get("label"),
+    "crypto_kms_key": crypto.get("kms_key_id"),
     }
 
 
@@ -136,11 +146,18 @@ def encryption_status(db: Session = Depends(get_db)):
     except Exception:
         wl = None
     try:
-        rows = db.execute(text("SELECT label, created_at FROM encryption_keys ORDER BY created_at DESC")).fetchall()
-        keys = [
-            {"label": r.label, "created_at": (r.created_at.isoformat() if getattr(r, "created_at", None) else None)}
-            for r in rows
-        ]
+        rows = db.execute(text(
+            "SELECT label, created_at, dek_wrap_nonce FROM encryption_keys ORDER BY created_at DESC"
+        )).fetchall()
+        keys = []
+        for r in rows:
+            nonce = getattr(r, "dek_wrap_nonce", None)
+            scheme = "gcp_kms" if (nonce is None or (isinstance(nonce, (bytes, bytearray)) and len(nonce) == 0)) else "aesgcm"
+            keys.append({
+                "label": r.label,
+                "created_at": (r.created_at.isoformat() if getattr(r, "created_at", None) else None),
+                "wrap_scheme": scheme,
+            })
     except Exception:
         keys = []
     return {
@@ -149,3 +166,14 @@ def encryption_status(db: Session = Depends(get_db)):
         "active_present": any((k.get("label") == "active") for k in keys),
         "total_keys": len(keys),
     }
+
+
+@router.get("/ready")
+def ready(db: Session = Depends(get_db)):
+    # If encryption is explicitly disabled, consider service ready
+    if os.environ.get("ENCRYPTION_ENABLED", "1") == "0":
+        return {"ok": True, "crypto_ready": False, "mode": None}
+    st = get_crypto_status(db)
+    if not st.get("ready"):
+        raise HTTPException(status_code=503, detail={"crypto_ready": False, **st})
+    return {"ok": True, **st}

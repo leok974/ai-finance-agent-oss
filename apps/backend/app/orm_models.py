@@ -242,7 +242,8 @@ class EncryptionKey(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     label: Mapped[str] = mapped_column(String(32), unique=True, index=True, nullable=False)
     dek_wrapped: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
-    dek_wrap_nonce: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    # Nullable when DEK is wrapped by KMS (nonce not used)
+    dek_wrap_nonce: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 # --- NEW: EncryptionSettings (broadcast current write label) -------------

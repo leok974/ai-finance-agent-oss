@@ -1,5 +1,6 @@
 from __future__ import annotations
 import json
+print("[agent.py] loaded version: refactor-tagfix-1")
 import re
 import logging
 from typing import Any, Dict, List, Optional, Tuple, Literal
@@ -23,6 +24,8 @@ from app.config import settings
 from app.services.agent_detect import detect_txn_query, summarize_txn_result, infer_flow, try_llm_rephrase_summary
 from app.services.txns_nl_query import run_txn_query
 from app.services.agent_tools import route_to_tool
+from app.services.agent.router_fallback import route_to_tool_with_fallback
+from app.services.agent.analytics_tag import tag_if_analytics
 import time
 
 router = APIRouter()  # <-- no prefix here (main.py supplies /agent)
@@ -224,7 +227,7 @@ def _enrich_context(db: Session, ctx: Optional[Dict[str, Any]], txn_id: Optional
             try:
                 summary_body = agent_tools_charts.SummaryBody(month=month)
                 summary_result = agent_tools_charts.charts_summary(summary_body, db)
-                ctx["summary"] = summary_result.dict()
+                ctx["summary"] = summary_result.model_dump()
             except Exception as e:
                 print(f"Error enriching summary: {redact_pii(str(e))}")
                 
@@ -232,7 +235,7 @@ def _enrich_context(db: Session, ctx: Optional[Dict[str, Any]], txn_id: Optional
             try:
                 merchants_body = agent_tools_charts.MerchantsBody(month=month, top_n=10)
                 merchants_result = agent_tools_charts.charts_merchants(merchants_body, db)
-                ctx["top_merchants"] = [item.dict() for item in merchants_result.items]
+                ctx["top_merchants"] = [item.model_dump() for item in merchants_result.items]
             except Exception as e:
                 print(f"Error enriching merchants: {redact_pii(str(e))}")
                 
@@ -244,12 +247,12 @@ def _enrich_context(db: Session, ctx: Optional[Dict[str, Any]], txn_id: Optional
                 # Normalize to a tiny, resilient shape to avoid prompt bloat
                 # and tolerate schema changes.
                 if isinstance(raw, dict):
-                    normalized = agent_tools_insights.expand(raw).dict()
+                    normalized = agent_tools_insights.expand(raw).model_dump()
                 else:
                     try:
-                        normalized = agent_tools_insights.expand(raw.dict()).dict()  # type: ignore[attr-defined]
+                        normalized = agent_tools_insights.expand(raw.model_dump()).model_dump()  # type: ignore[attr-defined]
                     except Exception:
-                        normalized = agent_tools_insights.ExpandedBody().dict()
+                        normalized = agent_tools_insights.ExpandedBody().model_dump()
                 ctx["insights"] = normalized
             except Exception as e:
                 print(f"Error enriching insights: {redact_pii(str(e))}")
@@ -257,7 +260,7 @@ def _enrich_context(db: Session, ctx: Optional[Dict[str, Any]], txn_id: Optional
     if "rules" not in ctx:
         try:
             rules_result = agent_tools_rules_crud.list_rules(db)
-            ctx["rules"] = [rule.dict() for rule in rules_result]
+            ctx["rules"] = [rule.model_dump() for rule in rules_result]
         except Exception as e:
             print(f"Error enriching rules: {redact_pii(str(e))}")
             
@@ -266,7 +269,7 @@ def _enrich_context(db: Session, ctx: Optional[Dict[str, Any]], txn_id: Optional
             get_body = agent_tools_transactions.GetByIdsBody(txn_ids=[int(txn_id)])
             txn_result = agent_tools_transactions.get_by_ids(get_body, db)
             if txn_result.items:
-                ctx["txn"] = txn_result.items[0].dict()
+                ctx["txn"] = txn_result.items[0].model_dump()
         except Exception as e:
             print(f"Error enriching transaction: {redact_pii(str(e))}")
 
@@ -282,15 +285,11 @@ def agent_chat(
     x_bypass_router: Optional[str] = Header(default=None, alias="X-Bypass-Router"),
 ):
     try:
-        # Log request (with PII redacted)
-        print(f"Agent chat request: {redact_pii(req.dict())}")
-        
+        print(f"Agent chat request: {redact_pii(req.model_dump())}")
         ctx = _enrich_context(db, req.context, req.txn_id)
+        last_user_msg = next((m.content for m in reversed(req.messages) if m.role == "user"), "")
+        resp: Dict[str, Any] | None = None
 
-        # Always capture the latest user-authored message early for routing
-        last_user_msg = next((msg.content for msg in reversed(req.messages) if msg.role == "user"), "")
-
-        # Router bypass: allow explicit modes and header toggle
         override_modes = {
             "rephrase",
             "charts.month_summary",
@@ -301,239 +300,137 @@ def agent_chat(
             "budget.check",
         }
         effective_mode = (req.mode or mode_override or "").strip()
-        hard_bypass = (
+        bypass = (
             bool(req.force_llm)
             or bool(bypass_router)
             or (str(x_bypass_router).lower() in {"1", "true", "yes"})
             or (effective_mode in override_modes)
         )
-        bypass = hard_bypass
         logging.getLogger("uvicorn").debug(
             "agent.chat mode=%s routed=%s",
             effective_mode or "(none)",
             "llm" if bypass else "router",
         )
 
-        # If bypass is requested, call the LLM directly without deterministic router
         if bypass:
             intent_hint = INTENT_HINTS.get(req.intent, INTENT_HINTS["general"])
             enhanced_system_prompt = f"{SYSTEM_PROMPT}\n\n{intent_hint}"
-            final_messages = [{"role": "system", "content": enhanced_system_prompt}] + [
-                {"role": msg.role, "content": msg.content} for msg in req.messages
-            ]
+            final_messages = [{"role": "system", "content": enhanced_system_prompt}] + [{"role": m.role, "content": m.content} for m in req.messages]
             trimmed_ctx = trim_ctx_for_prompt(ctx, max_chars=8000)
             ctx_str = json.dumps(trimmed_ctx, default=str)
             if len(ctx_str) > 10000:
                 ctx_str = ctx_str[:10000] + " …(hard-trimmed)"
             final_messages.append({"role": "system", "content": f"## CONTEXT\n{ctx_str}\n## INTENT: {req.intent}"})
-
             requested_model = req.model if req.model else settings.DEFAULT_LLM_MODEL
-            model = MODEL_ALIASES.get(requested_model, requested_model)
-            if model is None:
-                model = settings.DEFAULT_LLM_MODEL
-
-            reply, tool_trace = llm_mod.call_local_llm(
-                model=model,
-                messages=final_messages,
-                temperature=req.temperature,
-                top_p=req.top_p,
-            )
-            resp = {
-                "reply": reply,
-                "citations": [],
-                "used_context": {"month": ctx.get("month")},
-                "tool_trace": tool_trace,
-                "model": model,
-            }
-            resp = post_process_tool_reply(resp, ctx)
-            if debug and getattr(settings, "ENV", "dev") != "prod":
-                resp["__debug_context"] = ctx
-            return JSONResponse(resp)
-
-        # First: deterministic tool routing (transactions/charts/reports/budgets)
-        if (not bypass) and req.intent in ("general", "budget_help"):
-            t0 = time.perf_counter()
-            tool_resp = route_to_tool(last_user_msg, db)
-            if tool_resp is not None:
-                dt_ms = int((time.perf_counter() - t0) * 1000)
-                # Deterministic summary string for tool output
-                summary = _summarize_tool_result(tool_resp) or ""
-                clean = summary.strip()
-                lower = clean.lower()
-                normalized = lower.replace("�", "'")
-                bypass_rephrase = (
-                    not clean
-                    or lower in {"ok", "okay"}
-                    or lower.rstrip(".") in {"ok", "okay"}
-                    or "i couldn't find any transactions" in normalized
-                    or "i couldnt find any transactions" in normalized
-                )
-                if bypass_rephrase:
-                    rephrased = None
-                else:
-                    rephrased = _try_llm_rephrase_tool(last_user_msg, tool_resp, clean)
-                message = (rephrased or clean).strip() or clean
-                resp = {
-                    "ok": True,
-                    "mode": tool_resp.get("mode"),
-                    "reply": message,   # backward-compat with existing UI
-                    "message": message, # canonical text for new UI
-                    "summary": summary,
-                    "rephrased": rephrased,
-                    "filters": tool_resp.get("filters"),
-                    "args": tool_resp.get("args"),
-                    "result": tool_resp.get("result"),
-                    "url": tool_resp.get("url"),
-                    "citations": [{"type": "summary", "count": 1}],
-                    "used_context": {"month": ctx.get("month")},
-                    "tool_trace": [{
-                        "tool": "router",
+            model = MODEL_ALIASES.get(requested_model, requested_model) or settings.DEFAULT_LLM_MODEL
+            reply, tool_trace = llm_mod.call_local_llm(model=model, messages=final_messages, temperature=req.temperature, top_p=req.top_p)
+            resp = {"reply": reply, "citations": [], "used_context": {"month": ctx.get("month")}, "tool_trace": tool_trace, "model": model}
+        else:
+            if req.intent in ("general", "budget_help"):
+                t0 = time.perf_counter()
+                tool_resp = route_to_tool(last_user_msg, db) or route_to_tool_with_fallback(last_user_msg, ctx=db, db=db)
+                if tool_resp is not None:
+                    dt_ms = int((time.perf_counter() - t0) * 1000)
+                    summary = _summarize_tool_result(tool_resp) or ""
+                    clean = summary.strip()
+                    lower = clean.lower()
+                    normalized = lower.replace("�", "'")
+                    bypass_rephrase = (not clean or lower in {"ok", "okay"} or lower.rstrip(".") in {"ok", "okay"} or "i couldn't find any transactions" in normalized or "i couldnt find any transactions" in normalized)
+                    rephrased = None if bypass_rephrase else _try_llm_rephrase_tool(last_user_msg, tool_resp, clean)
+                    message = (rephrased or clean).strip() or clean
+                    resp = {
+                        "ok": True,
                         "mode": tool_resp.get("mode"),
+                        "reply": message,
+                        "message": message,
+                        "summary": summary,
+                        "rephrased": rephrased,
+                        "filters": tool_resp.get("filters"),
                         "args": tool_resp.get("args"),
-                        "duration_ms": dt_ms,
-                        "status": "short_circuit"
-                    }],
-                    "model": "deterministic",
-                }
-                resp = post_process_tool_reply(resp, ctx)
-                if debug and getattr(settings, "ENV", "dev") != "prod":
-                    resp["__debug_context"] = ctx
-                return JSONResponse(resp)
+                        "result": tool_resp.get("result"),
+                        "url": tool_resp.get("url"),
+                        "citations": [{"type": "summary", "count": 1}],
+                        "used_context": {"month": ctx.get("month")},
+                        "tool_trace": [{"tool": "router", "mode": tool_resp.get("mode"), "args": tool_resp.get("args"), "duration_ms": dt_ms, "status": "short_circuit"}],
+                        "model": "deterministic",
+                    }
+                else:
+                    _l = last_user_msg.lower()
+                    if any(k in _l for k in ("kpi", "kpis", "forecast", "anomal", "recurring", "budget")):
+                        resp = {
+                            "reply": ("I didn’t find enough context to run the analytics tool directly. Try again, or switch to a month with data / Insights: Expanded."),
+                            "rephrased": False,
+                            "mode": "analytics",
+                            "meta": {"reason": "router_fallback"},
+                            "used_context": {"month": ctx.get("month")},
+                            "tool_trace": [{"tool": "analytics.fallback", "status": "stub"}],
+                            "model": "deterministic",
+                        }
+            if resp is None:
+                is_txn, nlq = detect_txn_query(last_user_msg)
+                if is_txn and req.intent in ("general", "budget_help"):
+                    flow = infer_flow(last_user_msg)
+                    if flow:
+                        setattr(nlq, "flow", flow)
+                    import re as _re
+                    m_pg = _re.search(r"page\s+(\d{1,3})", last_user_msg.lower())
+                    if m_pg:
+                        setattr(nlq, "page", int(m_pg.group(1)))
+                    qres = run_txn_query(db, nlq)
+                    if getattr(nlq, "flow", None):
+                        qres.setdefault("filters", {})["flow"] = getattr(nlq, "flow")
+                    summary = summarize_txn_result(qres)
+                    rephrased = try_llm_rephrase_summary(last_user_msg, qres, summary)
+                    resp = {
+                        "mode": "nl_txns", "reply": rephrased or summary, "summary": summary, "rephrased": rephrased, "nlq": qres.get("filters"), "result": qres,
+                        "citations": [{"type": "summary", "count": 1}], "used_context": {"month": ctx.get("month")}, "tool_trace": [{"tool": "nl_txns", "status": "short_circuit"}], "model": "deterministic"}
 
-        # Short-circuit: detect if the last user message is a transactions NL query
-        # Only for general/budget_help intents; do not intercept explain_txn or rule_seed flows
-        is_txn, nlq = detect_txn_query(last_user_msg)
-        if (not bypass) and is_txn and req.intent in ("general", "budget_help"):
-            # Propagate flow if detectable
-            flow = infer_flow(last_user_msg)
-            if flow:
-                setattr(nlq, "flow", flow)
-            # Respect simple pagination hints in message (optional, e.g., "page 2")
-            import re as _re
-            m_pg = _re.search(r"page\s+(\d{1,3})", last_user_msg.lower())
-            if m_pg:
-                setattr(nlq, "page", int(m_pg.group(1)))
-            # Execute grounded query
-            qres = run_txn_query(db, nlq)
-            # Include flow in filters if set
-            if getattr(nlq, "flow", None):
-                qres.setdefault("filters", {})["flow"] = getattr(nlq, "flow")
-            summary = summarize_txn_result(qres)
-            rephrased = try_llm_rephrase_summary(last_user_msg, qres, summary)
-            resp = {
-                "mode": "nl_txns",
-                "reply": rephrased or summary,
-                "summary": summary,
-                "rephrased": rephrased,
-                "nlq": qres.get("filters"),
-                "result": qres,
-                "citations": [{"type": "summary", "count": 1}],  # generic marker
-                "used_context": {"month": ctx.get("month")},
-                "tool_trace": [{"tool": "nl_txns", "status": "short_circuit"}],
-                "model": "deterministic",
-            }
-            resp = post_process_tool_reply(resp, ctx)
-            if debug and getattr(settings, "ENV", "dev") != "prod":
-                resp["__debug_context"] = ctx
-            return JSONResponse(resp)
-        
-        # Fallback for explain_txn intent when txn_id is missing
-        if req.intent == "explain_txn" and not req.txn_id and "txn" not in ctx:
-            # Try to parse transaction info from the last user message
-            if req.messages:
-                last_user_msg = next((msg.content for msg in reversed(req.messages) if msg.role == "user"), "")
-                parsed_info = parse_txn_from_message(last_user_msg)
-                if parsed_info:
-                    # Try to find matching transaction based on parsed info
-                    # For now, just log the parsed info and fall back to latest
-                    print(f"Parsed transaction info from message: {parsed_info}")
-            
-            # Fallback: pick the most recent transaction for current month
+        if resp is None and req.intent == "explain_txn" and not req.txn_id and "txn" not in ctx:
+            parsed_info = parse_txn_from_message(last_user_msg) if req.messages else None
+            if parsed_info:
+                print(f"Parsed transaction info from message: {parsed_info}")
             if ctx.get("month"):
                 fallback_txn = latest_txn_for_month(db, ctx["month"])
                 if fallback_txn:
                     ctx["txn"] = fallback_txn
                     print(f"Using fallback transaction: {redact_pii(fallback_txn)}")
 
-        # Build final prompt for local model with intent-specific hints
-        intent_hint = INTENT_HINTS.get(req.intent, INTENT_HINTS["general"])
-        enhanced_system_prompt = f"{SYSTEM_PROMPT}\n\n{intent_hint}"
-        
-        final_messages = [{"role": "system", "content": enhanced_system_prompt}]
-        final_messages.extend([{"role": msg.role, "content": msg.content} for msg in req.messages])
+        if resp is None:
+            intent_hint = INTENT_HINTS.get(req.intent, INTENT_HINTS["general"])
+            enhanced_system_prompt = f"{SYSTEM_PROMPT}\n\n{intent_hint}"
+            final_messages = [{"role": "system", "content": enhanced_system_prompt}] + [{"role": m.role, "content": m.content} for m in req.messages]
+            trimmed_ctx = trim_ctx_for_prompt(ctx, max_chars=8000)
+            ctx_str = json.dumps(trimmed_ctx, default=str)
+            if len(ctx_str) > 10000:
+                ctx_str = ctx_str[:10000] + " …(hard-trimmed)"
+            final_messages.append({"role": "system", "content": f"## CONTEXT\n{ctx_str}\n## INTENT: {req.intent}"})
+            original_size = len(json.dumps(ctx, default=str))
+            trimmed_size = len(ctx_str)
+            if original_size != trimmed_size:
+                print(f"Context trimmed: {original_size} → {trimmed_size} chars")
+            else:
+                print(f"Context size: {trimmed_size} chars")
+            requested_model = req.model if req.model else settings.DEFAULT_LLM_MODEL
+            model = MODEL_ALIASES.get(requested_model, requested_model) or settings.DEFAULT_LLM_MODEL
+            reply, tool_trace = llm_mod.call_local_llm(model=model, messages=final_messages, temperature=req.temperature, top_p=req.top_p)
+            citations = []
+            for key, citation_type in [("summary", "summary"),("rules", "rules"),("top_merchants", "merchants"),("alerts", "alerts"),("insights", "insights")]:
+                if ctx.get(key):
+                    val = ctx[key]; citations.append({"type": citation_type, "count": (len(val) if isinstance(val, list) else 1)})
+            if ctx.get("txn"):
+                citations.append({"type": "txn", "id": ctx["txn"].get("id")})
+            resp = {"reply": reply, "citations": citations, "used_context": {"month": ctx.get("month")}, "tool_trace": tool_trace, "model": model}
 
-        # Smart context trimming that preserves most important data
-        trimmed_ctx = trim_ctx_for_prompt(ctx, max_chars=8000)
-        ctx_str = json.dumps(trimmed_ctx, default=str)
-        
-        # Final safety check with hard limit
-        if len(ctx_str) > 10000:
-            ctx_str = ctx_str[:10000] + " …(hard-trimmed)"
-            
-        final_messages.append({"role":"system","content": f"## CONTEXT\n{ctx_str}\n## INTENT: {req.intent}"})
-
-        # Log context size (for monitoring)
-        original_size = len(json.dumps(ctx, default=str))
-        trimmed_size = len(ctx_str)
-        original_tokens = estimate_tokens(json.dumps(ctx, default=str))
-        trimmed_tokens = estimate_tokens(ctx_str)
-        
-        if original_size != trimmed_size:
-            print(f"Context trimmed: {original_size} → {trimmed_size} chars (~{original_tokens} → {trimmed_tokens} tokens)")
-        else:
-            print(f"Context size: {trimmed_size} chars (~{trimmed_tokens} tokens)")
-
-        # Resolve model: alias -> canonical -> or config default
-        requested_model = req.model if req.model else settings.DEFAULT_LLM_MODEL
-        model = MODEL_ALIASES.get(requested_model, requested_model)
-        if model is None:
-            model = settings.DEFAULT_LLM_MODEL
-
-        reply, tool_trace = llm_mod.call_local_llm(
-            model=model,
-            messages=final_messages,
-            temperature=req.temperature,
-            top_p=req.top_p,
-        )
-
-        # Comprehensive citations summary with richer context information
-        citations = []
-        
-        # Use mapping for consistent citation generation
-        for key, citation_type in [
-            ("summary", "summary"),
-            ("rules", "rules"), 
-            ("top_merchants", "merchants"),
-            ("alerts", "alerts"),
-            ("insights", "insights"),
-        ]:
-            if ctx.get(key):
-                val = ctx[key]
-                count = len(val) if isinstance(val, list) else 1
-                citations.append({"type": citation_type, "count": count})
-        
-        # Transaction gets special treatment with ID
-        if ctx.get("txn"): 
-            citations.append({"type": "txn", "id": ctx["txn"].get("id")})
-
-        resp = {
-            "reply": reply,
-            "citations": citations,
-            "used_context": {"month": ctx.get("month")},
-            "tool_trace": tool_trace,
-            "model": model,
-        }
-
-        # Only expose raw context for debugging when NOT in production
+        resp = post_process_tool_reply(resp, ctx)
         if debug and getattr(settings, "ENV", "dev") != "prod":
             resp["__debug_context"] = ctx
-
-        return JSONResponse(resp)
-        
+        return JSONResponse(tag_if_analytics(last_user_msg, resp))
     except Exception as e:
-        # Log error (with PII redacted)
         print(f"Agent chat error: {str(e)}")
-        print(f"Request context: {redact_pii(req.dict() if hasattr(req, 'dict') else {})}")
+        try:
+            print(f"Request context: {redact_pii(req.model_dump() if hasattr(req, 'model_dump') else {})}")
+        except Exception:
+            pass
         raise HTTPException(status_code=500, detail=f"Chat error: {str(e)}")
 
 

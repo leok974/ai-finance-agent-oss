@@ -8,7 +8,22 @@ if str(BACKEND_ROOT) not in sys.path:
  # apps/backend/tests/conftest.py
 import os
 import sys
+import warnings
 from pathlib import Path
+
+# Standardize environment for tests: disable auth/CSRF and crypto init
+os.environ.setdefault("APP_ENV", "test")
+os.environ.setdefault("DEV_ALLOW_NO_AUTH", "1")
+os.environ.setdefault("DEV_ALLOW_NO_CSRF", "1")
+os.environ.setdefault("ENCRYPTION_ENABLED", "0")
+
+# Suppress noisy library warnings that clutter pytest output
+warnings.filterwarnings(
+    "ignore",
+    message="No supported index is available",
+    category=FutureWarning,
+    module="statsmodels.tsa.base.tsa_model",
+)
 
 # Make "apps/backend" importable as root so "app.*" works
 ROOT = Path(__file__).resolve().parents[1]  # .../apps/backend
@@ -24,6 +39,19 @@ from app.main import app
 from app.db import Base, get_db
 import app.db as app_db          # we'll monkeypatch this module's globals
 from app import orm_models        # ensure models are registered with Base
+from app.core import env as app_env
+
+import pytest
+
+@pytest.fixture(autouse=True, scope="session")
+def _hermetic_env():
+    # Session-scoped environment normalization (no monkeypatch to avoid scope mismatch)
+    os.environ["APP_ENV"] = "test"
+    os.environ["DEV_ALLOW_NO_LLM"] = "1"
+    os.environ["DEV_ALLOW_NO_AUTH"] = "1"
+    os.environ["DEV_ALLOW_NO_CSRF"] = "1"
+    # Extend with additional centralized flags as needed.
+    yield
 
 
 @pytest.fixture(scope="session")

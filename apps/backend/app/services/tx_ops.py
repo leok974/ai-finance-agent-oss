@@ -4,8 +4,8 @@ from app.transactions import Transaction
 from app.orm_models import TransferLink, TransactionSplit
 
 def link_transfer(db: Session, txn_out_id: int, txn_in_id: int) -> TransferLink:
-    out = db.query(Transaction).get(txn_out_id)
-    inc = db.query(Transaction).get(txn_in_id)
+    out = db.get(Transaction, txn_out_id)
+    inc = db.get(Transaction, txn_in_id)
     if not out or not inc:
         raise ValueError("Transaction not found")
     # sanity: opposite signs and close absolute amounts
@@ -29,13 +29,13 @@ def link_transfer(db: Session, txn_out_id: int, txn_in_id: int) -> TransferLink:
     return link
 
 def unlink_transfer(db: Session, link_id: int) -> None:
-    link = db.query(TransferLink).get(link_id)
+    link = db.get(TransferLink, link_id)
     if link:
         db.delete(link)
         db.commit()
 
 def upsert_splits(db: Session, parent_txn_id: int, splits: list[dict]) -> list[TransactionSplit]:
-    parent = db.query(Transaction).get(parent_txn_id)
+    parent = db.get(Transaction, parent_txn_id)
     if not parent:
         raise ValueError("Parent transaction not found")
     # delete existing splits for idempotency

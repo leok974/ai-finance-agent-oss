@@ -1,5 +1,5 @@
 # apps/backend/app/schemas.py
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from datetime import date
 from typing import Optional
 
@@ -13,8 +13,7 @@ class TxnOut(BaseModel):
     account: Optional[str] = None
     month: str
 
-    class Config:
-        from_attributes = True  # Pydantic v2: allow orm_mode-like behavior
+    model_config = ConfigDict(from_attributes=True)
 
 class RuleIn(BaseModel):
     pattern: str

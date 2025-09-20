@@ -1,4 +1,4 @@
-import { defineConfig } from "vite";
+import { defineConfig, splitVendorChunkPlugin } from "vite";
 import react from "@vitejs/plugin-react";
 import { execSync } from "child_process";
 import path from "path";
@@ -13,7 +13,7 @@ const API = "http://127.0.0.1:8000";
 
 // https://vitejs.dev/config/
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), splitVendorChunkPlugin()],
   define: {
     __WEB_BRANCH__: JSON.stringify(BRANCH),
     __WEB_COMMIT__: JSON.stringify(COMMIT),
@@ -49,4 +49,18 @@ export default defineConfig({
       "/charts": { target: API, changeOrigin: true },
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes('node_modules')) {
+            if (id.match(/react|react-dom/)) return 'vendor-react';
+            if (id.includes('@tanstack')) return 'vendor-tanstack';
+            if (id.match(/chart|recharts/i)) return 'vendor-charts';
+            return 'vendor';
+          }
+        }
+      }
+    }
+  }
 });

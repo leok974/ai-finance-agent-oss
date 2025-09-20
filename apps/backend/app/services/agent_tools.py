@@ -1,5 +1,5 @@
 # apps/backend/app/services/agent_tools.py
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from .rules_engine import apply_rules
 from collections import defaultdict
 import json
@@ -22,6 +22,43 @@ from app.utils.state import TEMP_BUDGETS, ANOMALY_IGNORES, current_month_key
 from app.services.charts_data import get_category_timeseries
 from app.services.insights_anomalies import compute_anomalies
 from app.services import analytics as analytics_svc
+from app.services.agent_tools.common import no_data_msg
+
+
+def _human_period_label(month: Optional[str], lookback: Optional[int]) -> str:
+    if month:
+        return month
+    if lookback:
+        if lookback == 1:
+            return "this month"
+        return f"the last {lookback} months"
+    return "this period"
+
+def _no_data_response(
+    mode: str,
+    filters: Dict[str, Any],
+    data: Dict[str, Any],
+    *,
+    month: Optional[str] = None,
+    lookback: Optional[int] = None,
+    tool_label: str,
+    tips: Optional[List[str]] = None,
+) -> Dict[str, Any]:
+    label = _human_period_label(month, lookback)
+    base = no_data_msg(label, tool=tool_label, tips=tips)
+    meta = {**base.get("meta", {})}
+    suggestions = meta.get("suggestions")
+    if isinstance(suggestions, list):
+        meta["suggestions"] = suggestions
+    return {
+        "mode": mode,
+        "filters": filters,
+        "result": data,
+        "message": base["reply"],
+        "reply": base["reply"],
+        "rephrased": base.get("rephrased", False),
+        "meta": meta,
+    }
 
 def tool_specs():
     return [
@@ -395,37 +432,55 @@ def route_to_tool(user_text: str, db: Session) -> Optional[Dict[str, Any]]:
             lookback = int(args.get("lookback_months") or 6)
             lookback = max(1, min(24, lookback))
             data = analytics_svc.compute_kpis(db, month=month, lookback=lookback)
-            return {"mode": mode, "filters": {"month": month, "lookback_months": lookback}, "result": data}
+            filters = {"month": month, "lookback_months": lookback}
+            if not data.get("months"):
+                return _no_data_response(mode, filters, data, month=month, lookback=lookback, tool_label="KPIs")
+            return {"mode": mode, "filters": filters, "result": data}
 
         if mode == "analytics.forecast":
             horizon = int(args.get("horizon") or 3)
             horizon = max(1, min(12, horizon))
             data = analytics_svc.forecast_cashflow(db, month=month, horizon=horizon)
-            return {"mode": mode, "filters": {"month": month, "horizon": horizon}, "result": data}
+            filters = {"month": month, "horizon": horizon}
+            if not data.get("ok", True) or not data.get("forecast"):
+                return _no_data_response(mode, filters, data, month=month, tool_label="Forecast", tips=["Use Insights: Expanded (last 60 days)", "Pick a month with \u22653 months of history"] )
+            return {"mode": mode, "filters": filters, "result": data}
 
         if mode == "analytics.anomalies":
             lookback = int(args.get("lookback_months") or 6)
             lookback = max(1, min(24, lookback))
             data = analytics_svc.find_anomalies(db, month=month, lookback=lookback)
-            return {"mode": mode, "filters": {"month": month, "lookback_months": lookback}, "result": data}
+            filters = {"month": month, "lookback_months": lookback}
+            if not (data.get("items") or []):
+                return _no_data_response(mode, filters, data, month=month, lookback=lookback, tool_label="KPIs")
+            return {"mode": mode, "filters": filters, "result": data}
 
         if mode == "analytics.recurring":
             lookback = int(args.get("lookback_months") or 6)
             lookback = max(1, min(24, lookback))
             data = analytics_svc.detect_recurring(db, month=month, lookback=lookback)
-            return {"mode": mode, "filters": {"month": month, "lookback_months": lookback}, "result": data}
+            filters = {"month": month, "lookback_months": lookback}
+            if not (data.get("items") or []):
+                return _no_data_response(mode, filters, data, month=month, lookback=lookback, tool_label="KPIs")
+            return {"mode": mode, "filters": filters, "result": data}
 
         if mode == "analytics.subscriptions":
             lookback = int(args.get("lookback_months") or 6)
             lookback = max(1, min(24, lookback))
             data = analytics_svc.find_subscriptions(db, month=month, lookback=lookback)
-            return {"mode": mode, "filters": {"month": month, "lookback_months": lookback}, "result": data}
+            filters = {"month": month, "lookback_months": lookback}
+            if not (data.get("items") or []):
+                return _no_data_response(mode, filters, data, month=month, lookback=lookback, tool_label="KPIs")
+            return {"mode": mode, "filters": filters, "result": data}
 
         if mode == "analytics.budget_suggest":
             lookback = int(args.get("lookback_months") or 6)
             lookback = max(1, min(24, lookback))
             data = analytics_svc.budget_suggest(db, month=month, lookback=lookback)
-            return {"mode": mode, "filters": {"month": month, "lookback_months": lookback}, "result": data}
+            filters = {"month": month, "lookback_months": lookback}
+            if not (data.get("items") or []):
+                return _no_data_response(mode, filters, data, month=month, lookback=lookback, tool_label="KPIs")
+            return {"mode": mode, "filters": filters, "result": data}
 
         if mode == "analytics.whatif":
             payload = dict(args)

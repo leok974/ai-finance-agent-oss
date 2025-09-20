@@ -1,4 +1,3 @@
-
 services:
   postgres:
     image: postgres:15
@@ -17,35 +16,39 @@ services:
     ports:
       - "8000:8000"
     environment:
-      DATABASE_URL: postgresql+psycopg://myuser:mypassword@postgres:5432/finance
-      CORS_ALLOW_ORIGINS: http://127.0.0.1:5173,http://localhost:5173,http://127.0.0.1:5174,http://localhost:5174
-      MASTER_KEK_B64: ${MASTER_KEK_B64}
-      ENCRYPTION_MASTER_KEY_BASE64: ${MASTER_KEK_B64}
-      ENCRYPTION_KMS: disabled
+      DATABASE_URL: "postgresql+psycopg://myuser:mypassword@postgres:5432/finance"
+      CORS_ALLOW_ORIGINS: "http://127.0.0.1:5173"
       ENCRYPTION_ENABLED: "1"
-      APP_ENV: dev
-      OPENAI_BASE_URL: http://host.docker.internal:11434/v1
-      OPENAI_API_KEY: ollama
-      MODEL: gpt-oss:20b
-      DEV_ALLOW_NO_LLM: "1"
-      DEV_ALLOW_NO_AUTH: "1"
-      FRONTEND_ORIGIN: http://127.0.0.1:5173
-      DEMO_MODE: "1"
-      DEMO_LOGIN_EMAIL: admin@local
-      DEMO_LOGIN_PASSWORD: admin123
-      DEMO_LOGIN_TOKEN: let-judges-in
+      GCP_KMS_KEY: "projects/ledgermind-03445-3l/locations/us-east1/keyRings/ledgermind/cryptoKeys/kek"
+      GCP_KMS_AAD: "app=ledgermind,env=dev"
+      GOOGLE_APPLICATION_CREDENTIALS: "/secrets/gcp-sa.json"
+      APP_ENV: "dev"
     depends_on:
       - postgres
     volumes:
       - ./apps/backend:/app
+      - C:/secrets/ledgermind-backend-sa.json:/secrets/gcp-sa.json:ro
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:8000/healthz || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: "1500M"
+        reservations:
+          cpus: "0.25"
+          memory: "512M"
 
   web:
     build:
       context: ./apps/web
       dockerfile: Dockerfile
     environment:
-      VITE_API_BASE: http://127.0.0.1:8000
+      VITE_API_BASE: "http://127.0.0.1:8000"
     depends_on:
       - backend
     ports:

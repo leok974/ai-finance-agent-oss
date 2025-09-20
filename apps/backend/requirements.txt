@@ -28,3 +28,5 @@ itsdangerous>=2.2
 
 # Crypto
 cryptography>=42.0.0
+google-cloud-kms>=2.21.0
+prometheus-fastapi-instrumentator>=6.1.0

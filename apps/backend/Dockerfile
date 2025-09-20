@@ -22,5 +22,10 @@ COPY . .
 # Normalize CRLF and make entrypoint executable
 RUN sed -i 's/\r$//' /app/start.sh && chmod +x /app/start.sh
 
+# Create non-root user and writable tmp
+RUN addgroup --gid 10001 app && useradd --no-log-init --create-home --uid 10001 --gid 10001 app \
+ && mkdir -p /tmp && chown -R 10001:10001 /tmp
+USER 10001:10001
+
 EXPOSE 8000
 CMD ["/app/start.sh"]

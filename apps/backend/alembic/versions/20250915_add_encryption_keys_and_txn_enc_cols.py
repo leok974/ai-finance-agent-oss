@@ -22,19 +22,20 @@ def upgrade():
 
     # encryption_keys (idempotent)
     inspector = sa.inspect(bind)
-    if 'encryption_keys' not in inspector.get_table_names():
+    tables = set(inspector.get_table_names())
+    if 'encryption_keys' not in tables:
         op.create_table(
             'encryption_keys',
             sa.Column('id', sa.Integer(), primary_key=True),
-            sa.Column('label', sa.String(length=32), nullable=False, index=True, unique=True),
+            sa.Column('label', sa.String(length=32), nullable=False, unique=True),
             sa.Column('dek_wrapped', sa.LargeBinary(), nullable=False),
-            sa.Column('dek_wrap_nonce', sa.LargeBinary(), nullable=False),
+            # Nullable for KMS-wrapped DEKs (NULL => KMS, non-NULL => AESGCM/KEK)
+            sa.Column('dek_wrap_nonce', sa.LargeBinary(), nullable=True),
+            # Optional metadata to persist KMS details
+            sa.Column('wrap_scheme', sa.String(length=16), nullable=True),
+            sa.Column('kms_key_id', sa.String(length=512), nullable=True),
             sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('CURRENT_TIMESTAMP'), nullable=False),
         )
-        try:
-            op.create_index('ix_encryption_keys_label', 'encryption_keys', ['label'], unique=True)
-        except Exception:
-            pass
 
     # transactions encrypted columns (idempotent)
     existing_cols = {c['name'] for c in inspector.get_columns('transactions')}
@@ -61,10 +62,18 @@ def upgrade():
     except Exception:
         idx_names = set()
     if 'ix_transactions_enc_label' not in idx_names:
-        try:
-            op.create_index('ix_transactions_enc_label', 'transactions', ['enc_label'])
-        except Exception:
-            pass
+        op.create_index('ix_transactions_enc_label', 'transactions', ['enc_label'])
+
+    # encryption_settings (idempotent)
+    if 'encryption_settings' not in tables:
+        op.create_table(
+            'encryption_settings',
+            sa.Column('id', sa.Integer(), primary_key=True),
+            sa.Column('write_label', sa.String(length=32), nullable=False, server_default='active'),
+            sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('CURRENT_TIMESTAMP'), nullable=False),
+        )
+        # Seed a single row with id=1
+        op.execute("INSERT INTO encryption_settings (id, write_label) VALUES (1, 'active')")
 
 
 def downgrade():

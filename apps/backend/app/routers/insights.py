@@ -45,16 +45,24 @@ def insights(month: str | None = Query(None), db: Session = Depends(get_db)):
 
 
 class AnomalyModel(BaseModel):
-    category: str = Field(..., example="Groceries")
-    current: float = Field(..., description="Current month spend magnitude", example=700.0)
-    median: float = Field(..., description="Median of prior months", example=400.0)
-    pct_from_median: float = Field(..., description="(current - median) / median", example=0.75)
-    sample_size: int = Field(..., description="Historical months used", example=5)
-    direction: Literal["high","low"] = Field(..., example="high")
+    category: str = Field(..., json_schema_extra={"examples":["Groceries"]})
+    current: float = Field(
+        ..., description="Current month spend magnitude", json_schema_extra={"examples":[700.0]}
+    )
+    median: float = Field(
+        ..., description="Median of prior months", json_schema_extra={"examples":[400.0]}
+    )
+    pct_from_median: float = Field(
+        ..., description="(current - median) / median", json_schema_extra={"examples":[0.75]}
+    )
+    sample_size: int = Field(
+        ..., description="Historical months used", json_schema_extra={"examples":[5]}
+    )
+    direction: Literal["high","low"] = Field(..., json_schema_extra={"examples":["high"]})
 
 
 class AnomaliesResp(BaseModel):
-    month: str | None = Field(None, example="2025-09")
+    month: str | None = Field(None, json_schema_extra={"examples":["2025-09"]})
     anomalies: list[AnomalyModel] = Field(default_factory=list)
 
 
@@ -64,10 +72,10 @@ class AnomaliesResp(BaseModel):
     summary="Flag categories with unusual current-month spend"
 )
 def get_anomalies(
-    months: int = Query(6, ge=3, le=24, description="History window", example=6),
-    min_spend_current: float = Query(50.0, ge=0, description="Ignore very small categories", example=50.0),
-    threshold_pct: float = Query(0.4, ge=0.05, le=5.0, description="|% from median| to flag", example=0.4),
-    max_results: int = Query(8, ge=1, le=50, description="Return top-N by deviation", example=6),
+    months: int = Query(6, ge=3, le=24, description="History window"),
+    min_spend_current: float = Query(50.0, ge=0, description="Ignore very small categories"),
+    threshold_pct: float = Query(0.4, ge=0.05, le=5.0, description="|% from median| to flag"),
+    max_results: int = Query(8, ge=1, le=50, description="Return top-N by deviation"),
     month: str | None = Query(None, description="Override anchor month YYYY-MM"),
     db: Session = Depends(get_db),
 ):
@@ -84,7 +92,7 @@ def get_anomalies(
 
 
 class IgnoreListResp(BaseModel):
-    ignored: list[str] = Field(default_factory=list, example=["Groceries","Transport"])
+    ignored: list[str] = Field(default_factory=list, json_schema_extra={"examples":[["Groceries","Transport"]]})
 
 
 @router.post(

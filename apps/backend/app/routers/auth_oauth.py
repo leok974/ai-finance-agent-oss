@@ -46,7 +46,7 @@ async def google_cb(request: Request, db: Session = Depends(get_db)):
 async def _finalize(provider: str, provider_user_id: str, email: str | None, db: Session):
     link = db.query(OAuthAccount).filter_by(provider=provider, provider_user_id=provider_user_id).first()
     if link:
-        user = db.query(User).get(link.user_id)
+        user = db.get(User, link.user_id)
     else:
         user = db.query(User).filter(User.email == email).first() if email else None
         if not user:

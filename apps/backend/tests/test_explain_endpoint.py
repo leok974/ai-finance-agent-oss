@@ -2,6 +2,7 @@ import os
 import re
 import pytest
 from datetime import date, datetime, timedelta
+from app.utils.time import utc_now
 
 from app.transactions import Transaction
 from app.orm_models import Feedback, RuleORM as Rule
@@ -31,7 +32,7 @@ def _mk_rule(db, pattern: str, target: str, category: str):
 
 
 def _mk_feedback(db, txn_id: int, label: str, source: str = "user_change"):
-    fb = Feedback(txn_id=txn_id, label=label, source=source, created_at=datetime.utcnow())
+    fb = Feedback(txn_id=txn_id, label=label, source=source, created_at=utc_now())
     db.add(fb)
     db.commit()
     return fb

@@ -36,7 +36,15 @@ def _now_ts() -> int:
 
 # cookie settings
 def _cookie_secure() -> bool:
-    return os.environ.get("COOKIE_SECURE", "0") == "1"
+    """Return True when cookies must be marked Secure.
+
+    In production (APP_ENV=prod), default to Secure unless explicitly disabled
+    via COOKIE_SECURE=0. In non-prod, default remains False unless
+    COOKIE_SECURE=1 is set.
+    """
+    app_env = os.environ.get("APP_ENV", os.environ.get("ENV", "dev")).lower()
+    default = "1" if app_env == "prod" else "0"
+    return os.environ.get("COOKIE_SECURE", default) == "1"
 
 
 def _cookie_samesite() -> str:

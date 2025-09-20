@@ -11,14 +11,38 @@ services:
 
   cloudflared:
     image: cloudflare/cloudflared:latest
-    # Order matters: flags before subcommand; use exec form to avoid parsing issues
-    command: ["cloudflared", "--no-autoupdate", "tunnel", "run", "--token", "${CLOUDFLARE_TUNNEL_TOKEN}", "--edge-ip-version", "4", "--protocol", "http2"]
-    dns:
-      - 1.1.1.1
-      - 8.8.8.8
     restart: unless-stopped
     depends_on:
       - nginx
+    command: tunnel run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN}
+    healthcheck:
+      test: ['CMD', 'cloudflared', 'update', 'check']
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  backend:
+    environment:
+      OPENAI_BASE_URL: "http://ollama:11434/v1"
+      OPENAI_API_KEY: "ollama"
+      MODEL: "gpt-oss:20b"
+      DEV_ALLOW_NO_LLM: "0"
+      MASTER_KEK_B64: ${MASTER_KEK_B64}
+      ENCRYPTION_MASTER_KEY_BASE64: ${ENCRYPTION_MASTER_KEY_BASE64:-${MASTER_KEK_B64}}
+      CRYPTO_MODE: "kms"
+      KMS_PROVIDER: "gcp"
+      GCP_KMS_KEY: "projects/ledgermind-03445-3l/locations/us-east1/keyRings/ledgermind/cryptoKeys/kek"
+      GOOGLE_APPLICATION_CREDENTIALS: "/gcp/ledgermind-backend-sa.json"
+    volumes:
+      - ./secrets/gcp-sa.json:/gcp:ro
+
+  ollama:
+    environment:
+      - OLLAMA_MODELS=/root/.ollama
+    volumes:
+      - 'D:\\ollama:/root/.ollama'
 
 volumes:
   letsencrypt:

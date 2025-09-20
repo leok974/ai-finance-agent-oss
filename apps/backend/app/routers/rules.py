@@ -365,7 +365,7 @@ def backfill_rule(
     limit: Optional[int] = Query(default=None, ge=1, le=10000, description="Optional maximum rows to process"),
     db: Session = Depends(get_db),
 ):
-    rule: Rule = db.query(Rule).get(rule_id)  # type: ignore
+    rule: Rule = db.get(Rule, rule_id)  # type: ignore
     if not rule:
         raise HTTPException(status_code=404, detail="Rule not found")
     rule_input = (
@@ -508,8 +508,8 @@ AUTOFILL_FROM_MINED = True
 
 # --- Suggestion Ignores (DB-backed with small TTL cache) -------------------
 class IgnorePair(BaseModel):
-    merchant: str = Field(..., min_length=1, example="Starbucks")
-    category: str = Field(..., min_length=1, example="Dining out")
+    merchant: str = Field(..., min_length=1, json_schema_extra={"examples":["Starbucks"]})
+    category: str = Field(..., min_length=1, json_schema_extra={"examples":["Dining out"]})
 
 class IgnoreListResp(BaseModel):
     ignores: List[IgnorePair] = Field(default_factory=list)
@@ -564,7 +564,7 @@ def accept_persisted_suggestion_db(sid: int, db: Session = Depends(get_db)):
         return out
     except ValueError:
         # Fallback: legacy suggestion accept creates a rule
-        legacy = db.get(RuleSuggestion, sid) if hasattr(db, "get") else db.query(RuleSuggestion).get(sid)  # type: ignore[attr-defined]
+        legacy = db.get(RuleSuggestion, sid)
         if not legacy:
             raise HTTPException(status_code=404, detail="Suggestion not found")
         merchant = getattr(legacy, "merchant_norm", None) or getattr(legacy, "merchant", None) or ""
@@ -598,7 +598,7 @@ def dismiss_persisted_suggestion_db(sid: int, db: Session = Depends(get_db)):
         out["ok"] = True
         return out
     except ValueError:
-        legacy = db.get(RuleSuggestion, sid) if hasattr(db, "get") else db.query(RuleSuggestion).get(sid)  # type: ignore[attr-defined]
+        legacy = db.get(RuleSuggestion, sid)
         if not legacy:
             raise HTTPException(status_code=404, detail="Suggestion not found")
         merchant = getattr(legacy, "merchant_norm", None) or getattr(legacy, "merchant", None) or ""

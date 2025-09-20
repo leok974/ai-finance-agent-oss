@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from uuid import uuid4
 from decimal import Decimal, ROUND_HALF_UP
 from datetime import datetime
+from app.utils.time import utc_now
 from typing import Optional
 
 from app.db import get_db
@@ -146,7 +147,7 @@ def soft_delete(id: int, db: Session = Depends(get_db)):
     t = db.get(Transaction, id)
     if not t or t.deleted_at:
         raise HTTPException(404, "Not found")
-    t.deleted_at = datetime.utcnow()
+    t.deleted_at = utc_now()
     db.commit()
     return {"ok": True}
 
@@ -212,7 +213,7 @@ def merge_txns(payload: TxnMergeRequest, db: Session = Depends(get_db)):
     )
     db.add(merged)
     for r in rows:
-        r.deleted_at = datetime.utcnow()
+        r.deleted_at = utc_now()
     db.commit()
     db.refresh(merged)
     return {"ok": True, "id": merged.id}

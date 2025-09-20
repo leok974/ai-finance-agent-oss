@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, Query, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from sqlalchemy.orm import Session
 
 from app.db import get_db
@@ -87,22 +87,26 @@ def spending_trends(months: int = Query(6, ge=1, le=24), db: Session = Depends(g
 
 
 class CategoryPoint(BaseModel):
-    month: str = Field(..., description='Month key "YYYY-MM"', example="2025-09")
+    month: str = Field(..., description='Month key "YYYY-MM"', json_schema_extra={"examples":["2025-09"]})
     amount: float = Field(..., description="Total expense magnitude for this month")
 
 
 class CategorySeriesResp(BaseModel):
-    category: str = Field(..., description="Category name", example="Groceries")
-    months: int = Field(..., ge=1, le=36, description="Lookback window in months", example=6)
+    category: str = Field(..., description="Category name", json_schema_extra={"examples":["Groceries"]})
+    months: int = Field(..., ge=1, le=36, description="Lookback window in months", json_schema_extra={"examples":[6]})
     series: list[CategoryPoint] = Field(default_factory=list, description="Time series")
 
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "examples": [{
-                "category":"Groceries","months":6,
-                "series":[{"month":"2025-04","amount":420.0},{"month":"2025-05","amount":390.0}]
+                "category": "Groceries", "months": 6,
+                "series": [
+                    {"month": "2025-04", "amount": 420.0},
+                    {"month": "2025-05", "amount": 390.0}
+                ]
             }]
         }
+    )
 
 
 @router.get(
@@ -111,8 +115,8 @@ class CategorySeriesResp(BaseModel):
     summary="Category time series (expenses only)"
 )
 def chart_category(
-    category: str = Query(..., min_length=1, description="Category to chart", example="Groceries"),
-    months: int = Query(6, ge=1, le=36, description="Months of history to include", example=6),
+    category: str = Query(..., min_length=1, description="Category to chart"),
+    months: int = Query(6, ge=1, le=36, description="Months of history to include"),
     db: Session = Depends(get_db),
 ):
     """

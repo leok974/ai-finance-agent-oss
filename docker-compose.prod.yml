@@ -21,25 +21,23 @@ services:
       APP_ENV: "prod"
       ENCRYPTION_ENABLED: ${ENCRYPTION_ENABLED:-1}
       GCP_KMS_KEY: "projects/ledgermind-03445-3l/locations/us-east1/keyRings/ledgermind/cryptoKeys/kek"
+      MASTER_KEK_B64: ${MASTER_KEK_B64}
+      ENCRYPTION_MASTER_KEY_BASE64: ${ENCRYPTION_MASTER_KEY_BASE64:-${MASTER_KEK_B64}}
       GCP_KMS_AAD: ${GCP_KMS_AAD}
       GOOGLE_APPLICATION_CREDENTIALS: /secrets/gcp-sa.json
       DATABASE_URL: "postgresql+psycopg://myuser:${POSTGRES_PASSWORD}@postgres:5432/finance"
       CORS_ALLOW_ORIGINS: "https://ledger-mind.org,https://www.ledger-mind.org"
       FRONTEND_ORIGIN: "https://ledger-mind.org"
-      COOKIE_SAMESITE: strict
+      COOKIE_SAMESITE: ${COOKIE_SAMESITE:-none}
+      COOKIE_SECURE: ${COOKIE_SECURE:-1}
+      COOKIE_DOMAIN: ${COOKIE_DOMAIN:-app.ledger-mind.org}
       TRUSTED_PROXY_CIDRS: "172.21.0.0/16"
-      # LLM provider configuration
-      DEFAULT_LLM_PROVIDER: "openai"
-      OPENAI_API_KEY: ${OPENAI_API_KEY}
-      OPENAI_BASE_URL: "https://api.openai.com/v1"
-      # Comma-separated allowlist for UI model selection (adjust as needed)
-      AGENT_ALLOWED_MODELS: "gpt-4o-mini,gpt-4o,gpt-4.1,gpt-4.1-mini,o4-mini,gpt-oss:20b"
-      AGENT_PROVIDER: "openai"
-      AGENT_DEFAULT_MODEL: "gpt-4o-mini"
-      # Explicit default LLM model for backend settings (Settings.DEFAULT_LLM_MODEL)
-      DEFAULT_LLM_MODEL: "gpt-4o-mini"
-      # Optional direct service base for Ollama (code currently hits 127.0.0.1:11434)
-      OLLAMA_BASE_URL: "http://ollama:11434"
+      # LLM configuration (local Ollama runtime)
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-http://ollama:11434/v1}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-ollama}
+      MODEL: ${MODEL:-gpt-oss:20b}
+      DEV_ALLOW_NO_LLM: ${DEV_ALLOW_NO_LLM:-0}
+      ALLOWED_HOSTS: "localhost,127.0.0.1,ledger-mind.org,app.ledger-mind.org,api.ledger-mind.org"
     depends_on:
       postgres:
         condition: service_healthy
@@ -92,15 +90,12 @@ services:
   ollama:
     image: ollama/ollama:latest
     restart: unless-stopped
-    volumes:
-      - ollama:/root/.ollama
     # Enable NVIDIA GPU acceleration (requires Docker Desktop GPU support enabled)
     gpus: all
     environment:
       - OLLAMA_KEEP_ALIVE=5m
-    # Uncomment to expose to host for local experiments
-    # ports:
-    #   - "127.0.0.1:11434:11434"
+    ports:
+      - "11434:11434"
 
   # Sidecar to present 127.0.0.1:11434 inside backend netns, forwarding to ollama service
 
@@ -108,5 +103,5 @@ volumes:
   pgdata:
   certbot_www:
   letsencrypt:
-  ollama:
+  # removed named volume 'ollama' in favor of bind mount for model store stability
 

@@ -1,9 +1,10 @@
 from datetime import datetime, timedelta, date
+from app.utils.time import utc_now
 
 
 def seed_feedback(db):
     from app.orm_models import Feedback, Transaction
-    now = datetime.utcnow()
+    now = utc_now()
     # Create a transaction to attach feedback to
     t = Transaction(date=date(2025, 8, 6), merchant="Starbucks", category="", amount=-5.0, description="Coffee")
     db.add(t)

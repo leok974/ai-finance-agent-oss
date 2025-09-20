@@ -13,6 +13,10 @@ Offline-first finance agent with local inference via Ollama or vLLM. Designed fo
 - **Safe UX**: optimistic UI, loading/error states, no duplicate suggestions, explain-why
 - **Smart Chat**: unified `/agent/chat` endpoint with natural language transaction explanations and auto-context enrichment
 
+## Troubleshooting
+
+If something feels off (e.g., API returns HTML, login refresh quirks, Cloudflare tunnel issues), see `troubleshooting.md` for quick fixes and copy-paste checks.
+
 ## ≡ƒÜÇ New: Enhanced Agent Chat System
 
 ### **Natural Language Transaction Explanations**

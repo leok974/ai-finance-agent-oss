@@ -1,4 +1,6 @@
 from fastapi import FastAPI
+from contextlib import asynccontextmanager
+import asyncio
 from .db import Base, engine
 from sqlalchemy import inspect
 from fastapi.middleware.cors import CORSMiddleware
@@ -73,6 +75,7 @@ app = FastAPI(
     openapi_url="/openapi.json",
     docs_url="/docs",
     redoc_url="/redoc",
+    lifespan=None,  # will attach below
 )
 # Enable JSON logs in production
 try:
@@ -122,16 +125,13 @@ except Exception:
 def root_ping():
     return {"ok": True}
 
-@app.on_event("startup")
 def _create_tables_dev():
-    # Dev convenience for SQLite; guard to avoid conflicts with Alembic
     try:
         if engine.url.get_backend_name().startswith("sqlite"):
             insp = inspect(engine)
             if "alembic_version" not in insp.get_table_names():
                 Base.metadata.create_all(bind=engine)
     except Exception:
-        # Ignore in dev if engine misconfigured
         pass
 
 # CORS allowlist from settings (defaults include 5173/5174 on localhost + 127.0.0.1)
@@ -191,7 +191,6 @@ def _session_scope():
         yield db
     finally:
         db.close()
-@app.on_event("startup")
 async def _startup_load_state():
     try:
         load_state(app)
@@ -200,7 +199,6 @@ async def _startup_load_state():
         logger.warning("state: load failed, continuing startup", exc_info=e)
         if os.getenv("STARTUP_STATE_STRICT", "0").lower() in {"1", "true", "yes"}:
             raise
-    # Initialize encryption if enabled
     try:
         enabled = os.environ.get("ENCRYPTION_ENABLED", "1") == "1"
         if enabled:
@@ -208,10 +206,8 @@ async def _startup_load_state():
             set_crypto(crypto)
             label = os.environ.get("ENCRYPTION_ACTIVE_LABEL", "active")
             set_active_label(label)
-            # Explicitly load/copy DEK into process cache (supports KEK or KMS)
             with _session_scope() as db:
                 load_and_cache_active_dek(db)
-                # Fail fast in prod if crypto not ready
                 if os.environ.get("APP_ENV", "dev").lower() == "prod":
                     from app.core.crypto_state import get_crypto_status as _crypto_status
                     st = _crypto_status(db)
@@ -221,15 +217,35 @@ async def _startup_load_state():
                         sys.exit(1)
             logging.getLogger("uvicorn").info("crypto: initialized (DEK cached)")
     except Exception as e:
-        # Fail fast in prod; dev logs only
         logging.getLogger("uvicorn").error("crypto init failed: %s", e)
         if os.environ.get("APP_ENV", os.environ.get("ENV", "dev")).lower() == "prod":
             import sys
             sys.exit(1)
 
-@app.on_event("shutdown")
 async def _shutdown_save_state():
     save_state(app)
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup sequence
+    _create_tables_dev()
+    await _startup_load_state()
+    app.state._bg_tasks = []
+    try:
+        yield
+    finally:
+        # Shutdown sequence
+        try:
+            await _shutdown_save_state()
+        except Exception:
+            pass
+        for t in getattr(app.state, "_bg_tasks", []):
+            t.cancel()
+        if getattr(app.state, "_bg_tasks", []):
+            await asyncio.gather(*app.state._bg_tasks, return_exceptions=True)
+
+# Attach lifespan
+app.router.lifespan_context = lifespan
 
 # Routers
 app.include_router(ingest.router, prefix="")

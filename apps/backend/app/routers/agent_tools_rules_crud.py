@@ -38,7 +38,7 @@ def create_rule(body: RuleIn, db: Session = Depends(get_db)):
 
 @router.put("/{rule_id}", response_model=RuleOut, dependencies=[Depends(csrf_protect)])
 def update_rule(rule_id: int, body: RuleIn, db: Session = Depends(get_db)):
-    row = db.query(Rule).get(rule_id)
+    row = db.get(Rule, rule_id)
     if not row: raise HTTPException(404, "Rule not found")
     for f in ("merchant","description","pattern","category","active"):
         v = getattr(body, f)
@@ -50,7 +50,7 @@ def update_rule(rule_id: int, body: RuleIn, db: Session = Depends(get_db)):
 
 @router.delete("/{rule_id}", dependencies=[Depends(csrf_protect)])
 def delete_rule(rule_id: int, db: Session = Depends(get_db)):
-    row = db.query(Rule).get(rule_id)
+    row = db.get(Rule, rule_id)
     if not row: raise HTTPException(404, "Rule not found")
     db.delete(row); db.commit()
     return {"status":"ok","deleted":rule_id}

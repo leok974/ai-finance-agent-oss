@@ -38,9 +38,15 @@ def _ensure_crypto_initialized():
                 ek = EncryptionKey(label=label, dek_wrapped=wrapped, dek_wrap_nonce=nonce)
                 s.add(ek)
                 s.commit()
-            # unwrap DEK and cache in process
+            # unwrap DEK and cache in process (detect KMS by empty/None nonce)
             try:
-                set_data_key(crypto.unwrap_dek(ek.dek_wrapped, ek.dek_wrap_nonce))
+                nonce = ek.dek_wrap_nonce
+                if nonce is None or (isinstance(nonce, (bytes, bytearray)) and len(nonce) == 0):
+                    from app.services.gcp_kms_wrapper import kms_unwrap_dek  # type: ignore
+                    plain = kms_unwrap_dek(ek.dek_wrapped)
+                else:
+                    plain = crypto.unwrap_dek(ek.dek_wrapped, nonce)
+                set_data_key(plain)
             except Exception as e:
                 # If a key exists but unwrap fails, KEK is wrong; fail fast.
                 raise RuntimeError("KEK mismatch while unwrapping DEK. Update ENCRYPTION_MASTER_KEY_BASE64 (or MASTER_KEK_B64) to current KEK.") from e

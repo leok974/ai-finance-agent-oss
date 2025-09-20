@@ -148,6 +148,45 @@ These are read by `app/utils/csrf.py`, `app/services/llm.py`, and some test help
 
 ---
 
+## Hermetic Test Run (Windows / PowerShell)
+
+Prereqs
+- Python 3.11+ with virtualenv
+- `pip install -r apps/backend/requirements.txt` (+ `requirements-dev.txt` if present)
+
+Run
+```powershell
+pwsh ./test.ps1
+```
+
+What the script does
+- Sets `PYTHONPATH` to `apps/backend` (single import root)
+- Purges `__pycache__` / `*.pyc` inside backend only
+- Prints a preflight (paths for `app`, `agent_tools`, `agent_router`)
+- Executes `pytest -q --import-mode=importlib tests`
+
+Common pitfalls
+- Duplicate tree like `apps/backend/apps/backend/...` → remove stray nested copy
+- Site‑packages shadowing source → ensure preflight shows workspace paths
+- KMS / LLM dependent tests skipped unless env vars / credentials provided
+
+Key env flags set automatically (see `tests/conftest.py` + `_hermetic_env` fixture):
+`APP_ENV=test`, `DEV_ALLOW_NO_LLM=1`, `DEV_ALLOW_NO_AUTH=1`, `DEV_ALLOW_NO_CSRF=1`.
+
+To run with real LLM / auth remove or override those in your shell before invoking pytest.
+
+Add coverage (optional):
+```powershell
+python -m pytest --cov=app --cov-report=term-missing
+```
+
+Warn filtering
+Targeted filters are in `pytest.ini`; adjust after copying exact warning messages instead of using blanket ignores.
+
+---
+
+---
+
 ## Explain endpoint (Sep 2025)
 
 Deterministic, DB-backed transaction explanations with optional LLM polish.

@@ -1,4 +1,12 @@
 cloudflared/*.json
+cloudflared/
+data/
+_probe.csv
+segment_before.txt
+docker-compose.prod.yml.bak
+apps/web/.env.production
+test.ps1
+
 !.keep# Python
 __pycache__/
 *.pyc
