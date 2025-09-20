@@ -7,18 +7,29 @@ from sqlalchemy import select
 from app.orm_models import Transaction, EncryptionKey, EncryptionSettings  # adjusted to actual orm_models
 from app.core.crypto_state import get_dek_for_label, purge_dek_cache  # canonical DEK retrieval
 from app.services.crypto import EnvelopeCrypto
+import time
 
 # Optional Prometheus instrumentation
 try:  # pragma: no cover - metrics optional
-    from prometheus_client import Counter, Gauge
+    from prometheus_client import Counter, Gauge, Histogram
     _ROTATE_SCANNED = Counter("crypto_rotation_scanned_total", "Rows scanned during DEK rotation")
     _ROTATE_PROCESSED = Counter("crypto_rotation_processed_total", "Rows re-encrypted during DEK rotation")
     _ROTATE_FAILED = Counter("crypto_rotation_decrypt_fail_total", "Decrypt failures during DEK rotation")
     _ROTATE_OK = Counter("crypto_rotation_decrypt_ok_total", "Successful decrypt operations during rotation")
     _ROTATE_REMAINING = Gauge("crypto_rotation_remaining", "Remaining rows under source label needing rotation")
     _ROTATE_LAST_BATCH = Gauge("crypto_rotation_last_batch_size", "Row count processed in last rotation batch")
+    _ROTATE_BATCH_LATENCY = Histogram(
+        "crypto_rotation_batch_seconds",
+        "Wall time to process a yielded batch of rows",
+        buckets=(0.01,0.05,0.1,0.25,0.5,1,2,5,10,30)
+    )
+    _ROTATE_FAIL_FIELD = Counter(
+        "crypto_rotation_decrypt_fail_field_total",
+        "Decrypt failures grouped by field",
+        labelnames=("field",)
+    )
 except Exception:  # pragma: no cover
-    _ROTATE_SCANNED = _ROTATE_PROCESSED = _ROTATE_FAILED = _ROTATE_OK = _ROTATE_REMAINING = _ROTATE_LAST_BATCH = None
+    _ROTATE_SCANNED = _ROTATE_PROCESSED = _ROTATE_FAILED = _ROTATE_OK = _ROTATE_REMAINING = _ROTATE_LAST_BATCH = _ROTATE_BATCH_LATENCY = _ROTATE_FAIL_FIELD = None
 
 _last_rotation_stats: Dict[str, Any] = {}
 
@@ -105,6 +116,8 @@ def run_rotation(db: Session, *, target_label: str, source_label: str = 'active'
     fail_samples: List[Dict[str, Any]] = []
 
     last_batch_processed = 0
+    rotation_start = time.monotonic()
+    batch_start = time.monotonic()
     for row in q:
         scanned += 1
         current_batch += 1
@@ -128,6 +141,11 @@ def run_rotation(db: Session, *, target_label: str, source_label: str = 'active'
                         "ct_prefix": ct[:8].hex() if len(ct) >= 1 else "",
                         "error": exc.__class__.__name__,
                     })
+                if _ROTATE_FAIL_FIELD:
+                    try:
+                        _ROTATE_FAIL_FIELD.labels(field=ct_field).inc()
+                    except Exception:
+                        pass
                 continue
             dec_ok += 1
             if dry_run:
@@ -147,10 +165,21 @@ def run_rotation(db: Session, *, target_label: str, source_label: str = 'active'
         if current_batch == batch_size:
             batches.append((batch_seen, current_batch))
             batch_seen += current_batch
+            if _ROTATE_BATCH_LATENCY:
+                try:
+                    _ROTATE_BATCH_LATENCY.observe(time.monotonic() - batch_start)
+                except Exception:
+                    pass
+            batch_start = time.monotonic()
             current_batch = 0
 
     if current_batch:
         batches.append((batch_seen, current_batch))
+        if _ROTATE_BATCH_LATENCY:
+            try:
+                _ROTATE_BATCH_LATENCY.observe(time.monotonic() - batch_start)
+            except Exception:
+                pass
 
     if not dry_run:
         db.commit()
@@ -186,6 +215,10 @@ def run_rotation(db: Session, *, target_label: str, source_label: str = 'active'
             pass
     # Cache last stats for JSON health endpoint
     global _last_rotation_stats
+    elapsed = time.monotonic() - rotation_start
+    remaining_est = max(0, (count_source_label - processed))
+    rate = (processed / elapsed) if elapsed > 0 else None
+    eta_seconds = (remaining_est / rate) if (rate and rate > 0) else None
     _last_rotation_stats = {
         "source": source_label,
         "target": rotating,
@@ -193,7 +226,10 @@ def run_rotation(db: Session, *, target_label: str, source_label: str = 'active'
         "processed": processed,
         "decrypt_ok": dec_ok,
         "decrypt_fail": dec_fail,
-        "remaining_est": max(0, (count_source_label - processed)),
+        "remaining_est": remaining_est,
+        "elapsed_sec": round(elapsed, 3),
+        "rate_rows_per_sec": round(rate, 3) if rate else None,
+        "eta_sec": round(eta_seconds, 1) if eta_seconds else None,
         "dry_run": dry_run,
     }
     return result

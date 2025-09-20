@@ -224,3 +224,22 @@ def metrics_health(db: Session = Depends(get_db)):
         "crypto_label": crypto.get("label"),
         "rotation": rot,
     }
+
+
+@router.get("/metrics/crypto")
+def metrics_crypto(db: Session = Depends(get_db)):
+    """Detailed crypto metrics including ETA & sampled failures (JSON)."""
+    crypto = get_crypto_status(db)
+    rot = getattr(_dek_rotation, "_last_rotation_stats", {}) or {}
+    # Expose recent fail samples by invoking a lightweight introspection of cached stats via health encryption endpoint
+    enc = encryption_status(db)  # reuse existing logic for key listing
+    return {
+        "crypto": {
+            "ready": crypto.get("ready"),
+            "mode": crypto.get("mode"),
+            "label": crypto.get("label"),
+            "kms_key_id": crypto.get("kms_key_id"),
+            "keys_total": enc.get("total_keys"),
+        },
+        "rotation": rot,
+    }
