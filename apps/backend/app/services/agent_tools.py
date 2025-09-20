@@ -379,17 +379,28 @@ def route_to_tool(user_text: str, db: Session) -> Optional[Dict[str, Any]]:
             threshold_pct=p["threshold"],
             max_results=p["max"],
         )
-        return {
-            "mode": "insights.anomalies",
-            "filters": {
+        anomalies_list = []
+        if isinstance(result, dict):
+            anomalies_list = result.get("items") or []
+        elif isinstance(result, list):
+            anomalies_list = result
+        # Friendly empty-state if no anomalies
+        if not anomalies_list:
+            from app.services.agent_tools.common import no_data_anomalies
+            month_label = _extract_month(user_text) or latest_month_str(db) or "this period"
+            return no_data_anomalies(month_label)
+        from app.services.agent_tools.common import reply
+        return reply(
+            f"Found **{len(anomalies_list)}** anomalies for {( _extract_month(user_text) or latest_month_str(db) or 'this period') }.",
+            mode="insights.anomalies",
+            result=result if isinstance(result, dict) else {"items": anomalies_list},
+            filters={
                 "months": p["months"],
                 "min": p["min"],
                 "threshold": p["threshold"],
                 "max": p["max"],
             },
-            "result": result,
-            "message": None,
-        }
+        )
 
     # 2) Category chart (single category) — explicit detector ahead of txn NL
     if det.detect_open_category_chart(user_text):
