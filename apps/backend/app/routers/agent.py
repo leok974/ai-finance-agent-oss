@@ -3,6 +3,7 @@ import json
 import re
 import logging
 from typing import Any, Dict, List, Optional, Tuple, Literal
+from app.services.agent.llm_post import post_process_tool_reply
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Header
 from starlette.responses import JSONResponse, RedirectResponse
@@ -344,6 +345,7 @@ def agent_chat(
                 "tool_trace": tool_trace,
                 "model": model,
             }
+            resp = post_process_tool_reply(resp, ctx)
             if debug and getattr(settings, "ENV", "dev") != "prod":
                 resp["__debug_context"] = ctx
             return JSONResponse(resp)
@@ -355,10 +357,22 @@ def agent_chat(
             if tool_resp is not None:
                 dt_ms = int((time.perf_counter() - t0) * 1000)
                 # Deterministic summary string for tool output
-                summary = _summarize_tool_result(tool_resp)
-                # Optional rephrase via LLM (safe, short, numbers unchanged); default to deterministic
-                rephrased = _try_llm_rephrase_tool(last_user_msg, tool_resp, summary)
-                message = (rephrased or summary).strip()
+                summary = _summarize_tool_result(tool_resp) or ""
+                clean = summary.strip()
+                lower = clean.lower()
+                normalized = lower.replace("�", "'")
+                bypass_rephrase = (
+                    not clean
+                    or lower in {"ok", "okay"}
+                    or lower.rstrip(".") in {"ok", "okay"}
+                    or "i couldn't find any transactions" in normalized
+                    or "i couldnt find any transactions" in normalized
+                )
+                if bypass_rephrase:
+                    rephrased = None
+                else:
+                    rephrased = _try_llm_rephrase_tool(last_user_msg, tool_resp, clean)
+                message = (rephrased or clean).strip() or clean
                 resp = {
                     "ok": True,
                     "mode": tool_resp.get("mode"),
@@ -381,6 +395,7 @@ def agent_chat(
                     }],
                     "model": "deterministic",
                 }
+                resp = post_process_tool_reply(resp, ctx)
                 if debug and getattr(settings, "ENV", "dev") != "prod":
                     resp["__debug_context"] = ctx
                 return JSONResponse(resp)
@@ -417,6 +432,7 @@ def agent_chat(
                 "tool_trace": [{"tool": "nl_txns", "status": "short_circuit"}],
                 "model": "deterministic",
             }
+            resp = post_process_tool_reply(resp, ctx)
             if debug and getattr(settings, "ENV", "dev") != "prod":
                 resp["__debug_context"] = ctx
             return JSONResponse(resp)
@@ -578,6 +594,9 @@ def _fmt_window(f: Dict[str, Any]) -> str:
 
 
 def _summarize_tool_result(tool_resp: Dict[str, Any]) -> str:
+    message = tool_resp.get("message")
+    if message:
+        return str(message)
     mode = tool_resp.get("mode")
     if mode == "nl_txns":
         # tool_resp.result is the full run_txn_query dict
@@ -616,7 +635,7 @@ def _summarize_tool_result(tool_resp: Dict[str, Any]) -> str:
         return f"{kind} export link is ready{window}."
     if mode == "budgets.read":
         return tool_resp.get("message", "Budgets view")
-    return "OK."
+    return "OK"
 
 
 def _try_llm_rephrase_tool(user_text: str, tool_resp: Dict[str, Any], summary: str) -> Optional[str]:
@@ -719,3 +738,4 @@ def list_models():
 
 # Alternative JSON response for clients that prefer structured redirects
 # (Removed duplicate /agent/chat legacy JSON redirect to avoid route conflicts)
+
