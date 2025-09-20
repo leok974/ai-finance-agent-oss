@@ -1,5 +1,6 @@
 from __future__ import annotations
 import os
+import logging
 from typing import Dict, Any, List, Tuple
 from sqlalchemy.orm import Session
 from sqlalchemy import select
@@ -28,10 +29,15 @@ try:  # pragma: no cover - metrics optional
         "Decrypt failures grouped by field",
         labelnames=("field",)
     )
+    _ROTATE_FINALIZE = Counter(
+        "crypto_rotation_finalize_total",
+        "Successful finalize (promotion) events for rotation"
+    )
 except Exception:  # pragma: no cover
-    _ROTATE_SCANNED = _ROTATE_PROCESSED = _ROTATE_FAILED = _ROTATE_OK = _ROTATE_REMAINING = _ROTATE_LAST_BATCH = _ROTATE_BATCH_LATENCY = _ROTATE_FAIL_FIELD = None
+    _ROTATE_SCANNED = _ROTATE_PROCESSED = _ROTATE_FAILED = _ROTATE_OK = _ROTATE_REMAINING = _ROTATE_LAST_BATCH = _ROTATE_BATCH_LATENCY = _ROTATE_FAIL_FIELD = _ROTATE_FINALIZE = None
 
 _last_rotation_stats: Dict[str, Any] = {}
+_logger = logging.getLogger(__name__)
 
 _TXN_AAD = b"txn:v1"
 _FAIL_SAMPLE_LIMIT = 5
@@ -219,6 +225,31 @@ def run_rotation(db: Session, *, target_label: str, source_label: str = 'active'
     remaining_est = max(0, (count_source_label - processed))
     rate = (processed / elapsed) if elapsed > 0 else None
     eta_seconds = (remaining_est / rate) if (rate and rate > 0) else None
+    prev_eta = None
+    if _last_rotation_stats:
+        prev_eta = _last_rotation_stats.get("eta_sec")
+    # Compare ETA growth and emit warning if it regresses beyond thresholds
+    eta_growth_warn = False
+    if eta_seconds is not None and prev_eta is not None:
+        try:
+            pct_threshold = float(os.getenv("ROTATION_ETA_WARN_INCREASE_PCT", "0.25"))  # 25%
+        except Exception:
+            pct_threshold = 0.25
+        try:
+            min_delta = float(os.getenv("ROTATION_ETA_WARN_MIN_DELTA", "30"))  # 30s
+        except Exception:
+            min_delta = 30.0
+        if eta_seconds - prev_eta >= min_delta and eta_seconds > prev_eta * (1 + pct_threshold):
+            eta_growth_warn = True
+            try:
+                _logger.warning(
+                    "rotation eta growth warning: prev=%.1fs new=%.1fs (+%.1fs, %.1f%% > thresholds pct=%.2f min_delta=%.1f)",
+                    prev_eta, eta_seconds, (eta_seconds - prev_eta),
+                    ((eta_seconds - prev_eta)/prev_eta*100.0) if prev_eta else 0.0,
+                    pct_threshold, min_delta
+                )
+            except Exception:
+                pass
     _last_rotation_stats = {
         "source": source_label,
         "target": rotating,
@@ -230,6 +261,8 @@ def run_rotation(db: Session, *, target_label: str, source_label: str = 'active'
         "elapsed_sec": round(elapsed, 3),
         "rate_rows_per_sec": round(rate, 3) if rate else None,
         "eta_sec": round(eta_seconds, 1) if eta_seconds else None,
+        "eta_prev_sec": round(prev_eta, 1) if prev_eta is not None else None,
+        "eta_growth_warn": eta_growth_warn,
         "dry_run": dry_run,
     }
     return result
@@ -249,4 +282,10 @@ def finalize_rotation(db: Session, *, target_label: str) -> Dict[str, Any]:
     # Relabel rows
     db.query(Transaction).filter(Transaction.enc_label == rotating).update({Transaction.enc_label: rotating}, synchronize_session=False)
     db.commit()
+    # Metrics finalize counter
+    if _ROTATE_FINALIZE:
+        try:
+            _ROTATE_FINALIZE.inc()
+        except Exception:
+            pass
     return {"ok": True, "active": rotating, "rotating": None, "relabelled": rotated_rows}

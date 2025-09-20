@@ -131,6 +131,11 @@ def healthz(db: Session = Depends(get_db)):
     except Exception:
         db_engine = None
     crypto = get_crypto_status(db)
+    # Attach rotation stats if a rotation is in progress or cached
+    try:
+        rotation_stats = getattr(_dek_rotation, "_last_rotation_stats", {}) or {}
+    except Exception:
+        rotation_stats = {}
     return {
         "status": status,
         "db": {"reachable": ok, "models_ok": models_ok},
@@ -145,6 +150,7 @@ def healthz(db: Session = Depends(get_db)):
     "crypto_mode": crypto.get("mode"),
     "crypto_label": crypto.get("label"),
     "crypto_kms_key": crypto.get("kms_key_id"),
+    "rotation": rotation_stats if rotation_stats else None,
     }
 
 
