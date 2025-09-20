@@ -8,6 +8,20 @@ from app.orm_models import Transaction, EncryptionKey, EncryptionSettings  # adj
 from app.core.crypto_state import get_dek_for_label, purge_dek_cache  # canonical DEK retrieval
 from app.services.crypto import EnvelopeCrypto
 
+# Optional Prometheus instrumentation
+try:  # pragma: no cover - metrics optional
+    from prometheus_client import Counter, Gauge
+    _ROTATE_SCANNED = Counter("crypto_rotation_scanned_total", "Rows scanned during DEK rotation")
+    _ROTATE_PROCESSED = Counter("crypto_rotation_processed_total", "Rows re-encrypted during DEK rotation")
+    _ROTATE_FAILED = Counter("crypto_rotation_decrypt_fail_total", "Decrypt failures during DEK rotation")
+    _ROTATE_OK = Counter("crypto_rotation_decrypt_ok_total", "Successful decrypt operations during rotation")
+    _ROTATE_REMAINING = Gauge("crypto_rotation_remaining", "Remaining rows under source label needing rotation")
+    _ROTATE_LAST_BATCH = Gauge("crypto_rotation_last_batch_size", "Row count processed in last rotation batch")
+except Exception:  # pragma: no cover
+    _ROTATE_SCANNED = _ROTATE_PROCESSED = _ROTATE_FAILED = _ROTATE_OK = _ROTATE_REMAINING = _ROTATE_LAST_BATCH = None
+
+_last_rotation_stats: Dict[str, Any] = {}
+
 _TXN_AAD = b"txn:v1"
 _FAIL_SAMPLE_LIMIT = 5
 
@@ -90,6 +104,7 @@ def run_rotation(db: Session, *, target_label: str, source_label: str = 'active'
 
     fail_samples: List[Dict[str, Any]] = []
 
+    last_batch_processed = 0
     for row in q:
         scanned += 1
         current_batch += 1
@@ -126,6 +141,7 @@ def run_rotation(db: Session, *, target_label: str, source_label: str = 'active'
             if not dry_run:
                 row.enc_label = rotating
             processed += 1
+            last_batch_processed += 1
         else:
             skipped += 1
         if current_batch == batch_size:
@@ -139,7 +155,7 @@ def run_rotation(db: Session, *, target_label: str, source_label: str = 'active'
     if not dry_run:
         db.commit()
 
-    return {
+    result = {
         "ok": True,
         "source": source_label,
         "rotating": rotating,
@@ -156,6 +172,31 @@ def run_rotation(db: Session, *, target_label: str, source_label: str = 'active'
         },
         "dry_run": dry_run,
     }
+    # Metrics update
+    if _ROTATE_SCANNED:
+        try:
+            _ROTATE_SCANNED.inc(scanned)
+            _ROTATE_PROCESSED.inc(processed)
+            _ROTATE_FAILED.inc(dec_fail)
+            _ROTATE_OK.inc(dec_ok)
+            remaining = max(0, (count_source_label - processed)) if not dry_run else count_source_label
+            _ROTATE_REMAINING.set(remaining)
+            _ROTATE_LAST_BATCH.set(last_batch_processed)
+        except Exception:
+            pass
+    # Cache last stats for JSON health endpoint
+    global _last_rotation_stats
+    _last_rotation_stats = {
+        "source": source_label,
+        "target": rotating,
+        "scanned": scanned,
+        "processed": processed,
+        "decrypt_ok": dec_ok,
+        "decrypt_fail": dec_fail,
+        "remaining_est": max(0, (count_source_label - processed)),
+        "dry_run": dry_run,
+    }
+    return result
 
 def finalize_rotation(db: Session, *, target_label: str) -> Dict[str, Any]:
     settings = db.execute(select(EncryptionSettings).limit(1)).scalar_one()

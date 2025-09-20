@@ -12,6 +12,7 @@ from app.transactions import Transaction
 from app.config import settings
 from sqlalchemy.engine import make_url
 from app.core.crypto_state import get_write_label, get_crypto_status
+from app.services import dek_rotation as _dek_rotation  # for cached rotation stats
 
 # Lazy/prometheus optional: define counters if prometheus_client is available
 try:  # pragma: no cover - metrics optional
@@ -207,3 +208,19 @@ def ready(db: Session = Depends(get_db)):
     if not st.get("ready"):
         raise HTTPException(status_code=503, detail={"crypto_ready": False, **st})
     return {"ok": True, **st}
+
+
+@router.get("/metrics/health")
+def metrics_health(db: Session = Depends(get_db)):
+    """Lightweight JSON metrics (alternative to Prometheus scrape)."""
+    crypto = get_crypto_status(db)
+    try:
+        rot = getattr(_dek_rotation, "_last_rotation_stats", {}) or {}
+    except Exception:
+        rot = {}
+    return {
+        "crypto_ready": crypto.get("ready"),
+        "crypto_mode": crypto.get("mode"),
+        "crypto_label": crypto.get("label"),
+        "rotation": rot,
+    }

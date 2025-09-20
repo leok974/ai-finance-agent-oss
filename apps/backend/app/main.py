@@ -50,6 +50,7 @@ from app.db import SessionLocal
 from app.core.crypto_state import load_and_cache_active_dek
 import base64
 from app.middleware.request_logging import RequestLogMiddleware
+from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 
@@ -208,6 +209,19 @@ async def _startup_load_state():
             set_active_label(label)
             with _session_scope() as db:
                 load_and_cache_active_dek(db)
+                # Active label age warning (optional)
+                try:
+                    threshold_days = int(os.environ.get("CRYPTO_ACTIVE_AGE_WARN_DAYS", "90"))
+                    row = db.execute(text("SELECT created_at FROM encryption_keys WHERE label='active' ORDER BY created_at DESC LIMIT 1")).first()
+                    if row and getattr(row, "created_at", None):
+                        created = row.created_at
+                        if not isinstance(created, datetime):
+                            created = datetime.fromisoformat(str(created))
+                        age_days = (datetime.now(timezone.utc) - created.replace(tzinfo=timezone.utc)).days
+                        if age_days >= threshold_days:
+                            logging.getLogger("uvicorn").info("crypto: active label age=%sd exceeds threshold=%sd (label rotation recommended)", age_days, threshold_days)
+                except Exception:
+                    pass
                 if os.environ.get("APP_ENV", "dev").lower() == "prod":
                     from app.core.crypto_state import get_crypto_status as _crypto_status
                     st = _crypto_status(db)
