@@ -75,6 +75,8 @@ Future
 - Add metrics on rotation progress / decrypt failures.
 - Optional replication of wrapped DEKs to cold storage.
 
+Deep dive: see `../../docs/encryption.md` for diagrams, metrics, backup checklist, and recovery scenarios.
+
 This backend stores a canonical form of `Transaction.merchant` in `transactions.merchant_canonical`.
 
 - Canonicalization function: `app/utils/text.py` → `canonicalize_merchant(s: str) -> str | None`

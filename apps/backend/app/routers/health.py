@@ -13,6 +13,16 @@ from app.config import settings
 from sqlalchemy.engine import make_url
 from app.core.crypto_state import get_write_label, get_crypto_status
 
+# Lazy/prometheus optional: define counters if prometheus_client is available
+try:  # pragma: no cover - metrics optional
+    from prometheus_client import Counter, Gauge
+    _CRYPTO_READY = Gauge("crypto_ready", "Whether crypto subsystem loaded DEK (1=ready,0=not)")
+    _CRYPTO_MODE = Gauge("crypto_mode_env", "Crypto mode flag (1 if env-wrapped active key)")
+    _CRYPTO_KEYS_TOTAL = Gauge("crypto_keys_total", "Total encryption key rows")
+    _CRYPTO_ACTIVE_LABEL_AGE = Gauge("crypto_active_label_age_seconds", "Approx age (seconds) of active label")
+except Exception:  # pragma: no cover - silently disable
+    _CRYPTO_READY = _CRYPTO_MODE = _CRYPTO_KEYS_TOTAL = _CRYPTO_ACTIVE_LABEL_AGE = None
+
 router = APIRouter(tags=["health"])
 
 def _db_ping(db: Session) -> bool:
@@ -160,12 +170,32 @@ def encryption_status(db: Session = Depends(get_db)):
             })
     except Exception:
         keys = []
-    return {
+    out = {
         "write_label": wl or "active",
         "keys": keys,
         "active_present": any((k.get("label") == "active") for k in keys),
         "total_keys": len(keys),
     }
+    # Update Gauges if available
+    if _CRYPTO_KEYS_TOTAL:
+        try:
+            _CRYPTO_KEYS_TOTAL.set(len(keys))
+            # Determine active key age (approx) if created_at timestamps present
+            active_ts = None
+            for k in keys:
+                if k.get("label") == "active" and k.get("created_at"):
+                    from datetime import datetime, timezone
+                    try:
+                        active_ts = datetime.fromisoformat(k["created_at"].replace("Z",""))
+                    except Exception:
+                        active_ts = None
+                    break
+            if active_ts:
+                from datetime import datetime, timezone
+                _CRYPTO_ACTIVE_LABEL_AGE.set(max(0, (datetime.now(timezone.utc) - active_ts).total_seconds()))
+        except Exception:
+            pass
+    return out
 
 
 @router.get("/ready")

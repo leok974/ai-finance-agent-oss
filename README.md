@@ -337,6 +337,8 @@ Future hardening ideas
 - Integrate envelope key rotation metrics into a Prometheus endpoint.
 - Streaming re-encryption job scheduler for large datasets.
 
+Deep dive: see `docs/encryption.md` for rotation vs rewrap diagrams, metrics, and recovery scenarios.
+
 
 ## Agent Chat
 - Minimal chat is available in the web app (uses backend `POST /agent/chat`).
