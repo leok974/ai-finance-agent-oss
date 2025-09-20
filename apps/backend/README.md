@@ -1,9 +1,79 @@
 # Backend notes: Merchant canonicalization and suggestions
 
-## Encryption (dev)
-- Set ENCRYPTION_ENABLED=1 and ENCRYPTION_MASTER_KEY_BASE64 to a 32-byte base64 key for stable encrypt/decrypt across restarts.
-- Run Alembic upgrade, start backend once (creates a wrapped DEK), then run: `python -m app.scripts.backfill_encrypt`.
-- Tests: `pytest tests/test_crypto_envelope.py`.
+## Encryption (overview Sep 2025)
+The backend uses an envelope model: a Data Encryption Key (DEK) encrypts sensitive free‑text columns; that DEK is itself wrapped by either an env KEK (AES‑GCM) or Google Cloud KMS.
+
+Quick start (env KEK)
+```bash
+export ENCRYPTION_ENABLED=1
+export ENCRYPTION_MASTER_KEY_BASE64=$(openssl rand -base64 32)
+alembic upgrade head
+python -m app.cli crypto-init
+```
+
+KMS mode
+```bash
+export GCP_KMS_KEY="projects/<proj>/locations/<loc>/keyRings/<ring>/cryptoKeys/<key>"
+python -m app.cli crypto-init
+```
+
+Status / demo
+```bash
+python -m app.cli crypto-status
+python -m app.cli txn-demo --desc "Latte" --raw "Blue Bottle #42"
+python -m app.cli txn-show-latest
+```
+
+Backfill legacy plaintext
+```bash
+python -m app.scripts.encrypt_txn_backfill_splitcols
+```
+
+Rotation
+```bash
+python -m app.cli dek-rotate-begin
+python -m app.cli dek-rotate-run --new-label rotating::20250920T120501
+python -m app.cli dek-rotate-finalize --new-label rotating::20250920T120501
+```
+
+KEK → KMS rewrap (no data rewrite)
+```bash
+python -m app.cli kek-rewrap-gcp
+```
+
+Active KEK rewrap (env only)
+```bash
+NEW=$(openssl rand -base64 32)
+python -m app.cli kek-rewrap --new-kek-b64 $NEW
+```
+
+Force new active DEK (only if no encrypted rows yet)
+```bash
+python -m app.cli force-new-active-dek
+```
+
+Write label management
+```bash
+python -m app.cli write-label-get
+python -m app.cli write-label-set --label rotating::20250920T120501
+```
+
+Tests (selected)
+- `tests/test_cli_kms_rewrap.py`
+- Rotation status & backfill covered in integration tests.
+
+Operational notes
+- Backup `encryption_keys` before rotation/finalize.
+- If `crypto-status` shows `mode=kms` ensure service account has decrypt permission before scaling out.
+- Use `dek-rotate-status` between runs to monitor progress.
+
+Failure recovery (env mode)
+- Wrong KEK causes unwrap failure: if zero encrypted rows you can `force-new-active-dek`; otherwise restore correct KEK.
+- Lost KEK with encrypted data is unrecoverable without backups.
+
+Future
+- Add metrics on rotation progress / decrypt failures.
+- Optional replication of wrapped DEKs to cold storage.
 
 This backend stores a canonical form of `Transaction.merchant` in `transactions.merchant_canonical`.
 

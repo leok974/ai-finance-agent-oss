@@ -252,6 +252,92 @@ docker-compose.yml
 
 Tip: In PowerShell, you may need to allow script execution for your repo path: `Set-ExecutionPolicy -Scope Process Bypass`.
 
+## Encryption & Key Management (Sep 2025)
+
+The backend now supports envelope encryption for sensitive free‑text fields on transactions (`description`, `merchant_raw`, `note`).
+
+Core concepts
+- **DEK (Data Encryption Key)**: 32‑byte key used to encrypt individual field values (AES‑GCM). Stored only wrapped.
+- **KEK / KMS**: Either a symmetric key from env (`ENCRYPTION_MASTER_KEY_BASE64` / `MASTER_KEK_B64`) or a Google Cloud KMS key (`GCP_KMS_KEY`) that wraps the DEK.
+- **Labels**: Each wrapped DEK row in `encryption_keys` has a `label` (e.g. `active`, `rotating::<ts>`, `retired::<ts>`). Writes reference the current write label (cached via `encryption_settings.write_label`).
+- **Hybrid Properties**: ORM exposes `*_text` accessors that transparently encrypt/decrypt using the in‑process decrypted DEK.
+
+Minimal setup (env KEK mode)
+```bash
+export ENCRYPTION_ENABLED=1
+export ENCRYPTION_MASTER_KEY_BASE64=$(openssl rand -base64 32)
+alembic upgrade head
+python -m app.cli crypto-init     # creates + caches active DEK
+```
+
+KMS mode (GCP Cloud KMS)
+```bash
+export GCP_KMS_KEY="projects/<proj>/locations/<loc>/keyRings/<ring>/cryptoKeys/<key>"
+# Optional additional authenticated data
+export GCP_KMS_AAD="finance-agent-v1"
+alembic upgrade head
+python -m app.cli crypto-init
+```
+
+Status & demo
+```bash
+python -m app.cli crypto-status
+python -m app.cli txn-demo --desc "Latte" --raw "Blue Bottle #42" --note "extra foam"
+python -m app.cli txn-show-latest
+```
+
+Key lifecycle
+1. `crypto-init` unwraps & caches the active DEK (env or KMS wrapped).
+2. Application encrypts new writes to encrypted columns with current DEK; legacy plaintext columns (if any) are backfilled via script.
+3. Rotation uses a generate → re‑encrypt → finalize pattern.
+
+DEK rotation (multi‑step)
+```bash
+# 1) Begin: insert new rotating::<ts> row & set as write label
+python -m app.cli dek-rotate-begin
+
+# 2) Re-encrypt batches from old label to new (repeat until remaining=0)
+python -m app.cli dek-rotate-run --new-label rotating::20250920T120501
+
+# 3) Finalize: promote rotating label to active, retire old active
+python -m app.cli dek-rotate-finalize --new-label rotating::20250920T120501
+```
+
+KEK rewrap (fast, no data rewrite)
+```bash
+# Generate a new KEK and rewrap active DEK
+NEW=$(openssl rand -base64 32)
+python -m app.cli kek-rewrap --new-kek-b64 "$NEW"
+# Or move env-wrapped DEK into KMS mode
+python -m app.cli kek-rewrap-gcp
+```
+
+Force new active DEK (only when no encrypted rows yet)
+```bash
+python -m app.cli force-new-active-dek
+```
+
+Backfill legacy plaintext → encrypted columns
+```bash
+python -m app.scripts.encrypt_txn_backfill_splitcols
+```
+
+Operational guidance
+- ALWAYS back up `encryption_keys` table alongside your data before rotations.
+- Treat loss of KEK / KMS permissions as catastrophic: you cannot decrypt existing ciphertext.
+- Use `crypto-status` in readiness probes if you need to ensure DEK is cached before serving traffic.
+- Logs intentionally omit plaintext; debug locally if you need plaintext visibility.
+
+Testing
+- Hermetic tests run with DEV flags; encryption tests cover KEK/KMS unwraps and rotation scaffolding.
+- To simulate KMS locally, leave `dek_wrap_nonce` NULL and set `GCP_KMS_KEY` (mock implementation or skip).
+
+Future hardening ideas
+- Add per-field metadata hashing for tamper detection.
+- Integrate envelope key rotation metrics into a Prometheus endpoint.
+- Streaming re-encryption job scheduler for large datasets.
+
+
 ## Agent Chat
 - Minimal chat is available in the web app (uses backend `POST /agent/chat`).
 - Point `OPENAI_BASE_URL` and `OPENAI_API_KEY` to your local/remote LLM server; default model is `gpt-oss:20b`.
