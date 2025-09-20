@@ -4,7 +4,7 @@ import EnvAvatar from "@/components/EnvAvatar";
 import { useAuth } from "@/state/auth";
 import { createPortal } from "react-dom";
 import { ChevronUp, Wrench } from "lucide-react";
-import { agentTools, agentChat, getAgentModels, type AgentChatRequest, type AgentChatResponse, type AgentModelsResponse, type ChatMessage, txnsQuery, txnsQueryCsv, type TxnQueryResult, explainTxnForChat, agentRephrase, getMonthSummary, getMonthMerchants, getMonthFlows, getSpendingTrends, getBudgetCheck, analytics } from "../lib/api";
+import { agentTools, agentChat, getAgentModels, type AgentChatRequest, type AgentChatResponse, type AgentModelsResponse, type ChatMessage, txnsQueryCsv, txnsQuery, type TxnQueryResult, explainTxnForChat, agentRephrase, getMonthSummary, getMonthMerchants, getMonthFlows, getSpendingTrends, getBudgetCheck, analytics, transactionsNl } from "../lib/api";
 import { fmtMonthSummary, fmtTopMerchants, fmtCashflow, fmtTrends } from "../lib/formatters";
 import { runToolWithRephrase } from "../lib/tools-runner";
 import { saveAs } from "../utils/save";
@@ -15,11 +15,15 @@ import Markdown from "./Markdown";
 import type { ToolKey, ToolSpec, ToolRunState } from "../types/agentTools";
 import { AgentResultRenderer } from "./AgentResultRenderers";
 import ErrorBoundary from "./ErrorBoundary";
+import { QuickChips, type ChipAction } from "./QuickChips";
 import { useMonth } from "../context/MonthContext";
 import { useChatDock } from "../context/ChatDockContext";
 import { exportThreadAsJSON, exportThreadAsMarkdown } from "../utils/chatExport";
 import { chatStore, type BasicMsg, snapshot as chatSnapshot, restoreFromSnapshot as chatRestoreFromSnapshot, discardSnapshot as chatDiscardSnapshot } from "../utils/chatStore";
 import runAndRephrase from "./agent-tools/runAndRephrase";
+import { registerChatHandlers } from "@/state/chat";
+import { DEFAULT_PLACEHOLDER, focusComposer, registerComposerControls, setComposer, setComposerPlaceholder as setComposerPlaceholderUI } from "@/state/chat/ui";
+import { handleTransactionsNL } from "./AgentTools";
 // --- layout constants (right/bottom anchored) ---
 const MARGIN = 24;     // default bottom-right margin
 const BUBBLE = 48;     // bubble size (px)
@@ -165,6 +169,8 @@ export default function ChatDock() {
   const [busy, setBusy] = React.useState(false);
   const [chatResp, setChatResp] = React.useState<AgentChatResponse | null>(null);
   const [input, setInput] = useState("");
+  const composerRef = React.useRef<HTMLTextAreaElement | null>(null);
+  const [composerPlaceholder, setComposerPlaceholderState] = useState(DEFAULT_PLACEHOLDER);
   const listRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const syncTimerRef = useRef<number | null>(null);
@@ -183,8 +189,17 @@ export default function ChatDock() {
   const undoActionRef = React.useRef<null | (() => void)>(null);
   const [restoredVisible, setRestoredVisible] = React.useState(false);
 
+  useEffect(() => {
+    return registerComposerControls({
+      setValue: (value: string) => setInput(value),
+      focus: () => composerRef.current?.focus(),
+      setPlaceholder: (value: string) => setComposerPlaceholderState(value),
+      getValue: () => composerRef.current?.value ?? "",
+    });
+  }, [setInput, setComposerPlaceholderState]);
+
   // --- feature flags to forcibly hide legacy UI ---
-  const ENABLE_TOPBAR_TOOL_BUTTONS = false;   // keep a single “Agent tools” toggle
+  const ENABLE_TOPBAR_TOOL_BUTTONS = false;   // keep a single "Agent tools" toggle
   const ENABLE_LEGACY_TOOL_FORM    = false;   // hide Payload/Result/Insert context/Run
 
   // Live message stream (render from UI state, persist via chatStore)
@@ -260,6 +275,28 @@ export default function ChatDock() {
   const { user } = useAuth();
   const userName = user?.email?.split("@")[0] ?? "You";
 
+  const appendAssistant = React.useCallback((text: string, meta?: any) => {
+    const ts = Date.now();
+    const metaPayload: Record<string, any> = { ...(meta ?? {}) };
+    if (!metaPayload.used_context && metaPayload.ctxMonth) {
+      metaPayload.used_context = { month: metaPayload.ctxMonth };
+    }
+    setUiMessages(cur => [...cur, { role: 'assistant', text, ts, meta: metaPayload }]);
+    chatStore.append({ role: 'assistant', content: text, createdAt: ts });
+    try { chatDiscardSnapshot(); } catch { /* ignore */ }
+    setChatResp({
+      reply: text,
+      citations: metaPayload.citations || [],
+      used_context: metaPayload.used_context || { month: metaPayload.ctxMonth },
+      tool_trace: metaPayload.trace || metaPayload.tool_trace || [],
+      model: metaPayload.model || "",
+      mode: metaPayload.mode,
+      args: metaPayload.args,
+      suggestions: metaPayload.suggestions || [],
+      rephrased: Object.prototype.hasOwnProperty.call(metaPayload, 'rephrased') ? metaPayload.rephrased : undefined,
+    } as any);
+  }, [setUiMessages, setChatResp]);
+
   // Build rendered list with day dividers and per-message timestamps
   const renderedMessages = React.useMemo(() => {
     const out: React.ReactNode[] = [];
@@ -278,13 +315,13 @@ export default function ChatDock() {
         );
       }
       const isUser = m.role === 'user';
-      const currentMeta = i === (uiMessages.length - 1) ? chatResp as any : undefined;
+      const meta = ((m as any).meta ?? (i === (uiMessages.length - 1) ? (chatResp as any) : undefined)) || {};
       out.push(
         <div key={`${m.role}-${ts}-${i}`} className={`px-3 py-2 my-1 flex items-end gap-2 ${isUser ? 'justify-end' : 'justify-start'}`}>
           {!isUser && <EnvAvatar who="agent" className="size-7" />}
           <div className={`max-w-[72%] rounded-2xl px-3 py-2 text-sm leading-relaxed ${isUser ? 'bg-blue-600 text-white rounded-br-sm' : 'bg-slate-800 text-slate-100 rounded-bl-sm'}`}>
             {(m as any).thinking ? (
-              <div className="py-1"><span className="sr-only">Thinking…</span><RobotThinking size={32} /></div>
+              <div className="py-1"><span className="sr-only">Thinking.</span><RobotThinking size={32} /></div>
             ) : (
               m.role === 'assistant' ? <div className="chat-markdown"><Markdown>{m.text}</Markdown></div> : <>{m.text}</>
             )}
@@ -296,26 +333,57 @@ export default function ChatDock() {
       out.push(
         <div key={`${m.role}-${ts}-${i}-meta`} className="px-3">
           <div className="mt-2 text-xs opacity-70 flex items-center gap-2 flex-wrap">
-            {m.role === 'assistant' && (chatResp as any)?.citations?.length ? (
+            {m.role === 'assistant' && Array.isArray(meta.citations) && meta.citations.length ? (
               <>
                 <span>
-                  Used data: {(chatResp as any).citations.map((c: any) => c.count ? `${c.type} ${c.count}` : `${c.type}`).join(' · ')}
+                  Used data: {meta.citations.map((c: any) => c.count ? `${c.type} ${c.count}` : `${c.type}`).join(' | ')}
                 </span>
-                {(chatResp as any)?.used_context?.month ? <span>· month {(chatResp as any).used_context.month}</span> : null}
-                {(chatResp as any)?.model ? <span>· {(chatResp as any).model}</span> : null}
+                {meta.used_context?.month ? <span>- month {meta.used_context.month}</span> : null}
+                {meta.model ? <span>- {meta.model}</span> : null}
               </>
             ) : null}
-            {m.role === 'assistant' ? <ModeChip mode={(chatResp as any)?.mode} args={(chatResp as any)?.args} /> : null}
+            {m.role === 'assistant' ? <ModeChip mode={meta.mode} args={meta.args} /> : null}
             <span className="ml-auto text-neutral-400">{toTimeHM(ts)}</span>
           </div>
-          {m.role === 'assistant' && (chatResp as any)?.mode === 'analytics.forecast' ? (
-            <ForecastFollowUps month={(chatResp as any)?.used_context?.month} append={appendAssistant} setThinking={setBusy} />
+          {m.role === 'assistant' && meta.mode === 'analytics.forecast' ? (
+            <ForecastFollowUps month={meta.used_context?.month} append={appendAssistant} setThinking={setBusy} />
           ) : null}
+          {m.role === 'assistant' && Array.isArray(meta.suggestions) && meta.suggestions.length ? (() => {
+            const chipItems = meta.suggestions
+              .map((it: any) => {
+                if (!it) return null;
+                if (typeof it === 'string') {
+                  return { label: it, action: { type: 'nl_search', query: it } as ChipAction };
+                }
+                if (typeof it === 'object') {
+                  const label = typeof it.label === 'string' ? it.label : typeof it.query === 'string' ? it.query : typeof it.value === 'string' ? it.value : null;
+                  if (!label) return null;
+                  const rawAction = it.action;
+                  let action: ChipAction | null = null;
+                  if (rawAction && typeof rawAction === 'object' && typeof rawAction.type === 'string') {
+                    action = rawAction as ChipAction;
+                  } else if (typeof it.query === 'string') {
+                    action = { type: 'nl_search', query: it.query };
+                  } else if (typeof it.value === 'string') {
+                    action = { type: 'nl_search', query: it.value };
+                  } else if (typeof it.href === 'string') {
+                    action = { type: 'nav', href: it.href };
+                  }
+                  if (!action) {
+                    action = { type: 'nl_search', query: label };
+                  }
+                  return { label, action };
+                }
+                return null;
+              })
+              .filter(Boolean) as { label: string; action: ChipAction }[];
+            return chipItems.length ? <QuickChips items={chipItems} /> : null;
+          })() : null}
         </div>
       );
     });
     return out;
-  }, [uiMessages, userName, chatResp]);
+  }, [appendAssistant, setBusy, uiMessages, userName, chatResp]);
 
   // Event delegation for Explain buttons inside rendered markdown
   useEffect(() => {
@@ -356,30 +424,15 @@ export default function ChatDock() {
     }, 5000);
   }
 
-  function appendUser(text: string) {
+  const appendUser = React.useCallback((text: string) => {
     const ts = Date.now();
     setUiMessages(cur => [...cur, { role: 'user', text, ts }]); // optimistic UI
     chatStore.append({ role: 'user', content: text, createdAt: ts });
   // If a snapshot exists from a recent Clear, discard it once new chat starts
   try { chatDiscardSnapshot(); } catch { /* ignore */ }
-  }
+  }, [setUiMessages]);
 
-  function appendAssistant(text: string, meta?: any) {
-    const ts = Date.now();
-    setUiMessages(cur => [...cur, { role: 'assistant', text, ts }]); // optimistic UI
-    chatStore.append({ role: 'assistant', content: text, createdAt: ts });
-    try { chatDiscardSnapshot(); } catch { /* ignore */ }
-    // capture response meta for current tab rendering, including mode/args/tool_trace
-    setChatResp({
-      reply: text,
-      citations: meta?.citations || [],
-      used_context: { month: meta?.ctxMonth },
-      tool_trace: meta?.trace || meta?.tool_trace || [],
-      model: meta?.model || "",
-      mode: meta?.mode,
-      args: meta?.args,
-    } as any);
-  }
+  // (appendAssistant moved above first usage)
 
   // History toggle (reads directly from messages)
   const [historyOpen, setHistoryOpen] = useState<boolean>(false);
@@ -592,14 +645,14 @@ export default function ChatDock() {
         const pretty = (function prettyFormat(toolKey: ToolKey, payload: any): string {
           try {
             if (toolKey === 'charts.summary' && payload) {
-              const m = payload?.month ? ` — ${payload.month}` : '';
+              const m = payload?.month ? ` - ${payload.month}` : '';
               const income = payload?.income ?? payload?.total_income ?? 0;
               const spend = payload?.spend ?? payload?.total_spend ?? 0;
               const net = payload?.net ?? (income - Math.abs(spend));
               return `Month summary${m}\n\n- Income: $${Number(income).toFixed(0)}\n- Spend: $${Math.abs(Number(spend)).toFixed(0)}\n- Net: $${Number(net).toFixed(0)}\n\nOne recommendation:`;
             }
             if (toolKey === 'charts.merchants' && Array.isArray(payload?.merchants)) {
-              const m = payload?.month ? ` — ${payload.month}` : '';
+              const m = payload?.month ? ` - ${payload.month}` : '';
               const lines = payload.merchants.slice(0, 5).map((it: any) => `- ${it.merchant}: $${Math.abs(Number(it.amount||0)).toFixed(0)}`);
               return `Top merchants${m}\n\n${lines.join('\n')}\n\nSummarize and suggest one action.`;
             }
@@ -608,7 +661,7 @@ export default function ChatDock() {
               return `Spending trends\n\n${lines.join('\n')}\n\nSummarize the trend in 3 bullets and one next step.`;
             }
             if (toolKey === 'insights.expanded' && payload) {
-              const m = payload?.month ? ` — ${payload.month}` : '';
+              const m = payload?.month ? ` - ${payload.month}` : '';
               const inc = payload?.summary?.income ?? 0;
               const spd = payload?.summary?.spend ?? 0;
               const unk = payload?.unknown_spend?.amount ? Math.abs(Number(payload.unknown_spend.amount)).toFixed(0) : null;
@@ -637,16 +690,16 @@ export default function ChatDock() {
     }
   }, [tool, payloadText, month]);
 
-  // Lightweight tool palette → uses unified /agent/chat
+  // Lightweight tool palette -> uses unified /agent/chat
   // keep legacy helper name for response objects (internal use)
   const handleAgentResponse = React.useCallback((resp: AgentChatResponse) => {
     setChatResp(resp);
     if (resp?.reply) appendAssistant(resp.reply, { citations: resp.citations, ctxMonth: resp.used_context?.month, trace: resp.tool_trace, model: resp.model });
-  }, []);
+  }, [appendAssistant]);
 
   const appendAssistantFromText = React.useCallback((text: string, opts?: { meta?: any }) => {
     appendAssistant(text, opts?.meta);
-  }, []);
+  }, [appendAssistant]);
 
   React.useEffect(() => {
     // Register handlers so external callers (e.g., Explain buttons) can append into ChatDock
@@ -666,6 +719,8 @@ export default function ChatDock() {
     const text = input.trim();
     if (!text) return;
     setInput("");
+    setComposerPlaceholderUI(DEFAULT_PLACEHOLDER);
+    focusComposer();
     appendUser(text);
     setBusy(true);
     try {
@@ -938,6 +993,75 @@ export default function ChatDock() {
     } finally { setBusy(false); }
   }, [busy, month, appendAssistant, selectedModel]);
 
+  const callTransactionsNl = React.useCallback(async (payload?: Record<string, any>) => {
+    if (busy) return null;
+
+    const data = payload ?? {};
+    const query = typeof data.query === 'string' ? data.query.trim() : '';
+    const filters = data.filters;
+
+    if (query) {
+      appendUser(query);
+    }
+
+    setComposer('');
+    setComposerPlaceholderUI(DEFAULT_PLACEHOLDER);
+    focusComposer();
+
+    try {
+      setBusy(true);
+      const response = await transactionsNl(data);
+      const meta = (response as any)?.meta ?? {};
+      const suggestions = Array.isArray(meta.suggestions) ? meta.suggestions : undefined;
+      const metaPayload: Record<string, any> = { ...meta, rephrased: response.rephrased };
+      if (suggestions !== undefined) metaPayload.suggestions = suggestions;
+      appendAssistant(response.reply, metaPayload);
+
+      const filtersForLast: any = meta.filters ?? filters ?? null;
+      if (filtersForLast) {
+        lastNlqRef.current = {
+          q: query || (typeof meta.query === 'string' ? meta.query : query),
+          filters: filtersForLast,
+          flow: filtersForLast?.flow,
+          intent: (meta.result && (meta.result as any)?.intent) || meta.intent || undefined,
+        };
+      } else if (query) {
+        lastNlqRef.current = {
+          q: query,
+          filters: {},
+          intent: (meta.result && (meta.result as any)?.intent) || meta.intent || undefined,
+        };
+      }
+
+      return response;
+    } catch (err: any) {
+      const message = err?.message ? String(err.message) : String(err ?? 'Unknown error');
+      appendAssistant(`**transactions.nl failed:** ${message}`);
+      throw err;
+    } finally {
+      setBusy(false);
+      syncFromStoreDebounced(120);
+    }
+  }, [appendAssistant, appendUser, busy, focusComposer, setBusy, setComposer, setComposerPlaceholderUI, syncFromStoreDebounced, transactionsNl]);
+
+  useEffect(() => {
+    return registerChatHandlers({
+      pushAssistant: ({ reply, rephrased, suggestions, meta }) => {
+        const metaPayload: Record<string, any> = { ...(meta ?? {}) };
+        if (typeof rephrased !== 'undefined') metaPayload.rephrased = rephrased;
+        if (typeof suggestions !== 'undefined') metaPayload.suggestions = suggestions;
+        appendAssistant(reply, metaPayload);
+      },
+      pushUser: appendUser,
+      callTool: async (tool, payload) => {
+        if (tool === 'transactions.nl') {
+          return callTransactionsNl(payload);
+        }
+        throw new Error(`Unsupported chat tool: ${tool}`);
+      },
+    });
+  }, [appendAssistant, appendUser, callTransactionsNl]);
+
   const runAnalyticsWhatIf = React.useCallback(async () => {
     if (busy) return;
     const cat = window.prompt('Category to cut? e.g., "Dining out"', 'Dining out');
@@ -970,7 +1094,7 @@ export default function ChatDock() {
         context: getContext(ev),
         ...(selectedModel ? { model: selectedModel } : {})
       };
-  console.debug('[chat] alerts → /agent/chat', { preview: req.messages[0]?.content?.slice(0, 80) });
+  console.debug('[chat] alerts -> /agent/chat', { preview: req.messages[0]?.content?.slice(0, 80) });
   const resp = await agentChat(req);
   console.debug('[chat] alerts ← ok', { model: resp?.model });
       handleAgentResponse(resp);
@@ -1087,7 +1211,7 @@ export default function ChatDock() {
               const normalized = (uiMessages || []).map(m => ({ role: m.role, content: m.text, createdAt: m.ts }));
               const firstUser = (uiMessages || []).find(m => m.role === 'user');
               const trimmed = (firstUser?.text || '').split('\n')[0].slice(0, 40).trim();
-              const title = trimmed ? `finance-agent-chat—${trimmed.replace(/\s+/g, '_')}` : 'finance-agent-chat';
+              const title = trimmed ? `finance-agent-chat-${trimmed.replace(/\s+/g, '_')}` : 'finance-agent-chat';
               exportThreadAsJSON(title, normalized);
             }}
             className="text-xs px-2 py-1 border rounded-md hover:bg-muted"
@@ -1102,7 +1226,7 @@ export default function ChatDock() {
               const normalized = (uiMessages || []).map(m => ({ role: m.role, content: m.text, createdAt: m.ts }));
               const firstUser = (uiMessages || []).find(m => m.role === 'user');
               const trimmed = (firstUser?.text || '').split('\n')[0].slice(0, 40).trim();
-              const title = trimmed ? `finance-agent-chat—${trimmed.replace(/\s+/g, '_')}` : 'finance-agent-chat';
+              const title = trimmed ? `finance-agent-chat-${trimmed.replace(/\s+/g, '_')}` : 'finance-agent-chat';
               exportThreadAsMarkdown(title, normalized);
             }}
             className="text-xs px-2 py-1 border rounded-md hover:bg-muted"
@@ -1182,7 +1306,7 @@ export default function ChatDock() {
               value={selectedModel}
               onChange={(e) => setSelectedModel(e.target.value)}
             >
-              <option value="">{`Default — ${modelsInfo.provider}: ${modelsInfo.default}`}</option>
+              <option value="">{`Default - ${modelsInfo.provider}: ${modelsInfo.default}`}</option>
               {modelsInfo.models?.map(m => (
                 <option key={m.id} value={m.id}>{m.id}</option>
               ))}
@@ -1214,41 +1338,14 @@ export default function ChatDock() {
             <button type="button" onClick={(e) => runAnalyticsAnomalies(e as any)} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50">Anomalies</button>
             <button type="button" onClick={(e) => runAnalyticsRecurring(e as any)} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50">Recurring</button>
             <button type="button" onClick={(e) => runAnalyticsBudgetSuggest(e as any)} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50">Budget suggest</button>
-            <button type="button" onClick={() => runAnalyticsWhatIf()} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50">What if…</button>
+            <button type="button" onClick={() => runAnalyticsWhatIf()} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50">What if...</button>
             {/* Legacy non-NL search removed */}
             <button
               type="button"
-              onClick={async (e) => {
-                e.preventDefault();
-                if (busy) return;
-                const tips = "Tips: MTD, YTD, WTD, last N months/weeks/days, since YYYY-MM-DD";
-                const q = window.prompt(
-                  `Ask about your transactions:\n- "Starbucks last month over $10"\n- "top 5 merchants MTD"\n- "how much on groceries in July?"\n\n${tips}`
-                );
-                if (!q) return;
-                const flowChoice = window.prompt('Flow filter? Type one of: "expenses", "income", "all" (or leave blank for all)');
-                const flow = (flowChoice === "expenses" || flowChoice === "income" || flowChoice === "all") ? flowChoice : undefined;
-                await runToolWithRephrase(
-                  'transactions.nl_query',
-                  async () => {
-                    const res = await txnsQuery(q, { flow, page: 1, page_size: 50 });
-                    // Persist for CSV export and paging (use resolved filters)
-                    lastNlqRef.current = { q, flow, filters: (res as any)?.filters ?? {}, intent: (res as any)?.intent };
-                    return res as any;
-                  },
-                  (res: any) => {
-                    let text = formatTxnQueryResult(q, res);
-                    if ((res as any)?.intent === 'list') {
-                      text += "\n\nTip: Use the 'Export CSV (last NL query)' button to download these rows.";
-                    }
-                    return text;
-                  },
-                  (msg, meta) => appendAssistant(msg, { ...meta, ctxMonth: month }),
-                  (on) => setBusy(on)
-                );
-              }}
+              onClick={() => { void handleTransactionsNL(); }}
               disabled={busy}
               className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50"
+              title="Search transactions (NL) — Try: “Starbucks this month”, “Delta in Aug 2025”, “transactions > $50 last 90 days”. Pro tips: MTD, YTD, last N days/weeks/months, since YYYY-MM-DD."
             >
               Search transactions (NL)
             </button>
@@ -1376,7 +1473,7 @@ export default function ChatDock() {
       {historyOpen && (
         <div className="px-3 py-2 border-b bg-muted/5">
           <div className="flex items-center justify-between mb-2">
-            <div className="text-xs opacity-70">This tab’s recent messages</div>
+            <div className="text-xs opacity-70">This tab's recent messages</div>
             <button
               className="text-xs px-2 py-1 border rounded-md hover:bg-muted"
               onClick={handleClearHistory}
@@ -1404,7 +1501,7 @@ export default function ChatDock() {
         </div>
       )}
 
-  {/* Inline quick tools removed — use top-bar buttons only to prevent duplication */}
+  {/* Inline quick tools removed - use top-bar buttons only to prevent duplication */}
 
       {/* Messages list (scrollable) with day dividers & timestamps */}
   <div className="flex-1 overflow-auto chat-scroll" ref={listRef}>
@@ -1447,14 +1544,21 @@ export default function ChatDock() {
         </div>
       )}
 
-      {/* Composer — textarea with Enter to send, Shift+Enter newline */}
+      {/* Composer - textarea with Enter to send, Shift+Enter newline */}
       <div className="p-3 border-t bg-background sticky bottom-0 z-10 flex items-end gap-2">
         <textarea
+          id="chat-composer"
+          ref={composerRef}
           rows={1}
-          placeholder={'Ask the agent…'}
+          placeholder={composerPlaceholder}
           className="flex-1 resize-none px-3 py-2 rounded-md border bg-background text-sm"
           value={input}
-          onChange={(e) => setInput(e.target.value)}
+          onChange={(e) => {
+            if (composerPlaceholder !== DEFAULT_PLACEHOLDER) {
+              setComposerPlaceholderUI(DEFAULT_PLACEHOLDER);
+            }
+            setInput(e.target.value);
+          }}
           onKeyDown={onComposerKeyDown}
           disabled={busy}
         />
@@ -1464,7 +1568,7 @@ export default function ChatDock() {
           onClick={(e) => handleSend(e)}
           title="Send (Enter). Shift+Enter = newline. Hold Alt to omit context."
         >
-          {busy ? '…' : 'Send'}
+          {busy ? '...' : 'Send'}
         </button>
       </div>
     </div>
@@ -1479,7 +1583,7 @@ export default function ChatDock() {
 // Helper: format NL transaction query result for chat rendering
 // --- helper to inject a compact table (markdown + inline HTML for buttons)
 function tableForListWithExplain(rows: any[]): string {
-  if (!rows?.length) return "_No matches — try a narrower range or a specific merchant (e.g., `Starbucks last month`)._";
+  if (!rows?.length) return "_No matches - try a narrower range or a specific merchant (e.g., `Starbucks last month`)._";
   const head = `| Date | Merchant | Category | Amount | Action |\n|---|---|---|---:|---|`;
   const body = rows.map((r: any) => {
     const amt = `$${Math.abs(Number(r.amount || 0)).toFixed(2)}`;
@@ -1491,36 +1595,41 @@ function tableForListWithExplain(rows: any[]): string {
 
 function hintsBlock(hints?: string[]): string {
   if (!hints?.length) return "";
-  const items = hints.map(h => `- \`${h}\``).join("\n");
-  return `> 💡 **Try:**\n${items}\n`;
+  const items = hints.map((h) => `- \`${h}\``).join("\n");
+  return `> **Try:**\n${items}\n`;
 }
 
 function formatTxnQueryResult(q: string, res: TxnQueryResult & { meta?: any }): string {
+  const meta = (res as any)?.meta || {};
   const f: any = (res as any).filters || {};
-  const windowStr = f.start && f.end ? `\n• Range: ${f.start} → ${f.end}` : "";
-  const hintStr = hintsBlock((res as any)?.meta?.hints);
-  if (res.intent === "sum") return `**NL Query:** ${q}${windowStr}\n**Total (abs):** $${res.result.total_abs.toFixed(2)}\n${hintStr}`;
-  if (res.intent === "count") return `**NL Query:** ${q}${windowStr}\n**Count:** ${res.result.count}\n${hintStr}`;
+  const windowStr = f.start && f.end ? `\n- Range: ${f.start} -> ${f.end}` : "";
+  const hintStr = hintsBlock(meta?.hints);
+  const metaMessage = typeof meta?.message === 'string' && meta.message.trim().length ? `${meta.message.trim()}\n\n` : '';
+  if (res.intent === "sum") {
+    return `${metaMessage}**NL Query:** ${q}${windowStr}\n**Total (abs):** $${res.result.total_abs.toFixed(2)}\n${hintStr}`;
+  }
+  if (res.intent === "count") {
+    return `${metaMessage}**NL Query:** ${q}${windowStr}\n**Count:** ${res.result.count}\n${hintStr}`;
+  }
   if (res.intent === "top_merchants") {
-    const lines = res.result.map((r, i) => `${i + 1}. ${r.merchant ?? "(Unknown)"} — $${r.spend.toFixed(2)}`).join("\n");
-    return `**NL Query:** ${q}${windowStr}\n**Top merchants:**\n${lines}\n${hintStr}`;
+    const lines = res.result.map((r, i) => `${i + 1}. ${r.merchant ?? "(Unknown)"} - $${r.spend.toFixed(2)}`).join("\n");
+    return `${metaMessage}**NL Query:** ${q}${windowStr}\n**Top merchants:**\n${lines}\n${hintStr}`;
   }
   if (res.intent === "top_categories") {
-    const lines = res.result.map((r, i) => `${i + 1}. ${r.category ?? "(Uncategorized)"} — $${r.spend.toFixed(2)}`).join("\n");
-    return `**NL Query:** ${q}${windowStr}\n**Top categories:**\n${lines}\n${hintStr}`;
+    const lines = res.result.map((r, i) => `${i + 1}. ${r.category ?? "(Uncategorized)"} - $${r.spend.toFixed(2)}`).join("\n");
+    return `${metaMessage}**NL Query:** ${q}${windowStr}\n**Top categories:**\n${lines}\n${hintStr}`;
   }
   if (res.intent === "average") {
-    return `**NL Query:** ${q}${windowStr}\n**Average (abs):** $${res.result.average_abs.toFixed(2)}\n${hintStr}`;
+    return `${metaMessage}**NL Query:** ${q}${windowStr}\n**Average (abs):** $${res.result.average_abs.toFixed(2)}\n${hintStr}`;
   }
   if (res.intent === "by_day" || res.intent === "by_week" || res.intent === "by_month") {
     const label = res.intent.replace("by_", "By ");
-    const lines = (res.result as any[]).map((p: any) => `• ${p.bucket}: $${Number(p.spend || 0).toFixed(2)}`).join("\n");
-    return `**NL Query:** ${q}${windowStr}\n**${label}:**\n${lines}\n${hintStr}`;
+    const lines = (res.result as any[]).map((p: any) => `- ${p.bucket}: $${Number(p.spend || 0).toFixed(2)}`).join("\n");
+    return `${metaMessage}**NL Query:** ${q}${windowStr}\n**${label}:**\n${lines}\n${hintStr}`;
   }
-  // list
   const items = Array.isArray((res as any).result) ? (res as any).result : [];
   const table = tableForListWithExplain(items);
-  return `**NL Query:** ${q}${windowStr}\n${table}\n\n_Use "Export CSV (NL Result)" in tools to download rows._\n${hintStr}`;
+  return `${metaMessage}**NL Query:** ${q}${windowStr}\n${table}\n\n_Use "Export CSV (NL Result)" in tools to download rows._\n${hintStr}`;
 }
 
 // Small UI chip to show grounded mode/args (e.g., Forecast horizon)
@@ -1528,38 +1637,33 @@ export function ModeChip({ mode, args }: { mode?: string; args?: any }) {
   if (!mode) return null;
   const norm = String(mode);
   const pretty = (() => {
-    // Analytics
     if (norm === "analytics.forecast") {
       const h = Math.max(1, Math.min(12, Number(args?.horizon || 3)));
-      return `Analytics · Forecast (${h}m)`;
+      return `Analytics | Forecast (${h}m)`;
     }
-    if (norm === "analytics.kpis") return "Analytics · KPIs";
-    if (norm === "analytics.anomalies") return "Analytics · Anomalies";
-    if (norm === "analytics.recurring") return "Analytics · Recurring";
-    if (norm === "analytics.subscriptions") return "Analytics · Subscriptions";
-    if (norm === "analytics.budget_suggest") return "Analytics · Budget suggest";
-    if (norm === "analytics.whatif") return "Analytics · What-if";
-    // Charts
-    if (norm === "charts.summary") return "Charts · Summary";
-    if (norm === "charts.flows") return "Charts · Flows";
-    if (norm === "charts.merchants") return "Charts · Merchants";
-    if (norm === "charts.categories") return "Charts · Categories";
-    if (norm === "charts.category") return "Charts · Category";
-    // Transactions (NL)
-    if (norm === "nl_txns") return "Transactions · NL";
-    // Budgets & Reports & Insights
-    if (norm === "budgets.recommendations") return "Budgets · Recommendations";
-    if (norm === "budgets.temp") return "Budgets · Temp";
-    if (norm === "report.link") return "Report · Link";
-    if (norm === "insights.anomalies") return "Insights · Anomalies";
-    if (norm === "insights.anomalies.ignore") return "Insights · Ignore Anomalies";
-    // Fallback
+    if (norm === "analytics.kpis") return "Analytics | KPIs";
+    if (norm === "analytics.anomalies") return "Analytics | Anomalies";
+    if (norm === "analytics.recurring") return "Analytics | Recurring";
+    if (norm === "analytics.subscriptions") return "Analytics | Subscriptions";
+    if (norm === "analytics.budget_suggest") return "Analytics | Budget suggest";
+    if (norm === "analytics.whatif") return "Analytics | What-if";
+    if (norm === "charts.summary") return "Charts | Summary";
+    if (norm === "charts.flows") return "Charts | Flows";
+    if (norm === "charts.merchants") return "Charts | Merchants";
+    if (norm === "charts.categories") return "Charts | Categories";
+    if (norm === "charts.category") return "Charts | Category";
+    if (norm === "nl_txns") return "Transactions | NL";
+    if (norm === "budgets.recommendations") return "Budgets | Recommendations";
+    if (norm === "budgets.temp") return "Budgets | Temp";
+    if (norm === "report.link") return "Report | Link";
+    if (norm === "insights.anomalies") return "Insights | Anomalies";
+    if (norm === "insights.anomalies.ignore") return "Insights | Ignore anomalies";
     return norm
-      .replace("analytics.", "Analytics · ")
-      .replace("charts.", "Charts · ")
-      .replace("insights.", "Insights · ")
-      .replace("budgets.", "Budgets · ")
-      .replace("report.", "Report · ")
+      .replace("analytics.", "Analytics | ")
+      .replace("charts.", "Charts | ")
+      .replace("insights.", "Insights | ")
+      .replace("budgets.", "Budgets | ")
+      .replace("report.", "Report | ")
       .replace("_", " ");
   })();
   return (
@@ -1569,7 +1673,6 @@ export function ModeChip({ mode, args }: { mode?: string; args?: any }) {
   );
 }
 
-// Inline follow-ups under forecast reply
 export function ForecastFollowUps({ month, append, setThinking }: { month?: string; append: (msg: string, meta?: any) => void; setThinking: (b: boolean) => void; }) {
   if (!month) return null;
   return (

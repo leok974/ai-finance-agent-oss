@@ -1,7 +1,9 @@
 import { RuleSuggestion as MinedRuleSuggestionStrict, isRuleSuggestionArray } from "@/types/rules";
 
 // Resolve API base from env, with a dev fallback when running Vite on port 5173
-export const API_BASE = ((import.meta as any).env?.VITE_API_BASE?.replace(/\/+$/, "")) || "http://127.0.0.1:8000";
+const envBase = (import.meta as any).env?.VITE_API_BASE;
+// If VITE_API_BASE is defined (even empty), honor it. Only fallback to localhost when truly undefined (dev).
+export const API_BASE = envBase === undefined ? "http://127.0.0.1:8000" : String(envBase).replace(/\/+$/, "");
 
 function cookieGet(name: string): string | null {
   try {
@@ -1123,6 +1125,27 @@ export async function downloadReportPdf(month?: string, opts?: { start?: string;
 }
 
 // ---------- Natural-language Transactions Query ----------
+export type TransactionsNlRequest = {
+  query?: string;
+  filters?: Record<string, any>;
+};
+
+export type TransactionsNlResponse = {
+  reply: string;
+  rephrased?: boolean;
+  meta: Record<string, any>;
+};
+
+export const transactionsNl = async (
+  payload: TransactionsNlRequest = {}
+): Promise<TransactionsNlResponse> => {
+  return http<TransactionsNlResponse>("/transactions/nl", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload ?? {}),
+  });
+};
+
 export type TxnQueryResult =
   | { intent: "sum"; filters: any; result: { total_abs: number }; meta?: any }
   | { intent: "count"; filters: any; result: { count: number }; meta?: any }

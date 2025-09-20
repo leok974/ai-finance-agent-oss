@@ -2,7 +2,18 @@ from fastapi import FastAPI
 from .db import Base, engine
 from sqlalchemy import inspect
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import Response
 from starlette.middleware.sessions import SessionMiddleware
+# Proxy headers middleware location differs across versions; try Starlette then fallback to Uvicorn
+try:
+    from starlette.middleware.proxy_headers import ProxyHeadersMiddleware  # type: ignore
+except Exception:  # pragma: no cover - fallback for older stacks
+    try:
+        from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware  # type: ignore
+    except Exception:
+        ProxyHeadersMiddleware = None  # type: ignore
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 import os
 from . import config as app_config
 from .routers import ingest, txns, rules, ml, report, budget, alerts, insights, agent, explain
@@ -23,6 +34,7 @@ from app.routers import auth_oauth as auth_oauth_router
 from app.routers import agent_txns  # NEW
 from app.routers import help_ui as help_ui_router
 from .routers import transactions as transactions_router
+from app.routers.transactions_nl import router as transactions_nl_router
 from .routers import dev as dev_router
 from .routers import health as health_router
 from .routers import agent_plan as agent_plan_router
@@ -30,17 +42,28 @@ from .utils.state import load_state, save_state
 import logging
 import subprocess
 from app.services.crypto import EnvelopeCrypto
-from app.core.crypto_state import set_crypto, set_active_label, set_data_key
+from app.core.crypto_state import set_crypto, set_active_label
 from sqlalchemy.orm import Session
 from app.db import SessionLocal
-from app.orm_models import EncryptionKey
+from app.core.crypto_state import load_and_cache_active_dek
 import base64
+from app.middleware.request_logging import RequestLogMiddleware
+
+logger = logging.getLogger(__name__)
 
 # Print git info on boot
 try:
     b = subprocess.check_output(["git","rev-parse","--abbrev-ref","HEAD"]).decode().strip()
     s = subprocess.check_output(["git","rev-parse","--short","HEAD"]).decode().strip()
     logging.getLogger("uvicorn").info(f"Backend booting from {b}@{s}")
+except Exception:
+    pass
+
+# Enable JSON logs in production
+try:
+    if os.environ.get("APP_ENV", os.environ.get("ENV", "dev")).lower() == "prod":
+        from app.logging import configure_json_logging
+        configure_json_logging("INFO")
 except Exception:
     pass
 
@@ -51,6 +74,49 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc",
 )
+# Enable JSON logs in production
+try:
+    if os.environ.get("APP_ENV", os.environ.get("ENV", "dev")).lower() == "prod":
+        from app.logging import configure_json_logging
+        configure_json_logging("INFO")
+        # Request logging middleware (prod only)
+        app.add_middleware(RequestLogMiddleware)
+        # Trust proxy headers from configured CIDRs/IP (prod only)
+        cidrs_env = os.environ.get("TRUSTED_PROXY_CIDRS", "").strip()
+        ips_env = os.environ.get("TRUSTED_PROXY_IP", "").strip()
+        cidrs = [c.strip() for c in cidrs_env.split(",") if c.strip()]
+        ips = [h.strip() for h in ips_env.split(",") if h.strip()]
+        trusted = cidrs or ips or ["172.16.0.0/12"]  # fallback to Docker private range if unset
+        if ProxyHeadersMiddleware is not None:
+            app.add_middleware(ProxyHeadersMiddleware, trusted_hosts=trusted)
+        # Restrict Host header (include 127.0.0.1 for local healthcheck)
+        # Build allowlist from env + known defaults
+        hosts = ["backend", "localhost", "127.0.0.1"]
+        try:
+            from urllib.parse import urlparse
+            # Explicit allowlist via env (comma-separated)
+            env_allow = os.environ.get("ALLOWED_HOSTS", "").strip()
+            if env_allow:
+                hosts += [h.strip() for h in env_allow.split(",") if h.strip()]
+            # Frontend origin host (e.g., https://ledger-mind.org)
+            fo = os.environ.get("FRONTEND_ORIGIN", "").strip()
+            if fo:
+                h = urlparse(fo).hostname
+                if h:
+                    hosts.append(h)
+            # Derive from CORS allow origins
+            cors_env = os.environ.get("CORS_ALLOW_ORIGINS", "").strip()
+            for o in [s.strip().strip('"').strip("'") for s in cors_env.split(",") if s.strip()]:
+                h = urlparse(o).hostname if "://" in o else o
+                if h:
+                    hosts.append(h)
+        except Exception:
+            pass
+        # De-duplicate while keeping order
+        hosts = list(dict.fromkeys(hosts))
+        app.add_middleware(TrustedHostMiddleware, allowed_hosts=hosts)
+except Exception:
+    pass
 
 @app.get("/ping")
 def root_ping():
@@ -73,12 +139,33 @@ ALLOW_ORIGINS = app_config.ALLOW_ORIGINS
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=ALLOW_ORIGINS,   # In dev, defaults to both hosts used by the web app
-    allow_credentials=True,      # enable cookies
-    allow_methods=["*"],
+    allow_origins=ALLOW_ORIGINS,  # Keep tight in prod via env
+    allow_credentials=True,
+    allow_methods=["GET","POST","PUT","PATCH","DELETE","OPTIONS"],
     allow_headers=["Authorization", "Content-Type", "X-CSRF-Token"],
-    expose_headers=["Content-Disposition"],  # allow frontend to read filename
+    expose_headers=["Content-Disposition"],
 )
+
+
+class SecurityHeaders(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        resp: Response = await call_next(request)
+        resp.headers.setdefault("X-Content-Type-Options", "nosniff")
+        resp.headers.setdefault("X-Frame-Options", "DENY")
+        resp.headers.setdefault("Referrer-Policy", "no-referrer")
+        resp.headers.setdefault("Permissions-Policy", "geolocation=(), microphone=(), camera=()")
+        # Prefer HSTS at the TLS proxy; set here for completeness
+        resp.headers.setdefault("Strict-Transport-Security", "max-age=63072000; includeSubDomains; preload")
+        return resp
+
+app.add_middleware(SecurityHeaders)
+
+# Optional: Prometheus metrics (disable if not needed)
+try:
+    from prometheus_fastapi_instrumentator import Instrumentator
+    Instrumentator().instrument(app).expose(app, endpoint="/metrics", include_in_schema=False)
+except Exception:
+    pass
 
 # Session storage (used by OAuth state/nonce)
 app.add_middleware(
@@ -95,9 +182,24 @@ app.state.txns = []
 app.state.user_labels = []
 
 # Persisted state lifecycle
+from contextlib import contextmanager
+
+@contextmanager
+def _session_scope():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
 @app.on_event("startup")
 async def _startup_load_state():
-    load_state(app)
+    try:
+        load_state(app)
+        logger.info("state: loaded OK")
+    except Exception as e:
+        logger.warning("state: load failed, continuing startup", exc_info=e)
+        if os.getenv("STARTUP_STATE_STRICT", "0").lower() in {"1", "true", "yes"}:
+            raise
     # Initialize encryption if enabled
     try:
         enabled = os.environ.get("ENCRYPTION_ENABLED", "1") == "1"
@@ -106,20 +208,24 @@ async def _startup_load_state():
             set_crypto(crypto)
             label = os.environ.get("ENCRYPTION_ACTIVE_LABEL", "active")
             set_active_label(label)
-            # Ensure an active key exists and load DEK into process state
-            with SessionLocal() as s:
-                ek = s.query(EncryptionKey).filter(EncryptionKey.label == label).one_or_none()
-                if not ek:
-                    dek = EnvelopeCrypto.new_dek()
-                    wrapped, nonce = crypto.wrap_dek(dek)
-                    ek = EncryptionKey(label=label, dek_wrapped=wrapped, dek_wrap_nonce=nonce)
-                    s.add(ek)
-                    s.commit()
-                # unwrap DEK and cache in process
-                set_data_key(crypto.unwrap_dek(ek.dek_wrapped, ek.dek_wrap_nonce))
-    except Exception:
-        # Non-fatal in dev
-        pass
+            # Explicitly load/copy DEK into process cache (supports KEK or KMS)
+            with _session_scope() as db:
+                load_and_cache_active_dek(db)
+                # Fail fast in prod if crypto not ready
+                if os.environ.get("APP_ENV", "dev").lower() == "prod":
+                    from app.core.crypto_state import get_crypto_status as _crypto_status
+                    st = _crypto_status(db)
+                    if not st.get("ready"):
+                        logging.getLogger("uvicorn").error("Crypto NOT ready at startup: %s", st)
+                        import sys
+                        sys.exit(1)
+            logging.getLogger("uvicorn").info("crypto: initialized (DEK cached)")
+    except Exception as e:
+        # Fail fast in prod; dev logs only
+        logging.getLogger("uvicorn").error("crypto init failed: %s", e)
+        if os.environ.get("APP_ENV", os.environ.get("ENV", "dev")).lower() == "prod":
+            import sys
+            sys.exit(1)
 
 @app.on_event("shutdown")
 async def _shutdown_save_state():
@@ -145,6 +251,7 @@ app.include_router(charts.router, prefix="/charts", tags=["charts"])
 app.include_router(auth_router.router)
 app.include_router(auth_oauth_router.router)
 app.include_router(transactions_router.router)
+app.include_router(transactions_nl_router)
 app.include_router(dev_router.router)
 app.include_router(agent_tools_txn.router)
 app.include_router(agent_tools_budget.router)
