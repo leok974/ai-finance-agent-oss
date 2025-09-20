@@ -588,4 +588,10 @@ def route_to_tool(user_text: str, db: Session) -> Optional[Dict[str, Any]]:
             "message": "Budget queries are not implemented yet. Try: 'Top categories this month' or 'Export Excel for last month'.",
         }
 
+    # Final heuristic: user explicitly mentioned anomalies but detector did not classify.
+    if "anomal" in text_low:
+        from app.services.agent_tools.common import no_data_anomalies
+        month = _extract_month(user_text) or latest_month_str(db) or current_month_key()
+        return no_data_anomalies(month)
+
     return None
