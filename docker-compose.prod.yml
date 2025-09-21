@@ -99,6 +99,17 @@ services:
 
   # Sidecar to present 127.0.0.1:11434 inside backend netns, forwarding to ollama service
 
+  agui:
+    build:
+      context: ./elysia-agui-gateway
+    environment:
+      BACKEND_BASE: http://backend:8000
+      PORT: 3030
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
 volumes:
   pgdata:
   certbot_www:

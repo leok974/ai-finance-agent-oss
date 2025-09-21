@@ -201,6 +201,9 @@ export default function ChatDock() {
   // --- feature flags to forcibly hide legacy UI ---
   const ENABLE_TOPBAR_TOOL_BUTTONS = false;   // keep a single "Agent tools" toggle
   const ENABLE_LEGACY_TOOL_FORM    = false;   // hide Payload/Result/Insert context/Run
+  const ENABLE_AGUI = ((): boolean => {
+    try { return String(import.meta.env.VITE_ENABLE_AGUI || '').trim() === '1'; } catch { return false; }
+  })();   // experimental AGUI integration
 
   // Live message stream (render from UI state, persist via chatStore)
   const [uiMessages, setUiMessages] = useState<Msg[]>([]);
@@ -713,11 +716,20 @@ export default function ChatDock() {
     try { return (window as any).__FA_CONTEXT ?? null; } catch { return null; }
   };
 
-  // Composer send (optimistic append + context-aware)
+  // Composer send (optimistic append + context-aware) REPLACED to support AGUI SSE
   const handleSend = React.useCallback(async (ev?: React.MouseEvent | React.KeyboardEvent) => {
     if (busy) return;
     const text = input.trim();
     if (!text) return;
+    if (ENABLE_AGUI) {
+      const disposed = runAguiStream(text, month, appendUser, appendAssistant, setBusy);
+      if (disposed) {
+        setInput("");
+        setComposerPlaceholderUI(DEFAULT_PLACEHOLDER);
+        focusComposer();
+        return;
+      }
+    }
     setInput("");
     setComposerPlaceholderUI(DEFAULT_PLACEHOLDER);
     focusComposer();
@@ -730,15 +742,15 @@ export default function ChatDock() {
         context: getContext(ev as any),
         ...(selectedModel ? { model: selectedModel } : {})
       };
-  const resp = await agentChat(req);
-  handleAgentResponse(resp);
-  syncFromStoreDebounced(120);
+      const resp = await agentChat(req);
+      handleAgentResponse(resp);
+      syncFromStoreDebounced(120);
     } catch (e: any) {
       appendAssistant(`Send failed: ${e?.message ?? String(e)}`);
     } finally {
       setBusy(false);
     }
-  }, [busy, input, selectedModel, handleAgentResponse]);
+  }, [busy, input, selectedModel, handleAgentResponse, month]);
 
   const onComposerKeyDown = React.useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); handleSend(e); return; }
@@ -1043,6 +1055,42 @@ export default function ChatDock() {
       syncFromStoreDebounced(120);
     }
   }, [appendAssistant, appendUser, busy, focusComposer, setBusy, setComposer, setComposerPlaceholderUI, syncFromStoreDebounced, transactionsNl]);
+
+  // Insert AGUI feature flag and streaming helper near top-level utility section
+  function runAguiStream(q: string, month: string | undefined, appendUser: (t: string)=>void, appendAssistant: (t: string, meta?: any)=>void, setBusy: (b:boolean)=>void) {
+    if (!ENABLE_AGUI) return null;
+    try {
+      const url = new URL('/agui/chat', window.location.origin);
+      if (month) url.searchParams.set('month', month);
+      url.searchParams.set('q', q);
+      const es = new EventSource(url.toString(), { withCredentials: true });
+      let aggregated = '';
+      appendUser(q);
+      setBusy(true);
+      es.addEventListener('RUN_STARTED', () => {
+        appendAssistant('...', { thinking: true });
+      });
+      es.addEventListener('TEXT_MESSAGE_CONTENT', (e) => {
+        const data = (() => { try { return JSON.parse((e as MessageEvent).data); } catch { return {}; } })();
+        if (typeof data.text === 'string') {
+          aggregated += data.text;
+        }
+      });
+      es.addEventListener('RUN_FINISHED', () => {
+        setBusy(false);
+        // replace the last thinking message with the final aggregated text
+        appendAssistant(aggregated || '(no content)');
+        es.close();
+      });
+      es.onerror = () => {
+        setBusy(false);
+        es.close();
+      };
+      return () => es.close();
+    } catch {
+      return null;
+    }
+  }
 
   useEffect(() => {
     return registerChatHandlers({
@@ -1368,6 +1416,7 @@ export default function ChatDock() {
                     ...(flow ? { flow } as any : {})
                   });
                   saveAs(blob, filename || "txns_query.csv");
+                 
                   appendAssistant(`Exported CSV for last NL query: ${q}`);
                 } catch (err: any) {
                   appendAssistant(`**CSV export failed:** ${err?.message || String(err)}`);
