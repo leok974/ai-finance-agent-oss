@@ -1057,6 +1057,9 @@ export default function ChatDock() {
   }, [appendAssistant, appendUser, busy, focusComposer, setBusy, setComposer, setComposerPlaceholderUI, syncFromStoreDebounced, transactionsNl]);
 
   // Insert AGUI feature flag and streaming helper near top-level utility section
+  const [aguiTools, setAguiTools] = useState<Array<{ name: string; status: 'pending'|'active'|'done'|'error'; startedAt?: number; endedAt?: number }>>([]);
+  const [aguiRunActive, setAguiRunActive] = useState(false);
+
   function runAguiStream(q: string, month: string | undefined, appendUser: (t: string)=>void, appendAssistant: (t: string, meta?: any)=>void, setBusy: (b:boolean)=>void) {
     if (!ENABLE_AGUI) return null;
     try {
@@ -1067,8 +1070,26 @@ export default function ChatDock() {
       let aggregated = '';
       appendUser(q);
       setBusy(true);
+      setAguiTools([]);
+      setAguiRunActive(true);
       es.addEventListener('RUN_STARTED', () => {
+        // show thinking placeholder
         appendAssistant('...', { thinking: true });
+      });
+      es.addEventListener('TOOL_CALL_START', (e) => {
+        const data = (() => { try { return JSON.parse((e as MessageEvent).data); } catch { return {}; } })();
+        const name = data.name || 'tool';
+        setAguiTools(cur => {
+          const exists = cur.find(t => t.name === name);
+          if (exists) return cur.map(t => t.name === name ? { ...t, status: 'active', startedAt: t.startedAt || Date.now() } : t);
+          return [...cur, { name, status: 'active', startedAt: Date.now() }];
+        });
+      });
+      es.addEventListener('TOOL_CALL_END', (e) => {
+        const data = (() => { try { return JSON.parse((e as MessageEvent).data); } catch { return {}; } })();
+        const name = data.name || 'tool';
+        const ok = !!data.ok;
+        setAguiTools(cur => cur.map(t => t.name === name ? { ...t, status: ok ? 'done' : 'error', endedAt: Date.now() } : t));
       });
       es.addEventListener('TEXT_MESSAGE_CONTENT', (e) => {
         const data = (() => { try { return JSON.parse((e as MessageEvent).data); } catch { return {}; } })();
@@ -1078,15 +1099,17 @@ export default function ChatDock() {
       });
       es.addEventListener('RUN_FINISHED', () => {
         setBusy(false);
-        // replace the last thinking message with the final aggregated text
+        setAguiRunActive(false);
+        // replace with final aggregated response
         appendAssistant(aggregated || '(no content)');
         es.close();
       });
       es.onerror = () => {
         setBusy(false);
+        setAguiRunActive(false);
         es.close();
       };
-      return () => es.close();
+      return () => { es.close(); setAguiRunActive(false); };
     } catch {
       return null;
     }
@@ -1550,10 +1573,24 @@ export default function ChatDock() {
         </div>
       )}
 
-  {/* Inline quick tools removed - use top-bar buttons only to prevent duplication */}
-
       {/* Messages list (scrollable) with day dividers & timestamps */}
-  <div className="flex-1 overflow-auto chat-scroll" ref={listRef}>
+      {aguiRunActive || aguiTools.length ? (
+        <div className={["px-3", aguiRunActive ? "" : "agui-ribbon-fade"].join(" ")}> 
+          <div className="agui-ribbon">
+            {aguiTools.map(t => {
+              const baseClass = t.status === 'active' ? 'agui-chip-active' : t.status === 'done' ? 'agui-chip-done' : t.status === 'error' ? 'agui-chip-error' : 'agui-chip-pending';
+              return (
+                <span key={t.name} className={baseClass} title={t.status}>
+                  {t.status === 'active' && <span className="agui-dot agui-dot-pulse" />}
+                  {t.status !== 'active' && <span className="agui-dot" />}
+                  {t.name.replace('charts.', 'charts/').replace('analytics.', 'analytics/').replace('agent.', 'agent/')}
+                </span>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
+      <div className="flex-1 overflow-auto chat-scroll" ref={listRef}>
         {renderedMessages}
         {busy && (
           <div className="px-3 py-2">
