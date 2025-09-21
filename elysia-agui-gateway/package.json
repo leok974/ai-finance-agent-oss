@@ -3,7 +3,17 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "scripts": {
+    "dev": "bun run --watch server.ts",
+    "start": "bun run server.ts",
+    "typecheck": "tsc --noEmit"
+  },
   "dependencies": {
     "elysia": "^1.0.0"
+  },
+  "devDependencies": {
+    "bun-types": "^1.0.0",
+    "@types/node": "^20.0.0",
+    "typescript": "^5.4.0"
   }
 }
