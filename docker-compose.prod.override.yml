@@ -35,6 +35,8 @@ services:
       KMS_PROVIDER: "gcp"
       GCP_KMS_KEY: "projects/ledgermind-03445-3l/locations/us-east1/keyRings/ledgermind/cryptoKeys/kek"
       GOOGLE_APPLICATION_CREDENTIALS: "/gcp/ledgermind-backend-sa.json"
+      GRPC_VERBOSITY: "ERROR"
+      GRPC_TRACE: ""
     volumes:
       - ./secrets/gcp-sa.json:/gcp:ro
 
