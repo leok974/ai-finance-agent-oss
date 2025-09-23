@@ -1,5 +1,6 @@
 import React from 'react';
 import { render, screen, act, waitFor } from '@testing-library/react';
+import { expectBodyText } from '../../__tests__/utils/dom';
 import userEvent from '@testing-library/user-event';
 import { vi, describe, it, expect } from 'vitest';
 import { AuthContext } from '@/state/auth';
@@ -53,7 +54,7 @@ describe('AG-UI: chat only (no tools, no suggestions)', () => {
     });
     const badge = await waitFor(() => document.querySelector('.intent-badge')) as HTMLElement | null;
     expect(badge?.textContent).toMatch(/Chat/i);
-    expect(screen.getByText(/How can I help/i)).toBeInTheDocument();
+  await expectBodyText(/How can I help/i);
     // Ensure no suggestion chip appears
     expect(screen.queryByRole('button', { name: /Set budget from forecast/i })).toBeNull();
   });

@@ -4,8 +4,7 @@ import { usePersistentFlag } from '@/lib/usePersistentFlag';
 import type { SeedDraft } from '@/lib/rulesSeed';
 import { testRule, saveTrainReclassify, saveRule, type RuleInput } from '@/api';
 import { ThresholdsSchema } from '@/lib/schemas';
-import { toast as toastHelpers } from '@/lib/toast-helpers';
-import { useToast } from '@/hooks/use-toast';
+import { emitToastSuccess, emitToastError } from '@/lib/toast-helpers';
 import { consumeRuleDraft, onOpenRuleTester } from '@/state/rulesDraft';
 import { getGlobalMonth, onGlobalMonthChange } from '@/state/month';
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -21,7 +20,7 @@ declare global {
 }
 
 export default function RuleTesterPanel({ onChanged }: { onChanged?: () => void }) {
-  const { toast } = useToast();
+  // Legacy useToast removed in favor of unified emit helpers
   const [form, setForm] = useState<RuleInput>({
     name: '',
     enabled: true,
@@ -139,23 +138,14 @@ export default function RuleTesterPanel({ onChanged }: { onChanged?: () => void 
         matchCount = Number((r as any).matched_count ?? (r as any).count ?? (r as any).matches ?? (r as any).total) || 0;
       }
       const category = form.then?.category || '—';
-      toast({
-        title: 'Rule tested',
-        description:
-          matchCount > 0
-            ? `Matched ${matchCount} transaction${matchCount === 1 ? '' : 's'}. Will set category: “${category}”.`
-            : `No matches for the selected month. Category would be: “${category}”.`,
-        duration: 4000,
-        action: (
-          <div className="flex gap-2">
-            <ToastAction altText="View charts" onClick={() => scrollToId('charts-panel')}>
-              View charts
-            </ToastAction>
-            <ToastAction altText="View unknowns" onClick={() => scrollToId('unknowns-panel')}>
-              View unknowns
-            </ToastAction>
-          </div>
-        ),
+      emitToastSuccess('Rule tested', {
+        description: matchCount > 0
+          ? `Matched ${matchCount} transaction${matchCount === 1 ? '' : 's'}. Will set category: “${category}”.`
+          : `No matches for the selected month. Category would be: “${category}”.`,
+        action: {
+          label: 'View charts',
+          onClick: () => scrollToId('charts-panel')
+        }
       });
       // Cache last test result summary in localStorage for quick badges elsewhere
       try {
@@ -166,12 +156,7 @@ export default function RuleTesterPanel({ onChanged }: { onChanged?: () => void 
         localStorage.setItem(key, JSON.stringify(cache));
       } catch {}
     } catch (e: any) {
-      toast({
-        title: 'Test failed',
-        description: e?.message ?? 'Could not validate the rule. Please check the inputs.',
-        variant: 'destructive',
-        duration: 3000,
-      });
+      emitToastError('Test failed', { description: e?.message ?? 'Could not validate the rule. Please check the inputs.' });
     } finally {
       setTesting(false);
     }
@@ -198,38 +183,18 @@ export default function RuleTesterPanel({ onChanged }: { onChanged?: () => void 
         } else {
           reclassCount = Number((res as any)?.reclassified ?? 0) || 0;
         }
-        toast({
-          title: 'Rule saved + retrained',
-          description: reclassCount > 0 ? `Reclassified ${reclassCount} txn${reclassCount===1?'':'s'} to “${categoryVal}”.` : 'No existing transactions required changes.',
-          duration: 4500,
-          action: (
-            <div className="flex gap-2">
-              <ToastAction altText="Charts" onClick={() => scrollToId('charts-panel')}>Charts</ToastAction>
-              <ToastAction altText="Unknowns" onClick={() => scrollToId('unknowns-panel')}>Unknowns</ToastAction>
-            </div>
-          ),
-        });
+        emitToastSuccess('Rule saved + retrained', { description: reclassCount > 0 ? `Reclassified ${reclassCount} txn${reclassCount===1?'':'s'} to “${categoryVal}”.` : 'No existing transactions required changes.' });
       } else {
         const when: Record<string, any> = { description_like: like };
         if (thresholds && Object.keys(thresholds).length) when.thresholds = thresholds;
   const selectedMonth = (seededMonth ?? ((useCurrentMonth ? getGlobalMonth() : month) || undefined));
   const res: any = await saveRule({ rule: { name, when, then: { category: categoryVal } }, month: selectedMonth }, { idempotencyKey: crypto.randomUUID() });
-        toast({
-          title: 'Rule saved',
-          description: `Saved “${res?.display_name || name}”.`,
-          duration: 3500,
-          action: (
-            <div className="flex gap-2">
-              <ToastAction altText="Charts" onClick={() => scrollToId('charts-panel')}>Charts</ToastAction>
-              <ToastAction altText="Unknowns" onClick={() => scrollToId('unknowns-panel')}>Unknowns</ToastAction>
-            </div>
-          ),
-        });
+        emitToastSuccess('Rule saved', { description: `Saved “${res?.display_name || name}”.` });
       }
       window.dispatchEvent(new CustomEvent('rules:refresh'));
       onChanged?.();
     } catch (e: any) {
-      toast({ title: 'Save failed', description: e?.message || 'Unable to save rule', variant: 'destructive' });
+  emitToastError('Save failed', { description: e?.message || 'Unable to save rule' });
     } finally {
       setSaving(false);
     }

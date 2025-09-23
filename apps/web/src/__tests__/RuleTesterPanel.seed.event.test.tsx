@@ -12,7 +12,22 @@ vi.mock('@/api', () => {
   (globalThis as any).__saveRuleSpy = saveRule; // expose for assertions
   return { saveRule, testRule: vi.fn(async () => []), saveTrainReclassify: vi.fn() };
 });
-vi.mock('@/lib/toast-helpers', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+vi.mock('@/lib/toast-helpers', () => {
+  const success = vi.fn((msg: string) => {
+    const div = document.createElement('div');
+    div.dataset['sonnerToast'] = 'true';
+    div.textContent = msg || '';
+    document.body.appendChild(div);
+  });
+  const error = vi.fn();
+  return {
+    toast: { success, error },
+    emitToastSuccess: success,
+    emitToastError: error,
+    showToast: success,
+    useOkErrToast: () => ({ ok: success, err: error })
+  };
+});
 
 import RuleTesterPanel from '@/components/RuleTesterPanel';
 import { TooltipProvider } from '@radix-ui/react-tooltip';

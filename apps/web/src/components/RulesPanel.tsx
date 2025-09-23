@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react'
 import { getRules, deleteRule, type Rule, type RuleInput, type RuleListItem, fetchRuleSuggestConfig, type RuleSuggestConfig } from '@/api';
 import { addRule } from '@/state/rules';
 import { useOkErrToast } from '@/lib/toast-helpers';
-import { useToast } from '@/hooks/use-toast';
+import { emitToastSuccess, emitToastError } from '@/lib/toast-helpers';
 import { ToastAction } from '@/components/ui/toast';
 import { scrollToId } from '@/lib/scroll';
 import { setRuleDraft } from '@/state/rulesDraft';
@@ -16,7 +16,7 @@ type Props = { month?: string; refreshKey?: number };
 
 function RulesPanelImpl({ month, refreshKey }: Props) {
   const { ok, err } = useOkErrToast();
-  const { toast } = useToast();
+  // Removed useToast in favor of unified emit helpers
   const [rules, setRules] = useState<RuleListItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -98,21 +98,7 @@ function RulesPanelImpl({ month, refreshKey }: Props) {
       setForm({ name: '', enabled: true, when: { description_like: '' }, then: { category: '' } });
       load();
       // Use raw toast so we can attach actions
-      toast({
-        title: 'Rule created',
-        description: `“${(res as any)?.display_name || name}” saved successfully.`,
-        duration: 4000,
-        action: (
-          <div className="flex gap-2">
-            <ToastAction altText="View unknowns" onClick={() => scrollToId('unknowns-panel')}>
-              View unknowns
-            </ToastAction>
-            <ToastAction altText="View charts" onClick={() => scrollToId('charts-panel')}>
-              View charts
-            </ToastAction>
-          </div>
-        ),
-      });
+      emitToastSuccess('Rule created', { description: `“${(res as any)?.display_name || name}” saved successfully.` });
     } catch (e: any) {
       const message = e?.message || 'Failed to create rule';
       err(message, 'Create failed');

@@ -4,7 +4,6 @@ import EmptyState from './EmptyState'
 import { categorizeTxn, mlFeedback } from '@/api'
 import { useCoalescedRefresh } from '@/utils/refreshBus'
 import { useOkErrToast } from '@/lib/toast-helpers'
-import { useToast } from '@/hooks/use-toast'
 import { ToastAction } from '@/components/ui/toast'
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 import { InfoDot } from './InfoDot'
@@ -24,7 +23,6 @@ export default function UnknownsPanel({ month, onSeedRule, onChanged, refreshKey
 }) {
   const { items, loading, error, currentMonth, refresh } = useUnknowns(month)
   const { ok, err } = (useOkErrToast as any)?.() ?? { ok: console.log, err: console.error }
-  const { toast } = useToast()
   const [learned, setLearned] = useState<Record<number, boolean>>({})
   const [explainOpen, setExplainOpen] = useState(false)
   const [explainTxnId, setExplainTxnId] = useState<number | null>(null)

@@ -2,7 +2,7 @@ import React from "react";
 import { listTxns, getTxn, patchTxn, bulkPatchTxns, deleteTxn, restoreTxn, splitTxn, mergeTxns, linkTransfer } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import Card from "@/components/Card";
-import { useToast } from "@/hooks/use-toast";
+import { emitToastSuccess, emitToastError } from "@/lib/toast-helpers";
 import TxnEditDialog from "./TxnEditDialog";
 import SplitDialog from "./SplitDialog";
 import MergeDialog from "./MergeDialog";
@@ -33,7 +33,7 @@ export default function TransactionsPanel() {
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const limit = 50;
-  const { toast } = useToast();
+  // Removed legacy toast hook in favor of emit helpers
 
   // Dialog state
   const [editId, setEditId] = React.useState<number | null>(null);
@@ -78,10 +78,10 @@ export default function TransactionsPanel() {
   async function handleDelete(ids: number[]) {
     try {
       await Promise.all(ids.map((id) => deleteTxn(id)));
-      toast({ title: "Deleted", description: `${ids.length} transaction(s) soft-deleted.` });
+  emitToastSuccess("Deleted", { description: `${ids.length} transaction(s) soft-deleted.` });
       refresh();
     } catch (e: any) {
-      toast({ title: "Delete failed", description: e?.message || String(e), variant: "destructive" as any });
+  emitToastError("Delete failed", { description: e?.message || String(e) });
     }
   }
 
@@ -167,7 +167,7 @@ export default function TransactionsPanel() {
         <Button onClick={() => openSplit(sel[0])} disabled={sel.length !== 1}>Split</Button>
         <Button onClick={() => openMerge(sel)} disabled={sel.length < 2}>Merge</Button>
         <Button onClick={() => openTransfer(sel)} disabled={sel.length !== 2}>Link Transfer</Button>
-        <Button variant="secondary" onClick={async () => { await Promise.all(sel.map((id) => restoreTxn(id))); toast({ title: "Restored", description: `${sel.length} transaction(s) restored.` }); refresh(); }}>Restore</Button>
+  <Button variant="secondary" onClick={async () => { await Promise.all(sel.map((id) => restoreTxn(id))); emitToastSuccess("Restored", { description: `${sel.length} transaction(s) restored.` }); refresh(); }}>Restore</Button>
         <div className="ml-auto flex items-center gap-2">
           <Button variant="secondary" onClick={() => setPage((p) => Math.max(0, p - 1))}>Prev</Button>
           <span className="mx-2 text-sm">{start}–{end} / {total}</span>
@@ -181,7 +181,7 @@ export default function TransactionsPanel() {
           open={true}
           onOpenChange={(v) => { if (!v) setEditId(null); }}
           txnId={editId}
-          onSaved={() => { toast({ title: "Updated", description: `Transaction #${editId} updated.` }); refresh(); }}
+          onSaved={() => { emitToastSuccess("Updated", { description: `Transaction #${editId} updated.` }); refresh(); }}
         />
       )}
       {bulkOpen && (
@@ -189,7 +189,7 @@ export default function TransactionsPanel() {
           open={true}
           onOpenChange={(v) => { if (!v) setBulkOpen(false); }}
           ids={sel}
-          onSaved={(n) => { toast({ title: "Bulk updated", description: `${n} transaction(s) updated.` }); refresh(); }}
+          onSaved={(n) => { emitToastSuccess("Bulk updated", { description: `${n} transaction(s) updated.` }); refresh(); }}
         />
       )}
       {splitId != null && (
@@ -197,7 +197,7 @@ export default function TransactionsPanel() {
           open={true}
           onOpenChange={(v) => { if (!v) setSplitId(null); }}
           txnId={splitId}
-          onDone={() => { toast({ title: "Split created", description: `Transaction #${splitId} split.` }); refresh(); }}
+          onDone={() => { emitToastSuccess("Split created", { description: `Transaction #${splitId} split.` }); refresh(); }}
         />
       )}
       {mergeOpen && (
@@ -205,7 +205,7 @@ export default function TransactionsPanel() {
           open={true}
           onOpenChange={(v) => { if (!v) setMergeOpen(false); }}
           ids={sel}
-          onDone={(mergedId) => { toast({ title: "Merged", description: mergedId ? `Merged into #${mergedId}` : `Merged ${sel.length} transactions.` }); refresh(); }}
+          onDone={(mergedId) => { emitToastSuccess("Merged", { description: mergedId ? `Merged into #${mergedId}` : `Merged ${sel.length} transactions.` }); refresh(); }}
         />
       )}
       {transferIds && (
@@ -213,7 +213,7 @@ export default function TransactionsPanel() {
           open={true}
           onOpenChange={(v) => { if (!v) setTransferIds(null); }}
           ids={transferIds}
-          onDone={(group) => { toast({ title: "Linked", description: `Transfer group ${group || 'created'}.` }); refresh(); }}
+          onDone={(group) => { emitToastSuccess("Linked", { description: `Transfer group ${group || 'created'}.` }); refresh(); }}
         />
       )}
     </Card>

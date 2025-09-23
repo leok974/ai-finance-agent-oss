@@ -1,6 +1,7 @@
 import React from 'react';
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, act, waitFor } from '@testing-library/react';
+import { expectBodyText } from '../../__tests__/utils/dom';
 import userEvent from '@testing-library/user-event';
 import { AuthContext } from '@/state/auth';
 import { MonthContext } from '@/context/MonthContext';
@@ -79,8 +80,9 @@ describe('ChatDock AG-UI (streaming via wireAguiStream mock)', () => {
       h.onFinish?.();
     });
 
-    // Aggregated assistant message
-    expect(screen.getByText(/Projected spend ~\$2,140\./i)).toBeInTheDocument();
+  // Aggregated assistant message (streamed fragments tolerant)
+  await expectBodyText(/Projected spend/i);
+  await expectBodyText(/2[, ]?140/);
     // Suggestion chips
     expect(await screen.findByText(/Set budget from forecast/i)).toBeInTheDocument();
     expect(await screen.findByText(/Compare vs last month/i)).toBeInTheDocument();

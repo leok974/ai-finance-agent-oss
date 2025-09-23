@@ -35,7 +35,17 @@ vi.mock("@/lib/api", () => {
 });
 
 // --- MOCK: hush toasts ---
-vi.mock("@/lib/toast-helpers", () => ({ showToast: vi.fn() }));
+vi.mock("@/lib/toast-helpers", () => {
+  const success = vi.fn();
+  const error = vi.fn();
+  return {
+    showToast: success,
+    emitToastSuccess: success,
+    emitToastError: error,
+    toast: { success, error },
+    useOkErrToast: () => ({ ok: success, err: error })
+  };
+});
 
 // Import after mocks so ESM hoist doesn’t beat us
 import SaveRuleModal from "@/components/SaveRuleModal";

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { clickToastAction } from './utils/toast';
 import userEvent from '@testing-library/user-event';
 
 vi.mock('@/lib/api', () => {
@@ -10,10 +11,27 @@ vi.mock('@/lib/api', () => {
 // Simplify thresholds parsing to avoid zod dependency differences in test
 vi.mock('@/lib/schemas', () => ({ ThresholdsSchema: { parse: (x: any) => x || {} } }));
 
-vi.mock('@/lib/toast-helpers', () => ({
-  showToast: vi.fn(),
-  toast: { success: vi.fn(), error: vi.fn() }
-}));
+vi.mock('@/lib/toast-helpers', () => {
+  const success = vi.fn((msg: string, opts: any = {}) => {
+    const div = document.createElement('div');
+    div.dataset['sonnerToast'] = 'true';
+    div.textContent = msg || 'Rule saved';
+    document.body.appendChild(div);
+    if (opts?.action?.label) {
+      const btn = document.createElement('button');
+      btn.textContent = opts.action.label;
+      div.appendChild(btn);
+    }
+  });
+  const error = vi.fn();
+  return {
+    showToast: success,
+    toast: { success, error },
+    emitToastSuccess: success,
+    emitToastError: error,
+    useOkErrToast: () => ({ ok: success, err: error })
+  };
+});
 
 import SaveRuleModal from '@/components/SaveRuleModal';
 import * as apiModule from '@/lib/api';
@@ -49,7 +67,8 @@ describe('SaveRuleModal (unit)', () => {
       fireEvent.submit(form);
     }
 
-    await waitFor(() => expect((apiModule as any).saveRule).toHaveBeenCalledTimes(1));
+  await waitFor(() => expect((apiModule as any).saveRule).toHaveBeenCalledTimes(1));
+  try { await clickToastAction(/view rules/i, 300); } catch {}
     const call = (apiModule as any).saveRule.mock.calls[0][0];
     expect(call).toEqual(expect.objectContaining({
       rule: expect.objectContaining({ name: expect.stringMatching(/Dining spend -10%/i) }),

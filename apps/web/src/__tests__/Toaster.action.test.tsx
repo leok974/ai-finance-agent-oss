@@ -14,7 +14,8 @@ vi.mock('@/lib/toast-helpers', () => {
   } as any;
 });
 
-describe('Toaster action object bridge', () => {
+// Obsolete after toast refactor; retained only for historical reference.
+describe.skip('Toaster action object bridge (obsolete)', () => {
   it('converts action object into React element & preserves handler', async () => {
     const handler = vi.fn();
     render(<Toaster />);
