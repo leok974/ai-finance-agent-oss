@@ -1773,7 +1773,34 @@ export default function ChatDock() {
         </div>
       )}
 
-      <SaveRuleModal open={showSaveRuleModal} onOpenChange={setShowSaveRuleModal} month={month} scenario={saveRuleScenario} />
+      <SaveRuleModal
+        open={showSaveRuleModal}
+        onOpenChange={setShowSaveRuleModal}
+        month={month}
+        scenario={saveRuleScenario}
+        defaultCategory={(() => {
+          // Heuristic: attempt to extract category in quotes from scenario text e.g. "Dining out"
+          const src = saveRuleScenario || '';
+            const q = src.match(/\"([^\"]{2,40})\"/);
+            if (q) return q[1];
+            // fallback: look for single word after 'cut' or 'reduce'
+            const m = src.match(/(?:cut|reduce)\s+([A-Za-z][A-Za-z\s]{2,30})/i);
+            if (m) return m[1].trim();
+            return '';
+        })()}
+      />
+
+      <button
+        type="button"
+        aria-label="Open save rule modal"
+        className="fixed bottom-4 left-4 z-40 px-3 py-2 text-xs rounded-md border bg-background/80 backdrop-blur hover:bg-background"
+        onClick={() => {
+          setSaveRuleScenario(lastWhatIfScenarioRef.current || '');
+          setShowSaveRuleModal(true);
+        }}
+      >
+        Save Rule…
+      </button>
 
       {/* Composer - textarea with Enter to send, Shift+Enter newline */}
       <div className="p-3 border-t bg-background sticky bottom-0 z-10 flex items-end gap-2">

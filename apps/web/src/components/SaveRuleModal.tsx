@@ -14,17 +14,21 @@ type Props = {
 }
 
 export default function SaveRuleModal({ open, onOpenChange, month, scenario, defaultCategory }: Props) {
-  const [name, setName] = React.useState(() => (scenario ? `Auto: ${scenario}`.slice(0, 64) : 'Auto: New rule'))
-  const [category, setCategory] = React.useState(defaultCategory ?? '')
+  const [name, setName] = React.useState('Auto: New rule')
+  const [category, setCategory] = React.useState('')
   const [minConfidence, setMinConfidence] = React.useState<number>(0.66)
   const [budgetPercent, setBudgetPercent] = React.useState<number | ''>('')
   const [limit, setLimit] = React.useState<number | ''>('')
   const [busy, setBusy] = React.useState(false)
 
   React.useEffect(() => {
-    if (!open) return
-    setName(scenario ? `Auto: ${scenario}`.slice(0, 64) : 'Auto: New rule')
-  }, [open, scenario])
+    if (!open) return;
+    setName(scenario ? `Auto: ${scenario}`.slice(0, 64) : 'Auto: New rule');
+    setCategory(defaultCategory || '');
+    setMinConfidence(0.66);
+    setBudgetPercent('');
+    setLimit('');
+  }, [open, scenario, defaultCategory]);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault()
