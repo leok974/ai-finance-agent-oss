@@ -37,6 +37,7 @@ import HelpMode from "@/components/HelpMode";
 import HelpExplainListener from "@/components/HelpExplainListener";
 import ForecastCard from "@/components/ForecastCard";
 import TransactionsPanel from "@/components/TransactionsPanel";
+import DevModeSwitch from "@/components/DevModeSwitch";
 
 // Log frontend version info
 console.info("[Web] branch=", __WEB_BRANCH__, "commit=", __WEB_COMMIT__);
@@ -58,32 +59,21 @@ const App: React.FC = () => {
   const [dbRev, setDbRev] = useState<string | null>(null);
   const [inSync, setInSync] = useState<boolean | undefined>(undefined);
 
-  // Quick keyboard toggle for legacy Dev UI key: Ctrl+Shift+D
+  // Unified keyboard toggles: Ctrl+Shift+D (legacy) or Ctrl+Alt+D (new)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       try {
-        if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === "d") {
-          const v = (localStorage.getItem("DEV_UI") === "1") ? "0" : "1";
-          localStorage.setItem("DEV_UI", v);
+        const keyD = e.key.toLowerCase() === 'd';
+        if (keyD && ((e.ctrlKey && e.shiftKey) || (e.ctrlKey && e.altKey))) {
+          const next = !isDevUIEnabled();
+          setDevUIEnabled(next);
+          try { emitToastSuccess?.(`Dev UI ${next ? 'enabled' : 'disabled'}`); } catch {}
           location.reload();
-        }
+        }        
       } catch {}
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, []);
-
-  // New lightweight dev UI toggle: Ctrl+Alt+D (uses fa.dev flag only)
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.ctrlKey && e.altKey && e.key.toLowerCase() === 'd') {
-        const next = !isDevUIEnabled();
-        setDevUIEnabled(next);
-        location.reload();
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
   }, []);
 
   // Initialize month once
@@ -282,6 +272,7 @@ const App: React.FC = () => {
             </DevDock>
           )}
           {flags.dev && <DevFab />}
+          {flags.dev && <DevModeSwitch />}
         </div>
       </div>
   </div>
