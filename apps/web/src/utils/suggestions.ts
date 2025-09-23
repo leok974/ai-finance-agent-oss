@@ -1,3 +1,6 @@
+// mergeSuggestions:
+// Combine model + gateway suggestion arrays with case-insensitive, trimmed de-duplication.
+// Keeps original casing of the first occurrence.
 export function mergeSuggestions(...lists: (string[] | undefined | null)[]): string[] {
   const seen = new Set<string>();
   const out: string[] = [];

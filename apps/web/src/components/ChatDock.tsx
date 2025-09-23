@@ -1,5 +1,6 @@
 import * as React from "react";
 import { stripToolNamespaces } from "@/utils/prettyToolName";
+import SaveRuleModal from '@/components/SaveRuleModal';
 const { useEffect, useMemo, useRef, useState } = React;
 import { wireAguiStream } from "@/lib/aguiStream";
 import RobotThinking from "@/components/ui/RobotThinking";
@@ -1267,6 +1268,13 @@ export default function ChatDock() {
     } finally { setSavingRule(false); }
   }
   function handleSuggestionChip(chip: { label: string; action: string; source?: string }) {
+    const normLabel = chip.label.trim().toLowerCase();
+    if (/^save\s+as\s+rule$/.test(normLabel) || /save\s+rule/.test(normLabel)) {
+      setSaveRuleScenario(lastWhatIfScenarioRef.current || chip.label || '');
+      setSaveRuleThresholds('{}');
+      setShowSaveRuleModal(true);
+      return;
+    }
     const currentMonth = month;
     switch (chip.action) {
       case 'budget_from_forecast':
@@ -1810,6 +1818,9 @@ export default function ChatDock() {
           </div>
         </div>
       )}
+
+  {/* New structured SaveRuleModal (parallel to legacy JSON modal for now) */}
+  <SaveRuleModal open={false} onOpenChange={()=>{}} month={month} scenario={lastWhatIfScenarioRef.current} />
 
       {/* Composer - textarea with Enter to send, Shift+Enter newline */}
       <div className="p-3 border-t bg-background sticky bottom-0 z-10 flex items-end gap-2">
