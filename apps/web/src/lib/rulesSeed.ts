@@ -24,9 +24,11 @@ export function seedRuleFromTxn(txn: TxnLike, opts?: { month?: string }) {
     ...(opts?.month ? { month: opts.month } : {}),
   };
 
-  window.dispatchEvent(new CustomEvent("ruleTester:seed", { detail: draft }));
-
-  const open = (window as any).__openRuleTester as ((d: SeedDraft) => void) | undefined;
-  if (typeof open === "function") open(draft);
+  // Queue for late-mounted panel
+  (window as any).__pendingRuleSeed = draft;
+  // Best-effort open
+  (window as any).__openRuleTester?.(draft);
+  // Dispatch event for listeners
+  window.dispatchEvent(new CustomEvent('ruleTester:seed', { detail: draft }));
   return draft;
 }

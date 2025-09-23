@@ -177,7 +177,7 @@ const App: React.FC = () => {
   {/* Ensure this container is relative so ChatDock (absolute) positions within it */}
   <div className="relative">
           <div className="mx-auto max-w-6xl space-y-6">
-        <header className="flex items-center justify-between">
+  <header className="flex items-center justify-between">
           <h1 className="text-3xl font-bold">Finance Agent</h1>
           <div className="flex items-center gap-3">
             <LoginForm />
@@ -204,6 +204,8 @@ const App: React.FC = () => {
             )}
           </div>
         </header>
+        {/* Global mount of RuleTesterPanel (portal overlay) */}
+        <RuleTesterPanel />
 
         {!bannerDismissed && empty && (
           <TopEmptyBanner dbRev={dbRev ?? undefined} inSync={inSync} onDismiss={() => setBannerDismissed(true)} />

@@ -1,4 +1,5 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
+import * as ReactDOM from 'react-dom';
 import { usePersistentFlag } from '@/lib/usePersistentFlag';
 import type { SeedDraft } from '@/lib/rulesSeed';
 import { testRule, saveTrainReclassify, saveRule, type RuleInput } from '@/api';
@@ -12,6 +13,13 @@ import { ToastAction } from "@/components/ui/toast";
 import { InfoDot } from './InfoDot';
 import { scrollToId } from "@/lib/scroll";
 
+declare global {
+  interface Window {
+    __openRuleTester?: (d?: any) => void;
+    __pendingRuleSeed?: any | null;
+  }
+}
+
 export default function RuleTesterPanel({ onChanged }: { onChanged?: () => void }) {
   const { toast } = useToast();
   const [form, setForm] = useState<RuleInput>({
@@ -20,7 +28,7 @@ export default function RuleTesterPanel({ onChanged }: { onChanged?: () => void 
     when: { description_like: '' },
     then: { category: '' },
   });
-  const [open, setOpen] = useState<boolean>(true);
+  const [open, setOpen] = useState<boolean>(false);
   const [month, setMonth] = useState<string>(getGlobalMonth() || ''); // "YYYY-MM"
   const [useCurrentMonth, setUseCurrentMonth] = useState<boolean>(true);
   const [seededMonth, setSeededMonth] = useState<string | undefined>(undefined);
@@ -44,8 +52,30 @@ export default function RuleTesterPanel({ onChanged }: { onChanged?: () => void 
   }, [form]);
 
   // Smooth scroll helper for CTA buttons (charts / unknowns)
-  React.useEffect(() => {
-    // On mount or when toggle changes, consume any pending draft
+  useEffect(() => {
+    // Establish global open function
+    window.__openRuleTester = (d?: SeedDraft) => {
+      if (d) {
+        setForm(f => ({
+          name: d.name ?? f.name,
+          enabled: true,
+          when: { ...(f.when || {}), description_like: d.when?.merchant || d.when?.description || (d.when as any)?.description_like || '' },
+          then: { ...(f.then || {}), category: d.then?.category || '' },
+        }));
+        if (d.month) setSeededMonth(d.month);
+      }
+      setOpen(true);
+    };
+    // Consume any queued seed that arrived pre-mount
+    if (window.__pendingRuleSeed) {
+      try { window.__openRuleTester?.(window.__pendingRuleSeed); } catch {}
+      window.__pendingRuleSeed = null;
+    }
+    return () => { delete window.__openRuleTester; };
+  }, []);
+
+  useEffect(() => {
+    // Draft system integration (existing logic preserved)
     const d = consumeRuleDraft();
     if (d) {
       setForm(f => ({
@@ -54,10 +84,8 @@ export default function RuleTesterPanel({ onChanged }: { onChanged?: () => void 
         when: { ...(f.when || {}), ...(d.when || {}) },
         then: { ...(f.then || {}), ...(d.then || {}) },
       }));
-      // If not following current month, honor draft's month
       if (!useCurrentMonth && (d as any).month) setMonth((d as any).month);
     }
-    // Subscribe to future open events
     const offDraft = onOpenRuleTester(() => {
       const nd = consumeRuleDraft();
       if (!nd) return;
@@ -69,34 +97,15 @@ export default function RuleTesterPanel({ onChanged }: { onChanged?: () => void 
       }));
       if (!useCurrentMonth && (nd as any).month) setMonth((nd as any).month);
     });
-    // Live sync with global month when toggle is ON
-    const offMonth = onGlobalMonthChange((m) => {
-      if (useCurrentMonth) setMonth(m || '');
-    });
-    // Bridge: allow global seeding (window.__openRuleTester & event listener)
-    (window as any).__openRuleTester = (d: SeedDraft) => {
-      if (d) {
-        setForm(f => ({
-          name: d.name ?? f.name,
-          enabled: true,
-          when: { ...(f.when || {}), description_like: d.when?.merchant || d.when?.description || (d.when as any)?.description_like || '' },
-          then: { ...(f.then || {}), category: d.then?.category || '' },
-        }));
-        if (d.month) setSeededMonth(d.month);
-      }
-      setOpen(true);
-      // Scroll into view if anchor present
-      try { document.getElementById('rule-tester-anchor')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch {}
-    };
+    const offMonth = onGlobalMonthChange((m) => { if (useCurrentMonth) setMonth(m || ''); });
     const onSeed = (e: Event) => {
       const ce = e as CustomEvent<SeedDraft>;
-      const d = ce?.detail;
-      if (!d) return;
-      (window as any).__openRuleTester?.(d);
+      const sd = ce?.detail;
+      if (!sd) return;
+      window.__openRuleTester?.(sd);
     };
     window.addEventListener('ruleTester:seed', onSeed as EventListener);
-    return () => { offDraft(); offMonth(); window.removeEventListener('ruleTester:seed', onSeed as EventListener); delete (window as any).__openRuleTester; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    return () => { offDraft(); offMonth(); window.removeEventListener('ruleTester:seed', onSeed as EventListener); };
   }, [useCurrentMonth]);
 
   async function onTest(e: React.FormEvent) {
@@ -234,8 +243,10 @@ export default function RuleTesterPanel({ onChanged }: { onChanged?: () => void 
   }
 
   if (!open) return null;
-  return (
-    <div className="panel-tight md:p-5 lg:p-6" id="rule-tester-anchor">
+  const panel = (
+    <div className="fixed inset-0 z-[9999]" id="rule-tester-anchor">
+      <div className="absolute inset-0 bg-black/50" onClick={() => setOpen(false)} />
+      <div className="absolute right-0 top-0 h-full w-full max-w-3xl bg-card border-l border-border shadow-2xl p-4 md:p-5 lg:p-6 overflow-auto">
       <div className="flex items-center justify-between mb-3">
         {/* left: title + tooltip (baseline aligned) */}
         <div className="flex items-baseline gap-2">
@@ -276,7 +287,7 @@ export default function RuleTesterPanel({ onChanged }: { onChanged?: () => void 
          </div>
        </div>
 
-      {/* Row 1: name / match / category (match made wider).
+    {/* Row 1: name / match / category (match made wider).
           On mobile, month controls appear below as a separate row. */}
       <form onSubmit={onTest} className="form-grid grid-cols-1 md:grid-cols-12">
         <div className="field col-span-12 md:col-span-3">
@@ -397,7 +408,7 @@ export default function RuleTesterPanel({ onChanged }: { onChanged?: () => void 
           </label>
         </div>
 
-        {/* Row 3: Actions (all on one row on md+) */}
+    {/* Row 3: Actions (all on one row on md+) */}
         <div className="col-span-12 flex items-center justify-end gap-3 flex-wrap md:flex-nowrap">
           <label className="flex items-center gap-2 text-xs px-3 py-2 rounded-lg border border-border cursor-pointer select-none bg-card">
             <input type="checkbox" className="scale-110" checked={retrainMode} onChange={e=>setRetrainMode(e.target.checked)} />
@@ -434,6 +445,8 @@ export default function RuleTesterPanel({ onChanged }: { onChanged?: () => void 
         <div><strong>Test rule</strong> to preview matches for the selected month.</div>
         <div><strong>Save</strong> stores the rule. Enable <em>Retrain + reclassify</em> to also retrain the model and reclassify existing transactions.</div>
       </div>
+      </div>
     </div>
   );
+  return ReactDOM.createPortal(panel, document.body);
 }
