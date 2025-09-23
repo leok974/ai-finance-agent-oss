@@ -1219,6 +1219,38 @@ export default function ChatDock() {
           const pretty = errors.map(stripToolNamespaces);
             aggregated += `\n\n⚠️ Skipped: ${pretty.join(', ')} (unavailable). I used everything else.`;
         }
+        // Emit additional gateway suggestions based on last run context (KPI & Merchants heuristics)
+        try {
+          const extra: any[] = [];
+          // If a forecast was run, suggest budgeting and saving rule directly
+          if (/forecast/i.test(aggregated)) {
+            extra.push({ label: 'Apply this forecast budget', action: 'apply_budget' });
+            extra.push({ label: 'Save as rule', action: 'save_rule' });
+          }
+          // If merchants mentioned (simple keyword scan), suggest merchant spend insights
+          if (/merchant|store|shop/i.test(aggregated)) {
+            extra.push({ label: 'Show top merchants', action: 'top_merchants' });
+            extra.push({ label: 'Merchant spend trend', action: 'merchant_trend' });
+          }
+          if (extra.length) {
+            setUiMessages(cur => cur.map((m,i)=> {
+              const isLast = i===cur.length-1;
+              if (!isLast || m.role !== 'assistant') return m;
+              const meta = (m as any).meta || {};
+              const existing = Array.isArray(meta.suggestions) ? meta.suggestions : [];
+              // de-dupe by action+label
+              const seen = new Set(existing.map((c:any)=> (c.action||'')+'::'+c.label));
+              const merged = [...existing];
+              for (const e of extra) {
+                const key = (e.action||'')+'::'+e.label;
+                if (seen.has(key)) continue;
+                seen.add(key);
+                merged.push({ ...e, source: 'gateway' });
+              }
+              return { ...m, meta: { ...meta, suggestions: merged } };
+            }));
+          }
+        } catch (err) { /* non-fatal */ }
         setBusy(false); setAguiRunActive(false); appendAssistant(aggregated || '(no content)');
       },
   onError() { setBusy(false); setAguiRunActive(false); appendAssistant('(stream error – fallback)'); }
