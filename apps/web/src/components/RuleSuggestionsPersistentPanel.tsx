@@ -1,7 +1,7 @@
 import React from "react";
 import Card from "./Card";
 import SuggestionIgnoresPanel from "./SuggestionIgnoresPanel";
-import { showToast } from "@/lib/toast-helpers";
+import { emitToastSuccess, emitToastError } from "@/lib/toast-helpers";
 import {
   listPersistedSuggestions,
   acceptSuggestion,
@@ -110,9 +110,9 @@ function SuggestionRow({ s, onChanged }: { s: RowModel; onChanged: () => void })
     setBusy("accept");
     try {
       await acceptSuggestion(s.id);
-      showToast?.(`Accepted: ${merchant} → ${category}`, { type: "success" });
+         emitToastSuccess(`Accepted: ${merchant} → ${category}`);
     } catch (e:any) {
-      showToast?.(e?.message ?? "Failed to accept", { type: "error" });
+  emitToastError(e?.message ?? "Failed to accept");
     } finally { setBusy(null); onChanged(); }
   }
   async function doDismiss() {
@@ -120,9 +120,9 @@ function SuggestionRow({ s, onChanged }: { s: RowModel; onChanged: () => void })
     setBusy("dismiss");
     try {
       await dismissSuggestion(s.id);
-      showToast?.(`Dismissed: ${merchant} → ${category}`, { type: "success" });
+         emitToastSuccess(`Dismissed: ${merchant} → ${category}`);
     } catch (e:any) {
-      showToast?.(e?.message ?? "Failed to dismiss", { type: "error" });
+  emitToastError(e?.message ?? "Failed to dismiss");
     } finally { setBusy(null); onChanged(); }
   }
 
@@ -159,9 +159,9 @@ function SuggestionRow({ s, onChanged }: { s: RowModel; onChanged: () => void })
               setBusy("apply");
               try {
                 await applyRuleSuggestion({ merchant, category });
-                showToast?.(`Rule added: ${merchant} → ${category}`, { type: "success" });
+                emitToastSuccess(`Rule added: ${merchant} → ${category}`);
               } catch (e:any) {
-                showToast?.(e?.message ?? "Failed to apply", { type: "error" });
+                emitToastError(e?.message ?? "Failed to apply");
               } finally { setBusy(null); onChanged(); }
             }}
           >
@@ -174,9 +174,9 @@ function SuggestionRow({ s, onChanged }: { s: RowModel; onChanged: () => void })
               setBusy("ignore");
               try {
                 await ignoreRuleSuggestion({ merchant, category });
-                showToast?.(`Ignored ${merchant} → ${category}`, { type: "success" });
+                  emitToastSuccess(`Ignored ${merchant} → ${category}`);
               } catch (e:any) {
-                showToast?.(e?.message ?? "Failed to ignore", { type: "error" });
+                  emitToastError(e?.message ?? "Failed to ignore");
               } finally { setBusy(null); onChanged(); }
             }}
           >

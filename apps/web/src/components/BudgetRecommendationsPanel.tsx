@@ -1,7 +1,7 @@
 import React from "react";
 import { getBudgetRecommendations, type BudgetRecommendation, applyBudgets, downloadReportPdf } from "@/lib/api";
 import Card from "./Card";
-import { showToast } from "@/lib/toast-helpers";
+import { emitToastSuccess, emitToastError } from "@/lib/toast-helpers";
 import HelpBadge from "./HelpBadge";
 
 const LS_KEY = "budgets_lookback_months";
@@ -54,9 +54,9 @@ export default function BudgetRecommendationsPanel() {
     try {
       const resp = await applyBudgets({ strategy, months, categories_include: [category] });
       const amt = resp.applied?.[0]?.amount ?? 0;
-      showToast?.(`Applied ${category} = $${amt.toFixed(2)}`, { type: "success" });
+      emitToastSuccess('Budget applied', { description: `${category} = $${amt.toFixed(2)}` });
     } catch (e: any) {
-      showToast?.(e?.message ?? `Failed to apply ${category}`, { type: "error" });
+      emitToastError(`Failed to apply ${category}`, { description: e?.message });
     } finally {
       setBusyRow(null);
       load(months);
@@ -113,9 +113,9 @@ export default function BudgetRecommendationsPanel() {
                   const includeList = include ? include.split(",").map(s=>s.trim()).filter(Boolean) : undefined;
                   const excludeList = exclude ? exclude.split(",").map(s=>s.trim()).filter(Boolean) : undefined;
       const r = await applyBudgets({ strategy, months, categories_include: includeList, categories_exclude: excludeList });
-      showToast?.(`Applied ${r.applied_count} categories — Total $${r.applied_total.toFixed(2)}`, { type: "success" });
+      emitToastSuccess('Budgets applied', { description: `${r.applied_count} categories — Total $${r.applied_total.toFixed(2)}` });
                 } catch (e: any) {
-      showToast?.(e?.message ?? "Failed to apply budgets", { type: "error" });
+      emitToastError('Failed to apply budgets', { description: e?.message });
                 } finally {
                   setApplyBusy("");
                 }

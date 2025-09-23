@@ -5,7 +5,7 @@ import UnknownsPanel from "./components/UnknownsPanel";
 import SuggestionsPanel from "./components/SuggestionsPanel";
 // import RuleTesterPanel from "./components/RuleTesterPanel"; // rendered only inside DevDock
 import { AgentResultRenderer } from "./components/AgentResultRenderers";
-import { useOkErrToast } from "@/lib/toast-helpers";
+import { emitToastSuccess } from "@/lib/toast-helpers";
 // import RulesPanel from "./components/RulesPanel";
 import { getAlerts, getMonthSummary, getMonthMerchants, getMonthFlows, agentTools, meta, getHealthz, api, resolveMonthFromCharts } from './lib/api'
 import { flags } from "@/lib/flags";
@@ -42,7 +42,6 @@ console.info("[Web] branch=", __WEB_BRANCH__, "commit=", __WEB_COMMIT__);
 
 
 const App: React.FC = () => {
-  const { ok } = useOkErrToast();
   const [devDockOpen, setDevDockOpen] = useState<boolean>(() => (import.meta as any).env?.VITE_DEV_UI === '1' || localStorage.getItem('DEV_DOCK') !== '0');
   const [month, setMonth] = useState<string>("");
   const [ready, setReady] = useState<boolean>(false);
@@ -152,8 +151,8 @@ const App: React.FC = () => {
 
   const onCsvUploaded = useCallback(() => {
     setRefreshKey((k) => k + 1);
-    ok("Transactions imported. Panels refreshed.", "CSV ingested");
-  }, [ok]);
+    emitToastSuccess('CSV ingested', { description: 'Transactions imported. Panels refreshed.' });
+  }, []);
 
   
 

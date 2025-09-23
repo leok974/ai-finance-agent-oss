@@ -1,7 +1,7 @@
 import * as React from 'react'
 import { ThresholdsSchema } from '@/lib/schemas'
 import { saveRule } from '@/lib/api'
-import { showToast } from '@/lib/toast-helpers'
+import { emitToastSuccess, emitToastError } from '@/lib/toast-helpers'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 
@@ -54,10 +54,10 @@ export default function SaveRuleModal({ open, onOpenChange, month, scenario, def
         },
         month
       }, { idempotencyKey: crypto.randomUUID() })
-  showToast(`Saved: ${res.display_name}`, { type: 'success' })
+  emitToastSuccess(`Saved: ${res.display_name}`)
       onOpenChange(false)
     } catch (err: any) {
-  showToast(err?.message ?? 'Failed to save rule', { type: 'error' })
+  emitToastError(err?.message ?? 'Failed to save rule')
     } finally {
       setBusy(false)
     }

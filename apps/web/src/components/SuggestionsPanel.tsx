@@ -10,7 +10,7 @@ import {
 } from "@/api";
 import { useCoalescedRefresh } from "@/utils/refreshBus";
 import InfoDot from "@/components/InfoDot";
-import { useOkErrToast } from "@/lib/toast-helpers";
+import { emitToastSuccess, emitToastError } from "@/lib/toast-helpers";
 import Card from "./Card";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -24,7 +24,7 @@ export default function SuggestionsPanel() {
   const [pending, setPending] = React.useState<Set<string>>(new Set());
   const [bulkBusy, setBulkBusy] = React.useState(false);
   const [cfg, setCfg] = React.useState<RuleSuggestConfig | null>(null);
-  const { ok, err } = (useOkErrToast as any)?.() ?? { ok: console.log, err: console.error };
+  const ok = emitToastSuccess; const err = emitToastError;
   const errRef = React.useRef(err);
   React.useEffect(() => { errRef.current = err; }, [err]);
   const loadingRef = useRef(false);
@@ -43,7 +43,7 @@ export default function SuggestionsPanel() {
       setSelected(new Set());
     } catch (e) {
       // use ref to avoid re-creating callback and effect loops
-      errRef.current?.("Could not fetch suggestions.", "Failed to load");
+  errRef.current?.("Could not fetch suggestions.", { description: "Failed to load" });
     } finally {
       loadingRef.current = false;
       setLoading(false);
@@ -72,11 +72,11 @@ export default function SuggestionsPanel() {
     const nextPending = new Set(pending); nextPending.add(key); setPending(nextPending);
     try {
       const res = await applyRuleSuggestion({ merchant: s.merchant, category: s.category, backfill_month: s.recent_month_key ?? undefined });
-      ok(`Rule created (#${res.rule_id})`, `${s.merchant} → ${s.category}`);
+  ok(`Rule created (#${res.rule_id})`, { description: `${s.merchant} → ${s.category}` });
       setRows((prev) => prev.filter((r) => keyFor(r) !== key));
       setSelected((prev) => { const c = new Set(prev); c.delete(key); return c; });
     } catch (e) {
-      err("Failed to apply suggestion.", "Action failed");
+  err("Failed to apply suggestion.", { description: "Action failed" });
     } finally {
       setPending((prev) => { const c = new Set(prev); c.delete(key); return c; });
     }
@@ -85,7 +85,7 @@ export default function SuggestionsPanel() {
 
   const applySelected = async () => {
     const keys = Array.from(selected);
-    if (keys.length === 0) return err("No rows selected", "Select some suggestions first.");
+  if (keys.length === 0) return err("No rows selected", { description: "Select some suggestions first." });
     setBulkBusy(true);
     const mapByKey = new Map(rows.map((r) => [keyFor(r), r] as const));
     const targets = keys.map((k) => mapByKey.get(k)).filter(Boolean) as Suggestion[];
@@ -98,8 +98,8 @@ export default function SuggestionsPanel() {
     setRows((prev) => prev.filter((r) => !keys.includes(keyFor(r))));
     setSelected(new Set());
     setPending(new Set());
-    if (okCount) ok(`Applied ${okCount} ${okCount === 1 ? 'item' : 'items'}`, failCount ? `${failCount} failed` : 'All succeeded');
-    if (!okCount && failCount) err('Nothing applied', `${failCount} failed`);
+  if (okCount) ok(`Applied ${okCount} ${okCount === 1 ? 'item' : 'items'}`, { description: failCount ? `${failCount} failed` : 'All succeeded' });
+  if (!okCount && failCount) err('Nothing applied', { description: `${failCount} failed` });
     setBulkBusy(false);
     scheduleSuggestionsRefresh();
   };
@@ -110,9 +110,9 @@ export default function SuggestionsPanel() {
     try {
       await ignoreRuleSuggestion({ merchant: s.merchant, category: s.category });
       setRows((prev) => prev.filter((r) => keyFor(r) !== key));
-      ok("Ignored", `${s.merchant} → ${s.category}`);
+  ok("Ignored", { description: `${s.merchant} → ${s.category}` });
     } catch (e) {
-      err("Failed to ignore", "Action failed");
+  err("Failed to ignore", { description: "Action failed" });
     } finally {
       setPending((prev) => { const c = new Set(prev); c.delete(key); return c; });
     }

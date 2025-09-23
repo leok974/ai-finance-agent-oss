@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import { getRules, deleteRule, type Rule, type RuleInput, type RuleListItem, fetchRuleSuggestConfig, type RuleSuggestConfig } from '@/api';
 import { addRule } from '@/state/rules';
-import { useOkErrToast } from '@/lib/toast-helpers';
 import { emitToastSuccess, emitToastError } from '@/lib/toast-helpers';
 import { ToastAction } from '@/components/ui/toast';
 import { scrollToId } from '@/lib/scroll';
@@ -10,12 +9,11 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { InfoDot } from './InfoDot';
 import Card from './Card';
 import { setBudget, deleteBudget } from '@/lib/api';
-import { showToast } from '@/lib/toast-helpers';
 
 type Props = { month?: string; refreshKey?: number };
 
 function RulesPanelImpl({ month, refreshKey }: Props) {
-  const { ok, err } = useOkErrToast();
+  const ok = emitToastSuccess; const err = emitToastError;
   // Removed useToast in favor of unified emit helpers
   const [rules, setRules] = useState<RuleListItem[]>([]);
   const [loading, setLoading] = useState(false);
@@ -61,7 +59,7 @@ function RulesPanelImpl({ month, refreshKey }: Props) {
       setTotal(Number((res as any).total || 0));
     } catch (e: any) {
       if (ac.signal.aborted) return; // ignore aborted
-      err('Could not load rules list', 'Load failed');
+  err('Could not load rules list', { description: 'Load failed' });
     } finally {
       if (abortRef.current === ac) abortRef.current = null;
       setLoading(false);
@@ -101,7 +99,7 @@ function RulesPanelImpl({ month, refreshKey }: Props) {
       emitToastSuccess('Rule created', { description: `“${(res as any)?.display_name || name}” saved successfully.` });
     } catch (e: any) {
       const message = e?.message || 'Failed to create rule';
-      err(message, 'Create failed');
+  err(message, { description: 'Create failed' });
     } finally {
       setCreating(false);
     }
@@ -140,16 +138,16 @@ function RulesPanelImpl({ month, refreshKey }: Props) {
   async function saveBudgetInline(category: string) {
     const amt = Number(editAmount);
     if (!Number.isFinite(amt) || amt <= 0) {
-      showToast?.('Enter a valid amount > 0', { type: 'error' });
+  err('Enter a valid amount > 0');
       return;
     }
     try {
       const r = await setBudget(category, amt);
-      showToast?.(`Saved ${category} = $${r.budget.amount.toFixed(2)}`, { type: 'success' });
+  ok(`Saved ${category} = $${r.budget.amount.toFixed(2)}`);
       setEditingId(null);
       await load();
     } catch (e: any) {
-      showToast?.(e?.message ?? 'Failed to save', { type: 'error' });
+  err(e?.message ?? 'Failed to save');
     }
   }
 
@@ -157,23 +155,19 @@ function RulesPanelImpl({ month, refreshKey }: Props) {
     try {
       const r = await deleteBudget(category);
       const { category: cat, amount } = r.deleted;
-      showToast?.(`Deleted budget for ${cat}`, {
-        type: 'success',
-        actionLabel: 'Undo',
-        onAction: async () => {
-          try {
-            await setBudget(cat, amount);
-            showToast?.(`Restored ${cat} = $${amount.toFixed(2)}`, { type: 'success' });
-            await load();
-          } catch (e: any) {
-            showToast?.(e?.message ?? 'Failed to restore', { type: 'error' });
-          }
-        },
-      });
+      ok(`Deleted budget for ${cat}`);
+      // Provide a simple immediate undo without custom toast action for now
+      try {
+        await setBudget(cat, amount);
+        ok(`Restored ${cat} = $${amount.toFixed(2)}`);
+        await load();
+      } catch (e: any) {
+        err(e?.message ?? 'Failed to restore');
+      }
       setEditingId(null);
       await load();
     } catch (e: any) {
-      showToast?.(e?.message ?? 'Failed to delete budget', { type: 'error' });
+  err(e?.message ?? 'Failed to delete budget');
     }
   }
 

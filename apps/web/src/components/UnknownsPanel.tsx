@@ -3,7 +3,7 @@ import Card from './Card'
 import EmptyState from './EmptyState'
 import { categorizeTxn, mlFeedback } from '@/api'
 import { useCoalescedRefresh } from '@/utils/refreshBus'
-import { useOkErrToast } from '@/lib/toast-helpers'
+// removed useOkErrToast hook (deprecated)
 import { ToastAction } from '@/components/ui/toast'
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 import { InfoDot } from './InfoDot'
@@ -13,7 +13,7 @@ import { useUnknowns } from '@/hooks/useUnknowns'
 import { Skeleton } from '@/components/ui/skeleton'
 import HelpBadge from './HelpBadge'
 import { seedRuleFromTxn } from '@/lib/rulesSeed'
-import { emitToastSuccess } from '@/lib/toast-helpers'
+import { emitToastSuccess, emitToastError } from '@/lib/toast-helpers'
 
 export default function UnknownsPanel({ month, onSeedRule, onChanged, refreshKey }: {
   month?: string
@@ -22,7 +22,7 @@ export default function UnknownsPanel({ month, onSeedRule, onChanged, refreshKey
   refreshKey?: number
 }) {
   const { items, loading, error, currentMonth, refresh } = useUnknowns(month)
-  const { ok, err } = (useOkErrToast as any)?.() ?? { ok: console.log, err: console.error }
+  const ok = emitToastSuccess; const err = emitToastError;
   const [learned, setLearned] = useState<Record<number, boolean>>({})
   const [explainOpen, setExplainOpen] = useState(false)
   const [explainTxnId, setExplainTxnId] = useState<number | null>(null)

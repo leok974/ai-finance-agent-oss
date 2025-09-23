@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { getMlStatus, mlSelftest } from '../lib/api';
-import { useOkErrToast } from '@/lib/toast-helpers';
+import { emitToastSuccess, emitToastError } from '@/lib/toast-helpers';
 import { useCoalescedRefresh } from '@/utils/refreshBus';
 import HelpBadge from './HelpBadge';
 
@@ -12,7 +12,7 @@ type MlStatus = {
 };
 
 export default function MLStatusCard() {
-  const { ok, err } = useOkErrToast?.() ?? { ok: console.log, err: console.error };
+  const ok = emitToastSuccess; const err = emitToastError;
   const [status, setStatus] = React.useState<MlStatus | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [running, setRunning] = React.useState(false);
@@ -34,7 +34,7 @@ export default function MLStatusCard() {
       errorShownRef.current = false; // reset on success
     } catch (e: any) {
       if (!errorShownRef.current) {
-        err(`Failed to load ML status: ${e?.message ?? e}`);
+  err(`Failed to load ML status: ${e?.message ?? e}`);
         errorShownRef.current = true;
       }
     } finally {
@@ -80,7 +80,7 @@ export default function MLStatusCard() {
           ? `mtime: ${res?.mtime_before ?? '∅'} → ${res?.mtime_after ?? '∅'}`
           : `no mtime bump; reason: ${res?.reason ?? 'unknown'}`
       );
-      bumped ? ok(msg) : err(msg);
+  bumped ? ok(msg) : err(msg);
 
   // Coalesced status refresh to avoid back-to-back polling and selftest
   scheduleMlStatusRefresh();
