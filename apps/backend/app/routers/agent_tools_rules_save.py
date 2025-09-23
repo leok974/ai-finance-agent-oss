@@ -120,7 +120,7 @@ async def save_rule(
 
     if create_rule_db and db is not None:
         try:
-            created = create_rule_db(db, rule.dict(exclude_none=True))
+            created = create_rule_db(db, rule.model_dump(exclude_none=True))
             rid = str(getattr(created, "id", "")) or str(uuid.uuid4())
             display = getattr(created, "display_name", None) or (rule.name or f"Rule {rid[:8]}")
             ack = build_ack("rules.save", 1)
@@ -128,7 +128,7 @@ async def save_rule(
         except Exception:
             doc = _load_json()
             rid = str(uuid.uuid4())
-            item = {"id": rid, "rule": rule.dict(exclude_none=True), "created_at": int(time.time())}
+            item = {"id": rid, "rule": rule.model_dump(exclude_none=True), "created_at": int(time.time())}
             doc.setdefault("items", []).append(item)
             _save_json(doc)
             display = rule.name or f"Rule {rid[:8]}"
@@ -137,7 +137,7 @@ async def save_rule(
     else:
         doc = _load_json()
         rid = str(uuid.uuid4())
-        item = {"id": rid, "rule": rule.dict(exclude_none=True), "created_at": int(time.time())}
+        item = {"id": rid, "rule": rule.model_dump(exclude_none=True), "created_at": int(time.time())}
         doc.setdefault("items", []).append(item)
         _save_json(doc)
         display = rule.name or f"Rule {rid[:8]}"
@@ -146,6 +146,6 @@ async def save_rule(
 
     if idempotency_key:
         # Exclude idempotency_reused so we can override cleanly on reuse
-        _IDEM.put(idempotency_key, resp.dict(exclude={"idempotency_reused"}))
+        _IDEM.put(idempotency_key, resp.model_dump(exclude={"idempotency_reused"}))
 
     return resp

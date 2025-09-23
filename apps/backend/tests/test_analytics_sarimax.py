@@ -63,6 +63,7 @@ def seed_seasonal_year_plus(db: Session):
     db.commit()
 
 
+@pytest.mark.ml
 @pytest.mark.skipif(not _has_statsmodels(), reason="statsmodels not installed")
 def test_sarimax_forecast_path(client, db_session):
     seed_seasonal_year_plus(db_session)

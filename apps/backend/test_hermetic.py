@@ -27,16 +27,17 @@ def test_basic_chat():
         })
         
         print(f"Status: {response.status_code}")
-        if response.status_code == 200:
-            result = response.json()
-            print("✅ Chat endpoint working!")
-            print(f"Reply: {result.get('reply', 'N/A')}")
-            print(f"Citations: {len(result.get('citations', []))}")
-            print(f"Model: {result.get('model', 'N/A')}")
-            return True
-        else:
-            print(f"❌ Error: {response.status_code} - {response.text}")
-            return False
+        assert response.status_code == 200, f"chat endpoint failed: {response.status_code} - {response.text}"
+        result = response.json()
+        # Basic shape assertions (avoid over-coupling):
+        assert 'reply' in result, 'missing reply in chat response'
+        assert isinstance(result.get('reply'), str)
+        # citations optional but if present must be a list
+        if 'citations' in result:
+            assert isinstance(result['citations'], list)
+        # model field is optional; if present must be str
+        if 'model' in result:
+            assert isinstance(result['model'], str)
     finally:
         # Restore original function
         llm_mod.call_local_llm = original_call_local_llm
