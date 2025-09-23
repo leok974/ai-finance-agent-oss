@@ -50,6 +50,7 @@ export default defineConfig({
     },
   },
   build: {
+    chunkSizeWarningLimit: 650,
     rollupOptions: {
       output: {
         manualChunks(id) {
@@ -57,7 +58,11 @@ export default defineConfig({
             if (id.match(/react|react-dom/)) return 'vendor-react';
             if (id.includes('@tanstack')) return 'vendor-tanstack';
             if (id.match(/chart|recharts/i)) return 'vendor-charts';
-            return 'vendor';
+            if (id.match(/@radix-ui/)) return 'vendor-radix';
+            if (id.match(/remark-gfm|rehype|react-markdown/)) return 'vendor-markdown';
+            if (id.match(/zod/)) return 'vendor-zod';
+            if (id.match(/clsx|class-variance-authority|zustand/)) return 'vendor-utils';
+            return 'vendor-misc';
           }
         }
       }
