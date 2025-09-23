@@ -1,4 +1,5 @@
 import * as React from "react"
+import { toast as helperToast } from "@/lib/toast-helpers"
 import * as ToastPrimitives from "@radix-ui/react-toast"
 import { cva, type VariantProps } from "class-variance-authority"
 import { X } from "lucide-react"
@@ -14,7 +15,7 @@ const ToastViewport = React.forwardRef<
   <ToastPrimitives.Viewport
     ref={ref}
     className={cn(
-      "fixed top-0 z-[100] flex max-h-screen w-full flex-col-reverse p-4 sm:bottom-0 sm:right-0 sm:top-auto sm:flex-col md:max-w-[420px]",
+  "fixed top-0 z-[100] flex max-h-screen w-full flex-col-reverse p-4 sm:bottom-0 sm:right-0 sm:top-auto sm:flex-col md:max-w-[480px]",
       className
     )}
     {...props}
@@ -124,4 +125,23 @@ export {
   ToastDescription,
   ToastClose,
   ToastAction,
+}
+
+// Event-bridged Toaster (lightweight). Uses global 'app:toast' events.
+export function Toaster() {
+  React.useEffect(() => {
+    const onAppToast = (e: Event) => {
+      const { type, message, options } = (e as CustomEvent).detail || {};
+      if (!message) return;
+      if (type === 'error') helperToast.error(message, options);
+      else if (type === 'success' || !type) helperToast.success(message, options);
+    };
+    window.addEventListener('app:toast', onAppToast as EventListener);
+    return () => window.removeEventListener('app:toast', onAppToast as EventListener);
+  }, []);
+  return (
+    <ToastProvider>
+      <ToastViewport className="sm:max-w-[480px]" />
+    </ToastProvider>
+  );
 }

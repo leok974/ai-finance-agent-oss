@@ -1,5 +1,9 @@
 import React, { useMemo, useState } from 'react';
-import { testRule, saveTrainReclassify, type RuleInput } from '@/api';
+import { usePersistentFlag } from '@/lib/usePersistentFlag';
+import type { SeedDraft } from '@/lib/rulesSeed';
+import { testRule, saveTrainReclassify, saveRule, type RuleInput } from '@/api';
+import { ThresholdsSchema } from '@/lib/schemas';
+import { toast as toastHelpers } from '@/lib/toast-helpers';
 import { useToast } from '@/hooks/use-toast';
 import { consumeRuleDraft, onOpenRuleTester } from '@/state/rulesDraft';
 import { getGlobalMonth, onGlobalMonthChange } from '@/state/month';
@@ -16,10 +20,13 @@ export default function RuleTesterPanel({ onChanged }: { onChanged?: () => void 
     when: { description_like: '' },
     then: { category: '' },
   });
+  const [open, setOpen] = useState<boolean>(true);
   const [month, setMonth] = useState<string>(getGlobalMonth() || ''); // "YYYY-MM"
   const [useCurrentMonth, setUseCurrentMonth] = useState<boolean>(true);
+  const [seededMonth, setSeededMonth] = useState<string | undefined>(undefined);
   const [testing, setTesting] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [retrainMode, setRetrainMode] = usePersistentFlag('retrainMode', false);
   const [result, setResult] = useState<null | { matched_count?: number; count?: number; sample: any[] }>(null);
 
   // Derived values for UX and payloads
@@ -66,7 +73,29 @@ export default function RuleTesterPanel({ onChanged }: { onChanged?: () => void 
     const offMonth = onGlobalMonthChange((m) => {
       if (useCurrentMonth) setMonth(m || '');
     });
-    return () => { offDraft(); offMonth(); };
+    // Bridge: allow global seeding (window.__openRuleTester & event listener)
+    (window as any).__openRuleTester = (d: SeedDraft) => {
+      if (d) {
+        setForm(f => ({
+          name: d.name ?? f.name,
+          enabled: true,
+          when: { ...(f.when || {}), description_like: d.when?.merchant || d.when?.description || (d.when as any)?.description_like || '' },
+          then: { ...(f.then || {}), category: d.then?.category || '' },
+        }));
+        if (d.month) setSeededMonth(d.month);
+      }
+      setOpen(true);
+      // Scroll into view if anchor present
+      try { document.getElementById('rule-tester-anchor')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch {}
+    };
+    const onSeed = (e: Event) => {
+      const ce = e as CustomEvent<SeedDraft>;
+      const d = ce?.detail;
+      if (!d) return;
+      (window as any).__openRuleTester?.(d);
+    };
+    window.addEventListener('ruleTester:seed', onSeed as EventListener);
+    return () => { offDraft(); offMonth(); window.removeEventListener('ruleTester:seed', onSeed as EventListener); delete (window as any).__openRuleTester; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [useCurrentMonth]);
 
@@ -139,76 +168,59 @@ export default function RuleTesterPanel({ onChanged }: { onChanged?: () => void 
     }
   }
 
-  async function onSaveTrainReclass() {
+  async function onUnifiedSave() {
+    if (!canSave || saving) return;
     setSaving(true);
     try {
       const like = String(form.when?.description_like || '').trim();
       const categoryVal = (form.then?.category || '').trim() || 'Uncategorized';
-      const derivedName = (form.name || '').trim() || `${like || 'Any'} → ${categoryVal}`;
-      const res = await saveTrainReclassify({
-        rule: {
-          name: derivedName,
-          when: { description_like: like },
-          then: { category: categoryVal },
-        },
-        month: useCurrentMonth ? getGlobalMonth() : month,
-      } as any);
-
-      // Infer how many transactions were reclassified (if API provides it)
-      const reclass = (res as any)?.reclass;
-      let reclassCount = 0;
-      if (Array.isArray(reclass)) reclassCount = reclass.length;
-      else if (reclass && typeof reclass === 'object') {
-        reclassCount = Number(
-          (reclass as any).updated ??
-          (reclass as any).applied ??
-          (reclass as any).reclassified ??
-          (reclass as any).count ??
-          (reclass as any).total
-        ) || 0;
-      } else {
-        reclassCount = Number((res as any)?.reclassified ?? 0) || 0;
-      }
-      const category = categoryVal;
-      const name = (res as any)?.display_name || derivedName;
-
-      toast({
-        title: 'Rule saved & model retrained',
-        description:
-          reclassCount > 0
-            ? `Applied “${name}”. Reclassified ${reclassCount} transaction${reclassCount === 1 ? '' : 's'} to “${category}”.`
-            : `Applied “${name}”. Category set to “${category}”. No transactions needed reclassification.`,
-        duration: 5000,
-        action: (
-          <div className="flex gap-2">
-            <ToastAction altText="View charts" onClick={() => scrollToId('charts-panel')}>
-              View charts
-            </ToastAction>
-            <ToastAction altText="View unknowns" onClick={() => scrollToId('unknowns-panel')}>
-              View unknowns
-            </ToastAction>
-          </div>
-        ),
-      });
-
-      // Cache id->name mapping using unified response
-      try {
-        const key = 'ruleIdNameMap';
-        const map = JSON.parse(localStorage.getItem(key) || '{}');
-        const rid = (res as any)?.rule_id;
-        if (rid) {
-          map[rid] = name;
-          localStorage.setItem(key, JSON.stringify(map));
+      const name = (form.name || '').trim() || `${like || 'Any'} → ${categoryVal}`;
+      let thresholds: any = undefined;
+      try { thresholds = ThresholdsSchema.parse((form as any)?.when?.thresholds || {}); } catch { thresholds = undefined; }
+      if (retrainMode) {
+        const res: any = await saveTrainReclassify({
+          rule: { name, when: { description_like: like }, then: { category: categoryVal } },
+          month: seededMonth ?? (useCurrentMonth ? getGlobalMonth() : month),
+        } as any);
+        let reclassCount = 0;
+        const reclass = (res as any)?.reclass;
+        if (Array.isArray(reclass)) reclassCount = reclass.length; else if (reclass && typeof reclass === 'object') {
+          reclassCount = Number((reclass as any).updated ?? (reclass as any).applied ?? (reclass as any).reclassified ?? (reclass as any).count ?? (reclass as any).total) || 0;
+        } else {
+          reclassCount = Number((res as any)?.reclassified ?? 0) || 0;
         }
-      } catch {}
+        toast({
+          title: 'Rule saved + retrained',
+          description: reclassCount > 0 ? `Reclassified ${reclassCount} txn${reclassCount===1?'':'s'} to “${categoryVal}”.` : 'No existing transactions required changes.',
+          duration: 4500,
+          action: (
+            <div className="flex gap-2">
+              <ToastAction altText="Charts" onClick={() => scrollToId('charts-panel')}>Charts</ToastAction>
+              <ToastAction altText="Unknowns" onClick={() => scrollToId('unknowns-panel')}>Unknowns</ToastAction>
+            </div>
+          ),
+        });
+      } else {
+        const when: Record<string, any> = { description_like: like };
+        if (thresholds && Object.keys(thresholds).length) when.thresholds = thresholds;
+  const selectedMonth = (seededMonth ?? ((useCurrentMonth ? getGlobalMonth() : month) || undefined));
+  const res: any = await saveRule({ rule: { name, when, then: { category: categoryVal } }, month: selectedMonth }, { idempotencyKey: crypto.randomUUID() });
+        toast({
+          title: 'Rule saved',
+          description: `Saved “${res?.display_name || name}”.`,
+          duration: 3500,
+          action: (
+            <div className="flex gap-2">
+              <ToastAction altText="Charts" onClick={() => scrollToId('charts-panel')}>Charts</ToastAction>
+              <ToastAction altText="Unknowns" onClick={() => scrollToId('unknowns-panel')}>Unknowns</ToastAction>
+            </div>
+          ),
+        });
+      }
+      window.dispatchEvent(new CustomEvent('rules:refresh'));
       onChanged?.();
     } catch (e: any) {
-      toast({
-        title: 'Save / retrain / reclassify failed',
-        description: e?.message ?? 'Please check your rule inputs and try again.',
-        variant: 'destructive',
-      });
-      console.error(e);
+      toast({ title: 'Save failed', description: e?.message || 'Unable to save rule', variant: 'destructive' });
     } finally {
       setSaving(false);
     }
@@ -221,8 +233,9 @@ export default function RuleTesterPanel({ onChanged }: { onChanged?: () => void 
     setResult(null);
   }
 
+  if (!open) return null;
   return (
-  <div className="panel-tight md:p-5 lg:p-6" id="rule-tester-anchor">
+    <div className="panel-tight md:p-5 lg:p-6" id="rule-tester-anchor">
       <div className="flex items-center justify-between mb-3">
         {/* left: title + tooltip (baseline aligned) */}
         <div className="flex items-baseline gap-2">
@@ -321,6 +334,43 @@ export default function RuleTesterPanel({ onChanged }: { onChanged?: () => void 
           />
         </div>
 
+        {/* Thresholds advanced inputs */}
+        <div className="field col-span-12 md:col-span-3">
+          <div className="field-label flex items-center gap-2">
+            <span>Thresholds</span>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="inline-block cursor-help">ⓘ</span>
+              </TooltipTrigger>
+              <TooltipContent>Optional advanced match thresholds (leave blank to ignore).</TooltipContent>
+            </Tooltip>
+          </div>
+          <div className="flex gap-2">
+            <input
+              className="field-input"
+              placeholder="minConfidence"
+              type="number"
+              step="0.01"
+              min={0}
+              max={1}
+              value={(form as any)?.when?.thresholds?.minConfidence ?? ''}
+              onChange={e => setForm(f => ({ ...f, when: { ...(f.when||{}), thresholds: { ...(f as any).when?.thresholds, minConfidence: e.target.value ? Number(e.target.value) : undefined } } }))}
+              title="Minimum confidence (0-1)"
+            />
+            <input
+              className="field-input"
+              placeholder="maxFalsePos"
+              type="number"
+              step="1"
+              min={0}
+              value={(form as any)?.when?.thresholds?.maxFalsePos ?? ''}
+              onChange={e => setForm(f => ({ ...f, when: { ...(f.when||{}), thresholds: { ...(f as any).when?.thresholds, maxFalsePos: e.target.value ? Number(e.target.value) : undefined } } }))}
+              title="Max false positives"
+            />
+          </div>
+          <div className="text-[10px] opacity-60 mt-1">Leave blank to skip thresholds.</div>
+        </div>
+
         {/* Row 2 (mobile-only): month + toggle (since top-right is hidden on mobile) */}
         <div className="col-span-12 grid grid-cols-12 gap-3 items-center md:hidden">
           <div className="field col-span-7 min-w-0">
@@ -349,6 +399,10 @@ export default function RuleTesterPanel({ onChanged }: { onChanged?: () => void 
 
         {/* Row 3: Actions (all on one row on md+) */}
         <div className="col-span-12 flex items-center justify-end gap-3 flex-wrap md:flex-nowrap">
+          <label className="flex items-center gap-2 text-xs px-3 py-2 rounded-lg border border-border cursor-pointer select-none bg-card">
+            <input type="checkbox" className="scale-110" checked={retrainMode} onChange={e=>setRetrainMode(e.target.checked)} />
+            <span className="whitespace-nowrap">Retrain + reclassify</span>
+          </label>
           <button
             type="submit"
             className={`btn hover:bg-accent w-full sm:w-auto shrink-0 ${!canTest ? 'opacity-60 cursor-not-allowed' : ''}`}
@@ -365,18 +419,20 @@ export default function RuleTesterPanel({ onChanged }: { onChanged?: () => void 
             Clear
           </button>
           <button
-            onClick={onSaveTrainReclass}
+            onClick={onUnifiedSave}
             type="button"
             className={`btn hover:bg-accent w-full sm:w-auto shrink-0 font-semibold ${!canSave ? 'opacity-60 cursor-not-allowed' : ''}`}
             disabled={saving || !canSave}
+            title={retrainMode ? 'Save rule, retrain model, and reclassify transactions' : 'Save rule only'}
           >
-            {saving ? 'Saving → Training → Reclassifying…' : 'Save → Retrain → Reclassify'}
+            {saving ? (retrainMode ? 'Saving + Retraining…' : 'Saving…') : (retrainMode ? 'Save + Retrain' : 'Save')}
           </button>
         </div>
       </form>
 
-      <div className="text-xs opacity-70 mt-1">
-        Saves this rule, retrains the model, and reclassifies transactions.
+      <div className="text-xs opacity-70 mt-1 space-y-0.5">
+        <div><strong>Test rule</strong> to preview matches for the selected month.</div>
+        <div><strong>Save</strong> stores the rule. Enable <em>Retrain + reclassify</em> to also retrain the model and reclassify existing transactions.</div>
       </div>
     </div>
   );

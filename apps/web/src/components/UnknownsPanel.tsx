@@ -3,12 +3,9 @@ import Card from './Card'
 import EmptyState from './EmptyState'
 import { categorizeTxn, mlFeedback } from '@/api'
 import { useCoalescedRefresh } from '@/utils/refreshBus'
-import { setRuleDraft } from '@/state/rulesDraft'
-import { getGlobalMonth } from '@/state/month'
 import { useOkErrToast } from '@/lib/toast-helpers'
 import { useToast } from '@/hooks/use-toast'
 import { ToastAction } from '@/components/ui/toast'
-import { scrollToId } from '@/lib/scroll'
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 import { InfoDot } from './InfoDot'
 import LearnedBadge from './LearnedBadge'
@@ -16,6 +13,8 @@ import ExplainSignalDrawer from './ExplainSignalDrawer'
 import { useUnknowns } from '@/hooks/useUnknowns'
 import { Skeleton } from '@/components/ui/skeleton'
 import HelpBadge from './HelpBadge'
+import { seedRuleFromTxn } from '@/lib/rulesSeed'
+import { emitToastSuccess } from '@/lib/toast-helpers'
 
 export default function UnknownsPanel({ month, onSeedRule, onChanged, refreshKey }: {
   month?: string
@@ -58,32 +57,18 @@ export default function UnknownsPanel({ month, onSeedRule, onChanged, refreshKey
   }
 
   function seedRuleFromRow(row: any) {
-    const name = String(row.merchant || row.description || 'New Rule').slice(0, 40)
-    const description_like = String(row.merchant || row.description || '').slice(0, 64)
-    setRuleDraft({
-      name,
-      enabled: true,
-      when: { description_like },
-      then: { category: '' },
-      // pass current global month so Rule Tester can honor it when toggle is off
-      // (Rule Tester will sync to global month when toggle is on)
-      month: getGlobalMonth() || undefined,
-    } as any)
-    // Dual CTA: open Rule Tester or jump to Charts
-    toast({
-      title: 'Seeded into Rule Tester',
-      description: 'Merchant & description copied; adjust and test.',
-      duration: 4000,
-      action: (
-        <div className="flex gap-2">
-          <ToastAction altText="Open Rule Tester" onClick={() => scrollToId('rule-tester-anchor')}>
-            Rule Tester
-          </ToastAction>
-          <ToastAction altText="View charts" onClick={() => scrollToId('charts-panel')}>
-            View charts
-          </ToastAction>
-        </div>
-      ),
+    const draft = seedRuleFromTxn({
+      merchant: row.merchant,
+      description: row.description,
+      category_guess: row.category_guess,
+    }, { month: currentMonth || month })
+    // Provide a toast with an action to forcibly open (if listener not auto-opened)
+    emitToastSuccess('Seeded into Rule Tester', {
+      description: 'Merchant & description copied — adjust and test.',
+      action: {
+        label: 'Open tester',
+        onClick: () => (window as any).__openRuleTester?.(draft),
+      },
     })
   }
 

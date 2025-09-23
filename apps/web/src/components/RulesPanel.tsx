@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { getRules, deleteRule, type Rule, type RuleInput, type RuleListItem, fetchRuleSuggestConfig, type RuleSuggestConfig } from '@/api';
 import { addRule } from '@/state/rules';
 import { useOkErrToast } from '@/lib/toast-helpers';
@@ -42,7 +42,7 @@ function RulesPanelImpl({ month, refreshKey }: Props) {
     return { like: _like, category: _category, derivedName: _derivedName, canCreate: _like.length > 0 && _category.length > 0 };
   }, [form]);
 
-  async function load() {
+  const load = useCallback(async () => {
     setLoading(true);
     try {
       const res = await getRules({ q: q || undefined, limit, offset: page * limit });
@@ -53,15 +53,20 @@ function RulesPanelImpl({ month, refreshKey }: Props) {
     } finally {
       setLoading(false);
     }
-  }
+  }, [q, page, err]);
 
-  useEffect(() => { load(); }, [q, page]);
+  useEffect(() => { load(); }, [load]);
   useEffect(() => { fetchRuleSuggestConfig().then(setCfg).catch(() => {}); }, []);
   useEffect(() => {
-    if (typeof refreshKey !== 'undefined') {
-      load();
-    }
-  }, [refreshKey]);
+    if (typeof refreshKey !== 'undefined') load();
+  }, [refreshKey, load]);
+
+  // Listen for external refresh events (e.g., RuleTesterPanel simple save)
+  useEffect(() => {
+    const onRefresh = () => load();
+    window.addEventListener('rules:refresh', onRefresh);
+    return () => window.removeEventListener('rules:refresh', onRefresh);
+  }, [load]);
 
   async function onCreate(e: React.FormEvent) {
     e.preventDefault();
@@ -297,6 +302,9 @@ function RulesPanelImpl({ month, refreshKey }: Props) {
             const isBudget = ((rule as any).kind === 'budget' || String(rule.id).startsWith('budget:'));
             const category = (rule as any).category as string | undefined;
             const amountFromDesc = typeof (rule as any).amount === 'number' ? (rule as any).amount : parseAmountFromDescription((rule as any).description);
+            const thresholds: any = (rule as any)?.when?.thresholds;
+            const hasTh = thresholds && typeof thresholds === 'object' && Object.keys(thresholds).length > 0;
+            const thBadge = hasTh ? `min ${thresholds.minConfidence ?? '-'}${thresholds.budgetPercent != null ? ", "+thresholds.budgetPercent+"%" : ''}${thresholds.limit != null ? ", ≤ "+thresholds.limit : ''}` : null;
             return (
               <div key={rule.id} className="panel-tight md:p-5 lg:p-6 flex items-center justify-between">
                 <div className="min-w-0">
@@ -308,6 +316,9 @@ function RulesPanelImpl({ month, refreshKey }: Props) {
                     <span className={`text-xs px-2 py-0.5 rounded-full ${(rule.active ?? true) ? 'bg-emerald-600/10 text-emerald-600' : 'bg-zinc-600/10 text-zinc-500'}`}>
                       {(rule.active ?? true) ? 'Enabled' : 'Disabled'}
                     </span>
+                    {thBadge && (
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800/60 border border-slate-700">Thresholds: {thBadge}</span>
+                    )}
                   </div>
                   <div className="text-xs opacity-80 truncate">
                     {((rule as any).description) ? (

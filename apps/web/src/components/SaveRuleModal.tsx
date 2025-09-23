@@ -20,6 +20,7 @@ export default function SaveRuleModal({ open, onOpenChange, month, scenario, def
   const [budgetPercent, setBudgetPercent] = React.useState<number | ''>('')
   const [limit, setLimit] = React.useState<number | ''>('')
   const [busy, setBusy] = React.useState(false)
+  const [errors, setErrors] = React.useState<{minConf?: string; budgetPct?: string; limit?: string}>({})
 
   React.useEffect(() => {
     if (!open) return;
@@ -34,6 +35,12 @@ export default function SaveRuleModal({ open, onOpenChange, month, scenario, def
     e.preventDefault()
     try {
       setBusy(true)
+      const nextErr: any = {}
+      if (minConfidence < 0 || minConfidence > 1) nextErr.minConf = 'Min confidence must be between 0 and 1'
+      if (budgetPercent !== '' && (Number(budgetPercent) < 0 || Number(budgetPercent) > 100)) nextErr.budgetPct = 'Budget % must be 0–100'
+      if (limit !== '' && Number(limit) < 0) nextErr.limit = 'Limit must be ≥ 0'
+      setErrors(nextErr)
+      if (Object.keys(nextErr).length) throw new Error('Please fix validation errors')
       const thresholds = ThresholdsSchema.parse({
         minConfidence,
         budgetPercent: budgetPercent === '' ? undefined : Number(budgetPercent),
@@ -73,15 +80,18 @@ export default function SaveRuleModal({ open, onOpenChange, month, scenario, def
           <div className="grid grid-cols-3 gap-3">
             <div className="space-y-2">
               <Label htmlFor="sr-minconf">Min Confidence</Label>
-              <input id="sr-minconf" className="w-full bg-neutral-800 rounded px-2 py-1" type="number" step="0.01" min={0} max={1} value={minConfidence} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setMinConfidence(Number(e.target.value))} />
+              <input id="sr-minconf" className="w-full bg-neutral-800 rounded px-2 py-1" type="number" step="0.01" min={0} max={1} value={minConfidence} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setMinConfidence(Number(e.target.value))} aria-invalid={!!errors.minConf} aria-describedby="sr-minconf-err" />
+              {errors.minConf && <p id="sr-minconf-err" className="text-xs text-red-400">{errors.minConf}</p>}
             </div>
             <div className="space-y-2">
               <Label htmlFor="sr-budgetpct">Budget %</Label>
-              <input id="sr-budgetpct" className="w-full bg-neutral-800 rounded px-2 py-1" type="number" step="1" min={0} max={100} placeholder="e.g., 25" value={budgetPercent} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setBudgetPercent(e.target.value === '' ? '' : Number(e.target.value))} />
+              <input id="sr-budgetpct" className="w-full bg-neutral-800 rounded px-2 py-1" type="number" step="1" min={0} max={100} placeholder="e.g., 25" value={budgetPercent} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setBudgetPercent(e.target.value === '' ? '' : Number(e.target.value))} aria-invalid={!!errors.budgetPct} aria-describedby="sr-budgetpct-err" />
+              {errors.budgetPct && <p id="sr-budgetpct-err" className="text-xs text-red-400">{errors.budgetPct}</p>}
             </div>
             <div className="space-y-2">
               <Label htmlFor="sr-limit">Limit</Label>
-              <input id="sr-limit" className="w-full bg-neutral-800 rounded px-2 py-1" type="number" step="0.01" min={0} placeholder="e.g., 200" value={limit} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setLimit(e.target.value === '' ? '' : Number(e.target.value))} />
+              <input id="sr-limit" className="w-full bg-neutral-800 rounded px-2 py-1" type="number" step="0.01" min={0} placeholder="e.g., 200" value={limit} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setLimit(e.target.value === '' ? '' : Number(e.target.value))} aria-invalid={!!errors.limit} aria-describedby="sr-limit-err" />
+              {errors.limit && <p id="sr-limit-err" className="text-xs text-red-400">{errors.limit}</p>}
             </div>
           </div>
           <div className="flex justify-end gap-2 pt-2">
