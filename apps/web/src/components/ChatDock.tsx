@@ -186,6 +186,10 @@ export default function ChatDock() {
   const [saveRuleScenario, setSaveRuleScenario] = useState("");
   // Test-only toggle to expose a deterministic Save Rule button in smoke tests
   const forceSaveRuleButton = typeof window !== 'undefined' && (window as any).__FORCE_SAVE_RULE_BUTTON__ === true;
+  // Alias for last what-if scenario (if tracked elsewhere adjust accordingly)
+  const lastWhatIfScenario = lastWhatIfScenarioRef.current;
+  // Show Save Rule chip when we have a scenario or test forcing
+  const canSaveRule = forceSaveRuleButton || (typeof lastWhatIfScenario === 'string' && lastWhatIfScenario.trim().length > 0);
   const [aguiRunActive, setAguiRunActive] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -388,7 +392,7 @@ export default function ChatDock() {
             });
             if (!chips.length) return null;
             return (
-              <div className="flex flex-wrap gap-2 mt-2">
+              <div className="flex flex-wrap gap-2 mt-2 items-center">
                 {chips.map((chip: any) => (
                   <button
                     key={(chip.action || 'noop') + chip.label}
@@ -401,6 +405,16 @@ export default function ChatDock() {
                     onClick={()=>handleSuggestionChip({ label: chip.label, action: chip.action || chip.label, source: chip.source })}
                   >{chip.label}</button>
                 ))}
+                {canSaveRule && (
+                  <button
+                    type="button"
+                    aria-label="Save Rule…"
+                    className="chip ml-auto"
+                    onClick={() => { setSaveRuleScenario(lastWhatIfScenarioRef.current || ''); setShowSaveRuleModal(true); }}
+                  >
+                    Save Rule…
+                  </button>
+                )}
               </div>
             );
           })() : null}
@@ -1824,34 +1838,6 @@ export default function ChatDock() {
         })()}
       />
 
-      <button
-        type="button"
-        aria-label="Open save rule modal"
-        className="fixed bottom-4 left-4 z-40 px-3 py-2 text-xs rounded-md border bg-background/80 backdrop-blur hover:bg-background"
-        onClick={() => {
-          setSaveRuleScenario(lastWhatIfScenarioRef.current || '');
-          setShowSaveRuleModal(true);
-        }}
-      >
-        Save Rule…
-      </button>
-
-      {/* Test-only manual button (not fixed position) for lightweight smoke test */}
-      {forceSaveRuleButton && (
-        <div className="absolute top-2 right-2 z-40">
-          <button
-            type="button"
-            aria-label="Save Rule…"
-            className="px-3 py-1 text-xs rounded-md border bg-background hover:bg-muted"
-            onClick={() => {
-              setSaveRuleScenario(lastWhatIfScenarioRef.current || '');
-              setShowSaveRuleModal(true);
-            }}
-          >
-            Save Rule…
-          </button>
-        </div>
-      )}
 
       {/* Composer - textarea with Enter to send, Shift+Enter newline */}
       <div className="p-3 border-t bg-background sticky bottom-0 z-10 flex items-end gap-2">
