@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState, useCallback } from 'react';
+import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import { getRules, deleteRule, type Rule, type RuleInput, type RuleListItem, fetchRuleSuggestConfig, type RuleSuggestConfig } from '@/api';
 import { addRule } from '@/state/rules';
 import { useOkErrToast } from '@/lib/toast-helpers';
@@ -42,15 +42,28 @@ function RulesPanelImpl({ month, refreshKey }: Props) {
     return { like: _like, category: _category, derivedName: _derivedName, canCreate: _like.length > 0 && _category.length > 0 };
   }, [form]);
 
+  const abortRef = useRef<AbortController | null>(null);
+  const lastReqRef = useRef(0);
+  const COALESCE_MS = 400;
   const load = useCallback(async () => {
+    const now = Date.now();
+    if (now - lastReqRef.current < COALESCE_MS) return; // coalesce bursts
+    lastReqRef.current = now;
+    if (abortRef.current) {
+      try { abortRef.current.abort(); } catch {}
+    }
+    const ac = new AbortController();
+    abortRef.current = ac;
     setLoading(true);
     try {
-      const res = await getRules({ q: q || undefined, limit, offset: page * limit });
-      setRules(Array.isArray(res.items) ? res.items : []);
-      setTotal(Number(res.total || 0));
-    } catch (e) {
+      const res = await getRules({ q: q || undefined, limit, offset: page * limit, signal: ac.signal } as any);
+      setRules(Array.isArray((res as any).items) ? (res as any).items : []);
+      setTotal(Number((res as any).total || 0));
+    } catch (e: any) {
+      if (ac.signal.aborted) return; // ignore aborted
       err('Could not load rules list', 'Load failed');
     } finally {
+      if (abortRef.current === ac) abortRef.current = null;
       setLoading(false);
     }
   }, [q, page, err]);
@@ -63,7 +76,7 @@ function RulesPanelImpl({ month, refreshKey }: Props) {
 
   // Listen for external refresh events (e.g., RuleTesterPanel simple save)
   useEffect(() => {
-    const onRefresh = () => load();
+    const onRefresh = () => queueMicrotask(() => load());
     window.addEventListener('rules:refresh', onRefresh);
     return () => window.removeEventListener('rules:refresh', onRefresh);
   }, [load]);

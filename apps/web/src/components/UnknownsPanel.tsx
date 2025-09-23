@@ -134,6 +134,7 @@ export default function UnknownsPanel({ month, onSeedRule, onChanged, refreshKey
               <Tooltip>
                 <TooltipTrigger asChild>
                   <button
+                    type="button"
                     className="btn btn-sm hover:bg-accent"
                     onClick={()=> seedRuleFromRow(tx)}
                     aria-label="Seed rule (prefill Rule Tester)"
