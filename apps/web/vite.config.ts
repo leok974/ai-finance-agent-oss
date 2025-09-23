@@ -56,12 +56,14 @@ export default defineConfig({
         manualChunks(id) {
           if (id.includes('node_modules')) {
             if (id.match(/react|react-dom/)) return 'vendor-react';
+            if (id.match(/lucide-react/)) return 'vendor-icons';
             if (id.includes('@tanstack')) return 'vendor-tanstack';
             if (id.match(/chart|recharts/i)) return 'vendor-charts';
             if (id.match(/@radix-ui/)) return 'vendor-radix';
             if (id.match(/remark-gfm|rehype|react-markdown/)) return 'vendor-markdown';
             if (id.match(/zod/)) return 'vendor-zod';
             if (id.match(/clsx|class-variance-authority|zustand/)) return 'vendor-utils';
+            if (id.match(/vaul/)) return 'vendor-vaul';
             return 'vendor-misc';
           }
         }
