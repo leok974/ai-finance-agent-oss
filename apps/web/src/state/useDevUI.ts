@@ -12,21 +12,39 @@ export function setDevUIEnabled(on: boolean) {
   try {
     if (on) localStorage.setItem('fa.dev', '1');
     else localStorage.removeItem('fa.dev');
+    // Fire a custom event so soft listeners can react without storage event (same tab)
+    window.dispatchEvent(new CustomEvent('devui:changed', { detail: { value: on } }));
   } catch {
     /* no-op */
   }
+}
+
+// Soft toggle that does not mutate localStorage (session-only) – for previewing.
+export function setDevUIEnabledSoft(on: boolean) {
+  window.dispatchEvent(new CustomEvent('devui:soft', { detail: { value: on } }));
+  window.dispatchEvent(new CustomEvent('devui:changed', { detail: { value: on, soft: true } }));
 }
 
 /** Hook form (recomputes on visibilitychange / storage so another tab toggle is picked up) */
 export function useDevUI(): boolean {
   const [flag, setFlag] = useState(isDevUIEnabled());
   useEffect(() => {
-    const onVis = () => setFlag(isDevUIEnabled());
-    document.addEventListener('visibilitychange', onVis);
-    window.addEventListener('storage', onVis);
+    const sync = () => setFlag(isDevUIEnabled());
+    const onChanged = (e: any) => {
+      if (e?.detail?.soft) {
+        // Reflect soft value without altering persisted state indicator (flag semantics: persisted OR soft value)
+        setFlag(true);
+      } else {
+        sync();
+      }
+    };
+    document.addEventListener('visibilitychange', sync);
+    window.addEventListener('storage', sync);
+    window.addEventListener('devui:changed', onChanged as EventListener);
     return () => {
-      document.removeEventListener('visibilitychange', onVis);
-      window.removeEventListener('storage', onVis);
+      document.removeEventListener('visibilitychange', sync);
+      window.removeEventListener('storage', sync);
+      window.removeEventListener('devui:changed', onChanged as EventListener);
     };
   }, []);
   return flag;

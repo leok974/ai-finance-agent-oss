@@ -31,13 +31,11 @@ import { setGlobalMonth } from "./state/month";
 import RuleSuggestionsPersistentPanel from "@/components/RuleSuggestionsPersistentPanel";
 import InsightsAnomaliesCard from "./components/InsightsAnomaliesCard";
 import ErrorBoundary from "@/components/ErrorBoundary";
-import DevFab from "@/components/dev/DevFab";
 import DevBadge from "@/components/dev/DevBadge";
 import HelpMode from "@/components/HelpMode";
 import HelpExplainListener from "@/components/HelpExplainListener";
 import ForecastCard from "@/components/ForecastCard";
 import TransactionsPanel from "@/components/TransactionsPanel";
-import DevModeSwitch from "@/components/DevModeSwitch";
 import DevMenuItem from "@/components/DevMenuItem";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuLabel, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
@@ -62,17 +60,25 @@ const App: React.FC = () => {
   const [dbRev, setDbRev] = useState<string | null>(null);
   const [inSync, setInSync] = useState<boolean | undefined>(undefined);
 
-  // Unified keyboard toggles: Ctrl+Shift+D (legacy) or Ctrl+Alt+D (new)
+  // Keyboard toggles: Ctrl+Alt+D soft session toggle (no reload), Ctrl+Shift+D hard persistent toggle (reload)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       try {
         const keyD = e.key.toLowerCase() === 'd';
-        if (keyD && ((e.ctrlKey && e.shiftKey) || (e.ctrlKey && e.altKey))) {
+        if (!keyD || !e.ctrlKey) return;
+        if (e.altKey && !e.shiftKey) {
+          // Soft toggle (session only)
+          const next = !isDevUIEnabled();
+          window.dispatchEvent(new CustomEvent('devui:soft', { detail: { value: next }}));
+          window.dispatchEvent(new CustomEvent('devui:changed', { detail: { value: next, soft: true }}));
+          try { emitToastSuccess?.(`Dev UI (soft) ${next ? 'on' : 'off'}`); } catch {}
+        } else if (e.shiftKey) {
+          // Hard persistent toggle
           const next = !isDevUIEnabled();
           setDevUIEnabled(next);
           try { emitToastSuccess?.(`Dev UI ${next ? 'enabled' : 'disabled'}`); } catch {}
           location.reload();
-        }        
+        }
       } catch {}
     };
     window.addEventListener("keydown", onKey);
@@ -290,8 +296,7 @@ const App: React.FC = () => {
               {flags.planner && <PlannerDevPanel />}
             </DevDock>
           )}
-          {flags.dev && <DevFab />}
-          {flags.dev && <DevModeSwitch />}
+          {/* DevFab & DevModeSwitch removed to reduce redundancy; dropdown + keyboard remain */}
         </div>
       </div>
   </div>
