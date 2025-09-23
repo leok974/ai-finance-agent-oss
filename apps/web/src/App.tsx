@@ -38,6 +38,9 @@ import HelpExplainListener from "@/components/HelpExplainListener";
 import ForecastCard from "@/components/ForecastCard";
 import TransactionsPanel from "@/components/TransactionsPanel";
 import DevModeSwitch from "@/components/DevModeSwitch";
+import DevMenuItem from "@/components/DevMenuItem";
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuLabel, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
+import { Button } from "@/components/ui/button";
 
 // Log frontend version info
 console.info("[Web] branch=", __WEB_BRANCH__, "commit=", __WEB_COMMIT__);
@@ -186,6 +189,22 @@ const App: React.FC = () => {
           <div className="flex items-center gap-3">
             <LoginForm />
             <AboutDrawer />
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  aria-label="Open settings menu"
+                  className="h-8 w-8 rounded-full p-0 text-lg leading-none"
+                >
+                  ⚙️
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuLabel>Settings</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DevMenuItem />
+              </DropdownMenuContent>
+            </DropdownMenu>
             <button
               onClick={() => setTxPanelOpen(true)}
               className="inline-flex items-center gap-2 rounded-2xl border px-3 py-1.5 text-sm bg-card border-border hover:bg-accent/20 transition"
