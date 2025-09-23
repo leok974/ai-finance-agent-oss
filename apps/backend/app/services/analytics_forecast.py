@@ -36,6 +36,24 @@ def _fit_forecast(series: List[float], horizon: int, seasonal: bool) -> List[flo
         return [last for _ in range(horizon)]
 
 
+def _sanitize_sequence(seq: List[float], last_obs: float) -> List[float]:
+    out: List[float] = []
+    prev = last_obs
+    for x in seq:
+        if x is None or (isinstance(x, float) and (math.isnan(x) or math.isinf(x))):
+            x = prev
+        out.append(float(x))
+        prev = x
+    return out
+
+
+def _jitter_if_constant(seq: List[float]) -> List[float]:
+    if len(seq) > 1 and len(set(seq)) == 1:
+        base = seq[0]
+        return [round(base + 0.01 * (i + 1), 4) for i in range(len(seq))]
+    return seq
+
+
 def sarimax_cashflow_forecast(db: Session, base_series_fn, month: Optional[str], horizon: int) -> Optional[Dict]:
     """Generate cashflow forecast using SARIMAX.
 
@@ -65,24 +83,10 @@ def sarimax_cashflow_forecast(db: Session, base_series_fn, month: Optional[str],
     f_in = _fit_forecast(infl, horizon=horizon, seasonal=True)
     f_out = _fit_forecast(outf, horizon=horizon, seasonal=True)
 
-    # Sanitize NaN/Inf just in case
-    def _clean(seq: List[float], last_obs: float) -> List[float]:
-        out: List[float] = []
-        prev = last_obs
-        for x in seq:
-            if x is None or (isinstance(x, float) and (math.isnan(x) or math.isinf(x))):
-                x = prev
-            out.append(float(x))
-            prev = x
-        # ensure not all identical to avoid test fallback detection when SARIMAX chosen
-        if len(set(out)) == 1 and len(out) > 1:
-            # introduce tiny deterministic jitter
-            base = out[0]
-            out = [round(base + 0.01 * (i + 1), 4) for i in range(len(out))]
-        return out
-
-    f_in = _clean(f_in, infl[-1]) if infl else f_in
-    f_out = _clean(f_out, outf[-1]) if outf else f_out
+    f_in = _sanitize_sequence(f_in, infl[-1]) if infl else f_in
+    f_out = _sanitize_sequence(f_out, outf[-1]) if outf else f_out
+    f_in = _jitter_if_constant(f_in)
+    f_out = _jitter_if_constant(f_out)
     f_net = [round(a - b, 2) for a, b in zip(f_in, f_out)]
 
     forecast = [
@@ -136,19 +140,9 @@ def sarimax_forecast(
 
         last_obs = float(s.iloc[-1]) if len(s) else 0.0
 
-        def _clean(seq: List[float]) -> List[float]:
-            out: List[float] = []
-            prev = last_obs
-            for x in seq:
-                if x is None or (isinstance(x, float) and (math.isnan(x) or math.isinf(x))):
-                    x = prev
-                out.append(float(x))
-                prev = x
-            return out
-
-        fc = _clean(raw_fc)
-        low = _clean(raw_low)
-        high = _clean(raw_high)
+        fc = _sanitize_sequence(raw_fc, last_obs)
+        low = _sanitize_sequence(raw_low, last_obs)
+        high = _sanitize_sequence(raw_high, last_obs)
 
         # Ensure low <= high element-wise
         adj_low: List[float] = []
@@ -160,9 +154,7 @@ def sarimax_forecast(
             adj_high.append(float(hi))
 
         # Avoid completely flat forecast (would look like fallback). Add minimal jitter if constant.
-        if len(set(fc)) == 1 and len(fc) > 1:
-            base = fc[0]
-            fc = [round(base + 0.01 * (i + 1), 4) for i in range(len(fc))]
+        fc = _jitter_if_constant(fc)
 
         return fc, adj_low, adj_high
     except Exception:
