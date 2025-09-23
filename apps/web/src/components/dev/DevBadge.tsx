@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react"
+import { useDevUISoftStatus } from "@/state/useDevUI";
 import { GitBranch, Check, Rocket, ShieldCheck, Settings2, Wrench } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
@@ -50,6 +51,7 @@ export default function DevBadge({ branch, commit, openDevDock, onToggleDevDock 
 
   const reload = () => window.location.reload()
 
+  const softStatus = useDevUISoftStatus();
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -59,7 +61,7 @@ export default function DevBadge({ branch, commit, openDevDock, onToggleDevDock 
           title={branch ? `branch: ${branch}${commit ? ` @ ${commit.slice(0,7)}` : ''}` : undefined}
         >
           <GitBranch className="h-3.5 w-3.5" />
-          <span>DEV</span>
+          <span>{softStatus.soft ? 'DEV (soft)' : 'DEV'}</span>
         </Button>
       </DropdownMenuTrigger>
 

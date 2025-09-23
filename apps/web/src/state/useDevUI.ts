@@ -49,3 +49,26 @@ export function useDevUI(): boolean {
   }, []);
   return flag;
 }
+
+export function useDevUISoftStatus(): { active: boolean; soft: boolean } {
+  const [state, setState] = useState<{active:boolean;soft:boolean}>(() => ({ active: isDevUIEnabled(), soft: false }));
+  useEffect(() => {
+    const sync = () => setState({ active: isDevUIEnabled(), soft: false });
+    const onChanged = (e: any) => {
+      if (e?.detail?.soft) {
+        setState({ active: true, soft: true });
+      } else {
+        sync();
+      }
+    };
+    document.addEventListener('visibilitychange', sync);
+    window.addEventListener('storage', sync);
+    window.addEventListener('devui:changed', onChanged as EventListener);
+    return () => {
+      document.removeEventListener('visibilitychange', sync);
+      window.removeEventListener('storage', sync);
+      window.removeEventListener('devui:changed', onChanged as EventListener);
+    };
+  }, []);
+  return state;
+}
