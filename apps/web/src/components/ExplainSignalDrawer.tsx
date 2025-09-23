@@ -5,6 +5,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { selectTopMerchantCat } from '@/selectors/explain'
 import * as ReactDOM from 'react-dom'
 import { buildDeterministicExplain } from '@/lib/explainFallback'
+import Pill from '@/components/ui/pill'
 
 function GroundedBadge() {
   return (
@@ -58,10 +59,10 @@ export default function ExplainSignalDrawer({ txnId, open, onOpenChange, txn }: 
             <h2 className="text-base font-semibold">Why this category?</h2>
             <button data-testid="drawer-close" className="text-sm opacity-80 hover:opacity-100" onClick={() => onOpenChange(false)}>Close</button>
           </div>
-          <div className="mt-2 flex gap-2">
-            <span className="text-[11px] px-2 py-[2px] rounded-full bg-white/5 border border-white/10">grounded</span>
-            <span className="text-[11px] px-2 py-[2px] rounded-full bg-white/5 border border-white/10">{mode === 'llm' ? 'LLM' : 'Deterministic'}</span>
-            {fallbackHtml && <span className="text-[11px] px-2 py-[2px] rounded-full bg-white/5 border border-white/10">fallback</span>}
+          <div className="mt-2 flex flex-wrap gap-2">
+            <Pill tone="muted">grounded</Pill>
+            <Pill>{mode === 'llm' ? 'LLM rephrase' : 'Deterministic'}</Pill>
+            {fallbackHtml && <Pill tone="muted">fallback</Pill>}
           </div>
         </header>
         <main className="px-4 py-4 prose-invert prose-sm space-y-4">
