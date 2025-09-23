@@ -4,6 +4,7 @@ import Chip from '@/components/ui/chip'
 import { Skeleton } from '@/components/ui/skeleton'
 import { selectTopMerchantCat } from '@/selectors/explain'
 import * as ReactDOM from 'react-dom'
+import { buildDeterministicExplain } from '@/lib/explainFallback'
 
 function GroundedBadge() {
   return (
@@ -13,27 +14,6 @@ function GroundedBadge() {
   )
 }
 
-// Deterministic fallback builder (HTML string)
-function buildDeterministicExplain(txn: any, evidence: ExplainResponse['evidence'] | undefined, rationale: string) {
-  const rule = evidence?.rule_match;
-  const parts: string[] = [];
-  if (rule?.category) parts.push(`<strong>Matched rule:</strong> ${rule.category}`);
-  if (evidence?.merchant_norm) parts.push(`<strong>Merchant:</strong> ${evidence.merchant_norm}`);
-  if (txn?.description) parts.push(`<strong>Description:</strong> ${txn.description}`);
-  if (typeof txn?.amount === 'number') {
-    const abs = Math.abs(txn.amount).toFixed(2);
-    parts.push(`<strong>Amount:</strong> $${abs} ${txn.amount < 0 ? '(expense)' : '(income)'}`);
-  }
-  if (txn?.category) parts.push(`<strong>Chosen category:</strong> ${txn.category}`);
-  const tooShort = !rationale || rationale.trim().length < 24 || /^ok\b/i.test(rationale.trim());
-  if (!tooShort) return null; // no fallback needed
-  return `
-    <p>This classification used deterministic signals (no model response was needed).</p>
-    <h3>Evidence</h3>
-    <ul>${parts.map(p => `<li>${p}</li>`).join('')}</ul>
-    <p class="mt-3 text-xs opacity-70">Tip: Save a rule for this merchant to auto-apply next time.</p>
-  `;
-}
 
 export default function ExplainSignalDrawer({ txnId, open, onOpenChange, txn }: {
   txnId: number | null
@@ -72,11 +52,11 @@ export default function ExplainSignalDrawer({ txnId, open, onOpenChange, txn }: 
   return ReactDOM.createPortal(
     <div className="fixed inset-0 z-[9998]" aria-modal role="dialog" data-testid="explain-drawer">
       <div className="absolute inset-0 bg-black/70 backdrop-blur-[2px]" onClick={() => onOpenChange(false)} />
-      <aside className="absolute right-0 top-0 h-full w-full max-w-[460px] bg-[rgb(26,28,33)] text-zinc-100 ring-1 ring-white/10 shadow-2xl border-l border-white/5 z-[1] overflow-y-auto">
-        <header className="sticky top-0 bg-[rgb(26,28,33)]/95 backdrop-blur px-4 py-3 border-b border-white/5">
+      <aside className="absolute right-0 top-0 h-full w-full max-w-[460px] bg-[rgb(var(--panel))] text-zinc-100 ring-1 ring-white/10 shadow-2xl border-l border-white/5 z-[1] overflow-y-auto">
+        <header className="sticky top-0 bg-[rgb(var(--panel))]/95 backdrop-blur px-4 py-3 border-b border-white/5">
           <div className="flex items-center justify-between">
             <h2 className="text-base font-semibold">Why this category?</h2>
-            <button className="text-sm opacity-80 hover:opacity-100" onClick={() => onOpenChange(false)}>Close</button>
+            <button data-testid="drawer-close" className="text-sm opacity-80 hover:opacity-100" onClick={() => onOpenChange(false)}>Close</button>
           </div>
           <div className="mt-2 flex gap-2">
             <span className="text-[11px] px-2 py-[2px] rounded-full bg-white/5 border border-white/10">grounded</span>
