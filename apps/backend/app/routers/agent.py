@@ -5,6 +5,8 @@ import re
 import logging
 from typing import Any, Dict, List, Optional, Tuple, Literal
 from app.services.agent.llm_post import post_process_tool_reply
+from app.services.agent_tools.common import no_data_kpis, no_data_anomalies
+from app.utils.time import utc_now
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Header
 from starlette.responses import JSONResponse, RedirectResponse
@@ -29,6 +31,32 @@ from app.services.agent.analytics_tag import tag_if_analytics
 import time
 
 router = APIRouter()  # <-- no prefix here (main.py supplies /agent)
+
+# --- KPI empty-state guard (router-level) ---
+from app.services.agent_tools.common import no_data_kpis as _router_no_data_kpis
+
+def _emptyish(v):
+    if v is None:
+        return True
+    if isinstance(v, dict):
+        return len(v) == 0 or all(_emptyish(x) for x in v.values())
+    if isinstance(v, (list, tuple, set)):
+        return len(v) == 0
+    return False
+
+def enforce_analytics_empty_state(out: dict) -> dict:
+    try:
+        if out.get("mode") == "analytics.kpis":
+            result = out.get("result") or {}
+            k, s, m = result.get("kpis"), result.get("series"), result.get("months")
+            if _emptyish(k) or _emptyish(s) or _emptyish(m):
+                month = (out.get("filters") or {}).get("month") or (out.get("used_context") or {}).get("month")
+                tip = _router_no_data_kpis(str(month) if month else None)
+                out.update(tip)
+                out["_post_kpis_guard"] = True
+    except Exception:
+        pass
+    return out
 
 # Model name normalization
 MODEL_ALIASES = {
@@ -424,6 +452,28 @@ def agent_chat(
         resp = post_process_tool_reply(resp, ctx)
         if debug and getattr(settings, "ENV", "dev") != "prod":
             resp["__debug_context"] = ctx
+
+        # --- BEGIN post-processing guard for trivial "OK" on analytics prompts ---
+        try:
+            user_text = last_user_msg or ""
+            if _is_trivial_ok(resp.get("reply")):
+                hint = _analytics_intent_from_user(user_text)
+                if hint:
+                    prev_used_ctx = resp.get("used_context") or {}
+                    month_str = _month_str_from_out_or_now(resp)
+                    if hint == "insights.anomalies":
+                        resp = no_data_anomalies(month_str)
+                    elif hint == "analytics.kpis":
+                        resp = no_data_kpis(month_str)
+                    if prev_used_ctx and "used_context" not in resp:
+                        resp["used_context"] = prev_used_ctx
+                    resp["_post_ok_guard"] = True
+        except Exception:
+            pass
+        # --- END post-processing guard ---
+
+        resp = enforce_analytics_empty_state(resp)
+
         return JSONResponse(tag_if_analytics(last_user_msg, resp))
     except Exception as e:
         print(f"Agent chat error: {str(e)}")
@@ -533,6 +583,29 @@ def _summarize_tool_result(tool_resp: Dict[str, Any]) -> str:
     if mode == "budgets.read":
         return tool_resp.get("message", "Budgets view")
     return "OK"
+
+
+def _is_trivial_ok(text: str) -> bool:
+    t = (text or "").strip().lower()
+    t = re.sub(r"[ .!?\u200b]+$", "", t)
+    return t in {"ok", "okay"}
+
+
+def _analytics_intent_from_user(text: str) -> str | None:
+    s = (text or "").lower()
+    if "anomal" in s:
+        return "insights.anomalies"
+    if "kpi" in s:
+        return "analytics.kpis"
+    return None
+
+
+def _month_str_from_out_or_now(out: dict) -> str:
+    m = ((out or {}).get("used_context") or {}).get("month")
+    if m:
+        return str(m)
+    now = utc_now()
+    return f"{now.year:04d}-{now.month:02d}"
 
 
 def _try_llm_rephrase_tool(user_text: str, tool_resp: Dict[str, Any], summary: str) -> Optional[str]:

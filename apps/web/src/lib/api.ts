@@ -1381,3 +1381,22 @@ export async function agentPlanStatus() {
     return { mode: "deterministic", steps: 0, throttle: null, available: false };
   }
 }
+
+// ---- Save Rule endpoint helper ----
+export type SaveRulePayload = {
+  rule?: { name?: string; when?: Record<string, any>; then?: { category?: string } };
+  scenario?: string;
+  month?: string;
+  backfill?: boolean;
+};
+
+export async function saveRule(payload: SaveRulePayload, opts?: { idempotencyKey?: string }) {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (opts?.idempotencyKey) headers['Idempotency-Key'] = opts.idempotencyKey;
+  return http('/agent/tools/rules/save', {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(payload),
+    credentials: 'include',
+  });
+}

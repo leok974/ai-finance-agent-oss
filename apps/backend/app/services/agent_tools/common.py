@@ -1,5 +1,6 @@
 from __future__ import annotations
 from typing import Any, Dict, List, Optional
+from app.utils.time import utc_now
 
 # Backwards-compatible, expanded helpers for consistent structured replies & empty states.
 
@@ -75,6 +76,26 @@ def no_data_kpis(month_str: str) -> Dict[str, Any]:
         mode="analytics.kpis",
         suggestions=suggestions,
         meta={"reason": "not_enough_history"},
+    )
+
+
+def no_data_kpis_optional(month: Optional[str] = None) -> Dict[str, Any]:
+    """Alternate helper matching requested optional signature; defers to primary style."""
+    m = month or f"{utc_now().year:04d}-{utc_now().month:02d}"
+    suggestions = [
+        make_chip("Insights: Expanded (last 60 days)"),
+        make_chip("Lower minimum amount (e.g., $25)"),
+        make_chip("Increase lookback (e.g., 6 months)"),
+    ]
+    text = (
+        f"I didn't find enough data to compute **KPIs** for **{m}**.\n"
+        f"Try one of these:"
+    )
+    return reply(
+        text,
+        mode="analytics.kpis",
+        suggestions=suggestions,
+        meta={"reason": "not_enough_data"},
     )
 
 def no_data_anomalies(month_str: str) -> Dict[str, Any]:
