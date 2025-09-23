@@ -1,4 +1,7 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import * as React from "react";
+import { stripToolNamespaces } from "@/utils/prettyToolName";
+const { useEffect, useMemo, useRef, useState } = React;
+import { wireAguiStream } from "@/lib/aguiStream";
 import RobotThinking from "@/components/ui/RobotThinking";
 import EnvAvatar from "@/components/EnvAvatar";
 import { useAuth } from "@/state/auth";
@@ -171,6 +174,18 @@ export default function ChatDock() {
   const [input, setInput] = useState("");
   const composerRef = React.useRef<HTMLTextAreaElement | null>(null);
   const [composerPlaceholder, setComposerPlaceholderState] = useState(DEFAULT_PLACEHOLDER);
+  // AGUI streaming run state (moved earlier so handleSend can reference)
+  const [aguiTools, setAguiTools] = useState<Array<{ name: string; status: 'pending'|'active'|'done'|'error'; startedAt?: number; endedAt?: number }>>([]);
+  const aguiToolsRef = React.useRef<typeof aguiTools>(aguiTools);
+  React.useEffect(()=>{ aguiToolsRef.current = aguiTools; }, [aguiTools]);
+  // Track last what-if scenario text for rule saving
+  const lastWhatIfScenarioRef = useRef<string>("");
+  // Save Rule modal state
+  const [showSaveRuleModal, setShowSaveRuleModal] = useState(false);
+  const [saveRuleScenario, setSaveRuleScenario] = useState("");
+  const [saveRuleThresholds, setSaveRuleThresholds] = useState("{}");
+  const [savingRule, setSavingRule] = useState(false);
+  const [aguiRunActive, setAguiRunActive] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const syncTimerRef = useRef<number | null>(null);
@@ -319,11 +334,12 @@ export default function ChatDock() {
       }
       const isUser = m.role === 'user';
       const meta = ((m as any).meta ?? (i === (uiMessages.length - 1) ? (chatResp as any) : undefined)) || {};
+      const isThinking = (m as any).thinking || (m as any).meta?.thinking;
       out.push(
         <div key={`${m.role}-${ts}-${i}`} className={`px-3 py-2 my-1 flex items-end gap-2 ${isUser ? 'justify-end' : 'justify-start'}`}>
           {!isUser && <EnvAvatar who="agent" className="size-7" />}
           <div className={`max-w-[72%] rounded-2xl px-3 py-2 text-sm leading-relaxed ${isUser ? 'bg-blue-600 text-white rounded-br-sm' : 'bg-slate-800 text-slate-100 rounded-bl-sm'}`}>
-            {(m as any).thinking ? (
+            {isThinking ? (
               <div className="py-1"><span className="sr-only">Thinking.</span><RobotThinking size={32} /></div>
             ) : (
               m.role === 'assistant' ? <div className="chat-markdown"><Markdown>{m.text}</Markdown></div> : <>{m.text}</>
@@ -345,42 +361,47 @@ export default function ChatDock() {
                 {meta.model ? <span>- {meta.model}</span> : null}
               </>
             ) : null}
+            {m.role === 'assistant' && meta.intent_label ? (
+              <span className="intent-badge">{meta.intent_label}</span>
+            ) : null}
             {m.role === 'assistant' ? <ModeChip mode={meta.mode} args={meta.args} /> : null}
             <span className="ml-auto text-neutral-400">{toTimeHM(ts)}</span>
           </div>
           {m.role === 'assistant' && meta.mode === 'analytics.forecast' ? (
             <ForecastFollowUps month={meta.used_context?.month} append={appendAssistant} setThinking={setBusy} />
           ) : null}
-          {m.role === 'assistant' && Array.isArray(meta.suggestions) && meta.suggestions.length ? (() => {
-            const chipItems = meta.suggestions
-              .map((it: any) => {
-                if (!it) return null;
-                if (typeof it === 'string') {
-                  return { label: it, action: { type: 'nl_search', query: it } as ChipAction };
-                }
-                if (typeof it === 'object') {
-                  const label = typeof it.label === 'string' ? it.label : typeof it.query === 'string' ? it.query : typeof it.value === 'string' ? it.value : null;
-                  if (!label) return null;
-                  const rawAction = it.action;
-                  let action: ChipAction | null = null;
-                  if (rawAction && typeof rawAction === 'object' && typeof rawAction.type === 'string') {
-                    action = rawAction as ChipAction;
-                  } else if (typeof it.query === 'string') {
-                    action = { type: 'nl_search', query: it.query };
-                  } else if (typeof it.value === 'string') {
-                    action = { type: 'nl_search', query: it.value };
-                  } else if (typeof it.href === 'string') {
-                    action = { type: 'nav', href: it.href };
-                  }
-                  if (!action) {
-                    action = { type: 'nl_search', query: label };
-                  }
-                  return { label, action };
-                }
-                return null;
-              })
-              .filter(Boolean) as { label: string; action: ChipAction }[];
-            return chipItems.length ? <QuickChips items={chipItems} /> : null;
+          {m.role === 'assistant' ? (() => {
+            const model = Array.isArray(meta.suggestionsLLM) ? meta.suggestionsLLM : [];
+            const gateway = Array.isArray(meta.suggestions) ? meta.suggestions : [];
+            const raw = [...model, ...gateway];
+            const seen = new Set<string>();
+            const chips = raw.filter((c: any) => {
+              if (!c || typeof c !== 'object') return false;
+              const label = String(c.label || c.query || c.value || '').trim();
+              if (!label) return false;
+              const key = (c.action || '') + '::' + label;
+              if (seen.has(key)) return false;
+              seen.add(key);
+              c.label = label;
+              return true;
+            });
+            if (!chips.length) return null;
+            return (
+              <div className="flex flex-wrap gap-2 mt-2">
+                {chips.map((chip: any) => (
+                  <button
+                    key={(chip.action || 'noop') + chip.label}
+                    type="button"
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`Suggestion: ${chip.label}`}
+                    className={`chip ${chip.source === 'gateway' ? 'chip-suggest-gw' : 'chip-suggest'}`}
+                    onKeyDown={(e)=>{ if (e.key==='Enter'||e.key===' ') { e.preventDefault(); handleSuggestionChip({ label: chip.label, action: chip.action || chip.label, source: chip.source }); } }}
+                    onClick={()=>handleSuggestionChip({ label: chip.label, action: chip.action || chip.label, source: chip.source })}
+                  >{chip.label}</button>
+                ))}
+              </div>
+            );
           })() : null}
         </div>
       );
@@ -498,7 +519,7 @@ export default function ChatDock() {
     const rect = panelRef.current?.getBoundingClientRect();
     const w = rect?.width ?? (open ? PANEL_W_GUESS : BUBBLE);
     const h = rect?.height ?? (open ? PANEL_H_GUESS : BUBBLE);
-    setRb(prev => clampRB(prev, w, h));
+  setRb((prev: { right: number; bottom: number }) => clampRB(prev, w, h));
     };
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
@@ -516,7 +537,7 @@ export default function ChatDock() {
       const rect = panelRef.current?.getBoundingClientRect();
       const w = rect?.width ?? PANEL_W_GUESS;
       const h = rect?.height ?? PANEL_H_GUESS;
-      setRb(prev => clampRB(prev, w, h));
+  setRb((prev: { right: number; bottom: number }) => clampRB(prev, w, h));
     });
   }, [open]);
 
@@ -540,7 +561,7 @@ export default function ChatDock() {
   React.useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape" && open) setOpen(false);
-      if (e.key.toLowerCase() === "k" && e.shiftKey && e.ctrlKey) { e.preventDefault(); setOpen(v => !v); }
+  if (e.key.toLowerCase() === "k" && e.shiftKey && e.ctrlKey) { e.preventDefault(); setOpen((v: boolean) => !v); }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -562,7 +583,7 @@ export default function ChatDock() {
       obj.month = m;
       const newText = JSON.stringify(obj, null, 2);
       setPayloadText(newText);
-      setPayloads(p => ({ ...p, [tool]: newText }));
+  setPayloads((p: Record<string, string>) => ({ ...p, [tool]: newText }));
     } catch { /* ignore bad json */ }
   }, [payloadText, tool]);
 
@@ -613,7 +634,7 @@ export default function ChatDock() {
         body = { ...body, month }; // snap to current MonthContext
         const newText = JSON.stringify(body, null, 2);
         setPayloadText(newText);
-        setPayloads(p => ({ ...p, [tool]: newText }));
+  setPayloads((p: Record<string, string>) => ({ ...p, [tool]: newText }));
       }
     }
 
@@ -717,18 +738,62 @@ export default function ChatDock() {
   };
 
   // Composer send (optimistic append + context-aware) REPLACED to support AGUI SSE
+  function aguiLog(evt: string, data: any) { try { console.debug(`[agui] ${evt}`, data); } catch {} }
   const handleSend = React.useCallback(async (ev?: React.MouseEvent | React.KeyboardEvent) => {
     if (busy) return;
     const text = input.trim();
     if (!text) return;
     if (ENABLE_AGUI) {
-      const disposed = runAguiStream(text, month, appendUser, appendAssistant, setBusy);
-      if (disposed) {
-        setInput("");
-        setComposerPlaceholderUI(DEFAULT_PLACEHOLDER);
-        focusComposer();
-        return;
-      }
+      // Unified AGUI streaming via wireAguiStream
+      appendUser(text);
+      setInput("");
+      setComposerPlaceholderUI(DEFAULT_PLACEHOLDER);
+      focusComposer();
+      setBusy(true);
+      setAguiTools([]);
+      setAguiRunActive(true);
+      let aggregated = '';
+      aguiLog('agui.run', { from: 'text', month, q: text });
+      wireAguiStream({ q: text, month }, {
+        onStart(meta) { appendAssistant('...', { thinking: true }); if (meta?.intent) setIntentBadge(meta.intent); },
+        onIntent(intent) { setIntentBadge(intent); },
+        onToolStart(name) {
+          aguiLog('agui.tool', { name, status: 'start' });
+          setAguiTools(cur => {
+            const exists = cur.find(t => t.name === name);
+            if (exists) return cur.map(t => t.name === name ? { ...t, status: 'active', startedAt: t.startedAt || Date.now() } : t);
+            return [...cur, { name, status: 'active', startedAt: Date.now() }];
+          });
+        },
+        onToolEnd(name, ok) {
+          aguiLog('agui.tool', { name, status: 'end', ok });
+          setAguiTools(cur => cur.map(t => t.name === name ? { ...t, status: ok ? 'done' : 'error', endedAt: Date.now() } : t));
+        },
+        onChunk(chunk) { aggregated += chunk; },
+        onSuggestions(chips) {
+          const tagged = chips.map(c => ({ ...c, source: 'gateway' }));
+            aguiLog('agui.suggestions', { count: tagged.length, source: 'gateway' });
+          setUiMessages(cur => cur.map((m,i)=> {
+            const thinking = (m as any).thinking || (m as any).meta?.thinking;
+            return (i===cur.length-1 && m.role==='assistant' && thinking)
+              ? { ...m, meta: { ...(m.meta||{}), suggestions: tagged, thinking: true } }
+              : m;
+          }));
+        },
+        onFinish() {
+          const snapshot = aguiToolsRef.current || aguiTools;
+          const errors = snapshot.filter(t => t.status === 'error').map(t => t.name);
+          if (errors.length) {
+            const pretty = errors.map(stripToolNamespaces);
+            aggregated += `\n\n⚠️ Skipped: ${pretty.join(', ')} (unavailable). I used everything else.`;
+          }
+          setBusy(false); setAguiRunActive(false); appendAssistant(aggregated || '(no content)');
+        },
+        onError() {
+          setBusy(false); setAguiRunActive(false); appendAssistant('(stream error – fallback)');
+        }
+      });
+      return;
     }
     setInput("");
     setComposerPlaceholderUI(DEFAULT_PLACEHOLDER);
@@ -750,7 +815,7 @@ export default function ChatDock() {
     } finally {
       setBusy(false);
     }
-  }, [busy, input, selectedModel, handleAgentResponse, month]);
+  }, [busy, input, selectedModel, handleAgentResponse, month, appendUser, appendAssistant]);
 
   const onComposerKeyDown = React.useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); handleSend(e); return; }
@@ -760,6 +825,7 @@ export default function ChatDock() {
   // --- ONE-CLICK TOOL RUNNERS (top bar) ---
   const runMonthSummary = React.useCallback(async (_ev?: React.MouseEvent) => {
     if (busy) return;
+  if (startAguiRun('overview', AGUI_ACTIONS['overview'].prompt, month)) return;
     setBusy(true);
     try {
       appendUser('Summarize my spending this month in 4 bullets and one action.');
@@ -785,6 +851,7 @@ export default function ChatDock() {
 
   const runFindSubscriptions = React.useCallback(async (_ev?: React.MouseEvent) => {
     if (busy) return;
+  if (startAguiRun('subscriptions', AGUI_ACTIONS['subscriptions'].prompt, month)) return;
     setBusy(true);
     try {
       appendUser('Identify recurring subscriptions this month and suggest which I could cancel.');
@@ -805,6 +872,7 @@ export default function ChatDock() {
   // Additional one-click runners shown in the tools tray
   const runTopMerchants = React.useCallback(async (_ev?: React.MouseEvent) => {
     if (busy) return;
+  if (startAguiRun('merchants', AGUI_ACTIONS['merchants'].prompt, month)) return;
     setBusy(true);
     try {
       appendUser('Show top merchants for the current month.');
@@ -823,6 +891,7 @@ export default function ChatDock() {
 
   const runCashflow = React.useCallback(async (_ev?: React.MouseEvent) => {
     if (busy) return;
+  if (startAguiRun('cashflow', AGUI_ACTIONS['cashflow'].prompt, month)) return;
     setBusy(true);
     try {
       appendUser('Show my cashflow (inflows vs outflows).');
@@ -841,6 +910,7 @@ export default function ChatDock() {
 
   const runTrends = React.useCallback(async (_ev?: React.MouseEvent) => {
     if (busy) return;
+  if (startAguiRun('overview', AGUI_ACTIONS['trends'].prompt, month)) return;
     setBusy(true);
     try {
       appendUser('Show my spending trends.');
@@ -869,6 +939,7 @@ export default function ChatDock() {
 
   const runInsightsSummary = React.useCallback(async (_ev?: React.MouseEvent) => {
     if (busy) return;
+  if (startAguiRun('overview', AGUI_ACTIONS['insights-summary'].prompt, month)) return;
     setBusy(true);
     try {
       appendUser('Summarize key insights for this month.');
@@ -886,6 +957,7 @@ export default function ChatDock() {
 
   const runInsightsExpanded = React.useCallback(async (_ev?: React.MouseEvent) => {
     if (busy) return;
+  if (startAguiRun('overview', AGUI_ACTIONS['insights-expanded'].prompt, month)) return;
     setBusy(true);
     try {
       appendUser('Expand insights (month-over-month + anomalies).');
@@ -903,6 +975,7 @@ export default function ChatDock() {
 
   const runBudgetCheck = React.useCallback(async (_ev?: React.MouseEvent) => {
     if (busy) return;
+  if (startAguiRun('budget', AGUI_ACTIONS['budget'].prompt, month)) return;
     setBusy(true);
     try {
       appendUser('Check my budget status for this month.');
@@ -922,6 +995,7 @@ export default function ChatDock() {
   // ---------- Analytics quick buttons ----------
   const runAnalyticsKpis = React.useCallback(async (_ev?: React.MouseEvent) => {
     if (busy) return;
+  if (startAguiRun('kpis', AGUI_ACTIONS['kpis'].prompt, month)) return;
     setBusy(true);
     try {
       appendUser('Show KPIs for this month.');
@@ -939,6 +1013,7 @@ export default function ChatDock() {
 
   const runAnalyticsForecast = React.useCallback(async (_ev?: React.MouseEvent) => {
     if (busy) return;
+  // forecast not a dedicated branch yet; legacy path
     setBusy(true);
     try {
       appendUser('Forecast my next 3 months cashflow.');
@@ -956,6 +1031,7 @@ export default function ChatDock() {
 
   const runAnalyticsAnomalies = React.useCallback(async (_ev?: React.MouseEvent) => {
     if (busy) return;
+  // anomalies not a dedicated branch yet; legacy path
     setBusy(true);
     try {
       appendUser('Find anomalies this month.');
@@ -973,6 +1049,7 @@ export default function ChatDock() {
 
   const runAnalyticsRecurring = React.useCallback(async (_ev?: React.MouseEvent) => {
     if (busy) return;
+  if (startAguiRun('subscriptions', AGUI_ACTIONS['recurring'].prompt, month)) return;
     setBusy(true);
     try {
       appendUser('Detect recurring charges.');
@@ -990,6 +1067,7 @@ export default function ChatDock() {
 
   const runAnalyticsBudgetSuggest = React.useCallback(async (_ev?: React.MouseEvent) => {
     if (busy) return;
+  if (startAguiRun('budget', AGUI_ACTIONS['budget-suggest'].prompt, month)) return;
     setBusy(true);
     try {
       appendUser('Suggest budget targets.');
@@ -1057,62 +1135,96 @@ export default function ChatDock() {
   }, [appendAssistant, appendUser, busy, focusComposer, setBusy, setComposer, setComposerPlaceholderUI, syncFromStoreDebounced, transactionsNl]);
 
   // Insert AGUI feature flag and streaming helper near top-level utility section
-  const [aguiTools, setAguiTools] = useState<Array<{ name: string; status: 'pending'|'active'|'done'|'error'; startedAt?: number; endedAt?: number }>>([]);
-  const [aguiRunActive, setAguiRunActive] = useState(false);
+  // (legacy runAguiStream removed in favor of wireAguiStream)
 
-  function runAguiStream(q: string, month: string | undefined, appendUser: (t: string)=>void, appendAssistant: (t: string, meta?: any)=>void, setBusy: (b:boolean)=>void) {
-    if (!ENABLE_AGUI) return null;
-    try {
-      const url = new URL('/agui/chat', window.location.origin);
-      if (month) url.searchParams.set('month', month);
-      url.searchParams.set('q', q);
-      const es = new EventSource(url.toString(), { withCredentials: true });
-      let aggregated = '';
-      appendUser(q);
-      setBusy(true);
-      setAguiTools([]);
-      setAguiRunActive(true);
-      es.addEventListener('RUN_STARTED', () => {
-        // show thinking placeholder
-        appendAssistant('...', { thinking: true });
-      });
-      es.addEventListener('TOOL_CALL_START', (e) => {
-        const data = (() => { try { return JSON.parse((e as MessageEvent).data); } catch { return {}; } })();
-        const name = data.name || 'tool';
+  // Central mapping of AGUI actions to prompts + forced gateway mode
+  const AGUI_ACTIONS: Record<string, { prompt: string; mode: string }> = {
+    'overview':         { prompt: 'Give me this month’s overview summary.', mode: 'overview' },
+    'subscriptions':    { prompt: 'Identify recurring subscriptions this month and suggest which I could cancel.', mode: 'subscriptions' },
+    'merchants':        { prompt: 'Show top merchants for the current month.', mode: 'merchants' },
+    'cashflow':         { prompt: 'Show my cashflow breakdown for this month.', mode: 'cashflow' },
+    'trends':           { prompt: 'Show spending trends for this month versus prior month.', mode: 'overview' },
+    'insights-summary': { prompt: 'Summarize key insights for this month.', mode: 'overview' },
+    'insights-expanded':{ prompt: 'Give me expanded insights for this month (last 60 days if needed).', mode: 'overview' },
+    'budget':           { prompt: 'Check my budget status for this month.', mode: 'budget' },
+    'kpis':             { prompt: 'Show KPIs for this month.', mode: 'kpis' },
+    'forecast':         { prompt: 'Forecast next month’s spending.', mode: 'forecast' },
+    'anomalies':        { prompt: 'Show anomalies or unusual transactions for this month.', mode: 'anomalies' },
+    'recurring':        { prompt: 'List recurring charges this month.', mode: 'subscriptions' },
+    'budget-suggest':   { prompt: 'Suggest budget targets for this month.', mode: 'budget' },
+    'what-if':          { prompt: 'What if I reduce dining by 20% next month?', mode: 'what-if' },
+    'alerts':           { prompt: 'Show my alerts for this month.', mode: 'alerts' },
+    'search-txns':      { prompt: 'Search transactions matching my last query.', mode: 'txns' },
+  };
+
+  // Intent label mapping for badge display
+  const INTENT_LABELS: Record<string,string> = {
+    overview:'Overview', merchants:'Merchants', kpis:'KPIs', subscriptions:'Subscriptions',
+    alerts:'Alerts', anomalies:'Anomalies', budget:'Budget', cashflow:'Cashflow',
+    forecast:'Forecast', 'what-if':'What-if', txns:'Transactions', chat:'Chat'
+  };
+
+  // Minimal badge injection: attach to last assistant thinking bubble meta
+  function setIntentBadge(intent?: string) {
+    if (!intent) return;
+    const label = INTENT_LABELS[intent] || intent;
+    setUiMessages(cur => cur.map((m, i) => {
+      const thinking = (m as any).thinking || (m as any).meta?.thinking;
+      if (i === cur.length - 1 && m.role === 'assistant' && thinking) {
+        return { ...m, meta: { ...(m.meta||{}), intent_label: label, intent, thinking: true }, thinking: (m as any).thinking };
+      }
+      return m;
+    }));
+  }
+
+  // Start an AGUI streaming run forcing a branch via mode; returns true if started
+  function startAguiRun(mode: string, prompt: string, monthCtx?: string | null) {
+    if (!ENABLE_AGUI) return false;
+    appendUser(prompt);
+    setBusy(true);
+    setAguiTools([]);
+    setAguiRunActive(true);
+    let aggregated = '';
+    if (mode === 'what-if') { lastWhatIfScenarioRef.current = prompt; }
+    aguiLog('agui.run', { from: 'button', mode, month: monthCtx, q: prompt });
+    wireAguiStream({ q: prompt, month: monthCtx || undefined, mode }, {
+      onStart(meta) { appendAssistant('...', { thinking: true }); if (meta?.intent) setIntentBadge(meta.intent); },
+      onIntent(intent) { setIntentBadge(intent); },
+      onToolStart(name) {
+        aguiLog('agui.tool', { name, status: 'start' });
         setAguiTools(cur => {
           const exists = cur.find(t => t.name === name);
           if (exists) return cur.map(t => t.name === name ? { ...t, status: 'active', startedAt: t.startedAt || Date.now() } : t);
           return [...cur, { name, status: 'active', startedAt: Date.now() }];
         });
-      });
-      es.addEventListener('TOOL_CALL_END', (e) => {
-        const data = (() => { try { return JSON.parse((e as MessageEvent).data); } catch { return {}; } })();
-        const name = data.name || 'tool';
-        const ok = !!data.ok;
+      },
+      onToolEnd(name, ok) {
+        aguiLog('agui.tool', { name, status: 'end', ok });
         setAguiTools(cur => cur.map(t => t.name === name ? { ...t, status: ok ? 'done' : 'error', endedAt: Date.now() } : t));
-      });
-      es.addEventListener('TEXT_MESSAGE_CONTENT', (e) => {
-        const data = (() => { try { return JSON.parse((e as MessageEvent).data); } catch { return {}; } })();
-        if (typeof data.text === 'string') {
-          aggregated += data.text;
+      },
+      onChunk(txt) { aggregated += txt; },
+      onSuggestions(chips) {
+        const tagged = chips.map(c => ({ ...c, source: 'gateway' }));
+        aguiLog('agui.suggestions', { count: tagged.length, source: 'gateway' });
+        setUiMessages(cur => cur.map((m,i)=> {
+          const thinking = (m as any).thinking || (m as any).meta?.thinking;
+          return (i===cur.length-1 && m.role==='assistant' && thinking)
+            ? { ...m, meta: { ...(m.meta||{}), suggestions: tagged, thinking: true } }
+            : m;
+        }));
+      },
+      onFinish() {
+        const snapshot = aguiToolsRef.current || aguiTools;
+        const errors = snapshot.filter(t => t.status === 'error').map(t => t.name);
+        if (errors.length) {
+          const pretty = errors.map(stripToolNamespaces);
+            aggregated += `\n\n⚠️ Skipped: ${pretty.join(', ')} (unavailable). I used everything else.`;
         }
-      });
-      es.addEventListener('RUN_FINISHED', () => {
-        setBusy(false);
-        setAguiRunActive(false);
-        // replace with final aggregated response
-        appendAssistant(aggregated || '(no content)');
-        es.close();
-      });
-      es.onerror = () => {
-        setBusy(false);
-        setAguiRunActive(false);
-        es.close();
-      };
-      return () => { es.close(); setAguiRunActive(false); };
-    } catch {
-      return null;
-    }
+        setBusy(false); setAguiRunActive(false); appendAssistant(aggregated || '(no content)');
+      },
+  onError() { setBusy(false); setAguiRunActive(false); appendAssistant('(stream error – fallback)'); }
+    });
+    return true;
   }
 
   useEffect(() => {
@@ -1120,7 +1232,7 @@ export default function ChatDock() {
       pushAssistant: ({ reply, rephrased, suggestions, meta }) => {
         const metaPayload: Record<string, any> = { ...(meta ?? {}) };
         if (typeof rephrased !== 'undefined') metaPayload.rephrased = rephrased;
-        if (typeof suggestions !== 'undefined') metaPayload.suggestions = suggestions;
+        if (Array.isArray(suggestions)) metaPayload.suggestionsLLM = suggestions.map(s => ({ ...(typeof s==='object'?s:{ label: s }), source: 'model', label: (s as any)?.label || (s as any)?.query || (typeof s==='string'? s : '') }));
         appendAssistant(reply, metaPayload);
       },
       pushUser: appendUser,
@@ -1133,12 +1245,57 @@ export default function ChatDock() {
     });
   }, [appendAssistant, appendUser, callTransactionsNl]);
 
+  // Handle suggestion chip actions from SUGGESTIONS SSE
+  async function submitRule() {
+    setSavingRule(true);
+    try {
+      let thresholds: any = {};
+      try { thresholds = JSON.parse(saveRuleThresholds || '{}'); } catch {}
+      const body = { scenario: saveRuleScenario, month, thresholds };
+      let ok = false;
+      try {
+        const resp = await fetch('/agent/tools/rules/save', { method:'POST', headers:{'Content-Type':'application/json'}, credentials:'include', body: JSON.stringify(body) });
+        ok = resp.ok;
+        if (!ok) {
+          // Fallback demo conversion via agent chat
+          const demo = await fetch('/agent/chat', { method:'POST', headers:{'Content-Type':'application/json'}, credentials:'include', body: JSON.stringify({ messages:[{ role:'system', content:'Convert scenario text into a minimal JSON rule with keys merchant/category/amount_threshold if applicable.'},{ role:'user', content: saveRuleScenario }] }) });
+          ok = demo.ok;
+        }
+      } catch {}
+      appendAssistant(ok ? 'Rule saved.' : 'Rule save failed.', { ctxMonth: month });
+      setShowSaveRuleModal(false);
+    } finally { setSavingRule(false); }
+  }
+  function handleSuggestionChip(chip: { label: string; action: string; source?: string }) {
+    const currentMonth = month;
+    switch (chip.action) {
+      case 'budget_from_forecast':
+        startAguiRun('budget', 'Suggest a budget using the forecast', currentMonth);
+        break;
+      case 'compare_prev':
+        startAguiRun('overview', 'Compare this month’s forecast with last month', currentMonth);
+        break;
+      case 'apply_budget':
+        startAguiRun('budget', 'Apply this what-if scenario to my budget', currentMonth);
+        break;
+      case 'save_rule':
+        setSaveRuleScenario(lastWhatIfScenarioRef.current || chip.label || '');
+        setSaveRuleThresholds('{"amount_threshold":0}');
+        setShowSaveRuleModal(true);
+        break;
+      default:
+        // Fallback: just re-run with the chip label as a query
+        startAguiRun('overview', chip.label, currentMonth);
+    }
+  }
+
   const runAnalyticsWhatIf = React.useCallback(async () => {
     if (busy) return;
     const cat = window.prompt('Category to cut? e.g., "Dining out"', 'Dining out');
     if (!cat) return;
     const pctStr = window.prompt('Cut percent (0-100)', '20');
     const pct = Math.max(0, Math.min(100, Number(pctStr || 0)));
+  // what-if not a dedicated branch; legacy path (could map to overview)
     setBusy(true);
     try {
       appendUser(`What if I cut ${cat} by ${pct}%?`);
@@ -1156,6 +1313,7 @@ export default function ChatDock() {
 
   const runAlerts = React.useCallback(async (ev?: React.MouseEvent) => {
     if (busy) return;
+  if (startAguiRun('alerts', AGUI_ACTIONS['alerts'].prompt, month)) return;
     setBusy(true);
     try {
       appendUser('Show my alerts.');
@@ -1196,7 +1354,7 @@ export default function ChatDock() {
         isAutoRunning.current = true;
         insertContext(); // Update payload with current month
         await run(); // Run the tool
-        setLastRunForTool(prev => ({ ...prev, [tool]: month }));
+  setLastRunForTool((prev: Record<string, string | undefined>) => ({ ...prev, [tool]: month }));
       } catch (e) {
         console.error("Auto insertContext/run failed:", e);
       } finally {
@@ -1259,6 +1417,7 @@ export default function ChatDock() {
   style={{ right: rb.right, bottom: rb.bottom, position: 'fixed' as const }}
   data-chatdock-root
     >
+  <style>{`.intent-badge{display:inline-flex;align-items:center;gap:.35rem;padding:.15rem .45rem;border-radius:9999px;border:1px solid rgba(120,120,120,.35);font-size:.6rem;letter-spacing:.5px;text-transform:uppercase;background:rgba(255,255,255,0.06);} .chip{display:inline-flex;align-items:center;padding:.25rem .6rem;border-radius:9999px;border:1px solid rgba(120,120,120,.35);font-size:.7rem;line-height:1;font-weight:500;cursor:pointer;user-select:none} .chip-suggest{background:rgba(59,130,246,.10);} .chip-suggest-gw{background:rgba(16,185,129,.12);} .chip:focus{outline:2px solid currentColor;outline-offset:1px}`}</style>
       <div
         className="flex items-center justify-between mb-2 select-none border-b border-border pb-1"
         style={{ cursor: "grab" }}
@@ -1351,7 +1510,7 @@ export default function ChatDock() {
       {modelsInfo ? (
             <button
               onPointerDown={(e) => e.stopPropagation()}
-              onClick={(e) => { e.stopPropagation(); setShowAdvanced(v=>!v); }}
+              onClick={(e) => { e.stopPropagation(); setShowAdvanced((v: boolean)=>!v); }}
               className="px-2 py-1 rounded-lg bg-neutral-800 text-neutral-200 border border-neutral-700 hover:bg-neutral-700"
         title="Models"
             >
@@ -1378,7 +1537,7 @@ export default function ChatDock() {
               onChange={(e) => setSelectedModel(e.target.value)}
             >
               <option value="">{`Default - ${modelsInfo.provider}: ${modelsInfo.default}`}</option>
-              {modelsInfo.models?.map(m => (
+              {modelsInfo.models?.map((m: any) => (
                 <option key={m.id} value={m.id}>{m.id}</option>
               ))}
             </select>
@@ -1405,7 +1564,7 @@ export default function ChatDock() {
             <button type="button" onClick={(e) => runAlerts(e as any)} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50">Alerts</button>
             {/* Analytics quick buttons */}
             <button type="button" onClick={(e) => runAnalyticsKpis(e as any)} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50">KPIs</button>
-            <button type="button" onClick={(e) => runAnalyticsForecast(e as any)} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50">Forecast</button>
+            <button type="button" onClick={(e) => { if(!busy){ startAguiRun('forecast', 'Forecast next month’s spending.', month); } }} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50">Forecast</button>
             <button type="button" onClick={(e) => runAnalyticsAnomalies(e as any)} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50">Anomalies</button>
             <button type="button" onClick={(e) => runAnalyticsRecurring(e as any)} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50">Recurring</button>
             <button type="button" onClick={(e) => runAnalyticsBudgetSuggest(e as any)} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50">Budget suggest</button>
@@ -1627,6 +1786,28 @@ export default function ChatDock() {
           >
             Undo
           </button>
+        </div>
+      )}
+
+      {showSaveRuleModal && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/60">
+          <div className="w-[min(480px,92vw)] rounded-xl border border-neutral-700 bg-neutral-900 p-4 space-y-3 shadow-lg">
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-semibold">Save Rule</h2>
+              <button className="text-xs opacity-70 hover:opacity-100" onClick={()=> setShowSaveRuleModal(false)}>Close</button>
+            </div>
+            <div className="space-y-2">
+              <label className="block text-xs uppercase tracking-wide opacity-70">Scenario</label>
+              <textarea className="w-full text-sm rounded-md border border-neutral-700 bg-neutral-800 p-2 resize-none" rows={3} value={saveRuleScenario} onChange={e=> setSaveRuleScenario(e.target.value)} />
+              <label className="block text-xs uppercase tracking-wide opacity-70 mt-2">Thresholds (JSON)</label>
+              <textarea className="w-full text-xs font-mono rounded-md border border-neutral-700 bg-neutral-800 p-2" rows={4} value={saveRuleThresholds} onChange={e=> setSaveRuleThresholds(e.target.value)} />
+            </div>
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button className="text-xs px-3 py-1 rounded-md border border-neutral-700 hover:bg-neutral-800" onClick={()=> setShowSaveRuleModal(false)} disabled={savingRule}>Cancel</button>
+              <button className="text-xs px-3 py-1 rounded-md border border-blue-600 bg-blue-600 text-white disabled:opacity-50" onClick={()=> submitRule()} disabled={savingRule}>{savingRule ? 'Saving...' : 'Save Rule'}</button>
+            </div>
+            <p className="text-[11px] opacity-60 leading-snug">Demo: Attempts /agent/tools/rules/save then falls back to /agent/chat conversion.</p>
+          </div>
         </div>
       )}
 
