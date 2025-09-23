@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react"
 import { useDevUISoftStatus } from "@/state/useDevUI";
-import { GitBranch, Check, Rocket, ShieldCheck, Settings2, Wrench } from "lucide-react"
+import { GitBranch, Check, Rocket, ShieldCheck, Settings2, Wrench, Info } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -10,6 +10,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { getHealthz, type Healthz } from "@/lib/api"
+import Pill from "@/components/ui/pill"
 
 type Flags = {
   dev: boolean
@@ -34,6 +36,8 @@ type Props = {
 
 export default function DevBadge({ branch, commit, openDevDock, onToggleDevDock }: Props) {
   const [flags, setFlags] = useState<Flags>({ dev: true, ruleTester: true, mlSelftest: true, planner: true })
+  const [open, setOpen] = useState(false)
+  const [health, setHealth] = useState<Healthz | null>(null)
 
   useEffect(() => {
     setFlags({
@@ -52,8 +56,29 @@ export default function DevBadge({ branch, commit, openDevDock, onToggleDevDock 
   const reload = () => window.location.reload()
 
   const softStatus = useDevUISoftStatus();
+
+  // Fetch health when menu opens
+  useEffect(() => {
+    let alive = true
+    if (!open) return
+    ;(async () => {
+      try {
+        const h = await getHealthz()
+        if (!alive) return
+        setHealth(h)
+      } catch {
+        if (!alive) return
+        setHealth(null)
+      }
+    })()
+    return () => { alive = false }
+  }, [open])
+
+  const inSyncRaw = (health as any)?.alembic_ok ?? (health as any)?.alembic?.in_sync ?? null
+  const inSync: boolean | null = inSyncRaw === true ? true : inSyncRaw === false ? false : null
+
   return (
-    <DropdownMenu>
+    <DropdownMenu open={open} onOpenChange={setOpen}>
       <DropdownMenuTrigger asChild>
         <Button
           variant="secondary"
@@ -66,6 +91,19 @@ export default function DevBadge({ branch, commit, openDevDock, onToggleDevDock 
       </DropdownMenuTrigger>
 
       <DropdownMenuContent align="end" className="min-w-[220px]">
+        <DropdownMenuItem onClick={() => { try { window.dispatchEvent(new Event('about:open')) } catch {} }}>
+          <Info className="mr-2 h-4 w-4" />
+          <span className="flex-1">About (Health)</span>
+          <Pill
+            tone={inSync === true ? 'accent' : inSync === false ? 'default' : 'muted'}
+            size="xs"
+            className={inSync === false ? 'bg-amber-500/10 border-amber-500/30 text-amber-300' : ''}
+          >
+            {inSync === true ? 'DB ok' : inSync === false ? 'DB out' : 'Unknown'}
+          </Pill>
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+
         {onToggleDevDock && (
           <DropdownMenuItem onClick={onToggleDevDock}>
             <Wrench className="mr-2 h-4 w-4" />

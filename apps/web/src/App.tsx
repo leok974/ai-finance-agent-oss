@@ -24,6 +24,7 @@ import TopEmptyBanner from "./components/TopEmptyBanner";
 // import MLStatusCard from "./components/MLStatusCard"; // rendered only inside DevDock
 import NetActivityBlip from "@/components/NetActivityBlip";
 import LoginForm from "@/components/LoginForm";
+import AccountMenu from "@/components/AccountMenu";
 import { useAuth } from "@/state/auth";
 // import AgentChat from "./components/AgentChat"; // legacy chat bubble disabled
 import { setGlobalMonth } from "./state/month";
@@ -35,7 +36,9 @@ import DevBadge from "@/components/dev/DevBadge";
 import HelpMode from "@/components/HelpMode";
 import HelpExplainListener from "@/components/HelpExplainListener";
 import ForecastCard from "@/components/ForecastCard";
-import TransactionsPanel from "@/components/TransactionsPanel";
+import TransactionsDrawer from "@/components/TransactionsDrawer";
+import TransactionsButton from "@/components/header/TransactionsButton";
+import MonthPicker from "@/components/header/MonthPicker";
 import DevMenuItem from "@/components/DevMenuItem";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuLabel, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
@@ -109,7 +112,7 @@ const App: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const { user, authReady } = useAuth();
+  const { user, authReady, logout } = useAuth();
   const authOk = !!user;
   // Load dashboard data whenever month changes (only when authenticated)
   useEffect(() => {
@@ -193,8 +196,7 @@ const App: React.FC = () => {
   <header className="flex items-center justify-between">
           <h1 className="text-3xl font-bold">Finance Agent</h1>
           <div className="flex items-center gap-3">
-            <LoginForm />
-            <AboutDrawer />
+            <AboutDrawer showButton={false} />
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
@@ -211,15 +213,8 @@ const App: React.FC = () => {
                 <DevMenuItem />
               </DropdownMenuContent>
             </DropdownMenu>
-            <button
-              onClick={() => setTxPanelOpen(true)}
-              className="inline-flex items-center gap-2 rounded-2xl border px-3 py-1.5 text-sm bg-card border-border hover:bg-accent/20 transition"
-              title="Open Transactions"
-            >
-              Transactions
-            </button>
-            <input type="month" className="bg-neutral-900 border border-neutral-800 rounded px-3 py-2" value={month} onChange={e=>{ setMonth(e.target.value); setGlobalMonth(e.target.value); }} />
-            <a href="#rule-suggestions" className="btn btn-ghost btn-sm" title="Jump to persistent Rule Suggestions">Suggestions</a>
+            <TransactionsButton open={txPanelOpen} onOpen={() => setTxPanelOpen(true)} />
+            <MonthPicker value={month} onChange={(m)=>{ setMonth(m); setGlobalMonth(m); }} />
             {flags.dev && (
               <DevBadge
                 // show branch/commit if available via globals
@@ -230,6 +225,9 @@ const App: React.FC = () => {
                   const next = !devDockOpen; setDevDockOpen(next); try { localStorage.setItem('DEV_DOCK', next ? '1' : '0'); } catch {}
                 }}
               />
+            )}
+            {authOk && (
+              <AccountMenu email={user?.email} onLogout={logout} />
             )}
           </div>
         </header>
@@ -300,18 +298,7 @@ const App: React.FC = () => {
         </div>
       </div>
   </div>
-      {txPanelOpen && (
-        <div className="fixed inset-0 z-50 flex">
-          <div className="absolute inset-0 bg-black/50" onClick={() => setTxPanelOpen(false)} />
-          <div className="ml-auto h-full w-full max-w-5xl bg-background border-l border-border p-4 overflow-auto">
-            <div className="flex items-center justify-between mb-2">
-              <div className="text-lg font-semibold">Transactions</div>
-              <button className="text-sm opacity-70 hover:opacity-100" onClick={() => setTxPanelOpen(false)}>Close</button>
-            </div>
-            <TransactionsPanel />
-          </div>
-        </div>
-      )}
+      <TransactionsDrawer open={txPanelOpen} onClose={() => setTxPanelOpen(false)} />
   </ChatDockProvider>
     </MonthContext.Provider>
   );

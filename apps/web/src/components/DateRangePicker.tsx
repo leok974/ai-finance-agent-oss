@@ -56,12 +56,13 @@ export default function DateRangePicker({ value, onChange, align = "end" }: Prop
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button
-          variant="secondary"
-          className="rounded-full h-7 px-3 text-xs"
+          variant="pill"
+          size="sm"
+          className="h-8 px-3 text-xs gap-2"
           aria-label={label}
         >
-          <span className="mr-2 inline-block h-2 w-2 rounded-full bg-emerald-500" />
-          {label}
+          <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" />
+          <span>{label}</span>
         </Button>
       </PopoverTrigger>
       <PopoverContent align={align} className="w-[280px] p-3 space-y-3">
@@ -86,14 +87,17 @@ export default function DateRangePicker({ value, onChange, align = "end" }: Prop
         {err ? <p className="text-xs text-destructive">{err}</p> : null}
         <div className="flex justify-end gap-2 pt-1">
           <Button
-            variant="secondary"
-            className="h-8 px-3 text-sm rounded-lg"
+            variant="pill"
+            size="sm"
+            className="h-8 px-3 text-sm"
             onClick={clear}
           >
             Clear
           </Button>
           <Button
-            className="h-8 px-3 text-sm rounded-lg"
+            variant="pill"
+            size="sm"
+            className="h-8 px-3 text-sm"
             onClick={apply}
           >
             Apply

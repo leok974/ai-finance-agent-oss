@@ -159,6 +159,7 @@
   --bg-card:       #0f0f13;   /* cards/panels */
   --bg-card-alt:   #141419;   /* zebra rows / subtler blocks */
   --bg-elevated:   #0f0f13;   /* modals, dock */
+  --panel:         26 28 33;  /* brighter elevated panel (drawer, explain) */
 
   /* borders & grid lines */
   --border-subtle: #2f3037;   /* neutral-700ish */
@@ -275,6 +276,11 @@ body { @apply bg-neutral-950 text-neutral-100; }
   /* container that fades out after completion */
   @keyframes agui-fade-away { 0% { opacity:1 } 80% { opacity:1 } 100% { opacity:0 } }
   .agui-ribbon-fade { animation: agui-fade-away 5.5s forwards; }
+}
+
+/* Optional: brighten grid lines slightly in transactions drawer */
+.transactions-drawer .table {
+  --tw-border-opacity: 0.2;
 }
 
 

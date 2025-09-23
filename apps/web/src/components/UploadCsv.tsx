@@ -5,6 +5,8 @@ import { ToastAction } from "@/components/ui/toast";
 import { scrollToId } from "@/lib/scroll";
 import { useMonth } from "../context/MonthContext";
 import Card from "./Card";
+import { Button } from "@/components/ui/button";
+import { Upload } from "lucide-react";
 
 type UploadResult = {
   ok: boolean;
@@ -188,14 +190,15 @@ const UploadCsv: React.FC<UploadCsvProps> = ({ onUploaded, defaultReplace = true
         </label>
 
         <div className="mt-4 flex items-center justify-end">
-          <button
-            type="button"
-            disabled={disabled}
+          <Button
+            variant="pill"
             onClick={doUpload}
-            className="btn"
+            disabled={disabled}
+            className="gap-2 px-3.5 h-9"
           >
+            <Upload className="h-4 w-4" />
             {busy ? "Uploading…" : "Upload CSV"}
-          </button>
+          </Button>
         </div>
 
         {/* Progress / Result */}

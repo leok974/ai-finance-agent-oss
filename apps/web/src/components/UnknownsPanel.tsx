@@ -26,6 +26,7 @@ export default function UnknownsPanel({ month, onSeedRule, onChanged, refreshKey
   const [learned, setLearned] = useState<Record<number, boolean>>({})
   const [explainOpen, setExplainOpen] = useState(false)
   const [explainTxnId, setExplainTxnId] = useState<number | null>(null)
+  const [explainTxn, setExplainTxn] = useState<any | null>(null)
   // One shared timer for all unknowns refresh requests across this tab
   const scheduleUnknownsRefresh = useCoalescedRefresh('unknowns-refresh', () => refresh(), 450)
 
@@ -146,7 +147,7 @@ export default function UnknownsPanel({ month, onSeedRule, onChanged, refreshKey
               </Tooltip>
               <button
                 className="px-2 py-1 rounded-md border border-border hover:bg-accent/10"
-                onClick={() => { setExplainTxnId(tx.id); setExplainOpen(true); }}
+                onClick={() => { setExplainTxnId(tx.id); setExplainTxn(tx); setExplainOpen(true); }}
               >
                 Explain
               </button>
@@ -160,7 +161,7 @@ export default function UnknownsPanel({ month, onSeedRule, onChanged, refreshKey
           </li>
         ))}
       </ul>
-      <ExplainSignalDrawer txnId={explainTxnId} open={explainOpen} onOpenChange={setExplainOpen} />
+  <ExplainSignalDrawer txnId={explainTxnId} txn={explainTxn} open={explainOpen} onOpenChange={(v)=>{ setExplainOpen(v); if(!v){ setExplainTxnId(null); setExplainTxn(null);} }} />
       </Card>
     </section>
   )

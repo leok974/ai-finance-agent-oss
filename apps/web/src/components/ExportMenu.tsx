@@ -50,8 +50,15 @@ export default function ExportMenu({ month }: Props) {
       {/* Export dropdown */}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button disabled={!!busy} className="rounded-2xl" aria-label={rangeActive ? `Export (range ${rangeLabel})` : "Export"}>
-            <Download className="mr-2 h-4 w-4" /> Export
+          <Button
+            variant="pill"
+            size="sm"
+            disabled={!!busy}
+            className="gap-2 px-3.5 h-9"
+            aria-label={rangeActive ? `Export (range ${rangeLabel})` : "Export"}
+          >
+            <Download className="h-4 w-4" />
+            <span>Export</span>
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="min-w-[240px]">

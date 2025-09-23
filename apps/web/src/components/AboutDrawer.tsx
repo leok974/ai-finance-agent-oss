@@ -10,7 +10,8 @@ const Row = ({ label, value }: RowProps) => (
   </div>
 );
 
-export default function AboutDrawer() {
+type AboutDrawerProps = { showButton?: boolean };
+export default function AboutDrawer({ showButton = true }: AboutDrawerProps) {
   const [open, setOpen] = React.useState(false);
   const [data, setData] = React.useState<MetaInfo | null>(null);
   const [health, setHealth] = React.useState<Healthz | null>(null);
@@ -33,8 +34,16 @@ export default function AboutDrawer() {
     if (open && !data && !health && !loading && !error) { load(); }
   }, [open, data, health, loading, error, load]);
 
+  // Support global open event
+  React.useEffect(() => {
+    const openEvt = () => setOpen(true)
+    window.addEventListener('about:open', openEvt)
+    return () => window.removeEventListener('about:open', openEvt)
+  }, [])
+
   const dbRevFromHealth = health?.db_revision ?? health?.alembic?.db_revision ?? null;
-  const inSync = data?.alembic?.in_sync ?? (dbRevFromHealth ? (data?.alembic?.code_heads ?? []).includes(dbRevFromHealth) : undefined);
+  const inSyncRaw = (health as any)?.alembic_ok ?? (health as any)?.alembic?.in_sync ?? null;
+  const inSync: boolean | null = (inSyncRaw === true) ? true : (inSyncRaw === false) ? false : null;
   const head = data?.alembic?.code_head ?? null;
   const heads = data?.alembic?.code_heads ?? [];
   const migs = data?.alembic?.recent_migrations ?? [];
@@ -42,15 +51,17 @@ export default function AboutDrawer() {
 
   return (
     <>
-      <button
-        onClick={() => setOpen(true)}
-        className="inline-flex items-center gap-2 rounded-2xl border px-3 py-1.5 text-sm
-                   bg-card border-border hover:bg-accent/20 transition"
-        title="About / System Info"
-      >
-        <Info className="h-4 w-4" />
-        About
-      </button>
+      {showButton && (
+        <button
+          onClick={() => setOpen(true)}
+          className="inline-flex items-center gap-2 rounded-2xl border px-3 py-1.5 text-sm
+                     bg-card border-border hover:bg-accent/20 transition"
+          title="About / System Info"
+        >
+          <Info className="h-4 w-4" />
+          About
+        </button>
+      )}
 
       {open && (
         <div className="fixed inset-0 z-50 flex">
@@ -86,11 +97,16 @@ export default function AboutDrawer() {
                   </div>
                 )}
                 <div className="flex items-center gap-2">
-                  <span className={`inline-flex items-center gap-2 text-xs font-medium px-2 py-0.5 rounded-2xl border
-                    ${inSync ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30'
-                             : 'bg-amber-500/10 text-amber-300 border-amber-500/30'}`}>
+                  <span
+                    className={[
+                      'inline-flex items-center gap-2 text-xs font-medium px-2 py-0.5 rounded-2xl border',
+                      inSync === true ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30' :
+                      inSync === false ? 'bg-amber-500/10 text-amber-300 border-amber-500/30' :
+                                         'bg-zinc-700/20 text-zinc-300 border-zinc-600/30'
+                    ].join(' ')}
+                  >
                     <span className="w-2 h-2 rounded-full border border-current" />
-                    {inSync ? 'DB in sync' : 'DB out of sync'}
+                    {inSync === true ? 'DB ok' : inSync === false ? 'DB out of sync' : 'DB status unknown'}
                   </span>
                 </div>
 
@@ -98,7 +114,7 @@ export default function AboutDrawer() {
                   <Row label="Engine" value={<code>{data.engine}</code>} />
                   <Row label="DB revision (healthz)" value={<code>{dbRevFromHealth || '—'}</code>} />
                   <Row label="Code head" value={<code>{head || '—'}</code>} />
-                  <Row label="All heads" value={<code>{heads?.join(', ') || '—'}</code>} />
+                  <Row label="All heads" value={<code>{heads?.length ? heads.join(', ') : '—'}</code>} />
                 </div>
 
                 <div className="mt-2">

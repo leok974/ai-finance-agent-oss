@@ -198,8 +198,9 @@ new Elysia()
               : "Here’s what I found.");
 
           const chunks = text.match(/.{1,120}(\s|$)/g) ?? [text];
+          const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
           for (const c of chunks) {
-            await Bun.sleep(18);
+            await sleep(18);
             push({ type: 'TEXT_MESSAGE_CONTENT', data: { text: c } });
           }
         } catch (e: any) {
