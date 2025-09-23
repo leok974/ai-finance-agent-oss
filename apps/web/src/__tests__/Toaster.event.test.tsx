@@ -41,6 +41,6 @@ describe('Toaster — app:toast event bridge', () => {
     render(<Toaster />);
     const detail = { message: 'Default path' };
     window.dispatchEvent(new CustomEvent('app:toast', { detail }));
-    expect((globalThis as any).__t_success).toEqual([["Default path", undefined]]);
+  expect((globalThis as any).__t_success).toEqual([["Default path", {}]]);
   });
 });

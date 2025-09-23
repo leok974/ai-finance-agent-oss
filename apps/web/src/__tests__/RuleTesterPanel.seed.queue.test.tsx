@@ -6,9 +6,7 @@ import React from 'react';
 
 // Provide deterministic crypto for idempotency key path if triggered
 beforeEach(() => {
-  // Provide stub crypto
-  // @ts-ignore
-  globalThis.crypto = { randomUUID: () => '11111111-1111-4111-8111-111111111111' };
+  // No crypto override needed
   // Clean globals
   // @ts-ignore
   delete window.__openRuleTester;
@@ -33,6 +31,7 @@ vi.mock('@/api', () => ({
 vi.mock('@/lib/toast-helpers', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
 import RuleTesterPanel from '@/components/RuleTesterPanel';
+import { TooltipProvider } from '@radix-ui/react-tooltip';
 
 /*
   This test simulates a seed arriving before the panel mounts by priming window.__pendingRuleSeed.
@@ -41,7 +40,7 @@ import RuleTesterPanel from '@/components/RuleTesterPanel';
 
 describe('RuleTesterPanel queued seed consumption', () => {
   it('opens and populates from __pendingRuleSeed on first mount', async () => {
-    render(<RuleTesterPanel />);
+  render(<TooltipProvider><RuleTesterPanel /></TooltipProvider>);
 
     // The panel renders as a portal overlay when open: look for heading
     const heading = await screen.findByRole('heading', { name: /rule tester/i });

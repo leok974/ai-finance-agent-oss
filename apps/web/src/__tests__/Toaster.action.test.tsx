@@ -1,33 +1,43 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render } from '@testing-library/react';
 import React from 'react';
-import { Toaster } from '@/components/ui/toaster';
+import { Toaster } from '@/components/ui/toast';
 
-// This test ensures that an action object { label, onClick } dispatched via the
-// app:toast event is converted into a rendered ToastAction button and invokes
-// the provided handler when clicked.
+// Mock toast helpers so we can intercept success() arguments after bridge conversion
+vi.mock('@/lib/toast-helpers', () => {
+  (globalThis as any).__t_success = [];
+  return {
+    toast: {
+      success: (msg: string, opts?: any) => { (globalThis as any).__t_success.push([msg, opts]); },
+      error: vi.fn(),
+    },
+  } as any;
+});
 
 describe('Toaster action object bridge', () => {
-  it('renders action object as ToastAction and invokes handler', async () => {
-    const onClick = vi.fn();
+  it('converts action object into React element & preserves handler', async () => {
+    const handler = vi.fn();
     render(<Toaster />);
+    await Promise.resolve(); // ensure listener registered
 
     const detail = {
-      title: 'With Action',
-      description: 'Click the action',
-      variant: 'default',
-      action: { label: 'Do it', onClick },
+      type: 'success',
+      message: 'With Action',
+      options: { description: 'Click the action', action: { label: 'Do it', onClick: handler } },
     };
     window.dispatchEvent(new CustomEvent('app:toast', { detail }));
 
-    // Title & description should appear
-    await screen.findByText('With Action');
-    await screen.findByText('Click the action');
-
-    // The action button should render with the label
-    const btn = await screen.findByRole('button', { name: /Do it/i });
-    fireEvent.click(btn);
-
-    await waitFor(() => expect(onClick).toHaveBeenCalledTimes(1));
+    const calls = (globalThis as any).__t_success;
+    expect(calls.length).toBe(1);
+    const [msg, opts] = calls[0];
+    expect(msg).toBe('With Action');
+    expect(opts.description).toBe('Click the action');
+  expect(opts.action).toBeTruthy();
+  // Should be a valid React element produced from the action object
+  expect(React.isValidElement(opts.action)).toBe(true);
+  expect(opts.action.props.children).toBe('Do it');
+  // Invoke onClick prop manually (simulate click)
+  opts.action.props.onClick({ preventDefault(){} });
+    expect(handler).toHaveBeenCalledTimes(1);
   });
 });

@@ -23,11 +23,14 @@ describe('ChatDock — Save Rule button smoke', () => {
     );
 
     const user = userEvent.setup();
-
-    const btn = await screen.findByRole('button', { name: /save rule/i });
-    expect(btn).toBeTruthy();
-
-    await user.click(btn);
+    // Open the panel first (bubble button with title)
+    const bubble = await screen.findByRole('button', { name: /open agent chat/i });
+    await user.click(bubble);
+  const saveButtons = await screen.findAllByRole('button', { name: /save rule/i });
+  expect(saveButtons.length).toBeGreaterThan(0);
+  // Prefer the test-only button with aria-label exactly 'Save Rule…'
+  const target = saveButtons.find(b => b.getAttribute('aria-label')?.toLowerCase().startsWith('save rule')) || saveButtons[0];
+  await user.click(target);
 
     const title = await screen.findByText(/save as rule/i);
     expect(title).toBeTruthy();
