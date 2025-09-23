@@ -181,11 +181,9 @@ export default function ChatDock() {
   React.useEffect(()=>{ aguiToolsRef.current = aguiTools; }, [aguiTools]);
   // Track last what-if scenario text for rule saving
   const lastWhatIfScenarioRef = useRef<string>("");
-  // Save Rule modal state
+  // Save Rule modal state (new component)
   const [showSaveRuleModal, setShowSaveRuleModal] = useState(false);
   const [saveRuleScenario, setSaveRuleScenario] = useState("");
-  const [saveRuleThresholds, setSaveRuleThresholds] = useState("{}");
-  const [savingRule, setSavingRule] = useState(false);
   const [aguiRunActive, setAguiRunActive] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -1246,32 +1244,11 @@ export default function ChatDock() {
     });
   }, [appendAssistant, appendUser, callTransactionsNl]);
 
-  // Handle suggestion chip actions from SUGGESTIONS SSE
-  async function submitRule() {
-    setSavingRule(true);
-    try {
-      let thresholds: any = {};
-      try { thresholds = JSON.parse(saveRuleThresholds || '{}'); } catch {}
-      const body = { scenario: saveRuleScenario, month, thresholds };
-      let ok = false;
-      try {
-        const resp = await fetch('/agent/tools/rules/save', { method:'POST', headers:{'Content-Type':'application/json'}, credentials:'include', body: JSON.stringify(body) });
-        ok = resp.ok;
-        if (!ok) {
-          // Fallback demo conversion via agent chat
-          const demo = await fetch('/agent/chat', { method:'POST', headers:{'Content-Type':'application/json'}, credentials:'include', body: JSON.stringify({ messages:[{ role:'system', content:'Convert scenario text into a minimal JSON rule with keys merchant/category/amount_threshold if applicable.'},{ role:'user', content: saveRuleScenario }] }) });
-          ok = demo.ok;
-        }
-      } catch {}
-      appendAssistant(ok ? 'Rule saved.' : 'Rule save failed.', { ctxMonth: month });
-      setShowSaveRuleModal(false);
-    } finally { setSavingRule(false); }
-  }
+  // Legacy inline submit removed; new SaveRuleModal handles validation + save
   function handleSuggestionChip(chip: { label: string; action: string; source?: string }) {
     const normLabel = chip.label.trim().toLowerCase();
     if (/^save\s+as\s+rule$/.test(normLabel) || /save\s+rule/.test(normLabel)) {
       setSaveRuleScenario(lastWhatIfScenarioRef.current || chip.label || '');
-      setSaveRuleThresholds('{}');
       setShowSaveRuleModal(true);
       return;
     }
@@ -1288,7 +1265,6 @@ export default function ChatDock() {
         break;
       case 'save_rule':
         setSaveRuleScenario(lastWhatIfScenarioRef.current || chip.label || '');
-        setSaveRuleThresholds('{"amount_threshold":0}');
         setShowSaveRuleModal(true);
         break;
       default:
@@ -1797,30 +1773,7 @@ export default function ChatDock() {
         </div>
       )}
 
-      {showSaveRuleModal && (
-        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/60">
-          <div className="w-[min(480px,92vw)] rounded-xl border border-neutral-700 bg-neutral-900 p-4 space-y-3 shadow-lg">
-            <div className="flex items-center justify-between">
-              <h2 className="text-sm font-semibold">Save Rule</h2>
-              <button className="text-xs opacity-70 hover:opacity-100" onClick={()=> setShowSaveRuleModal(false)}>Close</button>
-            </div>
-            <div className="space-y-2">
-              <label className="block text-xs uppercase tracking-wide opacity-70">Scenario</label>
-              <textarea className="w-full text-sm rounded-md border border-neutral-700 bg-neutral-800 p-2 resize-none" rows={3} value={saveRuleScenario} onChange={e=> setSaveRuleScenario(e.target.value)} />
-              <label className="block text-xs uppercase tracking-wide opacity-70 mt-2">Thresholds (JSON)</label>
-              <textarea className="w-full text-xs font-mono rounded-md border border-neutral-700 bg-neutral-800 p-2" rows={4} value={saveRuleThresholds} onChange={e=> setSaveRuleThresholds(e.target.value)} />
-            </div>
-            <div className="flex items-center justify-end gap-2 pt-2">
-              <button className="text-xs px-3 py-1 rounded-md border border-neutral-700 hover:bg-neutral-800" onClick={()=> setShowSaveRuleModal(false)} disabled={savingRule}>Cancel</button>
-              <button className="text-xs px-3 py-1 rounded-md border border-blue-600 bg-blue-600 text-white disabled:opacity-50" onClick={()=> submitRule()} disabled={savingRule}>{savingRule ? 'Saving...' : 'Save Rule'}</button>
-            </div>
-            <p className="text-[11px] opacity-60 leading-snug">Demo: Attempts /agent/tools/rules/save then falls back to /agent/chat conversion.</p>
-          </div>
-        </div>
-      )}
-
-  {/* New structured SaveRuleModal (parallel to legacy JSON modal for now) */}
-  <SaveRuleModal open={false} onOpenChange={()=>{}} month={month} scenario={lastWhatIfScenarioRef.current} />
+      <SaveRuleModal open={showSaveRuleModal} onOpenChange={setShowSaveRuleModal} month={month} scenario={saveRuleScenario} />
 
       {/* Composer - textarea with Enter to send, Shift+Enter newline */}
       <div className="p-3 border-t bg-background sticky bottom-0 z-10 flex items-end gap-2">
