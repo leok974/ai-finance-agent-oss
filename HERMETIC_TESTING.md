@@ -181,3 +181,37 @@ All tests now pass with:
 - ✅ Complete coverage of all features
 
 The agent chat system is now production-ready with comprehensive, fast, and reliable test coverage! 🎉
+
+## 🔗 Integration Marker (`@pytest.mark.integration`)
+
+While most hermetic tests isolate a single endpoint with mocks, we introduced an `integration` marker for lightweight, end‑to‑end flows that exercise multiple real routes together without external services.
+
+### Current Example
+- `test_unknowns_categorize_pipeline` — verifies the ingest → unknown detection → categorize → disappearance lifecycle.
+
+### When to Use
+- You need to confirm a minimal cross-endpoint contract (e.g., create → mutate → query) still holds.
+- Pure unit or single-endpoint tests would miss state transitions spanning multiple routers or DB side‑effects.
+
+### When NOT to Use
+- Long‑running analytics / forecasting / ML experiments (use `ml` or `slow`).
+- Anything requiring external APIs or network (keep hermetic discipline).
+
+### Running Only Integration Flows
+```bash
+pytest -m integration -q
+```
+
+### Adding a New Integration Test
+1. Keep it under ~200 lines and <1s runtime.
+2. Avoid sleeps / polling loops—interact directly with the DB if needed for setup.
+3. Prefer explicit assertions on final state rather than repeating unit assertions already covered elsewhere.
+4. Tag with:
+```python
+@pytest.mark.integration
+def test_new_flow(...):
+    ...
+```
+
+### Philosophy
+Small, surgical integration tests provide confidence that core lifecycle invariants still hold—without devolving into slow, brittle full‑stack suites.
