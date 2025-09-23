@@ -215,3 +215,34 @@ def test_new_flow(...):
 
 ### Philosophy
 Small, surgical integration tests provide confidence that core lifecycle invariants still hold—without devolving into slow, brittle full‑stack suites.
+
+## 🧹 Legacy ML Test Removal & Forecast Hardening (Sept 2025)
+
+### Removed Legacy Files
+The following legacy `/ml/*` endpoint tests were fully skipped and have now been deleted to reduce noise and maintenance overhead:
+- `tests/test_ml_unknown_regression_canary.py`
+- `tests/test_ml_unknown_excluded.py`
+- `tests/test_ml_unknown_filtering_ingest.py`
+
+**Rationale**:
+- The `/ml/*` endpoints they targeted were replaced by `/agent/tools/*` flows.
+- File‑level `pytestmark = skip(...)` meant the code inside never executed (dead weight).
+- Canary + exclusion logic is superseded by newer categorization and integration tests (see `test_unknowns_categorize_pipeline`).
+
+### SARIMAX Forecast Test Stabilization
+Changes applied to keep the forecasting path deterministic and warning‑light:
+- Added explicit `DateTimeIndex` with `freq=MS` for net series to avoid frequency inference warnings.
+- Implemented dynamic seasonal disable when history length < full seasonal period.
+- Added NaN/Inf sanitation + minimal jitter if the raw SARIMAX forecast degenerates to a constant (avoids falling back silently to EMA while still signaling variability).
+- Simplified and bounded synthetic seed data to 18 months with mild seasonality (earlier 36/24 month variants created unnecessary parameter estimation churn & warnings).
+
+### Current Warning Posture
+- Remaining statsmodels warnings are filtered in `pytest.ini` (targeted patterns only) to keep actionable application warnings visible.
+- Total warning count stabilized (post‑cleanup) without masking potential future regressions in application code.
+
+### Guidance Going Forward
+- Prefer adding focused integration tests (tagged `@pytest.mark.integration`) over re‑introducing broad legacy ML suites.
+- When adding new statistical or ML tests, keep seeds small, explicit, and deterministic; clamp or sanitize model outputs before JSON serialization.
+- Treat any newly unfiltered statsmodels warning as a prompt to either (a) stabilize input data, or (b) deliberately filter with justification in `pytest.ini`.
+
+---
