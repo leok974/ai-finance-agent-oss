@@ -104,7 +104,9 @@ async def save_rule(
     if idempotency_key:
         hit = _IDEM.get(idempotency_key)
         if hit:
-            return SaveRuleResponse(**hit, idempotency_reused=True)
+            hit2 = dict(hit)
+            hit2["idempotency_reused"] = True
+            return SaveRuleResponse(**hit2)
 
     rule = payload.rule
     if rule is None and payload.scenario:
@@ -143,6 +145,7 @@ async def save_rule(
         resp = SaveRuleResponse(ok=True, id=rid, display_name=display, source="json", ack=ack)
 
     if idempotency_key:
-        _IDEM.put(idempotency_key, resp.dict())
+        # Exclude idempotency_reused so we can override cleanly on reuse
+        _IDEM.put(idempotency_key, resp.dict(exclude={"idempotency_reused"}))
 
     return resp

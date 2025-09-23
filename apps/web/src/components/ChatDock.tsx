@@ -184,6 +184,8 @@ export default function ChatDock() {
   // Save Rule modal state (new component)
   const [showSaveRuleModal, setShowSaveRuleModal] = useState(false);
   const [saveRuleScenario, setSaveRuleScenario] = useState("");
+  // Test-only toggle to expose a deterministic Save Rule button in smoke tests
+  const forceSaveRuleButton = typeof window !== 'undefined' && (window as any).__FORCE_SAVE_RULE_BUTTON__ === true;
   const [aguiRunActive, setAguiRunActive] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -1833,6 +1835,23 @@ export default function ChatDock() {
       >
         Save Rule…
       </button>
+
+      {/* Test-only manual button (not fixed position) for lightweight smoke test */}
+      {forceSaveRuleButton && (
+        <div className="absolute top-2 right-2 z-40">
+          <button
+            type="button"
+            aria-label="Save Rule…"
+            className="px-3 py-1 text-xs rounded-md border bg-background hover:bg-muted"
+            onClick={() => {
+              setSaveRuleScenario(lastWhatIfScenarioRef.current || '');
+              setShowSaveRuleModal(true);
+            }}
+          >
+            Save Rule…
+          </button>
+        </div>
+      )}
 
       {/* Composer - textarea with Enter to send, Shift+Enter newline */}
       <div className="p-3 border-t bg-background sticky bottom-0 z-10 flex items-end gap-2">
