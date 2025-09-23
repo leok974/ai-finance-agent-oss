@@ -16,6 +16,7 @@ import { useChatDockStore } from "./stores/chatdock";
 import DevDock from "@/components/dev/DevDock";
 import PlannerDevPanel from "@/components/dev/PlannerDevPanel";
 import RuleTesterPanel from "@/components/RuleTesterPanel";
+import { isDevUIEnabled, setDevUIEnabled, useDevUI } from "@/state/useDevUI";
 import MLStatusCard from "@/components/MLStatusCard";
 import { ChatDockProvider } from "./context/ChatDockContext";
 import ChartsPanel from "./components/ChartsPanel";
@@ -43,6 +44,7 @@ console.info("[Web] branch=", __WEB_BRANCH__, "commit=", __WEB_COMMIT__);
 
 const App: React.FC = () => {
   const [devDockOpen, setDevDockOpen] = useState<boolean>(() => (import.meta as any).env?.VITE_DEV_UI === '1' || localStorage.getItem('DEV_DOCK') !== '0');
+  const devUI = useDevUI();
   const [month, setMonth] = useState<string>("");
   const [ready, setReady] = useState<boolean>(false);
   const [refreshKey, setRefreshKey] = useState<number>(0);
@@ -56,7 +58,7 @@ const App: React.FC = () => {
   const [dbRev, setDbRev] = useState<string | null>(null);
   const [inSync, setInSync] = useState<boolean | undefined>(undefined);
 
-  // Quick keyboard toggle for Dev UI: Ctrl+Shift+D
+  // Quick keyboard toggle for legacy Dev UI key: Ctrl+Shift+D
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       try {
@@ -69,6 +71,19 @@ const App: React.FC = () => {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  // New lightweight dev UI toggle: Ctrl+Alt+D (uses fa.dev flag only)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.altKey && e.key.toLowerCase() === 'd') {
+        const next = !isDevUIEnabled();
+        setDevUIEnabled(next);
+        location.reload();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
   }, []);
 
   // Initialize month once
@@ -203,8 +218,8 @@ const App: React.FC = () => {
             )}
           </div>
         </header>
-        {/* Global mount of RuleTesterPanel (portal overlay) */}
-        <RuleTesterPanel />
+  {/* Global mount of RuleTesterPanel (portal overlay) gated by dev flag */}
+  {devUI && <RuleTesterPanel />}
 
         {!bannerDismissed && empty && (
           <TopEmptyBanner dbRev={dbRev ?? undefined} inSync={inSync} onDismiss={() => setBannerDismissed(true)} />
@@ -250,7 +265,7 @@ const App: React.FC = () => {
         <div className="section">
           <div className="grid gap-6 lg:grid-cols-2">
             <RulesPanel refreshKey={refreshKey} />
-            {flags.ruleTester ? <RuleTesterPanel /> : <div className="hidden lg:block" />}
+            {(devUI && flags.ruleTester) ? <RuleTesterPanel /> : <div className="hidden lg:block" />}
             {flags.mlSelftest ? (
               <div className="lg:col-span-2">
                 <MLStatusCard />
