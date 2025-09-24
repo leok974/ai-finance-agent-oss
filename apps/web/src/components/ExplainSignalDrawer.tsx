@@ -51,7 +51,7 @@ export default function ExplainSignalDrawer({ txnId, open, onOpenChange, txn }: 
   if (!open) return null;
   const fallbackHtml = buildDeterministicExplain(txn, data?.evidence, rationale);
   return ReactDOM.createPortal(
-    <div className="fixed inset-0 z-[9998]" aria-modal role="dialog" data-testid="explain-drawer">
+    <div className="fixed inset-0 z-[9900]" aria-modal role="dialog" data-testid="explain-drawer">
       <div className="absolute inset-0 bg-black/70 backdrop-blur-[2px]" onClick={() => onOpenChange(false)} />
       <aside className="absolute right-0 top-0 h-full w-full max-w-[460px] bg-[rgb(var(--panel))] text-zinc-100 ring-1 ring-white/10 shadow-2xl border-l border-white/5 z-[1] overflow-y-auto">
         <header className="sticky top-0 bg-[rgb(var(--panel))]/95 backdrop-blur px-4 py-3 border-b border-white/5">

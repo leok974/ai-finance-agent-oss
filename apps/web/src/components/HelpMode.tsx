@@ -1,6 +1,7 @@
 import * as React from "react";
 import { createPortal } from "react-dom";
 import { useExplain } from "@/hooks/useExplain";
+import HelpLayer from "@/features/help/HelpLayer";
 
 export default function HelpMode() {
   const [on, setOn] = React.useState(false);
@@ -40,26 +41,17 @@ export default function HelpMode() {
 
   React.useEffect(() => {
     if (!on) return;
-    // Add halo classes
-    const nodes = Array.from(document.querySelectorAll("[data-explain-key]")) as HTMLElement[];
-    nodes.forEach((el) => el.classList.add("ring-2","ring-blue-400","rounded-lg","relative"));
-    // Click-to-explain: delegate at document level
     const onClick = (e: MouseEvent) => {
-      const t = e.target as HTMLElement | null;
-      const el = t?.closest?.("[data-explain-key]") as HTMLElement | null;
-      if (!el || !document.body.contains(el)) return;
-      const key = el.getAttribute("data-explain-key") || "";
-      const monthAttr = el.getAttribute("data-month") || undefined;
+      const el = (e.target as HTMLElement)?.closest?.("[data-help-target]") as HTMLElement | null;
+      if (!el) return;
+      const key = el.getAttribute("data-explain-key") || el.getAttribute("data-help-target") || "";
+      const monthAttr = el.getAttribute("data-month") || el.getAttribute("data-help-id") || undefined;
       window.dispatchEvent(new CustomEvent("help-mode:explain", { detail: { key, month: monthAttr } }));
       e.preventDefault();
       e.stopPropagation();
     };
     document.addEventListener("click", onClick, true);
-    return () => {
-      // cleanup
-      nodes.forEach((el) => el.classList.remove("ring-2","ring-blue-400","rounded-lg","relative"));
-      document.removeEventListener("click", onClick, true);
-    };
+    return () => { document.removeEventListener("click", onClick, true); };
   }, [on]);
 
   React.useEffect(() => {
@@ -73,10 +65,10 @@ export default function HelpMode() {
 
   return createPortal(
     <div className="fixed inset-0 z-[60] pointer-events-none" aria-hidden={false}>
-      <div className="absolute inset-0 bg-background/50 backdrop-blur-sm" />
+      <HelpLayer active={on} />
       <div
         ref={dialogRef}
-        className="pointer-events-auto fixed bottom-4 right-4 rounded-xl border bg-background p-3 shadow-xl"
+        className="pointer-events-auto fixed bottom-4 right-4 rounded-xl border bg-background p-3 shadow-xl z-[9600]"
         role="dialog"
         aria-modal="true"
         tabIndex={-1}
