@@ -1,4 +1,5 @@
 import React from 'react';
+import { pillIconClass } from '@/components/ui/button';
 
 type InfoDotProps = React.ButtonHTMLAttributes<HTMLButtonElement> & {
   size?: 'sm' | 'md';
@@ -12,7 +13,7 @@ const InfoDot = React.forwardRef<HTMLButtonElement, InfoDotProps>(
         ref={ref}
         type={type}
         aria-label={rest['aria-label'] || 'More info'}
-        className={`inline-flex items-center justify-center rounded-full border select-none shrink-0 ${dim} ${className}`}
+        className={`${pillIconClass} ${dim} ${className}`}
         {...rest}
       >
         ⓘ

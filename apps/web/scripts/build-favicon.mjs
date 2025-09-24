@@ -19,7 +19,10 @@ async function ensurePngSizes() {
   // Autocrop transparent margins to make the mark visually larger
   const cropped = original.clone().autocrop({ tolerance: 0.0001, leaveBorder: 0 });
   const maxSide = Math.max(cropped.bitmap.width, cropped.bitmap.height);
-  const pad = Math.max(4, Math.round(maxSide * 0.08)); // ~8% padding, min 4px
+  // Padding is intentionally small to maximize visible size; override via env if needed
+  const paddingPct = process.env.FAVICON_PADDING_PCT ? parseFloat(process.env.FAVICON_PADDING_PCT) : 0.03; // 3%
+  const minPadPx = process.env.FAVICON_MIN_PAD_PX ? parseInt(process.env.FAVICON_MIN_PAD_PX, 10) : 2; // 2px
+  const pad = Math.max(minPadPx, Math.round(maxSide * paddingPct));
   const side = maxSide + pad * 2;
   const canvas = await new Jimp(side, side, 0x00000000);
   const cx = Math.round((side - cropped.bitmap.width) / 2);

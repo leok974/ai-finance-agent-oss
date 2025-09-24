@@ -1,6 +1,7 @@
 import * as React from "react";
 import { createPortal } from "react-dom";
 import { useExplain } from "@/hooks/useExplain";
+import { Button, pillIconClass } from "@/components/ui/button";
 
 /**
  * Tiny "?" badge to offer inline help.
@@ -74,7 +75,7 @@ export default function HelpBadge({
         aria-expanded={open ? true : false}
         aria-controls={open ? popId : undefined}
         title={`${title} (Shift+Click to toggle Help mode)`}
-        className={`inline-flex h-5 w-5 items-center justify-center rounded-full border border-border text-[11px] leading-none hover:bg-muted/50 ${className}`}
+        className={`${pillIconClass} h-5 w-5 text-[11px] leading-none ${className}`}
         onClick={onClick}
       >
         ?
@@ -84,7 +85,7 @@ export default function HelpBadge({
         <div id={popId} data-popover-role="help-badge" className="fixed z-[9999] w-[340px] rounded-xl border bg-background p-3 shadow-xl animate-in fade-in-0 zoom-in-95" style={{ top: pos.top, left: pos.left }}>
           <div className="flex items-center justify-between">
             <div className="font-medium">What am I looking at?</div>
-            <button className="text-sm text-muted-foreground" onClick={() => { setOpen(false); btnRef.current?.focus?.(); } }>Close</button>
+            <Button variant="pill-ghost" className="h-7 px-2 text-xs" onClick={() => { setOpen(false); btnRef.current?.focus?.(); } }>Close</Button>
           </div>
           <div className="mt-2 text-sm whitespace-pre-wrap max-h-[50vh] overflow-auto">
             {loading ? "Loading…" : text}

@@ -1,5 +1,6 @@
 import React from "react";
 import { linkTransfer } from "@/lib/api";
+import { Button } from "@/components/ui/button";
 
 export default function TransferDialog({ open, onOpenChange, ids, onDone }:{ open:boolean; onOpenChange:(v:boolean)=>void; ids:[number,number]; onDone:(group?:string)=>void }){
   const [group, setGroup] = React.useState<string>("");
@@ -31,8 +32,8 @@ export default function TransferDialog({ open, onOpenChange, ids, onDone }:{ ope
           <input className="w-full bg-neutral-900 border border-neutral-800 rounded px-2 py-1" value={group} onChange={(e)=>setGroup(e.target.value)} placeholder="Leave blank to auto-generate" />
         </label>
         <div className="mt-3 flex gap-2 justify-end">
-          <button className="text-sm" onClick={()=>onOpenChange(false)} disabled={saving}>Cancel</button>
-          <button className="text-sm px-3 py-1.5 rounded bg-blue-600 disabled:opacity-50" onClick={onLink} disabled={saving || ids.length!==2}>Link</button>
+          <Button variant="pill-outline" onClick={()=>onOpenChange(false)} disabled={saving}>Cancel</Button>
+          <Button variant="pill-primary" className="h-9 px-4" onClick={onLink} disabled={saving || ids.length!==2}>Link</Button>
         </div>
       </div>
     </div>

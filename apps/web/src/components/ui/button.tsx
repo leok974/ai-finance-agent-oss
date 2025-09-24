@@ -3,39 +3,60 @@ import { Slot } from "@radix-ui/react-slot";
 import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
 
-// Keep existing visual defaults for current usages, add cva variants + pill
-const buttonVariants = cva(
-  // base
-  "inline-flex items-center justify-center whitespace-nowrap select-none px-3 py-1.5 text-sm font-medium transition-colors focus:outline-none disabled:opacity-50 disabled:pointer-events-none",
+export const buttonVariants = cva(
+  "inline-flex items-center justify-center whitespace-nowrap select-none transition-transform transform-gpu",
   {
     variants: {
       variant: {
-        // map existing variants
-        default: "bg-blue-600 hover:bg-blue-500 text-white",
-        primary: "bg-blue-600 hover:bg-blue-500 text-white",
-        secondary: "bg-gray-700 hover:bg-gray-600 text-white",
-        ghost: "bg-transparent hover:bg-gray-800 text-white",
+        default:
+          "bg-primary text-primary-foreground hover:bg-primary/90",
 
-        // new glossy “pill” chip
+        // ---- PILL FAMILY ----
         pill: [
-          "rounded-full px-3 h-8",
+          "rounded-full h-8 px-3 text-sm",
           "bg-gradient-to-b from-zinc-800 to-zinc-900",
-          "text-zinc-100/90",
-          "border border-white/10",
-          "shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06),0_6px_16px_-8px_rgba(0,0,0,0.6)]",
-          "transition transform-gpu",
+          "text-zinc-100/90 border border-white/10",
+          "shadow-[inset_0_1px_0_0_rgba(255,255,255,.06),0_6px_16px_-8px_rgba(0,0,0,.6)]",
           "hover:from-zinc-750 hover:to-zinc-900/95 hover:text-white",
-          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/60 focus-visible:ring-offset-0",
-          "active:translate-y-[0.5px] active:brightness-[.98]",
-          "data-[active=true]:from-emerald-700 data-[active=true]:to-emerald-800 data-[active=true]:text-emerald-50",
+          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/60",
+          "data-[state=open]:from-emerald-700 data-[state=open]:to-emerald-800 data-[state=open]:text-emerald-50",
+          "active:translate-y-[0.5px]",
+        ].join(" "),
+        "pill-outline": [
+          "rounded-full h-8 px-3 text-sm",
+          "bg-transparent text-zinc-200",
+          "border border-white/15 hover:bg-white/[.04]",
+          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/50",
+        ].join(" "),
+        "pill-primary": [
+          "rounded-full h-9 px-4 text-sm",
+          "bg-emerald-600 text-white hover:bg-emerald-500",
+          "border border-emerald-400/20 shadow",
+          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70",
+        ].join(" "),
+        "pill-success": [
+          "rounded-full h-8 px-3 text-sm",
+          "bg-emerald-700/80 text-emerald-50 hover:bg-emerald-700",
+          "border border-emerald-400/30",
+        ].join(" "),
+        "pill-danger": [
+          "rounded-full h-8 px-3 text-sm",
+          "bg-rose-700/85 text-rose-50 hover:bg-rose-700",
+          "border border-rose-400/30",
+        ].join(" "),
+        "pill-ghost": [
+          "rounded-full h-8 px-3 text-sm",
+          "bg-transparent text-zinc-300 hover:bg-white/[.04]",
         ].join(" "),
       },
       size: {
-        // provide sm to match pill nicely; no default to avoid regressions
         sm: "h-8 px-3 text-xs",
+        md: "h-9 px-4 text-sm",
+        lg: "h-10 px-5 text-sm",
+        icon: "h-8 w-8 p-0",
       },
     },
-    defaultVariants: { variant: "default" },
+    defaultVariants: { variant: "pill", size: "sm" },
   }
 );
 
@@ -43,16 +64,14 @@ export interface ButtonProps
   extends React.ButtonHTMLAttributes<HTMLButtonElement>,
     VariantProps<typeof buttonVariants> {
   asChild?: boolean;
-  active?: boolean; // allow an active style (for pill)
 }
 
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className, variant, size, asChild, active, ...props }, ref) => {
+  ({ className, variant, size, asChild, ...props }, ref) => {
     const Comp = asChild ? Slot : "button";
     return (
       <Comp
-        ref={ref as any}
-        data-active={active ? "true" : "false"}
+        ref={ref}
         className={cn(buttonVariants({ variant, size }), className)}
         {...props}
       />
@@ -61,4 +80,8 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
 );
 Button.displayName = "Button";
 
-export { Button, buttonVariants };
+export { Button };
+
+/** Handy class for icon-only pills (non-Button elements) */
+export const pillIconClass =
+  "inline-flex items-center justify-center rounded-full h-8 w-8 bg-gradient-to-b from-zinc-800 to-zinc-900 text-zinc-100/90 border border-white/10 hover:from-zinc-750 hover:to-zinc-900/95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/60";

@@ -38,7 +38,7 @@ export default function DevMenu() {
   return (
   <DropdownMenu open={open} onOpenChange={setOpen}>
       <DropdownMenuTrigger asChild>
-        <Button className="gap-1" variant="secondary">
+  <Button className="gap-1" variant="pill-outline">
           <Wrench className="h-4 w-4" /> Dev
         </Button>
       </DropdownMenuTrigger>

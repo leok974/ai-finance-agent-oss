@@ -3,7 +3,7 @@ param(
   [string]$ApiToken,
   [string]$GlobalApiKey,
   [string]$Email,
-  [string[]]$Hosts = @('https://ledger-mind.org','https://app.ledger-mind.org')
+  [string[]]$Hosts = @('https://ledger-mind.org','https://www.ledger-mind.org','https://app.ledger-mind.org')
 )
 
 if (-not $ApiToken -and (-not $GlobalApiKey -or -not $Email)) {

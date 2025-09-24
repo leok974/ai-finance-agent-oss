@@ -1,6 +1,7 @@
 "use client";
 
 import { useRuleSuggestions } from "@/hooks/useRuleSuggestions";
+import { Button } from "@/components/ui/button";
 import { useState } from "react";
 
 function fmtPct(n: number) {
@@ -35,18 +36,18 @@ export default function SuggestionsPage() {
             className="border rounded px-3 py-2 min-w-[180px]"
           />
         </div>
-        <button
+        <Button
           onClick={() => setFilter({ merchant_norm: merchantFilter || undefined, category: categoryFilter || undefined })}
-          className="rounded-lg px-4 py-2 border shadow-sm hover:bg-gray-50"
+          variant="pill-success"
         >
           Apply
-        </button>
-        <button
+        </Button>
+        <Button
           onClick={() => { setMerchantFilter(""); setCategoryFilter(""); setFilter({ merchant_norm: undefined, category: undefined }); }}
-          className="rounded-lg px-4 py-2 border shadow-sm hover:bg-gray-50"
+          variant="pill-outline"
         >
           Reset
-        </button>
+        </Button>
       </div>
 
       {loading && <div className="text-sm text-gray-500">Loading…</div>}
@@ -81,18 +82,12 @@ export default function SuggestionsPage() {
                   <td className="px-4 py-2 border-b">{s.last_seen ? new Date(s.last_seen).toLocaleString() : "—"}</td>
                   <td className="px-4 py-2 border-b">
                     <div className="flex gap-2">
-                      <button
-                        className="px-3 py-1 rounded-md border shadow-sm hover:bg-green-50"
-                        onClick={async () => { await accept(s.id); }}
-                      >
+                      <Button variant="pill-success" onClick={async () => { await accept(s.id); }}>
                         Accept → Rule
-                      </button>
-                      <button
-                        className="px-3 py-1 rounded-md border shadow-sm hover:bg-gray-100"
-                        onClick={async () => { await dismiss(s.id); }}
-                      >
+                      </Button>
+                      <Button variant="pill-outline" onClick={async () => { await dismiss(s.id); }}>
                         Dismiss
-                      </button>
+                      </Button>
                     </div>
                   </td>
                 </tr>

@@ -1,6 +1,7 @@
 import * as React from "react";
 import { createPortal } from "react-dom";
 import { useExplain } from "@/hooks/useExplain";
+import { Button, pillIconClass } from "@/components/ui/button";
 
 export default function ExplainButton({
   k, month, withContext = true, className = "ml-2",
@@ -75,7 +76,7 @@ export default function ExplainButton({
       <button
         ref={btnRef}
         aria-label="Explain this"
-        className={`rounded-full border px-2 py-1 text-xs hover:bg-muted ${className}`}
+        className={`${pillIconClass} h-5 w-5 text-[11px] ${className}`}
         onClick={openHelp}
       >?
       </button>

@@ -1,5 +1,6 @@
 import React from "react";
 import { getTxn, patchTxn } from "@/lib/api";
+import { Button } from "@/components/ui/button";
 
 export default function TxnEditDialog({ open, onOpenChange, txnId, onSaved }:{ open:boolean; onOpenChange:(v:boolean)=>void; txnId:number; onSaved:()=>void }){
   const [loading, setLoading] = React.useState(false);
@@ -84,8 +85,8 @@ export default function TxnEditDialog({ open, onOpenChange, txnId, onSaved }:{ o
           </label>
         </div>
         <div className="mt-3 flex gap-2 justify-end">
-          <button className="text-sm" onClick={()=>onOpenChange(false)} disabled={loading}>Cancel</button>
-          <button className="text-sm px-3 py-1.5 rounded bg-blue-600 disabled:opacity-50" onClick={onSave} disabled={loading}>Save</button>
+          <Button variant="pill-outline" onClick={()=>onOpenChange(false)} disabled={loading}>Cancel</Button>
+          <Button variant="pill-primary" className="h-9 px-4" onClick={onSave} disabled={loading}>Save</Button>
         </div>
       </div>
     </div>

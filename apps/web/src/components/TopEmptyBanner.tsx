@@ -1,5 +1,6 @@
 import React from "react";
 import DbRevBadge from "./DbRevBadge";
+import { Button } from "@/components/ui/button";
 
 interface Props {
   onDismiss?: () => void;
@@ -20,13 +21,9 @@ const TopEmptyBanner: React.FC<Props> = ({ onDismiss, dbRev, inSync }) => {
         <div className="flex items-center gap-2">
           {dbRev && <DbRevBadge dbRevision={dbRev} inSync={inSync} />}
           {onDismiss && (
-            <button
-              onClick={onDismiss}
-              className="rounded-lg border border-amber-600/50 px-2 py-1 text-xs hover:bg-amber-800/30"
-              title="Hide"
-            >
+            <Button variant="pill-outline" className="text-xs h-7 px-2 border-amber-600/50 hover:bg-amber-800/30" onClick={onDismiss} title="Hide">
               Dismiss
-            </button>
+            </Button>
           )}
         </div>
       </div>

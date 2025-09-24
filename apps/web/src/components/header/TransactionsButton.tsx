@@ -6,9 +6,6 @@ type Props = { open: boolean; onOpen: () => void };
 export default function TransactionsButton({ open, onOpen }: Props) {
   return (
     <Button
-      variant="pill"
-      size="sm"
-      active={open}
       aria-pressed={open}
       onClick={onOpen}
       className="gap-2"

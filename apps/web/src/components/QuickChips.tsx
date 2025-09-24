@@ -1,4 +1,5 @@
 import React from "react";
+import { Button } from "@/components/ui/button";
 
 export type ChipAction =
   | { type: "nl_search"; query: string }
@@ -19,14 +20,14 @@ export function QuickChips({ items }: { items: QuickChipItem[] }) {
   return (
     <div className="mt-2 flex flex-wrap gap-2">
       {items.map((it) => (
-        <button
+        <Button
           key={it.label}
           type="button"
           onClick={() => handleClick(it.action)}
-          className="rounded-full border border-border bg-transparent px-3 py-1 text-xs transition-colors hover:bg-muted"
+          variant="pill-outline"
         >
           {it.label}
-        </button>
+        </Button>
       ))}
     </div>
   );

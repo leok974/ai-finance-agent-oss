@@ -140,8 +140,8 @@ export default function PlannerDevPanel({ className }: { className?: string }) {
       <div className="flex flex-wrap items-center gap-2 justify-between mt-4">
         <div className="flex items-center gap-2">
           <Button onClick={onPreview} className="px-3 py-1.5 text-sm">Preview Plan</Button>
-          <Button variant="secondary" onClick={onPlanAndRun} className="px-3 py-1.5 text-sm">Plan &amp; Run</Button>
-          <Button variant="ghost" onClick={onCopyJson} className="px-3 py-1.5 text-sm">Copy JSON</Button>
+          <Button variant="pill-primary" onClick={onPlanAndRun} className="gap-2 h-9 px-4">Plan &amp; Run</Button>
+          <Button variant="pill-outline" onClick={onCopyJson}>Copy JSON</Button>
         </div>
       </div>
     </section>

@@ -1,5 +1,6 @@
 import React from "react";
 import { getTxn, splitTxn } from "@/lib/api";
+import { Button } from "@/components/ui/button";
 
 type Part = { amount: string; category?: string; note?: string };
 
@@ -58,18 +59,18 @@ export default function SplitDialog({ open, onOpenChange, txnId, onDone }:{ open
               <input placeholder="Note" className="col-span-2 bg-neutral-900 border border-neutral-800 rounded px-2 py-1"
                 value={p.note || ''} onChange={(e)=>setParts(ps=>ps.map((pp,idx)=> idx===i?{...pp, note:e.target.value}:pp))} />
               <div className="col-span-6 text-right">
-                <button className="text-xs opacity-80 hover:opacity-100" onClick={()=>removePart(i)} disabled={parts.length<=1}>Remove</button>
+                <Button variant="pill-ghost" className="text-xs h-7 px-2" onClick={()=>removePart(i)} disabled={parts.length<=1}>Remove</Button>
               </div>
             </div>
           ))}
           <div className="flex items-center justify-between text-sm opacity-80">
-            <button className="underline" onClick={addPart}>Add part</button>
+            <Button variant="pill-outline" className="h-8 px-3 text-xs" onClick={addPart}>Add part</Button>
             <div>Total: {total().toLocaleString(undefined, { style:'currency', currency:'USD' })}</div>
           </div>
         </div>
         <div className="mt-3 flex gap-2 justify-end">
-          <button className="text-sm" onClick={()=>onOpenChange(false)} disabled={saving}>Cancel</button>
-          <button className="text-sm px-3 py-1.5 rounded bg-blue-600 disabled:opacity-50" onClick={onSave} disabled={saving}>Save</button>
+          <Button variant="pill-outline" onClick={()=>onOpenChange(false)} disabled={saving}>Cancel</Button>
+          <Button variant="pill-primary" className="h-9 px-4" onClick={onSave} disabled={saving}>Save</Button>
         </div>
       </div>
     </div>

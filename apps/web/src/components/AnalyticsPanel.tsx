@@ -1,4 +1,5 @@
 import * as React from "react";
+import { Button } from "@/components/ui/button";
 import { analytics } from "@/lib/api";
 import { useMonth } from "@/context/MonthContext";
 import ForecastChart from "@/components/ForecastChart";
@@ -42,15 +43,16 @@ export function ForecastControls({ onLoad }: { onLoad: (data: any) => void }) {
         />
       </label>
 
-      <button
-        className="ml-2 rounded border px-3 py-1 hover:bg-muted"
+      <Button
+        variant="pill-primary"
+        className="ml-2 h-9 px-4"
         onClick={async () => {
           const data = await analytics.forecast(month, h, { model, ciLevel: ci });
           onLoad(data);
         }}
       >
         Run
-      </button>
+      </Button>
     </div>
   );
 }

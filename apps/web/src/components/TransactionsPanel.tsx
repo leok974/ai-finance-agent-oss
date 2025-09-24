@@ -152,8 +152,8 @@ export default function TransactionsPanel() {
                   <td className="px-2 py-1">{r.category || <span className="opacity-60">—</span>}</td>
                   <td className="px-2 py-1 text-right">{r.amount?.toLocaleString?.(undefined, { style: 'currency', currency: 'USD' }) ?? String(r.amount)}</td>
                   <td className="px-2 py-1 text-right">
-                    <Button variant="ghost" onClick={() => openEdit(r)}>Edit</Button>
-                    <Button variant="ghost" onClick={() => handleDelete([r.id])}>Delete</Button>
+                    <Button variant="pill-ghost" onClick={() => openEdit(r)}>Edit</Button>
+                    <Button variant="pill-danger" onClick={() => handleDelete([r.id])}>Delete</Button>
                   </td>
                 </tr>
               ))}
@@ -167,11 +167,11 @@ export default function TransactionsPanel() {
         <Button onClick={() => openSplit(sel[0])} disabled={sel.length !== 1}>Split</Button>
         <Button onClick={() => openMerge(sel)} disabled={sel.length < 2}>Merge</Button>
         <Button onClick={() => openTransfer(sel)} disabled={sel.length !== 2}>Link Transfer</Button>
-  <Button variant="secondary" onClick={async () => { await Promise.all(sel.map((id) => restoreTxn(id))); emitToastSuccess("Restored", { description: `${sel.length} transaction(s) restored.` }); refresh(); }}>Restore</Button>
+  <Button variant="pill-success" onClick={async () => { await Promise.all(sel.map((id) => restoreTxn(id))); emitToastSuccess("Restored", { description: `${sel.length} transaction(s) restored.` }); refresh(); }}>Restore</Button>
         <div className="ml-auto flex items-center gap-2">
-          <Button variant="secondary" onClick={() => setPage((p) => Math.max(0, p - 1))}>Prev</Button>
+          <Button variant="pill-outline" onClick={() => setPage((p) => Math.max(0, p - 1))}>Prev</Button>
           <span className="mx-2 text-sm">{start}–{end} / {total}</span>
-          <Button variant="secondary" onClick={() => setPage((p) => p + 1)} disabled={(page + 1) * limit >= total}>Next</Button>
+          <Button variant="pill-outline" onClick={() => setPage((p) => p + 1)} disabled={(page + 1) * limit >= total}>Next</Button>
         </div>
       </div>
 

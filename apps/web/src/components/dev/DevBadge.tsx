@@ -81,7 +81,7 @@ export default function DevBadge({ branch, commit, openDevDock, onToggleDevDock 
     <DropdownMenu open={open} onOpenChange={setOpen}>
       <DropdownMenuTrigger asChild>
         <Button
-          variant="secondary"
+          variant="pill-outline"
           className="h-7 gap-1 rounded-full border-white/15 bg-white/5 px-2 py-0 text-xs"
           title={branch ? `branch: ${branch}${commit ? ` @ ${commit.slice(0,7)}` : ''}` : undefined}
         >

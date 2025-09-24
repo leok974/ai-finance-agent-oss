@@ -95,7 +95,7 @@ export default function SaveRuleModal({ open, onOpenChange, month, scenario, def
             </div>
           </div>
           <div className="flex justify-end gap-2 pt-2">
-            <Button type="button" variant="secondary" onClick={() => onOpenChange(false)} disabled={busy}>Cancel</Button>
+            <Button type="button" variant="pill-outline" onClick={() => onOpenChange(false)} disabled={busy}>Cancel</Button>
             <Button type="submit" disabled={busy}>{busy ? 'Saving...' : 'Save Rule'}</Button>
           </div>
         </form>

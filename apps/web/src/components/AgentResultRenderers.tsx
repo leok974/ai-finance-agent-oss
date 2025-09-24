@@ -1,5 +1,6 @@
 // src/components/AgentResultRenderers.tsx
 import React from "react";
+import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { InfoDot } from "./InfoDot";
 import { money, shortDate } from "../utils/format";
@@ -82,12 +83,13 @@ export function TransactionsSearchCard({ data }: { data: TransactionsSearchResul
     <span className={Number(t.amount) < 0 ? "text-[var(--accent-bad)]" : "text-[var(--accent-good)]"}>
       {money(t.amount)}
     </span>,
-    <button
-      className="px-2 py-1 rounded-md border border-border hover:bg-accent/10"
+    <Button
+      variant="pill-outline"
+      className="h-8 px-3 text-xs"
       onClick={() => { const id = Number(t.id); if (!isNaN(id)) { setTxnId(id); setOpen(true); } }}
     >
       Explain
-    </button>,
+    </Button>,
   ]);
   return (
     <Card title={`Transactions (${data.total ?? rows.length})`}>
@@ -165,12 +167,13 @@ export function InsightSummaryCard({ data }: { data: InsightSummaryResult }) {
     t.merchant || "—",
     t.category || "Unknown",
     money(t.amount),
-    <button
-      className="px-2 py-1 rounded-md border border-border hover:bg-accent/10"
+    <Button
+      variant="pill-outline"
+      className="h-8 px-3 text-xs"
       onClick={() => { const id = Number(t.id); if (!isNaN(id)) { setTxnId(id); setOpen(true); } }}
     >
       Explain
-    </button>,
+    </Button>,
   ]);
 
   const income = data.summary?.income ?? 0;

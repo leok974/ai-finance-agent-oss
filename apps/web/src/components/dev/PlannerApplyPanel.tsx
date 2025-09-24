@@ -63,7 +63,7 @@ export default function PlannerApplyPanel() {
     <div className="rounded-lg border p-3 space-y-3">
       <div className="flex items-center gap-2">
         <Button onClick={preview} disabled={loading}>{loading ? "Loading…" : "Preview Plan"}</Button>
-        <Button onClick={apply} variant="secondary" disabled={!plan || loading || applying}>
+  <Button onClick={apply} variant="pill-primary" disabled={!plan || loading || applying}>
           {applying ? "Applying…" : "Apply Selected"}
         </Button>
       </div>
@@ -80,7 +80,7 @@ export default function PlannerApplyPanel() {
                 <div className="text-xs opacity-70">{it.kind}</div>
                 {it.kind === "export_report" && (
                   <div className="pt-1">
-                    <Button variant="ghost" className="px-0 underline" onClick={() => download((it as any).month)}>Download Excel</Button>
+                    <Button variant="pill-ghost" className="px-0 underline" onClick={() => download((it as any).month)}>Download Excel</Button>
                   </div>
                 )}
               </label>
