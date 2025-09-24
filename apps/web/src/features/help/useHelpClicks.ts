@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { openHelpPanel } from "./HelpPanel";
+import { openHelpPanel } from "@/features/help/HelpPanel";
 import { uiHelp } from "@/lib/api";
 
 function textToHtml(t: string) {
