@@ -104,6 +104,22 @@ pip install -U pip
 pip install -e .
 uvicorn app.main:app --reload --port 8000
 ```
+#### Create an admin user (CLI)
+Once the backend is running (or inside the backend container), you can create/update a user and assign roles:
+
+```bash
+# Create or update a user and set roles (space-separated)
+python -m app.cli users create --email "you@example.com" --password "changeme" --roles admin analyst user
+
+# Alias form (same behavior)
+python -m app.cli user-create --email "you@example.com" --password "changeme" --roles admin analyst user
+```
+
+Alternatively, seed the default admin:
+
+```bash
+python -m app.scripts.seed_admin   # admin@local / admin123
+```
 
 ### 3) Frontend
 ```bash
@@ -112,6 +128,7 @@ npm i -g pnpm || true
 pnpm install
 pnpm dev  # http://localhost:5173/app/
 ```
+Log in at http://localhost:5173/ with either your created user or the seeded admin credentials.
 
 ### 4) Load sample data
 In the web UI, go to **CSV Ingest** and upload `transactions_sample.csv` from `apps/backend/app/data/samples/`.
@@ -173,6 +190,13 @@ docker compose up --build
 ```powershell
 $BE = (docker ps --format "{{.Names}}" | Select-String -Pattern "backend" | ForEach-Object { $_.ToString() })
 docker exec -it $BE alembic upgrade head
+```
+
+### 2.1. Create an admin (in-container)
+```powershell
+docker exec -it $BE python -m app.cli users create --email "you@example.com" --password "changeme" --roles admin analyst user
+# or seed default:
+docker exec -it $BE python -m app.scripts.seed_admin
 ```
 
 ### 3. Ingest CSV

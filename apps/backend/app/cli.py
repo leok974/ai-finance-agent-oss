@@ -10,6 +10,8 @@ from sqlalchemy import text
 from app.scripts.encrypt_txn_backfill_splitcols import _ensure_crypto_initialized
 from app.scripts.dek_rotation import begin_new_dek, run_rotation, finalize_rotation, rotation_status
 from app.core.crypto_state import set_write_label, get_write_label
+from app.orm_models import User
+from app.utils.auth import hash_password, _ensure_roles
 
 
 def cmd_crypto_init(args):
@@ -451,6 +453,43 @@ def main():
     wl_s = sub.add_parser("write-label-set")
     wl_s.add_argument("--label", required=True)
     wl_s.set_defaults(fn=lambda a: (set_write_label(a.label), print({"write_label": get_write_label()})))
+
+    # users create (and alias: user-create)
+    def _cmd_users_create(a):
+        db: Session = next(get_db())
+        email = a.email.strip().lower()
+        pw = a.password
+        roles = [r.strip() for r in (a.roles or []) if r.strip()]
+        u = db.query(User).filter(User.email == email).first()
+        if not u:
+            u = User(email=email, password_hash=hash_password(pw))
+            db.add(u); db.commit(); db.refresh(u)
+        else:
+            if pw:
+                u.password_hash = hash_password(pw)
+                db.add(u); db.commit(); db.refresh(u)
+        if roles:
+            _ensure_roles(db, u, roles)
+        print({
+            "email": u.email,
+            "id": u.id,
+            "updated_password": bool(pw),
+            "roles": roles or "unchanged",
+        })
+
+    u1 = sub.add_parser("users")
+    u1_sub = u1.add_subparsers(dest="users_cmd")
+    u1c = u1_sub.add_parser("create", help="Create/update a user and assign roles")
+    u1c.add_argument("--email", required=True)
+    u1c.add_argument("--password", required=True)
+    u1c.add_argument("--roles", nargs="*", default=["user"], help="Roles to assign (space-separated)")
+    u1c.set_defaults(fn=_cmd_users_create)
+
+    ualias = sub.add_parser("user-create", help="Alias of users create")
+    ualias.add_argument("--email", required=True)
+    ualias.add_argument("--password", required=True)
+    ualias.add_argument("--roles", nargs="*", default=["user"], help="Roles to assign (space-separated)")
+    ualias.set_defaults(fn=_cmd_users_create)
 
     args = p.parse_args()
     if not getattr(args, "cmd", None):

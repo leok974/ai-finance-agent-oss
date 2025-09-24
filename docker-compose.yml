@@ -48,6 +48,7 @@ services:
       context: ./apps/web
       dockerfile: Dockerfile
     environment:
+      CI: "true"
       VITE_API_BASE: "http://127.0.0.1:8000"
     depends_on:
       - backend

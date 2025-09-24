@@ -11,12 +11,12 @@ services:
 
   cloudflared:
     image: cloudflare/cloudflared:latest
+    command: ["tunnel","run"]
+    environment:
+      - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN}
     restart: unless-stopped
     depends_on:
       - nginx
-    command: tunnel run
-    environment:
-      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN}
     healthcheck:
       test: ['CMD', 'cloudflared', 'update', 'check']
       interval: 30s
@@ -33,12 +33,12 @@ services:
       ENCRYPTION_MASTER_KEY_BASE64: ${ENCRYPTION_MASTER_KEY_BASE64:-${MASTER_KEK_B64}}
       CRYPTO_MODE: "kms"
       KMS_PROVIDER: "gcp"
-      GCP_KMS_KEY: "projects/ledgermind-03445-3l/locations/us-east1/keyRings/ledgermind/cryptoKeys/kek"
-      GOOGLE_APPLICATION_CREDENTIALS: "/gcp/ledgermind-backend-sa.json"
+      GCP_KMS_KEY: "projects/ledgermind-03445-3l/locations/global/keyRings/ledgermind/cryptoKeys/backend"
+      GOOGLE_APPLICATION_CREDENTIALS: "/secrets/gcp-sa.json"
       GRPC_VERBOSITY: "ERROR"
       GRPC_TRACE: ""
     volumes:
-      - ./secrets/gcp-sa.json:/gcp:ro
+      - ./secrets/gcp-sa.json:/secrets/gcp-sa.json:ro
 
   ollama:
     environment:
