@@ -144,13 +144,14 @@ const UploadCsv: React.FC<UploadCsvProps> = ({ onUploaded, defaultReplace = true
               />
               Replace existing data
             </label>
-            <button
+            <Button
               onClick={reset}
               type="button"
-              className="btn btn-sm"
+              variant="pill-outline"
+              size="sm"
             >
               Reset
-            </button>
+            </Button>
           </div>
         </header>
 
