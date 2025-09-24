@@ -20,8 +20,8 @@ async function ensurePngSizes() {
   const cropped = original.clone().autocrop({ tolerance: 0.0001, leaveBorder: 0 });
   const maxSide = Math.max(cropped.bitmap.width, cropped.bitmap.height);
   // Padding is intentionally small to maximize visible size; override via env if needed
-  const paddingPct = process.env.FAVICON_PADDING_PCT ? parseFloat(process.env.FAVICON_PADDING_PCT) : 0.03; // 3%
-  const minPadPx = process.env.FAVICON_MIN_PAD_PX ? parseInt(process.env.FAVICON_MIN_PAD_PX, 10) : 2; // 2px
+  const paddingPct = process.env.FAVICON_PADDING_PCT ? parseFloat(process.env.FAVICON_PADDING_PCT) : 0.01; // 1%
+  const minPadPx = process.env.FAVICON_MIN_PAD_PX ? parseInt(process.env.FAVICON_MIN_PAD_PX, 10) : 1; // 1px
   const pad = Math.max(minPadPx, Math.round(maxSide * paddingPct));
   const side = maxSide + pad * 2;
   const canvas = await new Jimp(side, side, 0x00000000);

@@ -7,7 +7,7 @@
   </defs>
   <rect width="256" height="256" rx="48" fill="#0b0b0d"/>
   <g fill="url(#g)">
-    <circle cx="128" cy="128" r="84" fill="url(#g)" opacity="0.9"/>
+    <circle cx="128" cy="128" r="96" fill="url(#g)" opacity="0.95"/>
   </g>
-  <text x="50%" y="64%" dominant-baseline="middle" text-anchor="middle" font-size="88" font-family="sans-serif" fill="#d8fff8">LM</text>
+  <text x="50%" y="62%" dominant-baseline="middle" text-anchor="middle" font-size="104" font-family="sans-serif" fill="#d8fff8">LM</text>
 </svg>
