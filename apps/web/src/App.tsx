@@ -41,7 +41,7 @@ import Brand from "@/components/Brand";
 import TransactionsButton from "@/components/header/TransactionsButton";
 import MonthPicker from "@/components/header/MonthPicker";
 import DevMenu from "@/components/dev/DevMenu";
-import logoPng from "@/assets/ledgermind-lockup-512.png";
+import logoPng from "@/assets/ledgermind-lockup-1024.png";
 
 // Log frontend version info
 console.info("[Web] branch=", __WEB_BRANCH__, "commit=", __WEB_COMMIT__);
