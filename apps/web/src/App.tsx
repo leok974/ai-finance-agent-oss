@@ -35,6 +35,7 @@ import ErrorBoundary from "@/components/ErrorBoundary";
 import DevBadge from "@/components/dev/DevBadge";
 import HelpMode from "@/components/HelpMode";
 import HelpExplainListener from "@/components/HelpExplainListener";
+import { HelpPanelHost } from "@/features/help/HelpPanel";
 import ForecastCard from "@/components/ForecastCard";
 import TransactionsDrawer from "@/components/TransactionsDrawer";
 import Brand from "@/components/Brand";
@@ -202,7 +203,8 @@ const App: React.FC = () => {
       <ChatDockProvider>
   <NetActivityBlip />
       <div className="min-h-screen bg-gray-50 text-gray-900 p-6 dark:bg-gray-950 dark:text-gray-100">
-        <HelpMode />
+  <HelpMode />
+  <HelpPanelHost />
   <HelpExplainListener />
   {/* Ensure this container is relative so ChatDock (absolute) positions within it */}
   <div className="relative">

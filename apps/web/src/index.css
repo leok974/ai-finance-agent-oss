@@ -291,17 +291,13 @@ img[data-brand-logo] {
 }
 
 /* ---- Help mode highlight & stacking ---- */
-html[data-help] .help-spot { position: relative; z-index: 9600; }
-html[data-help] .help-spot::after {
+html[data-help] [data-help-target] { position: relative; z-index: 9600; }
+html[data-help] [data-help-active="true"]::after {
   content: "";
-  position: absolute;
-  inset: -6px;
+  position: absolute; inset: -6px;
   border-radius: 12px;
-  border: 1px solid rgba(255,255,255,.20);
-  box-shadow:
-    0 0 0 2px rgba(255,255,255,.06) inset,
-    0 6px 22px rgba(0,0,0,.55),
-    0 0 0 3px rgba(251,191,36,.25);
+  border: 1px solid rgba(255,255,255,.18);
+  box-shadow: 0 0 0 3px rgba(251,191,36,.25), 0 6px 22px rgba(0,0,0,.55);
   pointer-events: none;
 }
 

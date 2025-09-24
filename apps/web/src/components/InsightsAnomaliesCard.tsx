@@ -36,6 +36,7 @@ export default function InsightsAnomaliesCard() {
       data-explain-key="cards.insights"
       data-help-target="card.insights"
       data-month={month || undefined}
+      data-help-id={month || undefined}
     >
       <Card className="border-0 bg-transparent shadow-none p-0">
       <div className="flex items-center justify-between mb-2">
