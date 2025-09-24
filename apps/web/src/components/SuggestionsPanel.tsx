@@ -13,6 +13,7 @@ import InfoDot from "@/components/InfoDot";
 import { emitToastSuccess, emitToastError } from "@/lib/toast-helpers";
 import Card from "./Card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Button } from "@/components/ui/button";
 
 type Suggestion = MinedRuleSuggestion;
 
@@ -135,23 +136,25 @@ export default function SuggestionsPanel() {
               feedback window: {cfg.window_days ?? "∞"}d
             </span>
           )}
-          <button
-            className="btn btn-ghost btn-sm"
+          <Button
+            variant="pill-outline"
+            size="sm"
             onClick={refresh}
             disabled={loading}
             aria-label="Refresh suggestions"
             title="Refresh suggestions"
           >
             {loading ? "Refreshing…" : "Refresh"}
-          </button>
-          <button
-            className="btn btn-sm"
+          </Button>
+          <Button
+            variant="pill-primary"
+            size="sm"
             onClick={() => applySelected()}
             title="Apply checked suggestions"
             disabled={bulkBusy}
           >
             {bulkBusy ? 'Applying…' : `Apply selected${selected.size ? ` (${selected.size})` : ''}`}
-          </button>
+          </Button>
           {/* Auto-apply by confidence removed; mined suggestions have no probability */}
         </div>
       </header>

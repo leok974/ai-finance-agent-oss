@@ -12,6 +12,7 @@ import {
 } from "@/lib/api";
 import type { RuleSuggestion } from "@/types/rules";
 import HelpBadge from "./HelpBadge";
+import { Button } from "@/components/ui/button";
 
 type RowModel =
   | ({ kind: "persisted"; id: number; status: "new" | "accepted" | "dismissed" } & Pick<RuleSuggestion, "merchant" | "category" | "count" | "window_days">)
@@ -64,14 +65,17 @@ export default function RuleSuggestionsPersistentPanel() {
           <HelpBadge k="cards.rule_suggestions" className="ml-2" />
         </h3>
         <div className="ml-auto flex items-end gap-2">
-          <button
-            className="btn btn-ghost btn-sm"
+          <Button
+            variant="pill-outline"
+            size="sm"
             onClick={() => setShowIgnores(v => !v)}
             title="Show ignored pairs"
-          >{showIgnores ? 'Hide ignores' : 'Show ignores'}</button>
-          <button className="btn btn-ghost btn-sm" onClick={load} disabled={loading}>
+          >
+            {showIgnores ? 'Hide ignores' : 'Show ignores'}
+          </Button>
+          <Button variant="pill-outline" size="sm" onClick={load} disabled={loading}>
             {loading ? "Refreshing…" : "Refresh"}
-          </button>
+          </Button>
         </div>
       </header>
 
@@ -135,25 +139,18 @@ function SuggestionRow({ s, onChanged }: { s: RowModel; onChanged: () => void })
 
       {s.kind === "persisted" ? (
         <div className="flex items-center gap-2">
-          <button
-            className="rounded-md border border-border px-2 py-1 text-xs disabled:opacity-60"
-            disabled={busy === "accept"}
-            onClick={doAccept}
-          >
+          <Button variant="pill-success" size="sm" disabled={busy === "accept"} onClick={doAccept}>
             {busy === "accept" ? "Accepting…" : "Accept"}
-          </button>
-          <button
-            className="rounded-md border border-border px-2 py-1 text-xs disabled:opacity-60"
-            disabled={busy === "dismiss"}
-            onClick={doDismiss}
-          >
+          </Button>
+          <Button variant="pill-danger" size="sm" disabled={busy === "dismiss"} onClick={doDismiss}>
             {busy === "dismiss" ? "Dismissing…" : "Dismiss"}
-          </button>
+          </Button>
         </div>
       ) : (
         <div className="flex items-center gap-2">
-          <button
-            className="rounded-md border border-border px-2 py-1 text-xs disabled:opacity-60"
+          <Button
+            variant="pill-primary"
+            size="sm"
             disabled={busy === "apply"}
             onClick={async () => {
               setBusy("apply");
@@ -166,9 +163,10 @@ function SuggestionRow({ s, onChanged }: { s: RowModel; onChanged: () => void })
             }}
           >
             {busy === "apply" ? "Applying…" : "Apply"}
-          </button>
-          <button
-            className="rounded-md border border-border px-2 py-1 text-xs disabled:opacity-60"
+          </Button>
+          <Button
+            variant="pill-outline"
+            size="sm"
             disabled={busy === "ignore"}
             onClick={async () => {
               setBusy("ignore");
@@ -181,7 +179,7 @@ function SuggestionRow({ s, onChanged }: { s: RowModel; onChanged: () => void })
             }}
           >
             {busy === "ignore" ? "Ignoring…" : "Ignore"}
-          </button>
+          </Button>
         </div>
       )}
     </div>
