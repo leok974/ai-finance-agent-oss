@@ -31,7 +31,12 @@ export default function InsightsAnomaliesCard() {
   }, [selectedMonth]);
 
   return (
-    <div className="panel-no-border p-3 md:p-4" data-explain-key="cards.insights" data-month={month || undefined}>
+    <div
+      className="panel-no-border p-3 md:p-4 help-spot"
+      data-explain-key="cards.insights"
+      data-help-target="card.insights"
+      data-month={month || undefined}
+    >
       <Card className="border-0 bg-transparent shadow-none p-0">
       <div className="flex items-center justify-between mb-2">
         <h3 className="text-lg font-semibold flex items-center">⚠ Unusual this month <HelpBadge k="cards.insights" className="ml-2" /></h3>

@@ -74,7 +74,12 @@ export default function UnknownsPanel({ month, onSeedRule, onChanged, refreshKey
 
   const titleMonth = (currentMonth ?? month) ? `— ${currentMonth ?? month}` : '— (latest)'
   return (
-  <section id="unknowns-panel" className="panel p-4 md:p-5" data-explain-key="cards.unknowns">
+  <section
+    id="unknowns-panel"
+    className="panel p-4 md:p-5 help-spot"
+    data-explain-key="cards.unknowns"
+    data-help-target="card.unknowns"
+  >
         <Card title={`Unknowns ${titleMonth}`} className="border-0 bg-transparent shadow-none p-0">
   {loading && (
         <div className="space-y-2">
