@@ -15,16 +15,26 @@ const outApple = path.join(publicDir, 'apple-touch-icon.png');
 async function ensurePngSizes() {
   const icoSizes = [16, 32, 48, 64, 128, 256];
   const icoBuffers = [];
-  const base = await Jimp.read(srcPng);
+  const original = await Jimp.read(srcPng);
+  // Autocrop transparent margins to make the mark visually larger
+  const cropped = original.clone().autocrop({ tolerance: 0.0001, leaveBorder: 0 });
+  const maxSide = Math.max(cropped.bitmap.width, cropped.bitmap.height);
+  const pad = Math.max(4, Math.round(maxSide * 0.08)); // ~8% padding, min 4px
+  const side = maxSide + pad * 2;
+  const canvas = await new Jimp(side, side, 0x00000000);
+  const cx = Math.round((side - cropped.bitmap.width) / 2);
+  const cy = Math.round((side - cropped.bitmap.height) / 2);
+  canvas.composite(cropped, cx, cy);
+
   for (const s of icoSizes) {
-    const clone = base.clone();
-    clone.resize(s, s);
+    const clone = canvas.clone();
+    clone.resize(s, s, Jimp.RESIZE_BILINEAR);
     icoBuffers.push(await clone.getBufferAsync(Jimp.MIME_PNG));
   }
-  // Write common standalone PNGs
-  await base.clone().resize(192, 192).write(outPng192);
-  await base.clone().resize(512, 512).write(outPng512);
-  await base.clone().resize(180, 180).write(outApple);
+  // Write common standalone PNGs from padded canvas
+  await canvas.clone().resize(192, 192).write(outPng192);
+  await canvas.clone().resize(512, 512).write(outPng512);
+  await canvas.clone().resize(180, 180).write(outApple);
   return icoBuffers;
 }
 
