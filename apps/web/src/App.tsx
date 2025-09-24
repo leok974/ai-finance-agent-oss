@@ -207,7 +207,7 @@ const App: React.FC = () => {
   {/* Ensure this container is relative so ChatDock (absolute) positions within it */}
   <div className="relative">
           <div className="mx-auto max-w-6xl space-y-6">
-  <header className="flex items-center justify-between">
+  <header className="min-h-24 md:min-h-28 flex items-center justify-between gap-3">
           <Brand />
           <div className="flex items-center gap-3">
             <AboutDrawer showButton={false} />
