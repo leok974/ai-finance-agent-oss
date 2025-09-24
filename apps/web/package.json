@@ -10,6 +10,7 @@
     "preview": "vite preview --port 5173 --strictPort",
     "typecheck": "tsc -p tsconfig.build.json --noEmit",
     "build:favicon": "node scripts/build-favicon.mjs",
+  "purge:cdn": "powershell -ExecutionPolicy Bypass -File scripts/purge-cdn.ps1",
     "test": "vitest",
     "test:ui": "vitest --ui",
     "test:watch": "vitest --watch",
