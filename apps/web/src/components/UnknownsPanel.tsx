@@ -14,6 +14,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import HelpBadge from './HelpBadge'
 import { seedRuleFromTxn } from '@/lib/rulesSeed'
 import { emitToastSuccess, emitToastError } from '@/lib/toast-helpers'
+import { Button } from '@/components/ui/button'
 
 export default function UnknownsPanel({ month, onSeedRule, onChanged, refreshKey }: {
   month?: string
@@ -132,25 +133,27 @@ export default function UnknownsPanel({ month, onSeedRule, onChanged, refreshKey
             <div className="mt-2 flex items-center gap-2">
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <button
+                  <Button
                     type="button"
-                    className="btn btn-sm hover:bg-accent"
+                    variant="pill-outline"
+                    size="sm"
                     onClick={()=> seedRuleFromRow(tx)}
                     aria-label="Seed rule (prefill Rule Tester)"
                   >
                     Seed rule
-                  </button>
+                  </Button>
                 </TooltipTrigger>
                 <TooltipContent>
                   Sends merchant/description (and current month) into Rule Tester so you can test & save a rule quickly.
                 </TooltipContent>
               </Tooltip>
-              <button
-                className="px-2 py-1 rounded-md border border-border hover:bg-accent/10"
+              <Button
+                variant="pill-outline"
+                size="sm"
                 onClick={() => { setExplainTxnId(tx.id); setExplainTxn(tx); setExplainOpen(true); }}
               >
                 Explain
-              </button>
+              </Button>
               {['Groceries','Dining','Shopping'].map(c => (
                 <button key={c} className="px-2 py-1 rounded bg-blue-700 hover:bg-blue-600" onClick={()=>quickApply(tx.id, c)}>
                   Apply {c}

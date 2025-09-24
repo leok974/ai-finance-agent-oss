@@ -9,6 +9,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { InfoDot } from './InfoDot';
 import Card from './Card';
 import { setBudget, deleteBudget } from '@/lib/api';
+import { Button } from '@/components/ui/button';
 
 type Props = { month?: string; refreshKey?: number };
 
@@ -196,22 +197,25 @@ function RulesPanelImpl({ month, refreshKey }: Props) {
         </div>
         <div className="flex flex-col items-end gap-2">
           <div className="flex items-center gap-2">
-            <button
+            <Button
               onClick={load}
-              className="btn btn-sm hover:bg-accent"
+              variant="pill-outline"
+              size="sm"
               disabled={loading}
             >
               {loading ? 'Refreshing…' : 'Refresh'}
-            </button>
-            <button
+            </Button>
+            <Button
               type="submit"
               form="rules-create-form"
-              className={`btn btn-sm hover:bg-accent ${!canCreate ? 'opacity-60 cursor-not-allowed' : ''}`}
+              variant="pill-primary"
+              size="sm"
+              className={!canCreate ? 'opacity-60 cursor-not-allowed' : ''}
               disabled={creating || !canCreate}
               title="Create rule with the fields below"
             >
               {creating ? 'Creating…' : 'Create'}
-            </button>
+            </Button>
           </div>
           {cfg && (
             <div className="text-xs opacity-70">
@@ -219,9 +223,9 @@ function RulesPanelImpl({ month, refreshKey }: Props) {
             </div>
           )}
           <div className="flex items-center gap-2 text-xs whitespace-nowrap">
-            <button className="btn btn-ghost btn-sm" disabled={page===0} onClick={() => setPage(p=>Math.max(0,p-1))}>Prev</button>
+            <Button variant="pill-outline" size="sm" disabled={page===0} onClick={() => setPage(p=>Math.max(0,p-1))}>Prev</Button>
             <span className="opacity-70">{page*limit+1}–{Math.min((page+1)*limit, total)} of {total}</span>
-            <button className="btn btn-ghost btn-sm" disabled={(page+1)*limit>=total} onClick={() => setPage(p=>p+1)}>Next</button>
+            <Button variant="pill-outline" size="sm" disabled={(page+1)*limit>=total} onClick={() => setPage(p=>p+1)}>Next</Button>
           </div>
         </div>
   </header>
@@ -333,14 +337,15 @@ function RulesPanelImpl({ month, refreshKey }: Props) {
                           onChange={(e) => setEditAmount(e.target.value)}
                           className="w-28 rounded-md border border-border bg-card px-2 py-1 text-sm"
                         />
-                        <button className="rounded-md border border-border px-2 py-1 text-xs" onClick={() => saveBudgetInline(category)}>Save</button>
-                        <button className="rounded-md border border-border px-2 py-1 text-xs" onClick={() => setEditingId(null)}>Cancel</button>
+                        <Button variant="pill-success" size="sm" onClick={() => saveBudgetInline(category)}>Save</Button>
+                        <Button variant="pill-outline" size="sm" onClick={() => setEditingId(null)}>Cancel</Button>
                       </div>
                     ) : (
                       <div className="flex items-center gap-2">
                         <span className="text-sm opacity-80">Cap:&nbsp;{typeof amountFromDesc === 'number' ? `$${amountFromDesc.toFixed(2)}` : '—'}</span>
-                        <button
-                          className="rounded-md border border-border px-2 py-1 text-xs"
+                        <Button
+                          variant="pill-outline"
+                          size="sm"
                           onClick={() => {
                             setEditingId(rule.id);
                             setEditAmount(typeof amountFromDesc === 'number' ? String(amountFromDesc.toFixed(2)) : '');
@@ -348,16 +353,16 @@ function RulesPanelImpl({ month, refreshKey }: Props) {
                           title="Edit budget cap"
                         >
                           Edit
-                        </button>
-                        <button className="rounded-md border border-border px-2 py-1 text-xs" onClick={() => removeBudget(category)} title="Delete budget">
+                        </Button>
+                        <Button variant="pill-danger" size="sm" onClick={() => removeBudget(category)} title="Delete budget">
                           Clear
-                        </button>
+                        </Button>
                       </div>
                     )
                   ) : (
-                    <button onClick={() => remove({ id: rule.id, name: rule.display_name, enabled: rule.active ?? true, when: {}, then: { category: rule.category } })} className="text-xs px-2 py-1 rounded-lg border hover:bg-destructive/10 text-destructive">
+                    <Button variant="pill-danger" size="sm" onClick={() => remove({ id: rule.id, name: rule.display_name, enabled: rule.active ?? true, when: {}, then: { category: rule.category } })}>
                       Delete
-                    </button>
+                    </Button>
                   )}
                 </div>
               </div>
