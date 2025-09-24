@@ -54,3 +54,7 @@ ops/letsencrypt/
 # Secrets & credentials
 secrets/
 !secrets/.keep
+
+# pnpm cache and logs
+**/.pnpm-store/
+pnpm-debug.log
