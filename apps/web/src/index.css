@@ -283,4 +283,11 @@ body { @apply bg-neutral-950 text-neutral-100; }
   --tw-border-opacity: 0.2;
 }
 
+/* Hard neutralizer for brand logo: avoid accidental blending/filters */
+img[data-brand-logo] {
+  filter: none !important;
+  mix-blend-mode: normal !important;
+  opacity: 1 !important;
+}
+
 

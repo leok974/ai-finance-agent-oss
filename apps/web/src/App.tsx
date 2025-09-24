@@ -41,7 +41,7 @@ import Brand from "@/components/Brand";
 import TransactionsButton from "@/components/header/TransactionsButton";
 import MonthPicker from "@/components/header/MonthPicker";
 import DevMenu from "@/components/dev/DevMenu";
-import logoPng from "@/assets/ledgermind-logo.png";
+import logoPng from "@/assets/ledgermind-lockup-512.png";
 
 // Log frontend version info
 console.info("[Web] branch=", __WEB_BRANCH__, "commit=", __WEB_COMMIT__);
@@ -207,7 +207,7 @@ const App: React.FC = () => {
   {/* Ensure this container is relative so ChatDock (absolute) positions within it */}
   <div className="relative">
           <div className="mx-auto max-w-6xl space-y-6">
-  <header className="min-h-24 md:min-h-28 flex items-center justify-between gap-3">
+  <header className="min-h-28 xl:min-h-32 flex items-center justify-between gap-3">
           <Brand />
           <div className="flex items-center gap-3">
             <AboutDrawer showButton={false} />

@@ -1,23 +1,25 @@
-import lockupPng from "@/assets/ledgermind-lockup.png";
+import lockup1024 from "@/assets/ledgermind-lockup-1024.png";
+import lockup512 from "@/assets/ledgermind-lockup-512.png";
 
 export default function Brand() {
   return (
-    <a
-      href="/"
-      aria-label="LedgerMind home"
-      className="flex items-center select-none"
-    >
-      <img
-        src={lockupPng}
-        alt="LedgerMind"
-        width={1024}
-        height={1024}
-        decoding="async"
-        fetchPriority="high"
-        draggable={false}
-        className="block w-auto h-16 md:h-20 lg:h-24 xl:h-28 object-contain brightness-100 contrast-100 saturate-100 select-none"
-        style={{ imageRendering: "auto" }}
-      />
+    <a href="/" aria-label="LedgerMind home" className="flex items-center select-none">
+      <div className="isolate pointer-events-auto">
+        <img
+          src={lockup1024}
+          alt="LedgerMind"
+          width={1024}
+          height={1024}
+          decoding="async"
+          fetchPriority="high"
+          draggable={false}
+          data-brand-logo
+          srcSet={`${lockup512} 512w, ${lockup1024} 1024w`}
+          sizes="(min-width: 1280px) 8rem, (min-width: 1024px) 7rem, (min-width: 768px) 6rem, 5rem"
+          className="block w-auto h-20 md:h-24 lg:h-28 xl:h-32 object-contain !filter-none !mix-blend-normal !opacity-100"
+          style={{ filter: "none", mixBlendMode: "normal", opacity: 1 }}
+        />
+      </div>
     </a>
   );
 }
