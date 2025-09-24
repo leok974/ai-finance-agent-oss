@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "pnpm smoke:backend && vite",
+    "prebuild": "pnpm run build:favicon",
     "build": "vite build",
     "preview": "vite preview --port 5173 --strictPort",
     "typecheck": "tsc -p tsconfig.build.json --noEmit",
