@@ -37,11 +37,11 @@ import HelpMode from "@/components/HelpMode";
 import HelpExplainListener from "@/components/HelpExplainListener";
 import ForecastCard from "@/components/ForecastCard";
 import TransactionsDrawer from "@/components/TransactionsDrawer";
+import Brand from "@/components/Brand";
 import TransactionsButton from "@/components/header/TransactionsButton";
 import MonthPicker from "@/components/header/MonthPicker";
-import DevMenuItem from "@/components/DevMenuItem";
-import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuLabel, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
-import { Button } from "@/components/ui/button";
+import DevMenu from "@/components/dev/DevMenu";
+import logoPng from "@/assets/ledgermind-logo.png";
 
 // Log frontend version info
 console.info("[Web] branch=", __WEB_BRANCH__, "commit=", __WEB_COMMIT__);
@@ -179,7 +179,21 @@ const App: React.FC = () => {
   if (!ready || !authReady) return <div className="p-6 text-[color:var(--text-muted)]">Loading…</div>;
   if (!authOk) return (
     <div className="p-6">
-      <div className="max-w-md mx-auto"><LoginForm /></div>
+      <div className="max-w-md mx-auto">
+        <div className="mb-6 flex items-center justify-center">
+          <img
+            src={logoPng}
+            alt=""
+            width={40}
+            height={40}
+            decoding="async"
+            fetchPriority="high"
+            className="mr-2 h-10 w-10 rounded-[8px] ring-1 ring-white/10"
+          />
+          <span className="text-xl font-semibold">LedgerMind</span>
+        </div>
+        <LoginForm />
+      </div>
     </div>
   );
 
@@ -194,27 +208,12 @@ const App: React.FC = () => {
   <div className="relative">
           <div className="mx-auto max-w-6xl space-y-6">
   <header className="flex items-center justify-between">
-          <h1 className="text-3xl font-bold">Finance Agent</h1>
+          <Brand />
           <div className="flex items-center gap-3">
             <AboutDrawer showButton={false} />
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="ghost"
-                  aria-label="Open settings menu"
-                  className="h-8 w-8 rounded-full p-0 text-lg leading-none"
-                >
-                  ⚙️
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuLabel>Settings</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <DevMenuItem />
-              </DropdownMenuContent>
-            </DropdownMenu>
             <TransactionsButton open={txPanelOpen} onOpen={() => setTxPanelOpen(true)} />
             <MonthPicker value={month} onChange={(m)=>{ setMonth(m); setGlobalMonth(m); }} />
+            {flags.dev && <DevMenu />}
             {flags.dev && (
               <DevBadge
                 // show branch/commit if available via globals

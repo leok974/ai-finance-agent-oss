@@ -5,6 +5,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Wrench, FileText, Bug, Link2, RefreshCw } from "lucide-react";
 import { agentPlanStatus } from "@/lib/api";
+import DevMenuItem from "../DevMenuItem";
 import React from "react";
 
 export default function DevMenu() {
@@ -48,6 +49,9 @@ export default function DevMenu() {
         <DropdownMenuItem onClick={() => (window.location.hash = "#dev-plan-apply") }>
           <FileText className="h-4 w-4 mr-2" /> Planner Apply Panel
         </DropdownMenuItem>
+
+        <DropdownMenuSeparator />
+        <DevMenuItem />
 
         <DropdownMenuSeparator />
 
