@@ -34,7 +34,7 @@ export default function InsightsAnomaliesCard() {
     <div
       className="panel-no-border p-3 md:p-4 help-spot"
       data-explain-key="cards.insights"
-      data-help-target="card.insights"
+      data-help-key="anomalies.month"
       data-month={month || undefined}
       data-help-id={month || undefined}
     >

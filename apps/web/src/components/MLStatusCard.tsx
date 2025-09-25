@@ -101,8 +101,8 @@ export default function MLStatusCard() {
   <div
     className="panel-tight md:p-5 lg:p-6 help-spot"
     data-explain-key="cards.ml_status"
-    data-help-target="card.ml_status"
-    data-help-id="ml"
+  data-help-key="cards.ml_status"
+  data-help-id="ml"
   >
       <div className="flex items-center justify-between border-b border-border pb-1">
         <h3 className="text-sm font-medium flex items-center">ML Status <HelpBadge k="cards.ml_status" className="ml-2" /></h3>

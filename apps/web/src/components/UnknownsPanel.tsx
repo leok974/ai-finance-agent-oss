@@ -78,8 +78,8 @@ export default function UnknownsPanel({ month, onSeedRule, onChanged, refreshKey
     id="unknowns-panel"
     className="panel p-4 md:p-5 help-spot"
     data-explain-key="cards.unknowns"
-    data-help-target="card.unknowns"
-    data-help-id={currentMonth || month}
+  data-help-key="cards.unknowns"
+  data-help-id={currentMonth || month}
   >
         <Card title={`Unknowns ${titleMonth}`} className="border-0 bg-transparent shadow-none p-0">
   {loading && (

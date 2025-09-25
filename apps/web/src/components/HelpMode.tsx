@@ -2,7 +2,6 @@ import * as React from "react";
 import { createPortal } from "react-dom";
 import { useExplain } from "@/hooks/useExplain";
 import HelpLayer from "@/features/help/HelpLayer";
-import { useHelpClicks } from "@/features/help/useHelpClicks";
 
 export default function HelpMode() {
   const [on, setOn] = React.useState(false);
@@ -31,7 +30,7 @@ export default function HelpMode() {
     }
   }, [on]);
 
-  useHelpClicks(on);
+  // Click handling is now provided by AppHelpMode/useHelpMode.
 
   React.useEffect(() => {
     if (on) {

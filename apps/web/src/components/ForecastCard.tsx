@@ -46,8 +46,8 @@ export default function ForecastCard({ className = "" }: { className?: string })
 
   return (
     <section
-      data-help-target="card.forecast"
       data-help-id={month}
+      data-help-key="card.forecast"
       className={[
         "help-spot",
         "rounded-2xl border bg-card/50 shadow-sm p-4 md:p-5",

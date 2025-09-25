@@ -291,7 +291,8 @@ img[data-brand-logo] {
 }
 
 /* ---- Help mode highlight & stacking ---- */
-html[data-help] [data-help-target] { position: relative; z-index: 9600; }
+html[data-help] [data-help-key] { position: relative; z-index: 9600; }
+.help-popover { position: fixed; z-index: 70; max-width: 360px; }
 html[data-help] [data-help-active="true"]::after {
   content: "";
   position: absolute; inset: -6px;

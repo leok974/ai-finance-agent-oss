@@ -34,6 +34,7 @@ import InsightsAnomaliesCard from "./components/InsightsAnomaliesCard";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import DevBadge from "@/components/dev/DevBadge";
 import HelpMode from "@/components/HelpMode";
+import AppHelpMode from "./AppHelpMode";
 import HelpExplainListener from "@/components/HelpExplainListener";
 import { HelpPanelHost } from "@/features/help/HelpPanel";
 import ForecastCard from "@/components/ForecastCard";
@@ -204,6 +205,7 @@ const App: React.FC = () => {
   <NetActivityBlip />
       <div className="min-h-screen bg-gray-50 text-gray-900 p-6 dark:bg-gray-950 dark:text-gray-100">
   <HelpMode />
+  <AppHelpMode />
   <HelpPanelHost />
   <HelpExplainListener />
   {/* Ensure this container is relative so ChatDock (absolute) positions within it */}
