@@ -270,6 +270,16 @@ async def lifespan(app: FastAPI):
     _create_tables_dev()
     await _startup_load_state()
     app.state._bg_tasks = []
+    # Start analytics retention loop in prod if enabled
+    try:
+        if os.environ.get("APP_ENV", os.environ.get("ENV", "dev")).lower() == "prod":
+            keep_days = int(os.environ.get("ANALYTICS_RETENTION_DAYS", "90"))
+            every_hours = int(os.environ.get("ANALYTICS_RETENTION_INTERVAL_HOURS", "24"))
+            from app.services.analytics_retention import retention_loop
+            t = asyncio.create_task(retention_loop(keep_days, every_hours))
+            app.state._bg_tasks.append(t)
+    except Exception:
+        pass
     try:
         yield
     finally:
