@@ -3,7 +3,9 @@ import { useEffect } from "react";
 export default function HelpLayer({ active }: { active: boolean }) {
   useEffect(() => {
     document.documentElement.toggleAttribute("data-help", active);
-    return () => document.documentElement.removeAttribute("data-help");
+    return () => {
+      document.documentElement.removeAttribute("data-help");
+    };
   }, [active]);
 
   if (!active) return null;

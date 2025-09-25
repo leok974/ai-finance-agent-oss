@@ -8,7 +8,7 @@ import EnvAvatar from "@/components/EnvAvatar";
 import { useAuth } from "@/state/auth";
 import { createPortal } from "react-dom";
 import { ChevronUp, Wrench } from "lucide-react";
-import { agentTools, agentChat, getAgentModels, type AgentChatRequest, type AgentChatResponse, type AgentModelsResponse, type ChatMessage, txnsQueryCsv, txnsQuery, type TxnQueryResult, explainTxnForChat, agentRephrase, getMonthSummary, getMonthMerchants, getMonthFlows, getSpendingTrends, getBudgetCheck, analytics, transactionsNl } from "../lib/api";
+import { agentTools, agentChat, getAgentModels, type AgentChatRequest, type AgentChatResponse, type AgentModelsResponse, type ChatMessage, txnsQueryCsv, txnsQuery, type TxnQueryResult, explainTxnForChat, agentRephrase, getMonthSummary, getMonthMerchants, getMonthFlows, getSpendingTrends, getBudgetCheck, analytics, transactionsNl, telemetry } from "../lib/api";
 import { fmtMonthSummary, fmtTopMerchants, fmtCashflow, fmtTrends } from "../lib/formatters";
 import { runToolWithRephrase } from "../lib/tools-runner";
 import { saveAs } from "../utils/save";
@@ -28,6 +28,7 @@ import runAndRephrase from "./agent-tools/runAndRephrase";
 import { registerChatHandlers } from "@/state/chat";
 import { DEFAULT_PLACEHOLDER, focusComposer, registerComposerControls, setComposer, setComposerPlaceholder as setComposerPlaceholderUI } from "@/state/chat/ui";
 import { handleTransactionsNL } from "./AgentTools";
+import FallbackBadge from "./FallbackBadge";
 // Minimal process env typing for test gating without pulling full @types/node
 declare const process: { env?: Record<string,string|undefined> } | undefined;
 // --- layout constants (right/bottom anchored) ---
@@ -311,6 +312,12 @@ export default function ChatDock() {
     }
     setUiMessages(cur => [...cur, { role: 'assistant', text, ts, meta: metaPayload }]);
     chatStore.append({ role: 'assistant', content: text, createdAt: ts });
+    try {
+      const provider = metaPayload?.fallback;
+      if (provider) {
+        telemetry.track('chat_fallback_used', { provider: String(provider) });
+      }
+    } catch {}
     try { chatDiscardSnapshot(); } catch { /* ignore */ }
     setChatResp({
       reply: text,
@@ -370,6 +377,9 @@ export default function ChatDock() {
                 {meta.used_context?.month ? <span>- month {meta.used_context.month}</span> : null}
                 {meta.model ? <span>- {meta.model}</span> : null}
               </>
+            ) : null}
+            {m.role === 'assistant' && meta?.fallback ? (
+              <FallbackBadge provider={String(meta.fallback)} />
             ) : null}
             {m.role === 'assistant' && meta.intent_label ? (
               <span className="intent-badge">{meta.intent_label}</span>
@@ -738,7 +748,7 @@ export default function ChatDock() {
   // keep legacy helper name for response objects (internal use)
   const handleAgentResponse = React.useCallback((resp: AgentChatResponse) => {
     setChatResp(resp);
-    if (resp?.reply) appendAssistant(resp.reply, { citations: resp.citations, ctxMonth: resp.used_context?.month, trace: resp.tool_trace, model: resp.model });
+  if (resp?.reply) appendAssistant(resp.reply, { citations: resp.citations, ctxMonth: resp.used_context?.month, trace: resp.tool_trace, model: resp.model, fallback: (resp as any).fallback });
   }, [appendAssistant]);
 
   const appendAssistantFromText = React.useCallback((text: string, opts?: { meta?: any }) => {
@@ -799,6 +809,16 @@ export default function ChatDock() {
               ? { ...m, meta: { ...(m.meta||{}), suggestions: tagged, thinking: true } }
               : m;
           }));
+        },
+        onMeta(meta) {
+          if (meta && meta.fallback) {
+            setUiMessages(cur => cur.map((m,i) => {
+              const thinking = (m as any).thinking || (m as any).meta?.thinking;
+              return (i===cur.length-1 && m.role==='assistant' && thinking)
+                ? { ...m, meta: { ...(m.meta||{}), fallback: String(meta.fallback), thinking: true } }
+                : m;
+            }));
+          }
         },
         onFinish() {
           const snapshot = aguiToolsRef.current || aguiTools;

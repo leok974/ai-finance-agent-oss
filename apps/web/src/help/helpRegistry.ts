@@ -1,6 +1,6 @@
 export type HelpEntry = { title: string; body: string };
 
-export const helpRegistry: Record<string, HelpEntry> = {
+export const helpRegistry = {
   "anomalies.month": {
     title: "Unusual this month",
     body: "Highlights categories whose spend deviates from their trailing baseline. Click a bar to jump to details.",
@@ -30,7 +30,9 @@ export const helpRegistry: Record<string, HelpEntry> = {
     body: "A list of narrative insights generated from your data. Items may link to charts or details.",
   },
   // Add more keys as you wire targets
-};
+} as const;
+
+export type HelpKey = keyof typeof helpRegistry;
 
 export const DEFAULT_HELP: HelpEntry = {
   title: "Overview",

@@ -191,6 +191,11 @@ new Elysia()
           }).then((r: Response) => r.json());
           push({ type: 'TOOL_CALL_END', data: { name: 'agent.chat', ok: true } });
 
+          // If backend used a fallback provider (e.g., OpenAI), forward a META event
+          if (reply && typeof reply === 'object' && (reply as any).fallback) {
+            controller.enqueue(enc.encode(`event: META\ndata: ${JSON.stringify({ fallback: (reply as any).fallback })}\n\n`));
+          }
+
           const text: string =
             reply?.reply ??
             (intent === 'chat'

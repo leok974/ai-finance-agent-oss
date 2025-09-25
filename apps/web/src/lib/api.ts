@@ -373,6 +373,14 @@ export const analytics = {
   whatif: (payload: any) => apiPost(`/agent/tools/analytics/whatif`, payload),
 };
 
+// ---------- Telemetry ----------
+export const telemetry = {
+  helpOpen: (payload: { key: string; path: string; ts: number }) =>
+    apiPost(`/analytics/help_open`, payload),
+  track: (event: string, props?: Record<string, any>) =>
+    apiPost(`/analytics/track`, { event, props, ts: Date.now() }).catch(() => {}),
+};
+
 // ---------- UI Help ----------
 export const uiHelp = {
   describe: (key: string, month?: string, withContext = false) =>

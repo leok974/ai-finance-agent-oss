@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Local vs. Cloud – Fallback Behavior</title>
+    <style>
+      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; background: #0b1220; color: #e5e7eb; line-height: 1.6; }
+      main { max-width: 740px; margin: 2rem auto; padding: 0 1rem; }
+      h1 { font-size: 1.75rem; margin-bottom: 0.5rem; }
+      h2 { font-size: 1.25rem; margin-top: 1.5rem; }
+      a { color: #93c5fd; }
+      code, pre { background: #0f172a; color: #e2e8f0; padding: 0.1rem 0.3rem; border-radius: 4px; }
+      .callout { background: rgba(245, 158, 11, 0.08); border: 1px solid rgba(245, 158, 11, 0.35); padding: 0.75rem 1rem; border-radius: 8px; }
+      ul { padding-left: 1.2rem; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Local vs. Cloud – Fallback Behavior</h1>
+      <p>
+        This app prefers your local LLM (for privacy and speed). If the local model is unavailable or times out, it can automatically fall back to a cloud provider when an
+        <code>OPENAI_API_KEY</code> is present. When a fallback reply was used, you’ll see a small badge: “Fallback: OpenAI”.
+      </p>
+
+      <div class="callout">
+        <strong>Heads‑up:</strong> When fallback is used, your prompt may be sent to the cloud provider. If you require strict local‑only mode, remove the
+        <code>OPENAI_API_KEY</code> from your environment.
+      </div>
+
+      <h2>How it works</h2>
+      <ul>
+        <li><strong>Primary:</strong> Local LLM via <code>OPENAI_BASE_URL</code> (e.g., Ollama).</li>
+        <li><strong>Fallback:</strong> Cloud LLM used only when local calls fail and an <code>OPENAI_API_KEY</code> exists.</li>
+        <li><strong>Indicator:</strong> The chat shows a “Fallback: …” badge on assistant messages generated via fallback.</li>
+      </ul>
+
+      <h2>Configuration</h2>
+      <ul>
+        <li>
+          <strong>Disable fallback entirely:</strong> remove <code>OPENAI_API_KEY</code> from <code>.env</code>.
+        </li>
+        <li>
+          <strong>Choose fallback model:</strong> set <code>OPENAI_FALLBACK_MODEL</code> (e.g., <code>gpt-4o-mini</code>). Otherwise, a sensible default is used.
+        </li>
+        <li>
+          <strong>Keep local first:</strong> <code>OPENAI_BASE_URL</code> still points to your local server (e.g., <code>http://localhost:11434/v1</code> for Ollama).
+        </li>
+      </ul>
+
+      <h2>Privacy</h2>
+      <p>
+        With fallback, prompts and context may be sent to the cloud provider. This is opt‑in via your API key. For local‑only operation, ensure no API key is configured.
+      </p>
+
+      <h2>Troubleshooting</h2>
+      <ul>
+        <li>If fallback appears often, verify your local model is pulled and healthy (e.g., Ollama health checks pass).</li>
+        <li>Check timeouts and logs in the backend for local LLM errors.</li>
+      </ul>
+
+      <p style="opacity:.7;margin-top:2rem">© 2025 – Finance Agent</p>
+    </main>
+  </body>
+  </html>

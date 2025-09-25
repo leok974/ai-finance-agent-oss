@@ -3,6 +3,17 @@ from typing import List, Dict, Tuple, Optional
 import os, requests, time, random, email.utils as eut
 from app.utils.request_ctx import get_request_id
 from app.config import settings
+import os
+from contextvars import ContextVar
+
+# Track fallback provider per-request
+_fallback_provider: ContextVar[Optional[str]] = ContextVar("_fallback_provider", default=None)
+
+def get_last_fallback_provider() -> Optional[str]:
+    try:
+        return _fallback_provider.get()
+    except Exception:
+        return None
 
 def _parse_retry_after(v: Optional[str]) -> Optional[float]:
     if not v:
@@ -49,14 +60,40 @@ def _post_chat(base: str, key: str, payload: dict, timeout: int = 60) -> dict:
             continue
         if r.status_code == 404:
             raise RuntimeError(f"LLM HTTP error 404: {r.text}")
-        r.raise_for_status()
-        return r.json()
+    r.raise_for_status()
+    return r.json()
+
+def _model_for_openai(requested: str) -> str:
+    """
+    Choose an OpenAI model for fallback.
+    Priority:
+      1) OPENAI_FALLBACK_MODEL (env)
+      2) small mapping for common local names
+      3) default 'gpt-4o-mini'
+    """
+    env_fallback = os.getenv("OPENAI_FALLBACK_MODEL")
+    if env_fallback:
+        return env_fallback
+    mapping = {
+        "gpt-oss:20b": "gpt-4o-mini",
+        "gpt-oss:7b":  "gpt-4o-mini",
+        "llama3.1:8b": "gpt-4o-mini",
+        "llama3:8b":   "gpt-4o-mini",
+        "phi3:3.8b":   "gpt-4o-mini",
+    }
+    return mapping.get(requested, "gpt-4o-mini")
 
 def call_llm(*, model: str, messages: List[Dict[str,str]], temperature: float=0.2, top_p: float=0.9) -> Tuple[str, list]:
     """
     Provider-agnostic chat call. Uses OpenAI-compatible Chat Completions:
     - provider='ollama'  -> your local shim (e.g., http://localhost:11434/v1)
     - provider='openai'  -> https://api.openai.com/v1 (requires real OPENAI_API_KEY)
+
+        Fallback behavior:
+        - Primary call goes to the configured base (typically Ollama via OPENAI_BASE_URL pointing at an OpenAI-compatible shim).
+        - On transient transport/timeout/5xx errors, we fallback to api.openai.com if and only if an OPENAI_API_KEY is configured.
+            This intentionally relaxes previous gating that required OPENAI_BASE_URL to already be api.openai.com to enable fallback.
+            If the provided key is invalid, the fallback attempt will gracefully degrade to a friendly message.
     """
 
     # Use configured base URL and key regardless of provider; provider flag is kept for future branching
@@ -70,7 +107,40 @@ def call_llm(*, model: str, messages: List[Dict[str,str]], temperature: float=0.
         "top_p": top_p,
     }
 
-    data = _post_chat(base, key, payload)
+    # Reset fallback flag at the start of each call
+    try:
+        _fallback_provider.set(None)
+    except Exception:
+        pass
+
+    # First try: Ollama or configured base with tighter timeout and friendly errors
+    try:
+        data = _post_chat(base, key, payload, timeout=15)
+    except (requests.exceptions.ConnectTimeout, requests.exceptions.ConnectionError, requests.HTTPError) as err:
+        # On 5xx/timeout/connection issues, optionally fallback to OpenAI if a key is configured.
+        # Relaxed guard: presence of any OPENAI_API_KEY enables fallback attempt to api.openai.com.
+        can_fallback = bool(settings.OPENAI_API_KEY)
+        if isinstance(err, requests.HTTPError):
+            code = getattr(err.response, 'status_code', 500)
+            transient = (500 <= code < 600)
+        else:
+            transient = True
+        if can_fallback and transient:
+            try:
+                # Use a safe OpenAI model during fallback; do not mutate original payload
+                fb_model = _model_for_openai(payload.get("model") or model)
+                fb_payload = dict(payload, model=fb_model)
+                data = _post_chat("https://api.openai.com/v1", settings.OPENAI_API_KEY, fb_payload, timeout=20)
+                try:
+                    _fallback_provider.set("openai")
+                except Exception:
+                    pass
+            except Exception:
+                # still provide a friendly message
+                return ("The model backend is unavailable right now. Please try again shortly.", [])
+        else:
+            # Friendly messages for transient errors without fallback
+            return ("The language model is temporarily unavailable. Please try again shortly.", [])
     try:
         reply = data["choices"][0]["message"]["content"]
     except Exception:

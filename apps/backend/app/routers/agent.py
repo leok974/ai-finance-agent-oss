@@ -352,7 +352,10 @@ def agent_chat(
             requested_model = req.model if req.model else settings.DEFAULT_LLM_MODEL
             model = MODEL_ALIASES.get(requested_model, requested_model) or settings.DEFAULT_LLM_MODEL
             reply, tool_trace = llm_mod.call_local_llm(model=model, messages=final_messages, temperature=req.temperature, top_p=req.top_p)
+            fb = getattr(llm_mod, 'get_last_fallback_provider', lambda: None)()
             resp = {"reply": reply, "citations": [], "used_context": {"month": ctx.get("month")}, "tool_trace": tool_trace, "model": model}
+            if fb:
+                resp["fallback"] = fb
         else:
             if req.intent in ("general", "budget_help"):
                 t0 = time.perf_counter()
@@ -441,6 +444,7 @@ def agent_chat(
             requested_model = req.model if req.model else settings.DEFAULT_LLM_MODEL
             model = MODEL_ALIASES.get(requested_model, requested_model) or settings.DEFAULT_LLM_MODEL
             reply, tool_trace = llm_mod.call_local_llm(model=model, messages=final_messages, temperature=req.temperature, top_p=req.top_p)
+            fb = getattr(llm_mod, 'get_last_fallback_provider', lambda: None)()
             citations = []
             for key, citation_type in [("summary", "summary"),("rules", "rules"),("top_merchants", "merchants"),("alerts", "alerts"),("insights", "insights")]:
                 if ctx.get(key):
@@ -448,6 +452,8 @@ def agent_chat(
             if ctx.get("txn"):
                 citations.append({"type": "txn", "id": ctx["txn"].get("id")})
             resp = {"reply": reply, "citations": citations, "used_context": {"month": ctx.get("month")}, "tool_trace": tool_trace, "model": model}
+            if fb:
+                resp["fallback"] = fb
 
         resp = post_process_tool_reply(resp, ctx)
         if debug and getattr(settings, "ENV", "dev") != "prod":

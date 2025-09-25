@@ -4,6 +4,7 @@ export type AguiHandlers = {
   onToolStart?(name: string): void;
   onToolEnd?(name: string, ok: boolean, error?: string): void;
   onChunk?(text: string): void;
+  onMeta?(meta: any): void;
   onFinish?(): void;
   onError?(err: any): void;
   onSuggestions?(chips: Array<{ label: string; action: string }>): void;
@@ -47,6 +48,12 @@ export function wireAguiStream(
   es.addEventListener('RUN_FINISHED', () => {
     safe(h.onFinish);
     es.close();
+  });
+  es.addEventListener('META', (e: MessageEvent) => {
+    try {
+      const d = JSON.parse(e.data || '{}');
+      safe(h.onMeta, d);
+    } catch { /* ignore */ }
   });
   es.addEventListener('SUGGESTIONS', (e: MessageEvent) => {
     try {
