@@ -52,15 +52,16 @@ services:
     restart: unless-stopped
 
   nginx:
-    image: nginx:1.27-alpine
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.nginx
+    image: ai-finance-agent-oss-clean-nginx:latest
     depends_on:
       backend:
         condition: service_healthy
     volumes:
-      - ./ops/nginx/conf.d:/etc/nginx/conf.d:ro
       - certbot_www:/var/www/certbot
       - letsencrypt:/etc/letsencrypt:ro
-      - ./apps/web/dist:/usr/share/nginx/html:ro
     ports:
       - "127.0.0.1:80:80"
       - "127.0.0.1:443:443"
