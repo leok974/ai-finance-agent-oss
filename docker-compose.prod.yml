@@ -46,9 +46,9 @@ services:
         condition: service_healthy
       ollama:
         condition: service_started
-    secrets:
-      - source: openai_api_key
-        target: openai_api_key
+    # secrets:
+    #   - source: openai_api_key
+    #     target: openai_api_key
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0) if urllib.request.urlopen('http://127.0.0.1:8000/ready').getcode()==200 else sys.exit(1)"]
       interval: 10s
@@ -124,5 +124,6 @@ volumes:
 
 secrets:
   openai_api_key:
-    file: ./secrets/openai_api_key
+    # Use absolute Windows path to avoid Docker Desktop bind issues on Windows
+    file: C:/ai-finance-agent-oss-clean/secrets/openai_api_key
 

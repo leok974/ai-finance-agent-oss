@@ -19,9 +19,16 @@ services:
       retries: 3
 
   backend:
+    # Disable secret mount locally on Windows; use env fallback instead
+    secrets: []
+    env_file:
+      - ./secrets/backend.env
     environment:
       OPENAI_BASE_URL: "http://ollama:11434/v1"
-      OPENAI_API_KEY: "ollama"
+      # Use env var as fallback on Windows Desktop where bind-mounting /run/secrets can fail
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      # Neutralize file-based loading for local prod override
+      OPENAI_API_KEY_FILE: ""
       MODEL: "gpt-oss:20b"
       DEV_ALLOW_NO_LLM: "0"
       MASTER_KEK_B64: ${MASTER_KEK_B64}
@@ -76,3 +83,6 @@ services:
 volumes:
   letsencrypt:
   ollama-data:
+
+# Disable secrets root in local override to avoid Docker Desktop bind errors on Windows
+secrets: {}

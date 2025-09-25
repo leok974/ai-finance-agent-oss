@@ -284,6 +284,14 @@ Verify (PowerShell):
 
 Expected: 200 (or friendly response) and no server-side "missing_config" errors if the secret file exists.
 
+Windows note (Docker Desktop): if you hit a bind mount error for `secrets/openai_api_key`, use the local override to pass the key via env just for local prod testing:
+
+1) In PowerShell for the current session only:
+  - `$env:OPENAI_API_KEY = '<your-key-here>'`
+2) Start backend with prod compose overrides:
+  - `docker compose -f docker-compose.prod.yml -f docker-compose.prod.override.yml up -d backend`
+3) In real production on Linux hosts, keep using the Docker secret mount (more secure) and do not pass the key as an env var.
+
 ### Analytics retention (prod)
 
 To keep analytics data bounded over time, the backend can run a small background job in production that prunes old rows from `analytics_events`.
@@ -311,6 +319,23 @@ Bare metal (venv)
 Verification
 - On Postgres: `\di+ idx_ae_*` should show the new partial index.
 - Logs will periodically include `analytics_retention: pruned <N> rows...` when enabled.
+
+### Grafana dashboard: Fallback analytics
+
+We ship a ready-to-import Grafana dashboard JSON for monitoring LLM fallback behavior and rates:
+
+- File: `ops/grafana/ledgermind-fallback-dashboard.json`
+- Datasource: PostgreSQL (select your Postgres datasource during import)
+
+Import steps
+1) In Grafana, go to Dashboards → New → Import.
+2) Upload the JSON file from `ops/grafana/ledgermind-fallback-dashboard.json`.
+3) When prompted, choose your PostgreSQL datasource and click Import.
+
+Panels included
+- Fallbacks (count) over time filtered by the dashboard time range.
+- Fallbacks by provider (stacked), reading `props_json->>'provider'`.
+- Fallback rate = fallbacks / chat attempts per minute.
 
 ## Repo layout
 ```
