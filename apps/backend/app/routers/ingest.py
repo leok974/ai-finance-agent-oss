@@ -1,4 +1,4 @@
-from fastapi import APIRouter, UploadFile, File, Query, Depends
+from fastapi import APIRouter, UploadFile, File, Query, Depends, Response
 from sqlalchemy.orm import Session
 from sqlalchemy import select, update
 from io import TextIOWrapper
@@ -155,3 +155,25 @@ async def ingest_csv(
             db.commit()
     # include both keys for compatibility
     return {"ok": True, "added": added, "count": added, "flip_auto": flip and (expenses_are_positive is None)}
+
+
+@router.put("")
+async def ingest_csv_put(
+    file: UploadFile = File(...),
+    replace: bool = Query(False),
+    expenses_are_positive: bool | None = Query(None),
+    db: Session = Depends(get_db),
+):
+    """PUT alias for ingest to support idempotent clients; delegates to POST handler."""
+    return await ingest_csv(
+        file=file,
+        replace=replace,
+        expenses_are_positive=expenses_are_positive,
+        db=db,
+    )
+
+
+@router.head("")
+async def ingest_head():
+    """Health/lightweight check for ingest endpoint; no body returned."""
+    return Response(status_code=204, headers={"Cache-Control": "no-store"})
