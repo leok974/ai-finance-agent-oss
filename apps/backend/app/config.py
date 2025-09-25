@@ -5,7 +5,18 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 load_dotenv()
 
 OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL", "http://localhost:11434/v1")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "ollama")
+def _read_openai_key_from_file() -> str | None:
+	path = os.getenv("OPENAI_API_KEY_FILE", "/run/secrets/openai_api_key")
+	try:
+		if path and os.path.isfile(path):
+			with open(path, "r", encoding="utf-8") as f:
+				return f.read().strip()
+	except Exception:
+		pass
+	return None
+
+_ENV_OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+OPENAI_API_KEY = (_ENV_OPENAI_API_KEY.strip() if _ENV_OPENAI_API_KEY else None) or _read_openai_key_from_file() or "ollama"
 MODEL = os.getenv("MODEL", "gpt-oss:20b")
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://ollama:11434")
 DEV_ALLOW_NO_LLM = os.getenv("DEV_ALLOW_NO_LLM", "0") == "1"
@@ -35,6 +46,7 @@ class Settings(BaseSettings):
 	DEFAULT_LLM_MODEL: str = "gpt-oss:20b"  # for ollama; e.g., "gpt-5" for OpenAI
 	OPENAI_BASE_URL: str = "http://localhost:11434/v1"  # Ollama shim OR https://api.openai.com/v1
 	OPENAI_API_KEY: str = "ollama"  # real key when provider="openai"
+	OPENAI_API_KEY_FILE: str = "/run/secrets/openai_api_key"
 	OLLAMA_BASE_URL: str = "http://ollama:11434"
 	model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

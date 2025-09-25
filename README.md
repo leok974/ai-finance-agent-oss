@@ -260,6 +260,30 @@ docker exec -it finance-pg psql -U myuser -d finance -c "SELECT MAX(date) FROM t
 - `MODEL` (default `gpt-oss:20b`)
 - `DEV_ALLOW_NO_LLM=1` to use deterministic stubbed suggestions if LLM is down
 
+### OpenAI key via Docker secret (prod)
+
+In production, avoid passing `OPENAI_API_KEY` via environment variables.
+
+- Put your key in `./secrets/openai_api_key` (file contents is just the key string, no quotes or KEY= prefix).
+- Do not commit this file. The repo already ignores `secrets/` and keeps `secrets/.keep` for the folder.
+- Compose mounts it at `/run/secrets/openai_api_key` and sets `OPENAI_API_KEY_FILE` for the backend in `docker-compose.prod.yml`.
+- The backend loads the key from `OPENAI_API_KEY` (env) when present (dev/local), otherwise from `OPENAI_API_KEY_FILE` (defaults to `/run/secrets/openai_api_key`).
+
+Verify (PowerShell):
+
+1) Rebuild and start backend with prod compose overrides:
+  - $files = @('-f','docker-compose.prod.yml','-f','docker-compose.prod.override.yml')
+  - docker compose $files up -d --build backend
+
+2) Check secret is mounted inside the container:
+  - $be = (docker ps --format "{{.Names}}" | Select-String "backend").ToString()
+  - docker exec -it $be sh -lc 'ls -l /run/secrets && wc -c </run/secrets/openai_api_key'
+
+3) Functional smoke:
+  - curl -s -i https://app.ledger-mind.org/agent/chat -H "Content-Type: application/json" --data '{"messages":[{"role":"user","content":"ping"}],"stream":false}'
+
+Expected: 200 (or friendly response) and no server-side "missing_config" errors if the secret file exists.
+
 ## Repo layout
 ```
 apps/

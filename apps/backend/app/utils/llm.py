@@ -119,7 +119,14 @@ def call_llm(*, model: str, messages: List[Dict[str,str]], temperature: float=0.
     except (requests.exceptions.ConnectTimeout, requests.exceptions.ConnectionError, requests.HTTPError) as err:
         # On 5xx/timeout/connection issues, optionally fallback to OpenAI if a key is configured.
         # Relaxed guard: presence of any OPENAI_API_KEY enables fallback attempt to api.openai.com.
-        can_fallback = bool(settings.OPENAI_API_KEY)
+        def _has_real_openai_key() -> bool:
+            try:
+                k = settings.OPENAI_API_KEY or ""
+                # Treat actual OpenAI-style keys (sk-*) as real; ignore placeholders like 'ollama' or empty
+                return isinstance(k, str) and k.startswith("sk-")
+            except Exception:
+                return False
+        can_fallback = _has_real_openai_key()
         if isinstance(err, requests.HTTPError):
             code = getattr(err.response, 'status_code', 500)
             transient = (500 <= code < 600)

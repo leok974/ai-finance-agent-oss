@@ -1,6 +1,6 @@
 import json
 import asyncio, random, time, email.utils as eut
-import httpx
+import httpx, os
 from ..config import OPENAI_BASE_URL, OPENAI_API_KEY, MODEL, DEV_ALLOW_NO_LLM
 from app.utils.request_ctx import get_request_id
 
@@ -20,7 +20,9 @@ def _parse_retry_after(v: str | None) -> float | None:
 class LLMClient:
     def __init__(self):
         self.base = OPENAI_BASE_URL.rstrip("/")
-        self.key = OPENAI_API_KEY
+        # Prefer env-provided key (dev) else secret file (prod)
+        key = os.getenv("OPENAI_API_KEY") or OPENAI_API_KEY
+        self.key = (key.strip() if isinstance(key, str) else key)
         self.model = MODEL
 
     async def chat(self, messages, tools=None, tool_choice="auto"):
