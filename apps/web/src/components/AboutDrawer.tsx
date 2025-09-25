@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { getMetaInfo, MetaInfo, getHealthz, Healthz } from '../lib/api';
+import { getMetaInfo, MetaInfo, getHealthz, Healthz, getLlmHealth, LlmHealth } from '../lib/api';
 import { Info } from 'lucide-react';
 
 type RowProps = { label: string; value?: React.ReactNode };
@@ -15,6 +15,7 @@ export default function AboutDrawer({ showButton = true }: AboutDrawerProps) {
   const [open, setOpen] = React.useState(false);
   const [data, setData] = React.useState<MetaInfo | null>(null);
   const [health, setHealth] = React.useState<Healthz | null>(null);
+  const [llm, setLlm] = React.useState<LlmHealth | null>(null);
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
@@ -22,9 +23,10 @@ export default function AboutDrawer({ showButton = true }: AboutDrawerProps) {
     setLoading(true);
     setError(null);
     try {
-      const [m, h] = await Promise.all([getMetaInfo(), getHealthz()]);
+      const [m, h, l] = await Promise.all([getMetaInfo(), getHealthz(), getLlmHealth().catch(() => null)]);
       setData(m);
       setHealth(h);
+      setLlm(l);
     } catch (e: any) {
       setError(e?.message ?? String(e));
     } finally { setLoading(false); }
@@ -115,6 +117,15 @@ export default function AboutDrawer({ showButton = true }: AboutDrawerProps) {
                   <Row label="DB revision (healthz)" value={<code>{dbRevFromHealth || '—'}</code>} />
                   <Row label="Code head" value={<code>{head || '—'}</code>} />
                   <Row label="All heads" value={<code>{heads?.length ? heads.join(', ') : '—'}</code>} />
+                  <Row label="OpenAI key" value={(
+                    llm?.openai_key
+                      ? (
+                        llm.openai_key.present
+                          ? <span className="inline-flex items-center gap-1 rounded-full border border-emerald-400/40 bg-emerald-500/10 px-2 py-0.5 text-[11px] text-emerald-300">present ({llm.openai_key.source})</span>
+                          : <span className="inline-flex items-center gap-1 rounded-full border border-rose-400/40 bg-rose-500/10 px-2 py-0.5 text-[11px] text-rose-300">absent</span>
+                      )
+                      : <span className="text-xs opacity-70">—</span>
+                  )} />
                 </div>
 
                 <div className="mt-2">

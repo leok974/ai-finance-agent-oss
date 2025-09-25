@@ -22,6 +22,7 @@ from . import config as app_config
 from .routers import ingest, txns, rules, ml, report, budget, alerts, insights, agent, explain
 from app.routers import analytics
 from app.routers import analytics_events as analytics_events_router
+from app.routers import llm_health as llm_health_router
 from .routers import meta
 from app.routers import agent_tools_transactions as agent_tools_txn
 from app.routers import agent_tools_budget as agent_tools_budget
@@ -335,6 +336,7 @@ app.include_router(analytics.router)
 app.include_router(analytics_events_router.router)
 app.include_router(help_ui_router.router)
 app.include_router(txns_edit_router.router)
+app.include_router(llm_health_router.router)
 
 # Mount health router at root so /healthz is available at top-level
 app.include_router(health_router.router)  # exposes GET /healthz

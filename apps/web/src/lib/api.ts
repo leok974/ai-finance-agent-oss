@@ -250,6 +250,17 @@ export async function getMetaInfo(): Promise<MetaInfo> {
   return http<MetaInfo>('/meta/info');
 }
 
+// LLM health
+export type LlmHealth = {
+  ok: boolean;
+  status: { ollama: string; openai: string };
+  openai_key?: { present: boolean; source: 'env'|'file'|'absent' };
+};
+
+export async function getLlmHealth(): Promise<LlmHealth> {
+  return http<LlmHealth>('/llm/health');
+}
+
 // mapper: rename keys (camelCase -> snake_case) and allow snake_case passthrough
 const mapKeys = <T extends object>(src: any, pairs: Record<string, string>) => {
   const o: any = {};
