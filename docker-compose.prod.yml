@@ -42,7 +42,6 @@ services:
       postgres:
         condition: service_healthy
     volumes:
-      - "C:/secrets/ledgermind-backend-sa.json:/secrets/gcp-sa.json:ro"
       - ./apps/backend:/app:ro
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0) if urllib.request.urlopen('http://127.0.0.1:8000/ready').getcode()==200 else sys.exit(1)"]
