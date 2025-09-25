@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 import asyncio
 from .db import Base, engine
 from sqlalchemy import inspect
+from sqlalchemy import text
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
@@ -228,14 +229,36 @@ async def _startup_load_state():
                     st = _crypto_status(db)
                     if not st.get("ready"):
                         logging.getLogger("uvicorn").error("Crypto NOT ready at startup: %s", st)
-                        import sys
-                        sys.exit(1)
+                        strict = os.environ.get("CRYPTO_STRICT_STARTUP", "1").lower() not in {"0", "false", "no"}
+                        if strict:
+                            import sys
+                            sys.exit(1)
+                        else:
+                            logging.getLogger("uvicorn").warning("CRYPTO_STRICT_STARTUP=0 set; continuing startup without crypto ready")
             logging.getLogger("uvicorn").info("crypto: initialized (DEK cached)")
     except Exception as e:
         logging.getLogger("uvicorn").error("crypto init failed: %s", e)
+        # Extra diagnostics to aid KMS/AAD issues
+        try:
+            sa_email = None
+            sa_path = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
+            if sa_path and os.path.isfile(sa_path):
+                import json  # lazy import
+                with open(sa_path, "r", encoding="utf-8") as f:
+                    sa_email = json.load(f).get("client_email")
+            logging.getLogger("uvicorn").error(
+                "crypto debug: key=%s, aad=%s, sa=%s",
+                os.environ.get("GCP_KMS_KEY"),
+                os.environ.get("GCP_KMS_AAD"),
+                sa_email or "unknown",
+            )
+        except Exception:
+            pass
         if os.environ.get("APP_ENV", os.environ.get("ENV", "dev")).lower() == "prod":
-            import sys
-            sys.exit(1)
+            # Allow operators to bypass hard-exit while fixing IAM/AAD via CRYPTO_STRICT_STARTUP=0
+            if os.environ.get("CRYPTO_STRICT_STARTUP", "1").lower() not in {"0", "false", "no"}:
+                import sys
+                sys.exit(1)
 
 async def _shutdown_save_state():
     save_state(app)

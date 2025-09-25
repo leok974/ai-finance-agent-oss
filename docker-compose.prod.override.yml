@@ -31,14 +31,23 @@ services:
       DEV_ALLOW_NO_LLM: "0"
       MASTER_KEK_B64: ${MASTER_KEK_B64}
       ENCRYPTION_MASTER_KEY_BASE64: ${ENCRYPTION_MASTER_KEY_BASE64:-${MASTER_KEK_B64}}
-      CRYPTO_MODE: "kms"
+      ENCRYPTION_ENABLED: "1"
+      CRYPTO_STRICT_STARTUP: "1"
       KMS_PROVIDER: "gcp"
-      GCP_KMS_KEY: "projects/ledgermind-03445-3l/locations/global/keyRings/ledgermind/cryptoKeys/backend"
+      GCP_KMS_KEY: "projects/ledgermind-03445-3l/locations/us-east1/keyRings/ledgermind/cryptoKeys/kek"
+      GCP_KMS_AAD: "app=ledgermind,env=prod"
       GOOGLE_APPLICATION_CREDENTIALS: "/secrets/gcp-sa.json"
       GRPC_VERBOSITY: "ERROR"
       GRPC_TRACE: ""
     volumes:
-      - ./secrets/gcp-sa.json:/secrets/gcp-sa.json:ro
+      # Mount the specific SA JSON file at the expected path (GOOGLE_APPLICATION_CREDENTIALS must be a file)
+      - ./secrets/gcp-sa.json/ledgermind-backend-sa.json:/secrets/gcp-sa.json:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0) if urllib.request.urlopen('http://127.0.0.1:8000/ready').getcode()==200 else sys.exit(1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
 
   ollama:
     environment:

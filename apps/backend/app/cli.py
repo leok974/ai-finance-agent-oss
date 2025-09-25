@@ -1,4 +1,4 @@
-import os, sys, argparse, base64
+import os, sys, argparse, base64, json, pathlib, datetime as dt
 from app.utils.time import utc_now, utc_iso
 os.environ.setdefault("PYTHONPATH","/app")
 
@@ -90,6 +90,50 @@ def cmd_crypto_status(args):
     mode = ("env" if (n is not None and len(n) > 0) else "kms")
     out = {"label": row.label, "mode": mode, "wlen": len(w), "nlen": nlen}
     print(out)
+
+
+def cmd_crypto_export_active(args):
+    """Export the wrapped active DEK and metadata to a JSON file (safe to store; still KMS/KEK-wrapped)."""
+    out_path = args.out or "/tmp/active-dek.json"
+    db: Session = next(get_db())
+    # Prefer current active; fallback to latest
+    row = db.execute(text(
+        """
+        SELECT label, dek_wrapped, dek_wrap_nonce, created_at
+          FROM encryption_keys
+         WHERE label='active'
+         ORDER BY created_at DESC, id DESC
+         LIMIT 1
+        """
+    )).first()
+    if not row:
+        row = db.execute(text(
+            "SELECT label, dek_wrapped, dek_wrap_nonce, created_at FROM encryption_keys ORDER BY created_at DESC, id DESC LIMIT 1"
+        )).first()
+    if not row:
+        print("ERROR: no encryption_keys rows found", file=sys.stderr)
+        sys.exit(2)
+
+    wrapped: bytes = getattr(row, "dek_wrapped", b"") or b""
+    created = getattr(row, "created_at", None)
+    # Metadata sourced from env for portability
+    kms_key = os.getenv("GCP_KMS_KEY")
+    aad = os.getenv("GCP_KMS_AAD")
+
+    payload = {
+        "label": getattr(row, "label", "active"),
+        "kms_key": kms_key,
+        "aad": aad,
+        "wrapped_key_b64": base64.b64encode(wrapped).decode("ascii"),
+        "created_at": (utc_iso(created) if created else None),
+        "exported_at": dt.datetime.utcnow().isoformat() + "Z",
+        "note": "KMS-wrapped; NOT plaintext." if (getattr(row, "dek_wrap_nonce", None) in (None, b"")) else "Env-KEK wrapped; NOT plaintext.",
+    }
+
+    pathlib.Path(out_path).parent.mkdir(parents=True, exist_ok=True)
+    with open(out_path, "w", encoding="utf-8") as f:
+        json.dump(payload, f, indent=2)
+    print({"wrote": out_path, "bytes": len(wrapped)})
 
 
 def cmd_txn_demo(args):
@@ -462,7 +506,8 @@ def main():
         roles = [r.strip() for r in (a.roles or []) if r.strip()]
         u = db.query(User).filter(User.email == email).first()
         if not u:
-            u = User(email=email, password_hash=hash_password(pw))
+            # Explicitly set created_at to avoid SQLite 'now()' default issues
+            u = User(email=email, password_hash=hash_password(pw), created_at=utc_now())
             db.add(u); db.commit(); db.refresh(u)
         else:
             if pw:
@@ -490,6 +535,11 @@ def main():
     ualias.add_argument("--password", required=True)
     ualias.add_argument("--roles", nargs="*", default=["user"], help="Roles to assign (space-separated)")
     ualias.set_defaults(fn=_cmd_users_create)
+
+    # Export wrapped active DEK
+    r_exp = sub.add_parser("crypto-export-active", help="Export wrapped active DEK to JSON")
+    r_exp.add_argument("--out", default="/tmp/active-dek.json", help="Output path inside container")
+    r_exp.set_defaults(fn=cmd_crypto_export_active)
 
     args = p.parse_args()
     if not getattr(args, "cmd", None):
