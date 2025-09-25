@@ -24,7 +24,10 @@ services:
     env_file:
       - ./secrets/backend.env
     environment:
+      # Primary provider: Ollama (OpenAI-compatible shim)
       OPENAI_BASE_URL: "http://ollama:11434/v1"
+      # Enable DB sink for analytics so /analytics/track writes to Postgres
+      ANALYTICS_DB: "1"
       # Use env var as fallback on Windows Desktop where bind-mounting /run/secrets can fail
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       # Neutralize file-based loading for local prod override
