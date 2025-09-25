@@ -2,15 +2,15 @@ import os, sys, argparse, base64, json, pathlib, datetime as dt
 from app.utils.time import utc_now, utc_iso
 os.environ.setdefault("PYTHONPATH","/app")
 
-from app.db import get_db
+from app.db import get_db, SessionLocal
 from sqlalchemy.orm import Session
-from sqlalchemy import text
+from sqlalchemy import text, select
 
 # Initializer ensures encryption_keys row exists + caches DEK
 from app.scripts.encrypt_txn_backfill_splitcols import _ensure_crypto_initialized
 from app.scripts.dek_rotation import begin_new_dek, run_rotation, finalize_rotation, rotation_status
 from app.core.crypto_state import set_write_label, get_write_label
-from app.orm_models import User
+from app.orm_models import User, EncryptionKey
 from app.utils.auth import hash_password, _ensure_roles
 
 
@@ -134,6 +134,92 @@ def cmd_crypto_export_active(args):
     with open(out_path, "w", encoding="utf-8") as f:
         json.dump(payload, f, indent=2)
     print({"wrote": out_path, "bytes": len(wrapped)})
+
+
+def cmd_crypto_import_active(args):
+    src_path = args.src
+    try:
+        with open(src_path, "r", encoding="utf-8") as fh:
+            data = json.load(fh)
+    except FileNotFoundError:
+        raise SystemExit(f"Source file not found: {src_path}")
+
+    try:
+        wrapped = base64.b64decode(data["wrapped_key_b64"])
+    except KeyError as exc:
+        raise SystemExit("Invalid export: missing wrapped_key_b64") from exc
+    except Exception as exc:
+        raise SystemExit(f"Invalid wrapped_key_b64: {exc}") from exc
+
+    nonce_b64 = data.get("wrap_nonce_b64")
+    nonce = None
+    if nonce_b64:
+        try:
+            nonce = base64.b64decode(nonce_b64)
+        except Exception as exc:
+            raise SystemExit(f"Invalid wrap_nonce_b64: {exc}") from exc
+
+    kms_key = data.get("kms_key")
+    aad = data.get("aad")
+    env_key = os.getenv("GCP_KMS_KEY")
+    env_aad = os.getenv("GCP_KMS_AAD")
+    if not args.allow_mismatch:
+        if (kms_key or env_key) and kms_key != env_key:
+            raise SystemExit(
+                f"Refusing import: export kms_key={kms_key!r} != env {env_key!r}. Use --allow-mismatch to override."
+            )
+        if (aad or env_aad) and aad != env_aad:
+            raise SystemExit(
+                f"Refusing import: export aad={aad!r} != env {env_aad!r}. Use --allow-mismatch to override."
+            )
+
+    now = dt.datetime.utcnow()
+    with SessionLocal() as session:
+        existing = session.execute(
+            select(EncryptionKey).where(EncryptionKey.label == "active")
+        ).scalar_one_or_none()
+        if existing and not args.force:
+            raise SystemExit("Active key exists. Use --force to overwrite.")
+
+        if existing:
+            rollover_label = f"active-old-{now.strftime('%Y%m%d-%H%M%S')}"
+            session.execute(
+                text("UPDATE encryption_keys SET label=:new_label WHERE id=:row_id"),
+                {"new_label": rollover_label, "row_id": existing.id},
+            )
+
+        new_row = EncryptionKey(
+            label="active",
+            dek_wrapped=wrapped,
+            dek_wrap_nonce=nonce,
+            created_at=now,
+        )
+        session.add(new_row)
+        session.flush()
+
+        # Best effort: persist metadata columns if they exist
+        scheme = "gcp_kms" if nonce is None else "aesgcm"
+        try:
+            session.execute(
+                text(
+                    "UPDATE encryption_keys SET wrap_scheme=:scheme, kms_key_id=:kms WHERE id=:row_id"
+                ),
+                {"scheme": scheme, "kms": kms_key, "row_id": new_row.id},
+            )
+        except Exception:
+            pass
+
+        session.commit()
+
+        try:
+            from app.core.crypto_state import purge_dek_cache, load_and_cache_active_dek
+
+            purge_dek_cache("active")
+            load_and_cache_active_dek(session)
+        except Exception:
+            pass
+
+    print("Imported active DEK.")
 
 
 def cmd_txn_demo(args):
@@ -540,6 +626,16 @@ def main():
     r_exp = sub.add_parser("crypto-export-active", help="Export wrapped active DEK to JSON")
     r_exp.add_argument("--out", default="/tmp/active-dek.json", help="Output path inside container")
     r_exp.set_defaults(fn=cmd_crypto_export_active)
+
+    r_imp = sub.add_parser("crypto-import-active", help="Import a wrapped active DEK from JSON")
+    r_imp.add_argument("src", help="Path to export JSON")
+    r_imp.add_argument("--force", action="store_true", help="Overwrite existing active key")
+    r_imp.add_argument(
+        "--allow-mismatch",
+        action="store_true",
+        help="Allow kms_key/AAD mismatch between export and current env",
+    )
+    r_imp.set_defaults(fn=cmd_crypto_import_active)
 
     args = p.parse_args()
     if not getattr(args, "cmd", None):

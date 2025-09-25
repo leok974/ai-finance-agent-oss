@@ -52,6 +52,11 @@ reports/
 ops/letsencrypt/
 
 # Secrets & credentials
+
+# KMS wrapped DEK export
+active-dek.json
+*.dek.json
+
 secrets/
 !secrets/.keep
 

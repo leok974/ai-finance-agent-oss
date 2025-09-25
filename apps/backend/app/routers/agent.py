@@ -726,6 +726,12 @@ def list_models():
             "models": merged,
         }
 
+@router.head("/models")
+async def head_models():
+    """Return 204 for HEAD requests with no-store to avoid probe stampedes."""
+    from fastapi import Response
+    return Response(status_code=204, headers={"Cache-Control": "no-store"})
+
 # Alternative JSON response for clients that prefer structured redirects
 # (Removed duplicate /agent/chat legacy JSON redirect to avoid route conflicts)
 
