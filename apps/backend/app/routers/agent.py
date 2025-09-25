@@ -701,10 +701,30 @@ def list_models():
             "models": merged,
         }
     except Exception as e:
-        return JSONResponse(
-            status_code=502,
-            content={"error": f"Failed to list models: {type(e).__name__}: {e}"},
-        )
+        # Graceful fallback: never 5xx. Provide at least the configured default.
+        try:
+            provider = getattr(settings, "DEFAULT_LLM_PROVIDER", "ollama")
+            default_model = getattr(settings, "DEFAULT_LLM_MODEL", "gpt-oss:20b")
+        except Exception:
+            provider = "ollama"
+            default_model = "gpt-oss:20b"
+        # Include convenient aliases similarly to the happy path
+        aliases = [{"id": "default"}]
+        if provider == "ollama":
+            aliases = [{"id": "gpt-oss:20b"}, {"id": "default"}]
+        seen = set()
+        merged = []
+        for m in (aliases + [{"id": default_model}]):
+            mid = m.get("id")
+            if not mid or mid in seen:
+                continue
+            seen.add(mid)
+            merged.append({"id": mid})
+        return {
+            "provider": provider,
+            "default": default_model,
+            "models": merged,
+        }
 
 # Alternative JSON response for clients that prefer structured redirects
 # (Removed duplicate /agent/chat legacy JSON redirect to avoid route conflicts)
