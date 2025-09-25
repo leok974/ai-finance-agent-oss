@@ -284,6 +284,34 @@ Verify (PowerShell):
 
 Expected: 200 (or friendly response) and no server-side "missing_config" errors if the secret file exists.
 
+### Analytics retention (prod)
+
+To keep analytics data bounded over time, the backend can run a small background job in production that prunes old rows from `analytics_events`.
+
+- ANALYTICS_RETENTION_DAYS: days of data to keep (default 90)
+- ANALYTICS_RETENTION_INTERVAL_HOURS: how often to prune (default 24)
+
+Notes
+- The job only runs when `APP_ENV=prod` (or `ENV=prod`).
+- Pruning is a simple `DELETE FROM analytics_events WHERE server_ts < :cutoff` and works for both Postgres and SQLite.
+- A Postgres partial index on the hot event `chat_fallback_used` is included via Alembic for faster queries:
+  - idx_ae_fallback_event on `server_ts` where `event='chat_fallback_used'`.
+
+After pulling this change, apply migrations:
+
+PowerShell (Docker)
+1) $BE = (docker ps --format "{{.Names}}" | Select-String -Pattern "backend").ToString()
+2) docker exec -it $BE alembic upgrade head
+
+Bare metal (venv)
+- From `apps/backend`, ensure your venv is active and Alembic is installed, then run:
+  - python -m pip install --upgrade pip setuptools wheel alembic
+  - python -m alembic upgrade head
+
+Verification
+- On Postgres: `\di+ idx_ae_*` should show the new partial index.
+- Logs will periodically include `analytics_retention: pruned <N> rows...` when enabled.
+
 ## Repo layout
 ```
 apps/
