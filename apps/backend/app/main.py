@@ -84,6 +84,24 @@ app = FastAPI(
     redoc_url="/redoc",
     lifespan=None,  # will attach below
 )
+# --- Help Rephrase Enablement ---------------------------------------------------
+# Force-enable help/describe rephrase path in production unless explicitly disabled.
+# Precedence:
+#   1. HELP_REPHRASE_ENABLED (explicit on/off)
+#   2. HELP_REPHRASE_FORCE_DISABLE (hard off even if enabled elsewhere)
+#   3. If neither set: enabled when APP_ENV=prod, else fallback to settings.HELP_REPHRASE_DEFAULT
+try:
+    _env = os.environ.get("APP_ENV", os.environ.get("ENV", "dev")).lower()
+    _explicit = os.environ.get("HELP_REPHRASE_ENABLED")
+    if _explicit is not None:
+        _help_rephrase_enabled = _explicit.lower() in {"1","true","yes","on"}
+    else:
+        _help_rephrase_enabled = True if _env == "prod" else settings.HELP_REPHRASE_DEFAULT
+    if os.environ.get("HELP_REPHRASE_FORCE_DISABLE", "").lower() in {"1","true","yes","on"}:
+        _help_rephrase_enabled = False
+    app.state.help_rephrase_enabled = _help_rephrase_enabled
+except Exception:
+    app.state.help_rephrase_enabled = settings.HELP_REPHRASE_DEFAULT
 # Enable JSON logs in production
 try:
     if os.environ.get("APP_ENV", os.environ.get("ENV", "dev")).lower() == "prod":
@@ -167,6 +185,7 @@ def get_config_snapshot():
         "env": settings.ENV,
         "debug": settings.DEBUG,
         "help_rephrase_default": settings.HELP_REPHRASE_DEFAULT,
+        "help_rephrase_enabled": getattr(app.state, "help_rephrase_enabled", settings.HELP_REPHRASE_DEFAULT),
         "help_cache": cache_stats,
     }
 class SecurityHeaders(BaseHTTPMiddleware):
