@@ -10,7 +10,7 @@ from app.utils import llm as llm_mod
 from app.analytics_emit import emit_fallback
 from app.services import help_cache
 from app.utils.filters import hash_filters
-import json, threading
+import json, threading, os
 from app.services.llm_flags import llm_policy
 
 router = APIRouter()
@@ -58,17 +58,8 @@ def _summarize_for_prompt(data: Any) -> str:
 def _policy():
     return llm_policy("help")
 
-# Backward compatibility shim for legacy tests that monkeypatch `_llm_enabled`.
-# Tests set this to True/False to force rephrase path. We OR it with the normal
-# policy decision instead of mutating internal policy state.
-def _llm_enabled() -> bool:  # pragma: no cover - shim used mainly in tests
-    try:
-        return llm_policy("help").get("allow", False)
-    except Exception:
-        return False
-
-# Explicit export for tests performing attribute lookup before import side-effects
-__all__ = ["describe_panel", "_llm_enabled"]
+# Explicit export (shim removed)
+__all__ = ["describe_panel"]
 
 @router.post("/agent/describe/{panel_id}")
 def describe_panel(panel_id: str, req: DescribeRequest, rephrase: Optional[bool] = Query(None), db: Session = Depends(get_db)):
@@ -89,10 +80,14 @@ def describe_panel(panel_id: str, req: DescribeRequest, rephrase: Optional[bool]
 
     pol = _policy()
     allow_effective = bool(pol.get("allow"))
-    try:
-        allow_effective = allow_effective or bool(_llm_enabled())
-    except Exception:
-        pass
+    # Test override: FORCE_HELP_LLM, highest precedence
+    ov = os.getenv("FORCE_HELP_LLM")
+    if ov is not None:
+        v = ov.strip().lower()
+        if v in {"1","true","yes","on"}:
+            allow_effective = True
+        elif v in {"0","false","no","off"}:
+            allow_effective = False
     if pol.get("globally_disabled"):
         try:
             help_cache.clear()

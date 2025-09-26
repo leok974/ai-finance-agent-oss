@@ -14,7 +14,8 @@ def test_describe_caches_and_propagates_provider(monkeypatch):
     monkeypatch.setattr(detect, "try_llm_rephrase_summary", fake_rephrase)
     # Force rephrase path on
     monkeypatch.setattr("app.utils.llm.call_local_llm", lambda *a, **k: ("noop", []))
-    monkeypatch.setattr("app.routers.describe._llm_enabled", lambda: True)
+    # Use env override instead of removed _llm_enabled shim
+    monkeypatch.setenv("FORCE_HELP_LLM", "1")
 
     body = {"month": "2025-08", "filters": {"limit": 10}}
     r1 = client.post("/agent/describe/top_merchants?rephrase=1", json=body)
@@ -34,7 +35,8 @@ def test_describe_caches_and_propagates_provider(monkeypatch):
 
 
 def test_cache_expires(monkeypatch):
-    monkeypatch.setattr("app.routers.describe._llm_enabled", lambda: False)
+    # Explicitly disable via env override
+    monkeypatch.setenv("FORCE_HELP_LLM", "0")
     help_cache._set_ttl_for_tests(1)
     try:
         body = {"month": "2025-08", "filters": {}}

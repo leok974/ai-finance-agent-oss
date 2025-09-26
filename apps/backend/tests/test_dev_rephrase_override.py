@@ -3,7 +3,6 @@ from fastapi.testclient import TestClient
 from app.main import app
 from app.services import help_cache
 import app.services.agent_detect as detect
-import app.routers.describe as describe_router
 
 
 def test_dev_rephrase_override(monkeypatch):
@@ -18,8 +17,8 @@ def test_dev_rephrase_override(monkeypatch):
     # Force HELP_REPHRASE_DEFAULT off so query param decides
     monkeypatch.setenv('HELP_REPHRASE_DEFAULT','0')
 
-    # Force allow via shim so rephrase branch always executes regardless of env races
-    monkeypatch.setattr(describe_router, "_llm_enabled", lambda: True, raising=True)
+    # Force allow via env override (replaces removed _llm_enabled shim)
+    monkeypatch.setenv('FORCE_HELP_LLM','1')
 
     # Monkeypatch rephrase helper to return polished text deterministically
     calls = {'n':0}

@@ -94,7 +94,7 @@ def test_dev_allow_no_llm_skips_llm(client, db_session, monkeypatch):
 
 
 def test_llm_mode_with_mock(client, db_session, monkeypatch):
-    # Ensure DEV_ALLOW_NO_LLM disabled
+    # Force LLM via policy precedence (FORCE_LLM_TESTS)
     monkeypatch.delenv("DEV_ALLOW_NO_LLM", raising=False)
     monkeypatch.setenv("FORCE_LLM_TESTS", "1")
 
