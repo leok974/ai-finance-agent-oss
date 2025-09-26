@@ -131,26 +131,50 @@ def healthz(db: Session = Depends(get_db)):
     except Exception:
         db_engine = None
     crypto = get_crypto_status(db)
+    crypto_enabled_env = os.getenv("ENCRYPTION_ENABLED", "1").lower() in {"1","true","yes","on"}
+    if not crypto_enabled_env:
+        # Override to explicit disabled state (even if keys present) to avoid confusion
+        crypto = {"ready": False, "mode": "disabled", "label": None, "kms_key_id": None}
     # Attach rotation stats if a rotation is in progress or cached
     try:
         rotation_stats = getattr(_dek_rotation, "_last_rotation_stats", {}) or {}
     except Exception:
         rotation_stats = {}
+    # Migration divergence flag from app.state (set in main lifespan)
+    try:
+        migration_diverged = getattr(__import__("app.main").main.app.state, "migration_diverged", None)  # type: ignore
+    except Exception:
+        migration_diverged = None
+
+    reasons = []
+    if not ok:
+        reasons.append("db_unreachable")
+    if not models_ok:
+        reasons.append("models_unreadable")
+    if not alembic.get("in_sync"):
+        reasons.append("alembic_out_of_sync")
+    if migration_diverged:
+        reasons.append("multiple_alembic_heads")
+    if crypto.get("mode") == "disabled":
+        reasons.append("crypto_disabled")
+    elif not crypto.get("ready"):
+        reasons.append("crypto_not_ready")
+    overall_status = "ok" if not reasons else ("degraded" if all(r in {"crypto_disabled"} for r in reasons) else "degraded")
+
     return {
-        "status": status,
+        "status": overall_status,
+        "reasons": reasons or None,
         "db": {"reachable": ok, "models_ok": models_ok},
         "alembic": alembic,
-        # Convenience shorthand fields for UI logs
+        "migration_diverged": bool(migration_diverged) if migration_diverged is not None else None,
         "db_engine": db_engine,
-        "models_ok": models_ok,
-    "alembic_ok": bool(alembic.get("in_sync")),
-    "db_revision": alembic.get("db_revision"),
-    # crypto details
-    "crypto_ready": crypto.get("ready"),
-    "crypto_mode": crypto.get("mode"),
-    "crypto_label": crypto.get("label"),
-    "crypto_kms_key": crypto.get("kms_key_id"),
-    "rotation": rotation_stats if rotation_stats else None,
+        "alembic_ok": bool(alembic.get("in_sync")),
+        "db_revision": alembic.get("db_revision"),
+        "crypto_ready": crypto.get("ready"),
+        "crypto_mode": crypto.get("mode"),
+        "crypto_label": crypto.get("label"),
+        "crypto_kms_key": crypto.get("kms_key_id"),
+        "rotation": rotation_stats if rotation_stats else None,
     }
 
 

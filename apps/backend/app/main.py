@@ -213,6 +213,26 @@ def _session_scope():
         yield db
     finally:
         db.close()
+def _detect_migration_divergence(app: FastAPI):
+    """Detect if multiple Alembic heads exist and stash flag on app.state.
+    Only reads script directory (no DB needed)."""
+    try:
+        from alembic.config import Config as AlembicConfig  # type: ignore
+        from alembic.script import ScriptDirectory  # type: ignore
+        alembic_ini = os.path.join(os.getcwd(), "alembic.ini")
+        cfg = AlembicConfig(alembic_ini) if os.path.exists(alembic_ini) else AlembicConfig()
+        script = ScriptDirectory.from_config(cfg)
+        heads = script.get_heads()
+        multi = len(heads) > 1
+        app.state.migration_diverged = multi
+        if multi:
+            logging.getLogger("uvicorn").warning("alembic: multiple heads detected: %s", heads)
+        else:
+            app.state.migration_diverged = False
+    except Exception:
+        # On failure, leave unset (healthz will treat missing as unknown)
+        app.state.migration_diverged = None
+
 async def _startup_load_state():
     try:
         load_state(app)
@@ -222,7 +242,7 @@ async def _startup_load_state():
         if os.getenv("STARTUP_STATE_STRICT", "0").lower() in {"1", "true", "yes"}:
             raise
     try:
-        enabled = os.environ.get("ENCRYPTION_ENABLED", "1") == "1"
+        enabled = os.environ.get("ENCRYPTION_ENABLED", "1").lower() in {"1","true","yes","on"}
         if enabled:
             crypto = EnvelopeCrypto.from_env(os.environ)
             set_crypto(crypto)
@@ -255,6 +275,8 @@ async def _startup_load_state():
                         else:
                             logging.getLogger("uvicorn").warning("CRYPTO_STRICT_STARTUP=0 set; continuing startup without crypto ready")
             logging.getLogger("uvicorn").info("crypto: initialized (DEK cached)")
+        else:
+            logging.getLogger("uvicorn").info("crypto: disabled (ENCRYPTION_ENABLED!=1)")
     except Exception as e:
         logging.getLogger("uvicorn").error("crypto init failed: %s", e)
         # Extra diagnostics to aid KMS/AAD issues
@@ -286,6 +308,8 @@ async def _shutdown_save_state():
 async def lifespan(app: FastAPI):
     # Startup sequence
     _create_tables_dev()
+    # Detect migration divergence early (pure code inspection)
+    _detect_migration_divergence(app)
     await _startup_load_state()
     app.state._bg_tasks = []
     # Start analytics retention loop in prod if enabled
