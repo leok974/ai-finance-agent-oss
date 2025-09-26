@@ -321,12 +321,30 @@ These update in real time; eviction increments occur when an expired entry is ac
 
 ## LLM Gating
 
-All LLM usage is centralized through `llm_allowed()` (`app/services/llm_flags.py`). Rules:
+All LLM usage is centralized through `llm_policy(mode)` in `app/services/llm_flags.py`.
 
-1. If `LLM_ALLOW_IN_DEV=1` (or true/yes/on), allow in any environment.
-2. Otherwise allow only when `ENV=prod` (or `APP_ENV=prod`) and `DEBUG` is not truthy.
+Precedence (highest wins):
 
-Describe endpoint rephrase logic uses this guard (legacy `_llm_enabled` wrapper still present for compatibility).
+1. `FORCE_LLM_TESTS=1` – test-only override; forces allow (sets `forced=True`).
+2. `DEV_ALLOW_NO_LLM=1` – global dev/test off switch (`globally_disabled=True`).
+3. `LLM_ALLOW_IN_DEV=1` – allow in non-prod environments.
+4. Production default: allow when `ENV=prod` (or `APP_ENV=prod`) and `DEBUG` is not truthy.
+
+`llm_policy` returns a dict: `{ allow: bool, forced: bool, globally_disabled: bool }`.
+
+Callers (describe, explain, chat) request a policy via `llm_policy("help"|"explain"|"chat")` and must treat `allow` as authoritative. Query params like `?use_llm=1` act only as hints; the policy decides final permission.
+
+### LLM gating in tests
+
+Use these env vars to exercise different paths:
+
+- Force on (tests only): `FORCE_LLM_TESTS=1`
+- Global dev disable: `DEV_ALLOW_NO_LLM=1`
+- Allow in dev: `LLM_ALLOW_IN_DEV=1`
+
+Precedence: `FORCE_LLM_TESTS` > `DEV_ALLOW_NO_LLM` > `LLM_ALLOW_IN_DEV` > prod fallback.
+
+When `globally_disabled` is true we also purge any cached rephrased variants to avoid serving stale LLM outputs.
 
 
 ---

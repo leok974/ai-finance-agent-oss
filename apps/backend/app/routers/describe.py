@@ -11,7 +11,7 @@ from app.analytics_emit import emit_fallback
 from app.services import help_cache
 from app.utils.filters import hash_filters
 import json, threading
-from app.services.llm_flags import llm_allowed
+from app.services.llm_flags import llm_policy
 
 router = APIRouter()
 
@@ -55,8 +55,8 @@ def _summarize_for_prompt(data: Any) -> str:
     except Exception:
         return "(unavailable)"
 
-def _llm_enabled() -> bool:  # backward compatibility wrapper
-    return llm_allowed()
+def _policy():
+    return llm_policy("help")
 
 @router.post("/agent/describe/{panel_id}")
 def describe_panel(panel_id: str, req: DescribeRequest, rephrase: Optional[bool] = Query(None), db: Session = Depends(get_db)):
@@ -76,7 +76,15 @@ def describe_panel(panel_id: str, req: DescribeRequest, rephrase: Optional[bool]
         provider = "none"
         was_rephrased = False
 
-        if rephrase and _llm_enabled():
+        pol = _policy()
+        # If globally disabled, proactively clear help cache to avoid stale rephrased variants
+        if pol.get("globally_disabled"):
+            try:
+                help_cache.clear()
+            except Exception:
+                pass
+
+        if rephrase and pol.get("allow"):
             # Reset fallback marker
             getattr(llm_mod, 'reset_fallback_provider', lambda: None)()
             _ = {
