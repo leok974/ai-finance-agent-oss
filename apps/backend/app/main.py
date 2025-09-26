@@ -102,6 +102,12 @@ try:
     app.state.help_rephrase_enabled = _help_rephrase_enabled
 except Exception:
     app.state.help_rephrase_enabled = settings.HELP_REPHRASE_DEFAULT
+    
+# Central runtime toggles registry (extendable). Values are simple booleans for now.
+if not hasattr(app.state, "runtime_toggles"):
+    app.state.runtime_toggles = {
+        "help_rephrase_enabled": getattr(app.state, "help_rephrase_enabled", settings.HELP_REPHRASE_DEFAULT),
+    }
 # Enable JSON logs in production
 try:
     if os.environ.get("APP_ENV", os.environ.get("ENV", "dev")).lower() == "prod":
