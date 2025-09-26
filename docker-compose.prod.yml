@@ -51,11 +51,12 @@ services:
         condition: service_healthy
       ollama:
         condition: service_started
-    secrets:
-      - source: openai_api_key
-        target: openai_api_key
+    # Secrets temporarily disabled locally due to Windows bind issue; override can re-enable
+    # secrets:
+    #   - source: openai_api_key
+    #       target: openai_api_key
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8000/live || curl -fsS http://127.0.0.1:8000/healthz"]
+      test: ["CMD", "python", "-c", "import urllib.request,sys;hdr={'Host':'backend'};\nfor u in ('http://127.0.0.1:8000/live','http://127.0.0.1:8000/healthz'):\n  try:\n    req=urllib.request.Request(u,headers=hdr);\n    with urllib.request.urlopen(req,timeout=2) as r:\n      if r.getcode()==200: sys.exit(0)\n  except Exception: pass\nsys.exit(1)"]
       interval: 10s
       timeout: 3s
       retries: 10
@@ -76,7 +77,33 @@ services:
     ports:
       - "127.0.0.1:80:80"
       - "127.0.0.1:443:443"
+    user: "101:101"
+    read_only: true
+    cap_drop: ["ALL"]
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /var/cache/nginx:rw,noexec,nosuid,nodev,size=64m,uid=101,gid=101,mode=0755
+      - /var/run:rw,noexec,nosuid,nodev,size=16m,uid=101,gid=101,mode=0755
     restart: unless-stopped
+
+  web:
+    build:
+      context: ./apps/web
+      dockerfile: Dockerfile
+    image: ai-finance-agent-oss-clean-web:latest
+    read_only: true
+    user: "101:101"
+    cap_drop: ["ALL"]
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /var/cache/nginx:rw,noexec,nosuid,nodev,size=64m,uid=101,gid=101,mode=0755
+      - /var/run:rw,noexec,nosuid,nodev,size=16m,uid=101,gid=101,mode=0755
+    restart: unless-stopped
+    # Not exposed directly; nginx (edge) can proxy / to this container internally on 8080 if desired.
+    expose:
+      - "8080"
 
   certbot:
     image: certbot/certbot:latest
