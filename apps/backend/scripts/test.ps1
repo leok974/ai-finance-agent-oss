@@ -6,7 +6,9 @@ param(
   # Comma or space separated patterns to pass to pytest -k (OR semantics). Example: -Pattern "onboarding,db_fallback"
   [string]$Pattern,
   # If set, treat Pattern tokens as AND terms instead of OR, building an expression token1 and token2 ...
-  [switch]$PatternAll
+  [switch]$PatternAll,
+  # Force reinstall of dev dependencies even if cache hash matches
+  [switch]$ForceDeps
 )
 $ErrorActionPreference = 'Stop'
 
@@ -24,12 +26,27 @@ if (-not (Test-Path $Py)) {
   if (Test-Path .venv/\Scripts/\Activate.ps1) { . .venv/\Scripts/\Activate.ps1; $Py = "$env:VIRTUAL_ENV/\Scripts/\python.exe" }
 }
 
-# Early install dev requirements to guarantee crypto/FastAPI present
+# Early install dev requirements to guarantee crypto/FastAPI present (with caching)
 try {
   $reqDev = Join-Path $BACKEND 'requirements-dev.txt'
   if (Test-Path $reqDev -and (Test-Path $Py)) {
-    Write-Host "[deps] Ensuring dev dependencies installed" -ForegroundColor Cyan
-    & $Py -m pip install -r $reqDev | Out-Null
+    $cacheDir = Join-Path $BACKEND '.cache'
+    if (-not (Test-Path $cacheDir)) { New-Item -ItemType Directory -Path $cacheDir | Out-Null }
+    $pyVersion = & $Py -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}')" 2>$null
+    $hashInput = @(
+      (Get-Content $reqDev -Raw),
+      $pyVersion
+    ) -join "\n--SEP--\n"
+    $hash = [System.BitConverter]::ToString((New-Object System.Security.Cryptography.SHA256Managed).ComputeHash([System.Text.Encoding]::UTF8.GetBytes($hashInput))).Replace('-','').Substring(0,32)
+    $hashFile = Join-Path $cacheDir 'requirements-dev.hash'
+    $prevHash = if (Test-Path $hashFile) { (Get-Content $hashFile -Raw).Trim() } else { '' }
+    if ($ForceDeps -or $hash -ne $prevHash) {
+      Write-Host "[deps] Installing dev dependencies (hash miss or forced)" -ForegroundColor Cyan
+      & $Py -m pip install -r $reqDev | Out-Null
+      Set-Content -LiteralPath $hashFile -Value $hash -Encoding ASCII
+    } else {
+      Write-Host "[deps] Cache hit (requirements-dev unchanged for Python $pyVersion)" -ForegroundColor DarkGreen
+    }
   }
 } catch { Write-Host "[deps] install warning: $_" -ForegroundColor DarkYellow }
 
@@ -147,12 +164,17 @@ if ($Pattern) {
   if ($rawTokens.Count -gt 0) {
     # Escape single quotes in tokens for safety (pytest -k uses eval-like parsing for quotes)
     $escaped = $rawTokens | ForEach-Object { $_.Replace("'", "") }
+    # pytest -k expects identifiers / substrings without quotes unless complex boolean precedence is needed.
+    # We'll only wrap in quotes if token has non-word characters other than dash or underscore.
+    $norm = $escaped | ForEach-Object {
+      if ($_ -match "^[A-Za-z0-9_\-]+$") { $_ } else { '"' + $_ + '"' }
+    }
     if ($PatternAll) {
       # All tokens must match
-      $kExpr = ($escaped | ForEach-Object { "'$_'" }) -join " and "
+      $kExpr = ($norm) -join " and "
     } else {
       # Any token matches
-      $kExpr = ($escaped | ForEach-Object { "'$_'" }) -join " or "
+      $kExpr = ($norm) -join " or "
     }
   }
 }

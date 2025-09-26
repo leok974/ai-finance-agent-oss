@@ -166,6 +166,29 @@ Generated example:
 
 This keeps iteration loops tight without editing file names or using long `pytest -k` manually.
 
+### Dev Dependency Caching
+
+The PowerShell runner now caches the dev dependency install step to avoid redundant `pip install` calls on every invocation.
+
+Mechanism:
+1. Compute SHA256 over the contents of `requirements-dev.txt` + the active Python version (major.minor.micro).
+2. Store the first 32 hex chars in `apps/backend/.cache/requirements-dev.hash`.
+3. Skip reinstall if the hash matches on the next run.
+
+Force reinstall:
+```powershell
+apps/backend/scripts/test.ps1 -ForceDeps
+```
+
+When it runs you will see one of:
+- `[deps] Installing dev dependencies (hash miss or forced)` (cache miss / forced)
+- `[deps] Cache hit (requirements-dev unchanged for Python X.Y.Z)` (cache hit)
+
+Edge Cases / Notes:
+- If Python patch version changes (e.g., 3.13.0 → 3.13.1) the cache is invalidated automatically.
+- Deleting the `.cache/requirements-dev.hash` file triggers a reinstall.
+- Use `-ForceDeps` after manually altering the virtual environment (e.g., `pip uninstall` experimentation) to reconcile.
+
 ## ⚡ **Performance & Reliability**
 
 ### Benefits:
