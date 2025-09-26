@@ -149,3 +149,25 @@ def db_session():
         yield db
     finally:
         db.close()
+
+
+@pytest.fixture(autouse=True)
+def _reset_in_memory_state():
+    """Snapshot & restore legacy in-memory lists (txns, rules, user_labels) per test.
+
+    Prevents leakage between tests that rely on `app.state.*` onboarding behavior.
+    Lightweight (list copy) vs. DB fixtures. Applied after db_session so DB is already clean.
+    """
+    try:
+        txns_orig = list(getattr(app.state, "txns", []))
+        rules_orig = list(getattr(app.state, "rules", []))
+        labels_orig = list(getattr(app.state, "user_labels", []))
+    except Exception:
+        txns_orig, rules_orig, labels_orig = [], [], []
+    yield
+    try:
+        app.state.txns = txns_orig
+        app.state.rules = rules_orig
+        app.state.user_labels = labels_orig
+    except Exception:
+        pass

@@ -18,23 +18,38 @@ router = APIRouter()
 
 @router.get("/month_summary", dependencies=[Depends(get_current_user)])
 def month_summary(month: str | None = Query(None, pattern=r"^\d{4}-\d{2}$"), db: Session = Depends(get_db)):
-    if not month:
-        # No explicit month: prefer legacy in-memory behavior for compatibility with onboarding
-        try:
-            from app.main import app as _app
-            txns = getattr(_app.state, "txns", None)
-            if txns:
-                # compute latest month from in-memory txns
-                dates = [t.get("date", "") for t in txns if isinstance(t, dict) and t.get("date")]
-                if not dates:
-                    return {"month": None, "total_spend": 0.0, "total_income": 0.0, "net": 0.0, "categories": []}
-                latest = max(dates)[:7]
-                # filter to that month and compute aggregates
-                month_txns = [t for t in txns if isinstance(t, dict) and str(t.get("date", "")).startswith(latest)]
+    """Month financial summary.
+
+    Behavior matrix:
+    - Explicit ?month=YYYY-MM  -> always DB-backed summary for that month (raises if not found upstream).
+    - No month param & in-memory txns populated -> derive latest from in-memory (onboarding / quick preview path).
+    - No month param & in-memory empty:
+         * If DB has any txn months -> fallback to DB latest summary
+         * Else -> return null/zero payload for onboarding UI.
+    """
+    if month:
+        return srv_get_month_summary(db, month)
+
+    # No explicit month: inspect in-memory first
+    latest_mem: str | None = None
+    month_payload = {"month": None, "total_spend": 0.0, "total_income": 0.0, "net": 0.0, "categories": []}
+    try:  # in-memory path (never raises outward)
+        from app.main import app as _app  # local import avoids circulars at startup
+        txns = getattr(_app.state, "txns", None)
+        if txns:
+            dates = [t.get("date", "") for t in txns if isinstance(t, dict) and t.get("date")]
+            if dates:
+                latest_mem = max(dates)[:7]
+                # Aggregate only that month
                 spend = 0.0
                 income = 0.0
                 cats: dict[str, float] = {}
-                for t in month_txns:
+                for t in txns:
+                    if not isinstance(t, dict):
+                        continue
+                    d = str(t.get("date", ""))
+                    if not d.startswith(latest_mem):
+                        continue
                     amt = float(t.get("amount", 0) or 0)
                     cat = (t.get("category") or "Unknown")
                     if amt < 0:
@@ -44,21 +59,27 @@ def month_summary(month: str | None = Query(None, pattern=r"^\d{4}-\d{2}$"), db:
                     elif amt > 0:
                         income += amt
                 categories = [{"name": k, "amount": round(v, 2)} for k, v in cats.items()]
-                return {
-                    "month": latest,
+                month_payload = {
+                    "month": latest_mem,
                     "total_spend": round(spend, 2),
                     "total_income": round(income, 2),
                     "net": round(income - spend, 2),
                     "categories": categories,
                 }
-            else:
-                # No in-memory txns -> return empty payload (even if DB has rows) to satisfy onboarding flow
-                return {"month": None, "total_spend": 0.0, "total_income": 0.0, "net": 0.0, "categories": []}
-        except Exception:
-            return {"month": None, "total_spend": 0.0, "total_income": 0.0, "net": 0.0, "categories": []}
-    # Explicit month provided -> use DB-backed summary
-    m = month
-    return srv_get_month_summary(db, m)
+    except Exception:
+        pass  # fall through to DB / empty fallback
+
+    if latest_mem is not None:
+        return month_payload
+
+    # In-memory empty: try DB latest
+    try:
+        latest_db = latest_month_str(db)
+    except Exception:
+        latest_db = None
+    if latest_db:
+        return srv_get_month_summary(db, latest_db)
+    return month_payload
 
 
 @router.get("/month_merchants")
