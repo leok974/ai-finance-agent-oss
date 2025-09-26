@@ -8,7 +8,9 @@ param(
   # If set, treat Pattern tokens as AND terms instead of OR, building an expression token1 and token2 ...
   [switch]$PatternAll,
   # Force reinstall of dev dependencies even if cache hash matches
-  [switch]$ForceDeps
+  [switch]$ForceDeps,
+  # Optional explicit test file list (comma or space separated). Relative paths resolved from backend root.
+  [string]$Files
 )
 $ErrorActionPreference = 'Stop'
 
@@ -102,8 +104,17 @@ if (-not $env:DEV_ALLOW_NO_LLM) { $env:DEV_ALLOW_NO_LLM = "1" }
 
 
 if (-not (Test-Path $Py)) {
-  Write-Host "Python not found at $Py. Activating venv if exists..."
-  if (Test-Path .venv/\Scripts/\Activate.ps1) { . .venv/\Scripts/\Activate.ps1; $Py = "$env:VIRTUAL_ENV/\Scripts/\python.exe" }
+  Write-Host "[venv] Python not found at expected path: $Py" -ForegroundColor Yellow
+  if (Test-Path .venv/\Scripts/\Activate.ps1) {
+    Write-Host "[venv] Activating existing .venv..." -ForegroundColor Yellow
+    . .venv/\Scripts/\Activate.ps1; $Py = "$env:VIRTUAL_ENV/\Scripts/\python.exe"
+  } elseif (Get-Command python -ErrorAction SilentlyContinue) {
+    Write-Host "[venv] Falling back to system python: $(Get-Command python).Source" -ForegroundColor DarkYellow
+    $Py = (Get-Command python).Source
+  } else {
+    Write-Host "[venv] ERROR: No Python interpreter available. Create a venv with 'python -m venv .venv' first." -ForegroundColor Red
+    exit 2
+  }
 }
 
 # (Legacy cleanup retained: explicit single-file removal harmless if still present)
@@ -191,5 +202,16 @@ if (-not ($finalArgs | Where-Object { $_ -like '-q*' })) {
 }
 if ($kExpr) { $finalArgs += @('-k', $kExpr) }
 
-Write-Host "[pytest] args: $($finalArgs -join ' ')" -ForegroundColor Cyan
-& $py -m pytest @finalArgs
+# Append explicit file targets if provided
+$fileTargets = @()
+if ($Files) {
+  $fileTokens = $Files -split "[\s,]+" | Where-Object { $_ -and $_.Trim().Length -gt 0 }
+  foreach ($f in $fileTokens) {
+    # Normalize relative to backend root
+    $p = if (Test-Path $f) { (Resolve-Path $f).Path } else { Join-Path $BACKEND $f }
+    $fileTargets += $p
+  }
+}
+
+Write-Host "[pytest] args: $($finalArgs -join ' ') $($fileTargets -join ' ')" -ForegroundColor Cyan
+& $py -m pytest @finalArgs @fileTargets

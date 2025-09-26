@@ -189,6 +189,37 @@ Edge Cases / Notes:
 - Deleting the `.cache/requirements-dev.hash` file triggers a reinstall.
 - Use `-ForceDeps` after manually altering the virtual environment (e.g., `pip uninstall` experimentation) to reconcile.
 
+### Explicit File Targeting (-Files)
+
+For even faster iteration skip discovery of the whole tree and point directly at one or more test files:
+
+```powershell
+# Single file
+apps/backend/scripts/test.ps1 -Files tests/test_onboarding_empty_state.py
+
+# Multiple (comma or space separated) + pattern AND filtering
+apps/backend/scripts/test.ps1 -Files "tests/test_onboarding_empty_state.py,tests/test_month_summary_db_fallback.py" -Pattern onboarding -PatternAll
+```
+
+Behavior:
+1. `-Files` tokens are resolved relative to `apps/backend` if not absolute.
+2. They are appended to the pytest invocation after any `-k` expression.
+3. Can be combined with `-Pattern` / `-PatternAll` (pytest will first limit collection to those files then apply `-k`).
+4. Empty / missing files are ignored silently (could be hardened later if desired).
+
+### Virtualenv Guard
+
+If the expected interpreter path (`.venv/Script/python.exe`) is missing you now see a clear message:
+```
+[venv] Python not found at expected path: .venv/\Scripts/\python.exe
+[venv] Activating existing .venv...
+```
+or fallback notice:
+```
+[venv] Falling back to system python: C:\Python313\python.exe
+```
+and a hard error if no interpreter is found.
+
 ## ⚡ **Performance & Reliability**
 
 ### Benefits:
