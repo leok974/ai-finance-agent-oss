@@ -38,9 +38,3 @@ def llm_policy(mode: Mode = "other") -> Dict[str, bool]:
     # production default (disable when debug)
     allow_prod = (env == "prod" and not debug)
     return {"allow": allow_prod, "forced": False, "globally_disabled": False if allow_prod else False}
-
-def llm_allowed(force: bool = False) -> bool:  # backward compatibility wrapper
-    pol = llm_policy("other")
-    if force and pol["allow"]:
-        return True
-    return pol["allow"]
