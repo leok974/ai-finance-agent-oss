@@ -215,6 +215,8 @@ Only for local/dev and hermetic tests; never enable in prod:
 - `DEV_ALLOW_NO_AUTH=1` — bypasses auth guards in tests/dev utilities
 - `DEV_ALLOW_NO_CSRF=1` — disables CSRF checks (unsafe methods) for hermetic tests
 - `DEV_ALLOW_NO_LLM=1` — forces deterministic stub replies from the LLM client
+- `FORCE_HELP_LLM=1|0` — test-only override for the `/agent/describe/{panel}` help summaries. Truthy (`1,true,yes,on`) forces the rephrase (LLM) branch regardless of normal policy flags; falsy (`0,false,no,off`) hard-disables it. Highest precedence except that a global disable in the policy will still clear cache state. Replaces the removed internal `_llm_enabled` shim—use this in tests instead of monkeypatching private functions.
+- `HELP_REPHRASE_DEFAULT=1|0` — sets the default for the `rephrase` query param on describe endpoints when it is omitted (tests often set to `0` so explicit `?rephrase=1` drives behavior).
 
 These are read by `app/utils/csrf.py`, `app/services/llm.py`, and some test helpers.
 

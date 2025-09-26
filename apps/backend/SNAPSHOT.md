@@ -53,3 +53,8 @@ _Date: 2025-09-04_
 - Optional **Rules CRUD** persistence (table + list/create/update/delete).
 - Expanded insights (month-over-month diffs, anomaly flags) + rule suggestions.
 - Optional CI lane: `pytest -m agent_tools` for fast feedback.
+
+## LLM help gating update (Sep 2025)
+- Removed legacy `_llm_enabled` test shim from `describe` route.
+- Added explicit env override `FORCE_HELP_LLM` (truthy/falsey) with highest precedence for help summary rephrase path.
+- Documented `HELP_REPHRASE_DEFAULT` to control default rephrase behavior when query param omitted.
