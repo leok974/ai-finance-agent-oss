@@ -77,6 +77,114 @@ Future
 
 Deep dive: see `../../docs/encryption.md` for diagrams, metrics, backup checklist, and recovery scenarios.
 
+### Health & Liveness
+
+Endpoints:
+
+| Path | Purpose | Notes |
+|------|---------|-------|
+| `/live` | Pure liveness | Always `{ "ok": true }`, no DB/crypto access. Use for container liveness probes. |
+| `/ready` | Readiness (crypto) | 503 if crypto required & not ready (unless disabled). |
+| `/healthz` | Consolidated status | DB connectivity, Alembic sync, migration divergence, crypto mode, version info. |
+
+`/healthz` response (fields):
+
+- `ok` / `status`: overall health (crypto disabled alone keeps `ok=true`).
+- `reasons`: warning reasons (informational reasons removed unless `CRYPTO_STRICT_STARTUP` enabled).
+- `info_reasons` / `warn_reasons`: classification arrays (e.g. `crypto_disabled` is informational).
+- `migration_diverged`: boolean flag if multiple Alembic heads detected at startup.
+- `alembic`: `{ db_revision, code_head, in_sync }`.
+- `crypto_mode`: `disabled | env | kms`.
+- `version`: `{ branch, commit }` (populated at build via `GIT_BRANCH`, `GIT_COMMIT`).
+  - `version.build_time`: ISO or raw build timestamp if supplied via `BUILD_TIME`.
+
+Reasons taxonomy:
+
+| Reason | Severity | Description |
+|--------|----------|-------------|
+| `db_unreachable` | warn | DB cannot be pinged. |
+| `models_unreadable` | warn | ORM metadata query failed. |
+| `alembic_out_of_sync` | warn | DB revision != code head. |
+| `multiple_alembic_heads` | warn | Divergent migration heads on disk. |
+| `crypto_not_ready` | warn | Crypto enabled but DEK not loaded. |
+| `crypto_disabled` | info | Encryption disabled by env (suppressed from `reasons` unless strict). |
+
+Prometheus metrics (selected):
+
+- `alembic_multiple_heads` (gauge) — 1 if multiple heads present at startup.
+- `health_reason{reason,severity}` (gauge) — 1 if reason currently active else 0.
+- `health_overall` (gauge) — 1 when `ok=true`, 0 when degraded.
+- `crypto_ready`, `crypto_mode_env`, `crypto_keys_total`, `crypto_active_label_age_seconds` — crypto subsystem metrics.
+
+Build metadata:
+
+Pass at build or compose time:
+```bash
+docker build --build-arg GIT_BRANCH=$(git rev-parse --abbrev-ref HEAD) \
+             --build-arg GIT_COMMIT=$(git rev-parse --short HEAD) ...
+```
+Compose variables:
+```bash
+export GIT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+export GIT_COMMIT=$(git rev-parse --short HEAD)
+docker compose -f docker-compose.prod.yml -f docker-compose.prod.override.yml up -d --build backend
+```
+
+Strict mode:
+
+`CRYPTO_STRICT_STARTUP=1` elevates `crypto_disabled` to a warning (kept in `reasons`).
+
+Use Cases:
+
+- Platform liveness: `/live` for container restart detection (no DB pressure).
+- Readiness with optional crypto: `/ready` (fast) or `/healthz` (full) for load balancer gating.
+- Divergence alerting: scrape `alembic_multiple_heads` or `health_reason{reason="multiple_alembic_heads"}`.
+
+### Probe wiring (Compose / Nginx)
+
+Compose healthcheck (backend):
+```yaml
+healthcheck:
+  test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8000/live || curl -fsS http://127.0.0.1:8000/healthz"]
+  interval: 10s
+  timeout: 3s
+  retries: 10
+  start_period: 60s
+```
+
+Nginx upstream lightweight probe:
+```nginx
+location = /_up {
+  proxy_pass http://backend:8000/live;
+  access_log off;
+}
+```
+
+External uptime monitor: hit `/_up` (maps to `/live`).
+
+### Prometheus alert examples
+
+```yaml
+groups:
+- name: ledgermind.health
+  rules:
+  - alert: LedgerMindDegraded
+    expr: max by(instance) (health_reason{severity="warn"}) == 1
+    for: 2m
+    labels: {severity: page}
+    annotations:
+      summary: "LedgerMind degraded"
+      description: "One or more warn-class reasons present on /healthz."
+  - alert: LedgerMindDown
+    expr: up{job="ledgermind"} == 0
+    for: 1m
+    labels: {severity: page}
+    annotations:
+      summary: "LedgerMind down"
+      description: "Instance not scraping (/healthz)."
+```
+
+
 This backend stores a canonical form of `Transaction.merchant` in `transactions.merchant_canonical`.
 
 - Canonicalization function: `app/utils/text.py` → `canonicalize_merchant(s: str) -> str | None`

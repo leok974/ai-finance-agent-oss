@@ -229,6 +229,13 @@ def _detect_migration_divergence(app: FastAPI):
             logging.getLogger("uvicorn").warning("alembic: multiple heads detected: %s", heads)
         else:
             app.state.migration_diverged = False
+        # Optionally update gauge if prometheus client initialized
+        try:  # pragma: no cover
+            from app.routers.health import _ALEMBIC_DIVERGED  # type: ignore
+            if _ALEMBIC_DIVERGED is not None:
+                _ALEMBIC_DIVERGED.set(1.0 if multi else 0.0)
+        except Exception:
+            pass
     except Exception:
         # On failure, leave unset (healthz will treat missing as unknown)
         app.state.migration_diverged = None
@@ -385,6 +392,15 @@ app.include_router(admin_router.router)
 
 # Mount health router at root so /healthz is available at top-level
 app.include_router(health_router.router)  # exposes GET /healthz
+
+
+@app.get("/version")
+def version():  # pragma: no cover simple
+    try:
+        from app import version as _v
+        return {"branch": getattr(_v, "GIT_BRANCH", "unknown"), "commit": getattr(_v, "GIT_COMMIT", "unknown"), "build_time": getattr(_v, "BUILD_TIME", "unknown")}
+    except Exception:
+        return {"branch": "unknown", "commit": "unknown", "build_time": "unknown"}
 
 
 

@@ -17,6 +17,10 @@ services:
   backend:
     build:
       context: ./apps/backend
+      args:
+        GIT_BRANCH: ${GIT_BRANCH:-unknown}
+        GIT_COMMIT: ${GIT_COMMIT:-unknown}
+        BUILD_TIME: ${BUILD_TIME:-unknown}
     environment:
       APP_ENV: "prod"
       ENCRYPTION_ENABLED: ${ENCRYPTION_ENABLED:-0}
@@ -51,10 +55,11 @@ services:
       - source: openai_api_key
         target: openai_api_key
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0) if urllib.request.urlopen('http://127.0.0.1:8000/ready').getcode()==200 else sys.exit(1)"]
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8000/live || curl -fsS http://127.0.0.1:8000/healthz"]
       interval: 10s
-      timeout: 5s
-      retries: 5
+      timeout: 3s
+      retries: 10
+      start_period: 60s
     restart: unless-stopped
 
   nginx:

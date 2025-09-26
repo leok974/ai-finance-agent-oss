@@ -12,6 +12,13 @@ from app.transactions import Transaction
 from app.config import settings
 from sqlalchemy.engine import make_url
 from app.core.crypto_state import get_write_label, get_crypto_status
+try:  # version info (branch/commit) optional
+    from app import version as app_version
+except Exception:  # pragma: no cover
+    class _V:  # fallback placeholder
+        GIT_BRANCH = "unknown"
+        GIT_COMMIT = "unknown"
+    app_version = _V()  # type: ignore
 from app.services import dek_rotation as _dek_rotation  # for cached rotation stats
 
 # Lazy/prometheus optional: define counters if prometheus_client is available
@@ -21,8 +28,11 @@ try:  # pragma: no cover - metrics optional
     _CRYPTO_MODE = Gauge("crypto_mode_env", "Crypto mode flag (1 if env-wrapped active key)")
     _CRYPTO_KEYS_TOTAL = Gauge("crypto_keys_total", "Total encryption key rows")
     _CRYPTO_ACTIVE_LABEL_AGE = Gauge("crypto_active_label_age_seconds", "Approx age (seconds) of active label")
+    _ALEMBIC_DIVERGED = Gauge("alembic_multiple_heads", "1 if multiple Alembic heads detected")
+    _HEALTH_REASON = Gauge("health_reason", "Health reason active flag (1=present)", ["reason", "severity"])  # small bounded label set
+    _HEALTH_OVERALL = Gauge("health_overall", "Overall health status (1=ok,0=degraded)")
 except Exception:  # pragma: no cover - silently disable
-    _CRYPTO_READY = _CRYPTO_MODE = _CRYPTO_KEYS_TOTAL = _CRYPTO_ACTIVE_LABEL_AGE = None
+    _CRYPTO_READY = _CRYPTO_MODE = _CRYPTO_KEYS_TOTAL = _CRYPTO_ACTIVE_LABEL_AGE = _ALEMBIC_DIVERGED = _HEALTH_REASON = _HEALTH_OVERALL = None
 
 router = APIRouter(tags=["health"])
 
@@ -100,6 +110,47 @@ def full_health():
         "agent": {"ok": agent_ok, **agent_info},
     }
 
+
+def classify_health(reasons, strict: bool | None = None):  # pragma: no cover - simple logic
+    """Return normalized health classification structure.
+    reasons: list of raw reasons (info + warn). We treat crypto_disabled as informational.
+    strict: optional override; if None derive from env.
+    Output keys: ok, status, reasons (warnings only), info_reasons, warn_reasons.
+    Also updates Prometheus reason gauges if available.
+    """
+    if strict is None:
+        strict = os.getenv("CRYPTO_STRICT_STARTUP", "0").lower() in {"1","true","yes","on"}
+    info_set = {"crypto_disabled"}
+    info_reasons = [r for r in reasons if r in info_set]
+    warn_reasons = [r for r in reasons if r not in info_set]
+    only_info = len(reasons) > 0 and all(r in info_set for r in reasons)
+    if not reasons or (only_info and not strict):
+        status = "ok"
+        ok_flag = True
+    else:
+        status = "degraded"
+        ok_flag = False
+    output_reasons = reasons if strict else warn_reasons
+    # Metrics update
+    try:
+        from app.routers.health import _HEALTH_REASON, _HEALTH_OVERALL  # circular safe at runtime
+        if _HEALTH_REASON is not None:
+            known = {"alembic_out_of_sync", "multiple_alembic_heads", "crypto_not_ready", "crypto_disabled", "db_unreachable", "models_unreadable"}
+            for r in known:
+                sev = "info" if r in info_set else "warn"
+                _HEALTH_REASON.labels(reason=r, severity=sev).set(1.0 if r in reasons else 0.0)
+        if _HEALTH_OVERALL is not None:
+            _HEALTH_OVERALL.set(1.0 if ok_flag else 0.0)
+    except Exception:
+        pass
+    return {
+        "ok": ok_flag,
+        "status": status,
+        "reasons": output_reasons,
+        "info_reasons": info_reasons,
+        "warn_reasons": warn_reasons,
+    }
+
 @router.get("/healthz")
 def healthz(db: Session = Depends(get_db)):
     ok = _db_ping(db)
@@ -146,7 +197,7 @@ def healthz(db: Session = Depends(get_db)):
     except Exception:
         migration_diverged = None
 
-    reasons = []
+    reasons = []  # entries: 'alembic_out_of_sync', 'multiple_alembic_heads', 'crypto_not_ready', 'crypto_disabled'
     if not ok:
         reasons.append("db_unreachable")
     if not models_ok:
@@ -159,11 +210,26 @@ def healthz(db: Session = Depends(get_db)):
         reasons.append("crypto_disabled")
     elif not crypto.get("ready"):
         reasons.append("crypto_not_ready")
-    overall_status = "ok" if not reasons else ("degraded" if all(r in {"crypto_disabled"} for r in reasons) else "degraded")
-
+    # Determine informational vs warning reasons
+    classification = classify_health(reasons)
+    ok_flag = classification["ok"]
+    overall_status = classification["status"]
+    output_reasons = classification["reasons"]
+    info_reasons = classification["info_reasons"]
+    warn_reasons = classification["warn_reasons"]
+    # Expose version info and explicit ok flag; reasons always a list
+    version_info = {"branch": getattr(app_version, "GIT_BRANCH", "unknown"), "commit": getattr(app_version, "GIT_COMMIT", "unknown"), "build_time": getattr(app_version, "BUILD_TIME", "unknown")}
+    if _ALEMBIC_DIVERGED is not None and migration_diverged is not None:  # pragma: no cover
+        try:
+            _ALEMBIC_DIVERGED.set(1.0 if migration_diverged else 0.0)
+        except Exception:
+            pass
     return {
+        "ok": ok_flag,
         "status": overall_status,
-        "reasons": reasons or None,
+    "reasons": output_reasons,
+        "info_reasons": info_reasons,
+        "warn_reasons": warn_reasons,
         "db": {"reachable": ok, "models_ok": models_ok},
         "alembic": alembic,
         "migration_diverged": bool(migration_diverged) if migration_diverged is not None else None,
@@ -175,6 +241,7 @@ def healthz(db: Session = Depends(get_db)):
         "crypto_label": crypto.get("label"),
         "crypto_kms_key": crypto.get("kms_key_id"),
         "rotation": rotation_stats if rotation_stats else None,
+        "version": version_info,
     }
 
 
@@ -238,6 +305,11 @@ def ready(db: Session = Depends(get_db)):
     if not st.get("ready"):
         raise HTTPException(status_code=503, detail={"crypto_ready": False, **st})
     return {"ok": True, **st}
+
+@router.get("/live")
+def live():
+    """Pure liveness endpoint: no DB, crypto, or Alembic access. Always ok."""
+    return {"ok": True}
 
 
 @router.get("/metrics/health")
