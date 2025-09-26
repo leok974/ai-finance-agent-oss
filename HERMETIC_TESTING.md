@@ -137,6 +137,35 @@ python -m pytest tests/test_agent_chat.py -v
 python validate_hermetic.py
 ```
 
+### Fast Targeted Runs via PowerShell Runner (-Pattern)
+
+The hermetic PowerShell runner `apps/backend/scripts/test.ps1` now supports a `-Pattern` parameter that maps to `pytest -k` expressions for quick, surgical iterations.
+
+Usage examples (run from repo root or anywhere):
+
+```powershell
+# Run any test whose name contains 'onboarding' or 'db_fallback'
+apps/backend/scripts/test.ps1 -Pattern "onboarding,db_fallback"
+
+# Require ALL tokens (logical AND) instead of OR using -PatternAll
+apps/backend/scripts/test.ps1 -Pattern "agent,redirect" -PatternAll
+
+# Add extra pytest args (will merge with -Pattern derived -k)
+apps/backend/scripts/test.ps1 -Pattern "context" -PytestArgs "-vv --maxfail=1"
+```
+
+Rules & Notes:
+1. Tokens are split on commas or whitespace.
+2. Default semantics: OR. Use `-PatternAll` to require all tokens (AND).
+3. Tokens are wrapped in single quotes in the generated `-k` expression to avoid precedence surprises.
+4. If you pass your own `-PytestArgs` that already include `-k`, the script still appends the pattern-driven one—avoid mixing two `-k` clauses.
+5. Quiet mode `-q` is added automatically unless you supply another verbosity flag (`-v`, `-vv`, etc.).
+
+Generated example:
+`-Pattern "onboarding,db_fallback"` -> `pytest -k 'onboarding' or 'db_fallback' -q`
+
+This keeps iteration loops tight without editing file names or using long `pytest -k` manually.
+
 ## ⚡ **Performance & Reliability**
 
 ### Benefits:

@@ -2,7 +2,11 @@
 # Enhanced preamble to guarantee source tree precedence and eliminate stale bytecode.
 param(
   [string]$Py = ".venv/\Scripts/\python.exe",
-  [string]$PytestArgs = "-q"
+  [string]$PytestArgs = "-q",
+  # Comma or space separated patterns to pass to pytest -k (OR semantics). Example: -Pattern "onboarding,db_fallback"
+  [string]$Pattern,
+  # If set, treat Pattern tokens as AND terms instead of OR, building an expression token1 and token2 ...
+  [switch]$PatternAll
 )
 $ErrorActionPreference = 'Stop'
 
@@ -14,6 +18,20 @@ try {
   $ROOT = (Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path))
 }
 $BACKEND = Join-Path $ROOT 'apps\backend'
+
+# Ensure venv python exists (optional fast path)
+if (-not (Test-Path $Py)) {
+  if (Test-Path .venv/\Scripts/\Activate.ps1) { . .venv/\Scripts/\Activate.ps1; $Py = "$env:VIRTUAL_ENV/\Scripts/\python.exe" }
+}
+
+# Early install dev requirements to guarantee crypto/FastAPI present
+try {
+  $reqDev = Join-Path $BACKEND 'requirements-dev.txt'
+  if (Test-Path $reqDev -and (Test-Path $Py)) {
+    Write-Host "[deps] Ensuring dev dependencies installed" -ForegroundColor Cyan
+    & $Py -m pip install -r $reqDev | Out-Null
+  }
+} catch { Write-Host "[deps] install warning: $_" -ForegroundColor DarkYellow }
 
 # 1) Make sure source tree wins on sys.path (front of PYTHONPATH)
 $env:PYTHONPATH = "$BACKEND;$ROOT"
@@ -65,6 +83,7 @@ $env:DEV_ALLOW_NO_CSRF = "1"
 # Optional: force deterministic no-LLM
 if (-not $env:DEV_ALLOW_NO_LLM) { $env:DEV_ALLOW_NO_LLM = "1" }
 
+
 if (-not (Test-Path $Py)) {
   Write-Host "Python not found at $Py. Activating venv if exists..."
   if (Test-Path .venv/\Scripts/\Activate.ps1) { . .venv/\Scripts/\Activate.ps1; $Py = "$env:VIRTUAL_ENV/\Scripts/\python.exe" }
@@ -93,8 +112,8 @@ Get-ChildItem -Path $ROOT -Recurse -Directory -Filter "__pycache__" | ForEach-Ob
 Get-ChildItem -Path $ROOT -Recurse -Filter "*.pyc" | ForEach-Object { Remove-Item $_.FullName -Force -ErrorAction SilentlyContinue }
 $env:PYTHONDONTWRITEBYTECODE = "1"
 
-# 3) Uninstall stale distributions
-$py = (Get-Command python).Source
+# 3) Uninstall stale distributions (prefer venv python if available)
+if (Test-Path $Py) { $py = $Py } else { $py = (Get-Command python).Source }
 $patterns = 'ledger-mind','ledgermind','finance-agent-backend','ai-finance-agent','^app$'
 try {
   $pipList = & $py -m pip list --format=json | ConvertFrom-Json
@@ -120,5 +139,35 @@ if ($env:FORCE_LLM_TESTS -eq '1') {
   if ($env:DEV_ALLOW_NO_LLM) { Remove-Item Env:DEV_ALLOW_NO_LLM }
 } elseif (-not $env:DEV_ALLOW_NO_LLM) { $env:DEV_ALLOW_NO_LLM = '1' }
 
-# 6) Run pytest
-& $py -m pytest -q
+# 6) Build optional -k expression from -Pattern
+$kExpr = $null
+if ($Pattern) {
+  # Split on comma or whitespace
+  $rawTokens = $Pattern -split "[\s,]+" | Where-Object { $_ -and $_.Trim().Length -gt 0 } | Sort-Object -Unique
+  if ($rawTokens.Count -gt 0) {
+    # Escape single quotes in tokens for safety (pytest -k uses eval-like parsing for quotes)
+    $escaped = $rawTokens | ForEach-Object { $_.Replace("'", "") }
+    if ($PatternAll) {
+      # All tokens must match
+      $kExpr = ($escaped | ForEach-Object { "'$_'" }) -join " and "
+    } else {
+      # Any token matches
+      $kExpr = ($escaped | ForEach-Object { "'$_'" }) -join " or "
+    }
+  }
+}
+
+# Allow user-specified additional pytest args while preserving hermetic defaults
+$finalArgs = @()
+if ($PytestArgs) {
+  # Naively split on spaces unless quoted (simple parser)
+  $finalArgs += ($PytestArgs -split ' +')
+}
+if (-not ($finalArgs | Where-Object { $_ -like '-q*' })) {
+  # Ensure quiet by default if user didn't override
+  $finalArgs += '-q'
+}
+if ($kExpr) { $finalArgs += @('-k', $kExpr) }
+
+Write-Host "[pytest] args: $($finalArgs -join ' ')" -ForegroundColor Cyan
+& $py -m pytest @finalArgs
