@@ -24,15 +24,18 @@ services:
     env_file:
       - ./secrets/backend.env
     environment:
-      # Primary provider: Ollama (OpenAI-compatible shim)
-      OPENAI_BASE_URL: "http://ollama:11434/v1"
+      # Point to host Ollama for local dev
+      OPENAI_BASE_URL: "http://host.docker.internal:11434/v1"
       # Enable DB sink for analytics so /analytics/track writes to Postgres
       ANALYTICS_DB: "1"
       # Use env var as fallback on Windows Desktop where bind-mounting /run/secrets can fail
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       # Neutralize file-based loading for local prod override
       OPENAI_API_KEY_FILE: ""
+      # Default model used by backend (code reads env MODEL)
       MODEL: "gpt-oss:20b"
+      OLLAMA_HOST: host.docker.internal
+      OLLAMA_PORT: "11434"
       DEV_ALLOW_NO_LLM: "0"
       MASTER_KEK_B64: ${MASTER_KEK_B64}
       ENCRYPTION_MASTER_KEY_BASE64: ${ENCRYPTION_MASTER_KEY_BASE64:-${MASTER_KEK_B64}}
@@ -51,9 +54,8 @@ services:
       timeout: 5s
       retries: 6
       start_period: 30s
-    depends_on:
-      ollama:
-        condition: service_healthy
+    # Decouple backend from the ollama container for local dev
+    depends_on: []
 
   ollama:
     image: ollama/ollama:latest

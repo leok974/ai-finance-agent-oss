@@ -238,9 +238,96 @@ docker exec -it <backend_container> alembic upgrade head
 
 **Latest month looks wrong**
 ΓåÆ Check DB directly:
+
+## Runtime Diagnostics: /config Endpoint
+
+`GET /config` returns a lightweight, non-sensitive snapshot of runtime flags to help verify deployment behavior:
+
+Field | Meaning
+----- | -------
+`env` | Current environment (dev / prod / etc.)
+`debug` | Whether debug mode is enabled
+`help_rephrase_default` | Default value used when `rephrase` query param is omitted on `/agent/describe/*`
+`help_cache` | Object with `hits`, `misses`, and `size` (entry count) for the help/describe TTL cache
+
+Example:
+```json
+{
+  "env": "dev",
+  "debug": true,
+  "help_rephrase_default": true,
+  "help_cache": {"hits": 12, "misses": 4, "size": 3}
+}
+```
+
+## Dev Override: Enabling Rephrase Locally
+
+By default the LLM rephrase polish is only active in production. To exercise the rephrase path (and provider fallback) in dev without faking `ENV=prod`, set:
+
+```
+LLM_ALLOW_IN_DEV=1
+HELP_REPHRASE_DEFAULT=1
+```
+
+You can inject these via `docker-compose.override.yml`:
+
+```yaml
+services:
+  backend:
+    environment:
+      - LLM_ALLOW_IN_DEV=1
+      - HELP_REPHRASE_DEFAULT=1
+```
+
+Then restart the backend container. Subsequent `POST /agent/describe/<panel>?rephrase=1` calls should return `rephrased: true` (unless the model response equals the deterministic base text).
+
+## Help Cache Stats
+
+The in-memory help cache tracks simple counters:
+
+Metric | Definition
+------ | ----------
+`hits` | Successful cache lookups (non-expired)
+`misses` | Key not found or expired
+`size` | Current number of live (non-expired) entries
+
+These reset on backend restart or when the cache is cleared in tests.
 ```bash
 docker exec -it finance-pg psql -U myuser -d finance -c "SELECT MAX(date) FROM transactions;"
 ```
+
+## Admin
+
+Operations helpers:
+
+- `POST /admin/help-cache/reset` — clears the help describe cache and resets its counters.
+  - Optional header: `x-admin-token: $ADMIN_TOKEN` (enforced only if `ADMIN_TOKEN` env var is set)
+
+Example (PowerShell):
+```powershell
+Invoke-RestMethod -Method POST http://127.0.0.1:8000/admin/help-cache/reset -Headers @{ "x-admin-token" = $env:ADMIN_TOKEN }
+```
+
+## Metrics
+
+If Prometheus is enabled (either via `prometheus_fastapi_instrumentator` or manual mounting), the help cache also exports:
+
+- `help_cache_hits_total`
+- `help_cache_misses_total`
+- `help_cache_evictions_total`
+- `help_cache_entries` (gauge)
+
+These update in real time; eviction increments occur when an expired entry is accessed.
+
+## LLM Gating
+
+All LLM usage is centralized through `llm_allowed()` (`app/services/llm_flags.py`). Rules:
+
+1. If `LLM_ALLOW_IN_DEV=1` (or true/yes/on), allow in any environment.
+2. Otherwise allow only when `ENV=prod` (or `APP_ENV=prod`) and `DEBUG` is not truthy.
+
+Describe endpoint rephrase logic uses this guard (legacy `_llm_enabled` wrapper still present for compatibility).
+
 
 ---
 

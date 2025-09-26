@@ -4,6 +4,7 @@ import os, requests, time, random, email.utils as eut
 from app.utils.request_ctx import get_request_id
 from app.config import settings
 import os
+import os.path
 from contextvars import ContextVar
 
 # Track fallback provider per-request
@@ -14,6 +15,17 @@ def get_last_fallback_provider() -> Optional[str]:
         return _fallback_provider.get()
     except Exception:
         return None
+
+def reset_fallback_provider() -> None:
+    """Clear the per-request fallback provider marker.
+
+    This avoids bleed-through across multiple LLM calls within a single request
+    or between different code paths that might also consult the flag.
+    """
+    try:
+        _fallback_provider.set(None)
+    except Exception:
+        pass
 
 def _parse_retry_after(v: Optional[str]) -> Optional[float]:
     if not v:
@@ -29,8 +41,16 @@ def _parse_retry_after(v: Optional[str]) -> Optional[float]:
 
 
 def _post_chat(base: str, key: str, payload: dict, timeout: int = 60) -> dict:
+    """POST a chat completion to an OpenAI-compatible endpoint with limited retry on 429.
+
+    Behavior:
+    - 2xx: return parsed JSON immediately
+    - 429: honor Retry-After or use backoff, then retry (bounded)
+    - 404: raise HTTPError (caller can decide whether to fallback)
+    - other 4xx/5xx: raise HTTPError via raise_for_status
+    - network/timeouts: bubble up requests.RequestException
+    """
     root = base.rstrip('/')
-    # Ensure we use OpenAI-style /v1 path exactly once
     if not root.endswith('/v1'):
         root = f"{root}/v1"
     url = f"{root}/chat/completions"
@@ -41,11 +61,12 @@ def _post_chat(base: str, key: str, payload: dict, timeout: int = 60) -> dict:
     max_attempts = 4
     attempt = 0
     while True:
+        # Let connection/timeout errors bubble up for caller to handle
         r = requests.post(url, json=payload, headers=headers, timeout=timeout)
         if r.status_code == 429:
             ra = _parse_retry_after(r.headers.get("Retry-After"))
-            base = delays[attempt] if attempt < len(delays) else delays[-1]
-            wait = ra if (ra is not None and ra > 0) else base
+            base_delay = delays[attempt] if attempt < len(delays) else delays[-1]
+            wait = ra if (ra is not None and ra > 0) else base_delay
             wait = min(8.0, wait + random.uniform(0, max(0.0, wait * 0.4)))
             if attempt >= (max_attempts - 1) or (total_wait + wait > 15.0):
                 # graceful fallback: mimic minimal OpenAI-like shape
@@ -59,9 +80,13 @@ def _post_chat(base: str, key: str, payload: dict, timeout: int = 60) -> dict:
             attempt += 1
             continue
         if r.status_code == 404:
-            raise RuntimeError(f"LLM HTTP error 404: {r.text}")
-    r.raise_for_status()
-    return r.json()
+            # Surface as HTTPError so caller's catch can evaluate fallback
+            http_err = requests.HTTPError(f"LLM HTTP error 404: {r.text}")
+            http_err.response = r
+            raise http_err
+        # For all other cases, raise if not OK, else return
+        r.raise_for_status()
+        return r.json()
 
 def _model_for_openai(requested: str) -> str:
     """
@@ -83,6 +108,31 @@ def _model_for_openai(requested: str) -> str:
     }
     return mapping.get(requested, "gpt-4o-mini")
 
+def _get_effective_openai_key() -> str:
+    """
+    Resolve the OpenAI API key from (in order):
+    - OPENAI_API_KEY env var
+    - OPENAI_API_KEY_FILE (Docker secret) if present
+    - settings.OPENAI_API_KEY (defaults to 'ollama')
+    """
+    try:
+        k = os.getenv("OPENAI_API_KEY")
+        if k and k.strip():
+            return k.strip()
+        path = os.getenv("OPENAI_API_KEY_FILE", getattr(settings, "OPENAI_API_KEY_FILE", "/run/secrets/openai_api_key"))
+        if path and os.path.isfile(path):
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    k2 = f.read().strip()
+                    if k2:
+                        return k2
+            except Exception:
+                pass
+        return getattr(settings, "OPENAI_API_KEY", "ollama")
+    except Exception:
+        return getattr(settings, "OPENAI_API_KEY", "ollama")
+
+
 def call_llm(*, model: str, messages: List[Dict[str,str]], temperature: float=0.2, top_p: float=0.9) -> Tuple[str, list]:
     """
     Provider-agnostic chat call. Uses OpenAI-compatible Chat Completions:
@@ -98,7 +148,7 @@ def call_llm(*, model: str, messages: List[Dict[str,str]], temperature: float=0.
 
     # Use configured base URL and key regardless of provider; provider flag is kept for future branching
     base = settings.OPENAI_BASE_URL
-    key  = settings.OPENAI_API_KEY
+    key  = _get_effective_openai_key()
 
     payload = {
         "model": model,
@@ -114,6 +164,44 @@ def call_llm(*, model: str, messages: List[Dict[str,str]], temperature: float=0.
         pass
 
     # First try: Ollama or configured base with tighter timeout and friendly errors
+    def _try_ollama_native() -> Optional[dict]:
+        """Attempt Ollama native endpoints when OpenAI chat path is not available.
+
+        Tries /api/chat first (preferred), then /api/generate. Returns an
+        OpenAI-like dict shape on success or None on failure.
+        """
+        try:
+            root = base.rstrip('/')
+            if root.endswith('/v1'):
+                root = root[:-3]
+            root = root.rstrip('/')
+            headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
+            # Prefer /api/chat with messages
+            chat_body = {"model": model, "messages": messages, "stream": False, "options": {"temperature": temperature, "top_p": top_p}}
+            r = requests.post(f"{root}/api/chat", json=chat_body, headers=headers, timeout=20)
+            if 200 <= r.status_code < 300:
+                jd = r.json()
+                content = (
+                    ((jd or {}).get("message") or {}).get("content")
+                    or jd.get("response")
+                    or ""
+                )
+                return {"choices":[{"message":{"role":"assistant","content": content}}]}
+            # Fallback to /api/generate by joining messages
+            try:
+                prompt = "\n".join([f"{m.get('role','user')}: {m.get('content','')}" for m in messages])
+            except Exception:
+                prompt = "\n".join([str(m) for m in messages])
+            gen_body = {"model": model, "prompt": prompt, "stream": False, "options": {"temperature": temperature, "top_p": top_p}}
+            r2 = requests.post(f"{root}/api/generate", json=gen_body, headers=headers, timeout=20)
+            if 200 <= r2.status_code < 300:
+                jd = r2.json()
+                content = jd.get("response") or ""
+                return {"choices":[{"message":{"role":"assistant","content": content}}]}
+        except Exception:
+            return None
+        return None
+
     try:
         data = _post_chat(base, key, payload, timeout=15)
     except (requests.exceptions.ConnectTimeout, requests.exceptions.ConnectionError, requests.HTTPError) as err:
@@ -121,23 +209,38 @@ def call_llm(*, model: str, messages: List[Dict[str,str]], temperature: float=0.
         # Relaxed guard: presence of any OPENAI_API_KEY enables fallback attempt to api.openai.com.
         def _has_real_openai_key() -> bool:
             try:
-                k = settings.OPENAI_API_KEY or ""
+                k = _get_effective_openai_key() or ""
                 # Treat actual OpenAI-style keys (sk-*) as real; ignore placeholders like 'ollama' or empty
                 return isinstance(k, str) and k.startswith("sk-")
             except Exception:
                 return False
         can_fallback = _has_real_openai_key()
+        native_attempted = False
         if isinstance(err, requests.HTTPError):
             code = getattr(err.response, 'status_code', 500)
-            transient = (500 <= code < 600)
+            # If 404, try Ollama native endpoints first (prefer primary local inference)
+            if code == 404:
+                native_attempted = True
+                data_native = _try_ollama_native()
+                if data_native is not None:
+                    data = data_native
+                    # native succeeded; do not set fallback provider
+                    err = None  # type: ignore
+                else:
+                    # native failed; treat as transient to allow OpenAI fallback
+                    pass
+            transient = (code == 404) or (500 <= code < 600)
         else:
             transient = True
-        if can_fallback and transient:
+        if 'data' in locals():
+            # already produced a response via native path
+            pass
+        elif can_fallback and transient:
             try:
                 # Use a safe OpenAI model during fallback; do not mutate original payload
                 fb_model = _model_for_openai(payload.get("model") or model)
                 fb_payload = dict(payload, model=fb_model)
-                data = _post_chat("https://api.openai.com/v1", settings.OPENAI_API_KEY, fb_payload, timeout=20)
+                data = _post_chat("https://api.openai.com/v1", _get_effective_openai_key(), fb_payload, timeout=20)
                 try:
                     _fallback_provider.set("openai")
                 except Exception:

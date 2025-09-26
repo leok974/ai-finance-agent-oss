@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, APIRouter
 from contextlib import asynccontextmanager
 import asyncio
 from .db import Base, engine
@@ -19,6 +19,7 @@ except Exception:  # pragma: no cover - fallback for older stacks
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 import os
 from . import config as app_config
+from app.config import settings
 from .routers import ingest, txns, rules, ml, report, budget, alerts, insights, agent, explain
 from app.routers import analytics
 from app.routers import analytics_events as analytics_events_router
@@ -42,6 +43,7 @@ from app.routers import help_ui as help_ui_router
 from .routers import transactions as transactions_router
 from app.routers.transactions_nl import router as transactions_nl_router
 from .routers import dev as dev_router
+from app.routers import admin as admin_router
 from .routers import health as health_router
 from .routers import agent_plan as agent_plan_router
 from .utils.state import load_state, save_state
@@ -152,6 +154,21 @@ app.add_middleware(
 )
 
 
+config_router = APIRouter()
+
+@config_router.get("/config", tags=["meta"], summary="Runtime configuration snapshot (non-sensitive)")
+def get_config_snapshot():
+    try:
+        from app.services import help_cache
+        cache_stats = help_cache.stats()
+    except Exception:
+        cache_stats = {"hits": 0, "misses": 0, "size": 0}
+    return {
+        "env": settings.ENV,
+        "debug": settings.DEBUG,
+        "help_rephrase_default": settings.HELP_REPHRASE_DEFAULT,
+        "help_cache": cache_stats,
+    }
 class SecurityHeaders(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
         resp: Response = await call_next(request)
@@ -312,6 +329,8 @@ except Exception:
 app.include_router(alerts.router, prefix="/alerts", tags=["alerts"])
 app.include_router(insights.router)
 app.include_router(agent.router, prefix="/agent", tags=["agent"])
+from app.routers import describe as describe_router
+app.include_router(describe_router.router)
 app.include_router(explain.router, prefix="/txns", tags=["explain"])
 app.include_router(charts.router, prefix="/charts", tags=["charts"]) 
 app.include_router(auth_router.router)
@@ -337,6 +356,8 @@ app.include_router(analytics_events_router.router)
 app.include_router(help_ui_router.router)
 app.include_router(txns_edit_router.router)
 app.include_router(llm_health_router.router)
+app.include_router(config_router)  # /config endpoint
+app.include_router(admin_router.router)
 
 # Mount health router at root so /healthz is available at top-level
 app.include_router(health_router.router)  # exposes GET /healthz

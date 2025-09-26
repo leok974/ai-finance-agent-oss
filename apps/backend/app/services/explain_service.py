@@ -389,8 +389,28 @@ def try_llm_polish(rationale: str, txn: Transaction, evidence: Dict[str, Any]) -
         return None
 
 
-def build_explain_response(db: Session, txn_id: int, use_llm: bool = False) -> Dict[str, Any]:
+def build_explain_response(db: Session, txn_id: int, use_llm: bool = False, allow_llm: Optional[bool] = None) -> Dict[str, Any]:
+    """Build explanation response.
+    use_llm: legacy flag kept for backwards compatibility.
+    allow_llm: authoritative flag (if provided) controlling whether LLM path is attempted.
+    """
+    if allow_llm is not None:
+        use_llm = bool(allow_llm)
+    # Global hard disable in dev/test unless explicit force flag present
+    if os.getenv("DEV_ALLOW_NO_LLM", "0") == "1" and os.getenv("FORCE_LLM_TESTS", "0") != "1":
+        use_llm = False
     txn, evidence = compute_explain_evidence(db, txn_id)
+    # If globally disabled, proactively purge any cached LLM variant for this txn to avoid stale reuse
+    if os.getenv("DEV_ALLOW_NO_LLM", "0") == "1" and os.getenv("FORCE_LLM_TESTS", "0") != "1":
+        try:
+            sig = _sources_signature(db, txn, evidence.get("merchant_norm"))
+            model = getattr(settings, "DEFAULT_LLM_MODEL", "gpt-oss:20b")
+            llm_key = ("explain", int(txn.id), sig, True, model)
+            with _CACHE_LOCK:
+                if llm_key in _EXPLAIN_CACHE:
+                    _EXPLAIN_CACHE.pop(llm_key, None)
+        except Exception:
+            pass
     # Cache key includes sources signature and LLM parameters
     sig = _sources_signature(db, txn, evidence.get("merchant_norm"))
     model = getattr(settings, "DEFAULT_LLM_MODEL", "gpt-oss:20b")
@@ -403,7 +423,32 @@ def build_explain_response(db: Session, txn_id: int, use_llm: bool = False) -> D
     det = render_deterministic_reasoning(txn, evidence, cand)
     llm_text: Optional[str] = None
     if use_llm:
-        llm_text = try_llm_polish(det, txn, evidence)
+        if allow_llm is True:
+            # Respect explicit dev disable unless FORCE_LLM_TESTS set
+            if os.getenv("DEV_ALLOW_NO_LLM", "0") == "1" and os.getenv("FORCE_LLM_TESTS", "0") != "1":
+                llm_text = None
+            else:
+                try:
+                    from app.utils import llm as llm_mod
+                    prompt = (
+                        "Rewrite this explanation to be concise and friendly. "
+                        "Do not change any numbers or categories. Keep 1-2 sentences max.\n\n"
+                        f"Explanation: {det}"
+                    )
+                    reply, _trace = llm_mod.call_local_llm(
+                        model=getattr(settings, "DEFAULT_LLM_MODEL", "gpt-oss:20b"),
+                        messages=[
+                            {"role": "system", "content": "You are a helpful finance assistant."},
+                            {"role": "user", "content": prompt},
+                        ],
+                        temperature=0.2,
+                        top_p=0.9,
+                    )
+                    llm_text = (reply or "").strip() or None
+                except Exception:
+                    llm_text = try_llm_polish(det, txn, evidence)
+        else:
+            llm_text = try_llm_polish(det, txn, evidence)
 
     resp = {
         "txn": {

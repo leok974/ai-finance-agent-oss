@@ -96,6 +96,7 @@ def test_dev_allow_no_llm_skips_llm(client, db_session, monkeypatch):
 def test_llm_mode_with_mock(client, db_session, monkeypatch):
     # Ensure DEV_ALLOW_NO_LLM disabled
     monkeypatch.delenv("DEV_ALLOW_NO_LLM", raising=False)
+    monkeypatch.setenv("FORCE_LLM_TESTS", "1")
 
     # Monkeypatch llm.call_local_llm to return a polished string containing target category
     class _DummyLLM:
@@ -118,3 +119,5 @@ def test_llm_mode_with_mock(client, db_session, monkeypatch):
     assert body["mode"] == "llm"
     assert body.get("llm_rationale")
     assert "Shopping" in body["llm_rationale"]
+    # cleanup force flag so later tests honoring DEV_ALLOW_NO_LLM behave correctly
+    monkeypatch.delenv("FORCE_LLM_TESTS", raising=False)

@@ -41,6 +41,8 @@ class Settings(BaseSettings):
 	# Environment flags
 	ENV: str = "dev"  # dev | staging | prod
 	DEBUG: bool = True
+	# Help / describe defaults (enable rephrase outside prod unless overridden)
+	HELP_REPHRASE_DEFAULT: bool = True
 	# LLM provider & defaults
 	DEFAULT_LLM_PROVIDER: str = "ollama"  # "ollama" | "openai"
 	DEFAULT_LLM_MODEL: str = "gpt-oss:20b"  # for ollama; e.g., "gpt-5" for OpenAI
@@ -52,3 +54,16 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+# Normalize HELP_REPHRASE_DEFAULT if explicitly set via env for prod toggle
+import os as _os
+if settings.ENV == "prod":
+	# New policy: default ON in prod unless explicitly disabled with 0
+	_env_val = _os.getenv("HELP_REPHRASE_DEFAULT")
+	if _env_val is not None:
+		try:
+			settings.HELP_REPHRASE_DEFAULT = bool(int(_env_val))
+		except Exception:
+			# keep existing value (defaults to True) on parse error
+			pass
+	# else: leave as True

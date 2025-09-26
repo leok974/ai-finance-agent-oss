@@ -18,6 +18,7 @@ type Flags = {
   ruleTester: boolean
   mlSelftest: boolean
   planner: boolean
+  helpRephrase: boolean
 }
 
 function read(key: string, fallback = "0") {
@@ -35,7 +36,7 @@ type Props = {
 }
 
 export default function DevBadge({ branch, commit, openDevDock, onToggleDevDock }: Props) {
-  const [flags, setFlags] = useState<Flags>({ dev: true, ruleTester: true, mlSelftest: true, planner: true })
+  const [flags, setFlags] = useState<Flags>({ dev: true, ruleTester: true, mlSelftest: true, planner: true, helpRephrase: true })
   const [open, setOpen] = useState(false)
   const [health, setHealth] = useState<Healthz | null>(null)
 
@@ -45,6 +46,7 @@ export default function DevBadge({ branch, commit, openDevDock, onToggleDevDock 
       ruleTester: read("FEATURE_RULE_TESTER", "1"),
       mlSelftest: read("FEATURE_ML_SELFTEST", "1"),
       planner: read("FEATURE_PLANNER", "1"),
+      helpRephrase: read("HELP_REPHRASE", (import.meta.env.VITE_HELP_REPHRASE_DEFAULT ?? '1')),
     })
   }, [])
 
@@ -133,6 +135,12 @@ export default function DevBadge({ branch, commit, openDevDock, onToggleDevDock 
           onCheckedChange={(v) => { toggle("planner", "FEATURE_PLANNER")(!!v); reload() }}
         >
           Planner DevTool
+        </DropdownMenuCheckboxItem>
+        <DropdownMenuCheckboxItem
+          checked={flags.helpRephrase}
+          onCheckedChange={(v) => { toggle("helpRephrase", "HELP_REPHRASE")(!!v); /* no reload needed */ setFlags(s=>({...s, helpRephrase: !!v})); }}
+        >
+          Help Rephrase
         </DropdownMenuCheckboxItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem onClick={() => window.open("/docs", "_blank")}>

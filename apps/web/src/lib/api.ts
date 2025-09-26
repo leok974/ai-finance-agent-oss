@@ -398,6 +398,24 @@ export const uiHelp = {
     apiPost(`/agent/tools/help/ui/describe`, { key, month, with_context: withContext }),
 };
 
+// Unified describe (new panel help) endpoint
+export type DescribeResponse = {
+  text: string;
+  grounded: boolean;
+  rephrased: boolean;
+  provider?: 'primary' | 'fallback-openai' | 'none';
+};
+
+export async function describe(panelId: string, body: any, opts?: { rephrase?: boolean; signal?: AbortSignal }): Promise<DescribeResponse> {
+  const q = opts?.rephrase ? '?rephrase=1' : '';
+  return http(`/agent/describe/${encodeURIComponent(panelId)}${q}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+    signal: opts?.signal,
+  });
+}
+
 // ---------- Budgets ----------
 export const budgetCheck = (month?: string) => {
   const qs = month ? `?month=${encodeURIComponent(month)}` : "";

@@ -114,7 +114,11 @@ Write-Host "PYTHONPATH: $($env:PYTHONPATH)"
 $env:APP_ENV = 'test'
 $env:DEV_ALLOW_NO_AUTH = '1'
 $env:DEV_ALLOW_NO_CSRF = '1'
-if (-not $env:DEV_ALLOW_NO_LLM) { $env:DEV_ALLOW_NO_LLM = '1' }
+# Allow explicit override of LLM usage in tests: if FORCE_LLM_TESTS=1 then do NOT disable LLM path
+if ($env:FORCE_LLM_TESTS -eq '1') {
+  # ensure disabling flag removed
+  if ($env:DEV_ALLOW_NO_LLM) { Remove-Item Env:DEV_ALLOW_NO_LLM }
+} elseif (-not $env:DEV_ALLOW_NO_LLM) { $env:DEV_ALLOW_NO_LLM = '1' }
 
 # 6) Run pytest
 & $py -m pytest -q

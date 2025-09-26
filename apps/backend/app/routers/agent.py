@@ -8,7 +8,7 @@ from app.services.agent.llm_post import post_process_tool_reply
 from app.services.agent_tools.common import no_data_kpis, no_data_anomalies
 from app.utils.time import utc_now
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Header
+from fastapi import APIRouter, Depends, HTTPException, Query, Header, BackgroundTasks, Request
 from starlette.responses import JSONResponse, RedirectResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
@@ -29,6 +29,8 @@ from app.services.agent_tools import route_to_tool
 from app.services.agent.router_fallback import route_to_tool_with_fallback
 from app.services.agent.analytics_tag import tag_if_analytics
 import time
+import uuid
+import app.analytics_emit as analytics_emit
 
 router = APIRouter()  # <-- no prefix here (main.py supplies /agent)
 
@@ -307,6 +309,8 @@ def _enrich_context(db: Session, ctx: Optional[Dict[str, Any]], txn_id: Optional
 def agent_chat(
     req: AgentChatRequest,
     db: Session = Depends(get_db),
+    background_tasks: BackgroundTasks = None,
+    request: Request = None,
     debug: bool = Query(False, description="Return raw CONTEXT in response (dev only)"),
     mode_override: Optional[str] = Query(default=None, alias="mode"),
     bypass_router: bool = Query(False, alias="bypass_router"),
@@ -351,11 +355,28 @@ def agent_chat(
             final_messages.append({"role": "system", "content": f"## CONTEXT\n{ctx_str}\n## INTENT: {req.intent}"})
             requested_model = req.model if req.model else settings.DEFAULT_LLM_MODEL
             model = MODEL_ALIASES.get(requested_model, requested_model) or settings.DEFAULT_LLM_MODEL
+            # Reset per-call fallback flag and invoke LLM
+            getattr(llm_mod, 'reset_fallback_provider', lambda: None)()
             reply, tool_trace = llm_mod.call_local_llm(model=model, messages=final_messages, temperature=req.temperature, top_p=req.top_p)
             fb = getattr(llm_mod, 'get_last_fallback_provider', lambda: None)()
-            resp = {"reply": reply, "citations": [], "used_context": {"month": ctx.get("month")}, "tool_trace": tool_trace, "model": model}
+            resp = {"ok": True, "reply": reply, "citations": [], "used_context": {"month": ctx.get("month")}, "tool_trace": tool_trace, "model": model}
             if fb:
                 resp["fallback"] = fb
+                try:
+                    rid = (request.headers.get("X-Request-ID") if request else None) or str(uuid.uuid4())
+                    props = {
+                        "rid": rid,
+                        "provider": str(fb),
+                        "requested_model": requested_model,
+                        "fallback_model": getattr(llm_mod, '_model_for_openai', lambda m: 'gpt-4o-mini')(model),
+                    }
+                    if background_tasks is not None:
+                        background_tasks.add_task(analytics_emit.emit_fallback, props)
+                    else:
+                        # In some test contexts BackgroundTasks may not be injected; emit inline.
+                        analytics_emit.emit_fallback(props)
+                except Exception:
+                    pass
         else:
             if req.intent in ("general", "budget_help"):
                 t0 = time.perf_counter()
@@ -443,6 +464,8 @@ def agent_chat(
                 print(f"Context size: {trimmed_size} chars")
             requested_model = req.model if req.model else settings.DEFAULT_LLM_MODEL
             model = MODEL_ALIASES.get(requested_model, requested_model) or settings.DEFAULT_LLM_MODEL
+            # Reset per-call fallback flag and invoke LLM
+            getattr(llm_mod, 'reset_fallback_provider', lambda: None)()
             reply, tool_trace = llm_mod.call_local_llm(model=model, messages=final_messages, temperature=req.temperature, top_p=req.top_p)
             fb = getattr(llm_mod, 'get_last_fallback_provider', lambda: None)()
             citations = []
@@ -451,9 +474,24 @@ def agent_chat(
                     val = ctx[key]; citations.append({"type": citation_type, "count": (len(val) if isinstance(val, list) else 1)})
             if ctx.get("txn"):
                 citations.append({"type": "txn", "id": ctx["txn"].get("id")})
-            resp = {"reply": reply, "citations": citations, "used_context": {"month": ctx.get("month")}, "tool_trace": tool_trace, "model": model}
+            resp = {"ok": True, "reply": reply, "citations": citations, "used_context": {"month": ctx.get("month")}, "tool_trace": tool_trace, "model": model}
             if fb:
                 resp["fallback"] = fb
+                # Emit analytics for fallback usage (prefer BackgroundTasks; fallback inline in tests)
+                try:
+                    rid = (request.headers.get("X-Request-ID") if request else None) or str(uuid.uuid4())
+                    props = {
+                        "rid": rid,
+                        "provider": str(fb),
+                        "requested_model": requested_model,
+                        "fallback_model": getattr(llm_mod, '_model_for_openai', lambda m: 'gpt-4o-mini')(model),
+                    }
+                    if background_tasks is not None:
+                        background_tasks.add_task(analytics_emit.emit_fallback, props)
+                    else:
+                        analytics_emit.emit_fallback(props)
+                except Exception:
+                    pass
 
         resp = post_process_tool_reply(resp, ctx)
         if debug and getattr(settings, "ENV", "dev") != "prod":
@@ -480,7 +518,15 @@ def agent_chat(
 
         resp = enforce_analytics_empty_state(resp)
 
-        return JSONResponse(tag_if_analytics(last_user_msg, resp))
+        # Ensure API contract: include 'ok' for success payloads if not set
+        if isinstance(resp, dict) and ("error" not in resp) and ("ok" not in resp):
+            resp["ok"] = True
+
+        # Tag response path for quick diagnostics
+        path_hdr = "primary"
+        if resp and isinstance(resp, dict) and resp.get("fallback"):
+            path_hdr = f"fallback-{resp.get('fallback')}"
+        return JSONResponse(tag_if_analytics(last_user_msg, resp), headers={"X-LLM-Path": path_hdr})
     except Exception as e:
         print(f"Agent chat error: {str(e)}")
         try:
