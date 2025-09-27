@@ -373,3 +373,22 @@ class OAuthAccount(Base):
     __table_args__ = (
         UniqueConstraint("provider", "provider_user_id", name="uq_oauth_provider_user"),
     )
+
+# --- NEW: HelpCache (DB-backed help/describe caching for ETag + persistence) ---
+class HelpCache(Base):
+    __tablename__ = "help_cache"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    # Unique logical cache key (panel|mode|month|filters_hash|r=flag)
+    cache_key: Mapped[str] = mapped_column(String(512), nullable=False, unique=True, index=True)
+    # Strong ETag (hash/version) surfaced to clients for 304 negotiation
+    etag: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    # JSON payload (text, rephrased flag, model/provider meta, fallback_reason etc.)
+    payload: Mapped[dict] = mapped_column(JSON, nullable=False)
+    # Expiry timestamp (UTC). Rows may be lazily pruned.
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+    __table_args__ = (
+        # Composite index to accelerate eviction scans (optional but helpful)
+        Index("ix_help_cache_expires_key", "expires_at", "cache_key"),
+    )
