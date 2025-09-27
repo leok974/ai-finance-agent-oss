@@ -127,3 +127,23 @@ def test_help_why_llm_failure_falls_back(monkeypatch, client):
     assert data["mode"] == "why"
     assert data["source"] in {"fallback", "llm"}  # expecting fallback
     assert base.split(":")[0] in data["text"]
+
+
+def test_etag_mismatch_returns_200(client):
+    """If-None-Match header with a non-matching ETag must yield a fresh 200, not 304."""
+    body = {
+        "card_id": "overview",
+        "mode": "what",
+        "month": "2025-08",
+        "deterministic_ctx": {"spend": 10},
+        "base_text": None,
+    }
+    r1 = _post_help(client, body)
+    assert r1.status_code == 200
+    orig_etag = r1.headers.get("ETag")
+    assert orig_etag
+
+    # Provide a deliberately different ETag
+    r2 = _post_help(client, body, extra_headers={"If-None-Match": orig_etag + "-different"})
+    assert r2.status_code == 200, r2.text
+    assert r2.headers.get("ETag") == orig_etag  # still same cached entity
