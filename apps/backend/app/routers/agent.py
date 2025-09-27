@@ -1,41 +1,81 @@
 from __future__ import annotations
-import json
+import os as _os, json, logging, re, time, uuid
 print("[agent.py] loaded version: refactor-tagfix-1")
-import re
-import logging
-from typing import Any, Dict, List, Optional, Tuple, Literal
-from app.services.agent.llm_post import post_process_tool_reply
-from app.services.agent_tools.common import no_data_kpis, no_data_anomalies
-from app.utils.time import utc_now
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Header, BackgroundTasks, Request
-from starlette.responses import JSONResponse, RedirectResponse
-from sqlalchemy.orm import Session
-from sqlalchemy import desc
-from pydantic import BaseModel, field_validator
+_HERMETIC = _os.getenv("HERMETIC") == "1"
 
-from app.db import get_db
-from app.transactions import Transaction
+if _HERMETIC:
+    # Provide a minimal no-op stand‑in so importing this module in hermetic mode
+    # does not drag FastAPI / Starlette / SQLAlchemy heavy deps.
+    class _DummyRouter:
+        def __init__(self):
+            self.routes = []
+    router = _DummyRouter()  # type: ignore
+    # Lightweight helpers still needed by describe/help logic below (if any) can go here.
+    # We deliberately skip the rest of the heavy implementation.
+else:
+    from typing import Any, Dict, List, Optional, Tuple, Literal
+    from sqlalchemy.orm import Session
+    from sqlalchemy import desc
+    from pydantic import BaseModel, field_validator
+    from fastapi import APIRouter, Depends, HTTPException, Query, Header, BackgroundTasks, Request
+    from starlette.responses import JSONResponse, RedirectResponse
 
-# Import existing agent tools endpoints
-from app.routers import agent_tools_charts, agent_tools_budget, agent_tools_insights 
-from app.routers import agent_tools_transactions, agent_tools_rules_crud, agent_tools_meta
+    from app.db import get_db
+    from app.transactions import Transaction
+    from app.services.agent.llm_post import post_process_tool_reply
+    from app.services.agent_tools.common import no_data_kpis, no_data_anomalies
+    from app.services.agent_tools.common import no_data_kpis as _router_no_data_kpis
+    from app.utils.time import utc_now
+    from app.utils import llm as llm_mod  # allow monkeypatch in tests
+    from app.config import settings
+    from app.services.agent_detect import (
+        detect_txn_query, summarize_txn_result, infer_flow, try_llm_rephrase_summary
+    )
+    from app.services.txns_nl_query import run_txn_query
+    from app.services.agent_tools import route_to_tool
+    from app.services.agent.router_fallback import route_to_tool_with_fallback
+    from app.services.agent.analytics_tag import tag_if_analytics
+    import app.analytics_emit as analytics_emit
 
-from app.utils import llm as llm_mod  # <-- import module so tests can monkeypatch
-from app.config import settings
-from app.services.agent_detect import detect_txn_query, summarize_txn_result, infer_flow, try_llm_rephrase_summary
-from app.services.txns_nl_query import run_txn_query
-from app.services.agent_tools import route_to_tool
-from app.services.agent.router_fallback import route_to_tool_with_fallback
-from app.services.agent.analytics_tag import tag_if_analytics
-import time
-import uuid
-import app.analytics_emit as analytics_emit
+    router = APIRouter()  # real router only in non‑hermetic mode
 
-router = APIRouter()  # <-- no prefix here (main.py supplies /agent)
+    # --- Optional enrichment modules (guarded) ---------------------------------
+    _enrich_log = logging.getLogger(__name__)
+    def _maybe_import(path: str):
+        try:
+            return __import__(path, fromlist=['*'])
+        except Exception as e:  # pragma: no cover - best effort
+            _enrich_log.debug("Context enrichment optional module missing: %s (%s)", path, e)
+            return None
 
-# --- KPI empty-state guard (router-level) ---
-from app.services.agent_tools.common import no_data_kpis as _router_no_data_kpis
+    _opt_charts = _maybe_import("app.routers.agent_tools_charts")
+    _opt_insights = _maybe_import("app.routers.agent_tools_insights")
+    _opt_rules_crud = _maybe_import("app.routers.agent_tools_rules_crud")
+    _opt_txn_tools = _maybe_import("app.routers.agent_tools_transactions")
+
+    # Warmup tracking (one-time model list probe)
+    _llm_warmed = False
+    async def _ensure_warm():
+        global _llm_warmed  # type: ignore
+        if _llm_warmed:
+            return True
+        try:
+            import asyncio
+            loop = asyncio.get_running_loop()
+            def _list():
+                try:
+                    return llm_mod.list_models()
+                except Exception:
+                    return {}
+            models = await loop.run_in_executor(None, _list)
+            _llm_warmed = bool(models)
+        except Exception:
+            _llm_warmed = False
+        return _llm_warmed
+
+    # --- KPI empty-state guard (router-level) ---
+    # (definitions that follow rely on heavy deps and remain inside this branch)
 
 def _emptyish(v):
     if v is None:
@@ -47,6 +87,8 @@ def _emptyish(v):
     return False
 
 def enforce_analytics_empty_state(out: dict) -> dict:
+    if _HERMETIC:
+        return out  # skip heavy inspection in hermetic mode
     try:
         if out.get("mode") == "analytics.kpis":
             result = out.get("result") or {}
@@ -56,7 +98,7 @@ def enforce_analytics_empty_state(out: dict) -> dict:
                 tip = _router_no_data_kpis(str(month) if month else None)
                 out.update(tip)
                 out["_post_kpis_guard"] = True
-    except Exception:
+    except Exception:  # pragma: no cover - defensive
         pass
     return out
 
@@ -253,55 +295,52 @@ def _enrich_context(db: Session, ctx: Optional[Dict[str, Any]], txn_id: Optional
     if month:
         ctx["month"] = month
         
-        if "summary" not in ctx:
+        if "summary" not in ctx and _opt_charts:
             try:
-                summary_body = agent_tools_charts.SummaryBody(month=month)
-                summary_result = agent_tools_charts.charts_summary(summary_body, db)
+                summary_body = getattr(_opt_charts, 'SummaryBody')(month=month)
+                summary_result = getattr(_opt_charts, 'charts_summary')(summary_body, db)
                 ctx["summary"] = summary_result.model_dump()
             except Exception as e:
-                print(f"Error enriching summary: {redact_pii(str(e))}")
+                logging.getLogger("uvicorn").debug(f"Enrichment summary skipped: {e}")
                 
-        if "top_merchants" not in ctx:
+        if "top_merchants" not in ctx and _opt_charts:
             try:
-                merchants_body = agent_tools_charts.MerchantsBody(month=month, top_n=10)
-                merchants_result = agent_tools_charts.charts_merchants(merchants_body, db)
+                merchants_body = getattr(_opt_charts, 'MerchantsBody')(month=month, top_n=10)
+                merchants_result = getattr(_opt_charts, 'charts_merchants')(merchants_body, db)
                 ctx["top_merchants"] = [item.model_dump() for item in merchants_result.items]
             except Exception as e:
-                print(f"Error enriching merchants: {redact_pii(str(e))}")
+                logging.getLogger("uvicorn").debug(f"Enrichment merchants skipped: {e}")
                 
-        if "insights" not in ctx:
+        if "insights" not in ctx and _opt_insights:
             try:
-                # Use the proper request shape for insights_expanded
-                insights_body = agent_tools_insights.ExpandedIn(month=month, large_limit=10)
-                raw = agent_tools_insights.insights_expanded(insights_body, db)
-                # Normalize to a tiny, resilient shape to avoid prompt bloat
-                # and tolerate schema changes.
+                insights_body = getattr(_opt_insights, 'ExpandedIn')(month=month, large_limit=10)
+                raw = getattr(_opt_insights, 'insights_expanded')(insights_body, db)
                 if isinstance(raw, dict):
-                    normalized = agent_tools_insights.expand(raw).model_dump()
+                    normalized = getattr(_opt_insights, 'expand')(raw).model_dump()
                 else:
                     try:
-                        normalized = agent_tools_insights.expand(raw.model_dump()).model_dump()  # type: ignore[attr-defined]
+                        normalized = getattr(_opt_insights, 'expand')(raw.model_dump()).model_dump()  # type: ignore[attr-defined]
                     except Exception:
-                        normalized = agent_tools_insights.ExpandedBody().model_dump()
+                        normalized = getattr(_opt_insights, 'ExpandedBody')().model_dump()
                 ctx["insights"] = normalized
             except Exception as e:
-                print(f"Error enriching insights: {redact_pii(str(e))}")
+                logging.getLogger("uvicorn").debug(f"Enrichment insights skipped: {e}")
     
-    if "rules" not in ctx:
+    if "rules" not in ctx and _opt_rules_crud:
         try:
-            rules_result = agent_tools_rules_crud.list_rules(db)
+            rules_result = getattr(_opt_rules_crud, 'list_rules')(db)
             ctx["rules"] = [rule.model_dump() for rule in rules_result]
         except Exception as e:
-            print(f"Error enriching rules: {redact_pii(str(e))}")
+            logging.getLogger("uvicorn").debug(f"Enrichment rules skipped: {e}")
             
-    if txn_id and "txn" not in ctx:
+    if txn_id and "txn" not in ctx and _opt_txn_tools:
         try:
-            get_body = agent_tools_transactions.GetByIdsBody(txn_ids=[int(txn_id)])
-            txn_result = agent_tools_transactions.get_by_ids(get_body, db)
+            get_body = getattr(_opt_txn_tools, 'GetByIdsBody')(txn_ids=[int(txn_id)])
+            txn_result = getattr(_opt_txn_tools, 'get_by_ids')(get_body, db)
             if txn_result.items:
                 ctx["txn"] = txn_result.items[0].model_dump()
         except Exception as e:
-            print(f"Error enriching transaction: {redact_pii(str(e))}")
+            logging.getLogger("uvicorn").debug(f"Enrichment txn skipped: {e}")
 
     return ctx
 
@@ -317,6 +356,20 @@ def agent_chat(
     x_bypass_router: Optional[str] = Header(default=None, alias="X-Bypass-Router"),
 ):
     try:
+        # One-time warmup preflight: avoid user-facing 500 on cold model load.
+        try:
+            import asyncio
+            if not asyncio.get_event_loop().is_running():  # sync context (FastAPI def endpoint)
+                # Convert to async temporarily to call _ensure_warm via run_until_complete if needed
+                pass  # FastAPI will run this in threadpool; skip complex detection
+            if '_ensure_warm' in globals():
+                warmed = asyncio.run(_ensure_warm()) if asyncio.iscoroutinefunction(_ensure_warm) else True  # type: ignore
+                if not warmed:
+                    from fastapi import HTTPException
+                    raise HTTPException(status_code=503, detail={"error":"model_warming","hint":"Model is starting; please retry."})
+        except Exception:
+            # If warm check fails, continue; normal timeout/retry path will handle
+            pass
         print(f"Agent chat request: {redact_pii(req.model_dump())}")
         ctx = _enrich_context(db, req.context, req.txn_id)
         last_user_msg = next((m.content for m in reversed(req.messages) if m.role == "user"), "")

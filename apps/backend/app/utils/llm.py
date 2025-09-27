@@ -1,6 +1,31 @@
 from __future__ import annotations
 from typing import List, Dict, Tuple, Optional
 import os, requests, time, random, email.utils as eut
+import logging
+
+# --- LLM timeout / warming configuration --------------------------------------
+# These env-driven knobs allow the first cold model load (large weights) to avoid
+# surfacing an opaque 500. Instead we retry once (optional) and if still timing
+# out within the warm window we return a friendly 503 model_warming signal.
+try:
+    LLM_CONNECT_TIMEOUT = float(os.getenv("LLM_CONNECT_TIMEOUT", "10"))
+except Exception:
+    LLM_CONNECT_TIMEOUT = 10.0
+try:
+    LLM_READ_TIMEOUT = float(os.getenv("LLM_READ_TIMEOUT", "45"))  # was 15
+except Exception:
+    LLM_READ_TIMEOUT = 45.0
+try:
+    LLM_INITIAL_RETRY = int(os.getenv("LLM_INITIAL_RETRY", "1"))  # 0/1
+except Exception:
+    LLM_INITIAL_RETRY = 1
+try:
+    LLM_WARM_WINDOW_S = float(os.getenv("LLM_WARM_WINDOW_S", "60"))
+except Exception:
+    LLM_WARM_WINDOW_S = 60.0
+
+_PROCESS_START_TS = time.time()
+_log = logging.getLogger(__name__)
 from app.utils.request_ctx import get_request_id
 from app.config import settings
 import os
@@ -40,7 +65,7 @@ def _parse_retry_after(v: Optional[str]) -> Optional[float]:
             return None
 
 
-def _post_chat(base: str, key: str, payload: dict, timeout: int = 60) -> dict:
+def _post_chat(base: str, key: str, payload: dict, timeout: int = 60, *, _attempt: int = 0) -> dict:
     """POST a chat completion to an OpenAI-compatible endpoint with limited retry on 429.
 
     Behavior:
@@ -62,7 +87,9 @@ def _post_chat(base: str, key: str, payload: dict, timeout: int = 60) -> dict:
     attempt = 0
     while True:
         # Let connection/timeout errors bubble up for caller to handle
-        r = requests.post(url, json=payload, headers=headers, timeout=timeout)
+        # Use separate connect/read timeouts for better early-fail behavior.
+        eff_timeout = (LLM_CONNECT_TIMEOUT, min(timeout, LLM_READ_TIMEOUT))
+        r = requests.post(url, json=payload, headers=headers, timeout=eff_timeout)
         if r.status_code == 429:
             ra = _parse_retry_after(r.headers.get("Retry-After"))
             base_delay = delays[attempt] if attempt < len(delays) else delays[-1]
@@ -203,8 +230,25 @@ def call_llm(*, model: str, messages: List[Dict[str,str]], temperature: float=0.
         return None
 
     try:
-        data = _post_chat(base, key, payload, timeout=15)
+        data = _post_chat(base, key, payload, timeout=int(LLM_READ_TIMEOUT))
     except (requests.exceptions.ConnectTimeout, requests.exceptions.ConnectionError, requests.HTTPError) as err:
+        # One-shot retry on read/connect timeout during warm window if enabled
+        is_timeout = isinstance(err, (requests.exceptions.ConnectTimeout)) or (
+            isinstance(getattr(err, 'response', None), requests.Response) and False  # placeholder for future classification
+        )
+        if (
+            is_timeout and LLM_INITIAL_RETRY > 0 and
+            (time.time() - _PROCESS_START_TS) <= LLM_WARM_WINDOW_S
+        ):
+            try:
+                backoff = 0.3 + random.random() * 0.4
+                time.sleep(backoff)
+                data = _post_chat(base, key, payload, timeout=int(LLM_READ_TIMEOUT), _attempt=1)
+                err = None  # type: ignore
+            except Exception as retry_err:  # pragma: no cover - defensive
+                err = retry_err  # type: ignore
+                _log.debug("llm.retry.failed warm_window backoff=%s err=%s", round(backoff,2), retry_err)
+        
         # On 5xx/timeout/connection issues, optionally fallback to OpenAI if a key is configured.
         # Relaxed guard: presence of any OPENAI_API_KEY enables fallback attempt to api.openai.com.
         def _has_real_openai_key() -> bool:
@@ -249,7 +293,10 @@ def call_llm(*, model: str, messages: List[Dict[str,str]], temperature: float=0.
                 # still provide a friendly message
                 return ("The model backend is unavailable right now. Please try again shortly.", [])
         else:
-            # Friendly messages for transient errors without fallback
+            # Friendly messages for transient errors without fallback. Distinguish warm window timeouts.
+            warm_window = (time.time() - _PROCESS_START_TS) <= LLM_WARM_WINDOW_S
+            if warm_window and is_timeout:
+                return ("[model_warming] The model is still loading; please retry shortly.", [])
             return ("The language model is temporarily unavailable. Please try again shortly.", [])
     try:
         reply = data["choices"][0]["message"]["content"]

@@ -415,6 +415,14 @@ app.include_router(llm_health_router.router)
 app.include_router(config_router)  # /config endpoint
 app.include_router(admin_router.router)
 
+# Optional auth debug router (diagnostics). Enable with ENABLE_AUTH_DEBUG=1 or DEBUG truthy.
+try:
+    if os.getenv("ENABLE_AUTH_DEBUG", "0").lower() in {"1","true","yes","on"} or str(settings.DEBUG).lower() in {"1","true","yes","on"}:
+        from app.routers.auth_debug import router as auth_debug_router  # type: ignore
+        app.include_router(auth_debug_router)
+except Exception:
+    pass
+
 # Mount health router at root so /healthz is available at top-level
 app.include_router(health_router.router)  # exposes GET /healthz
 
@@ -433,3 +441,29 @@ def version():  # pragma: no cover simple
 @app.get("/health")
 def health():
     return {"ok": True}
+
+from app.routes import llm_compat as llm_compat_router  # compatibility shim
+
+# After app creation and before other routers registration
+app.include_router(llm_compat_router.router)
+
+# --- Exception Handlers -------------------------------------------------------
+try:
+    from httpx import ReadTimeout as _HttpxReadTimeout  # type: ignore
+except Exception:  # pragma: no cover
+    _HttpxReadTimeout = None  # type: ignore
+import requests as _requests
+from fastapi.responses import JSONResponse
+
+if _HttpxReadTimeout is not None:
+    @app.exception_handler(_HttpxReadTimeout)  # type: ignore
+    async def _on_httpx_read_timeout(request, exc):  # pragma: no cover - runtime mapping
+        return JSONResponse(status_code=503, content={"error":"upstream_timeout","hint":"LLM backend timed out","kind":"transient"})
+
+@app.exception_handler(_requests.exceptions.ConnectTimeout)  # type: ignore
+async def _on_requests_connect_timeout(request, exc):  # pragma: no cover
+    return JSONResponse(status_code=503, content={"error":"upstream_timeout","hint":"LLM connection timed out","kind":"transient"})
+
+@app.exception_handler(_requests.exceptions.ReadTimeout)  # type: ignore
+async def _on_requests_read_timeout(request, exc):  # pragma: no cover
+    return JSONResponse(status_code=503, content={"error":"upstream_timeout","hint":"LLM read timed out","kind":"transient"})
