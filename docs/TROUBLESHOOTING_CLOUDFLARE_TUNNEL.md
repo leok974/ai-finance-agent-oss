@@ -5,6 +5,7 @@
 |---------|--------------|-----|
 | Restart loop, log shows `Incorrect Usage: flag provided but not defined: -no-autoupdate` | Flag placed after subcommand or shell parsing multi-line incorrectly | Use exec array form in compose: `command: ["cloudflared","--no-autoupdate","tunnel","run",...]` |
 | 1033 error at edge | Tunnel down / not connected | Ensure logs show `Connected to Cloudflare edge`; restart with fresh token |
+| Persistent 502, nginx internal curl 200 | HTTPS origin mismatch (cloudflared → https://nginx:443 but nginx only listens 80) | Change ingress service to `http://nginx:80` and redeploy |
 | `unauthorized: invalid token` | Expired / wrong token | Generate new token from Zero Trust → Tunnels → Connect |
 | Repeated `registering connection` then disconnect | Network blocks QUIC / IPv6 | Add `--edge-ip-version 4 --protocol http2` |
 | DNS still points to old tunnel | Routes not applied | Run `cloudflared tunnel route dns <UUID> domain` for apex + www |
@@ -35,3 +36,5 @@ docker compose -f docker-compose.prod.yml -f docker-compose.prod.override.yml ex
 - Keep credentials / tokens out of version control.
 - If switching to credentials-file mode, revert to config.yml + `tunnel: <UUID>` and remove `--token`.
 - Use `--loglevel debug` temporarily for deeper protocol traces; revert to `info` afterward.
+ - QUIC churn (intermittent timeout / datagram manager errors) is usually benign if at least one *Registered tunnel connection* remains; consider forcing HTTP/2 fallback by setting env `TUNNEL_TRANSPORT_PROTOCOL=http2` when diagnosing flaky UDP environments.
+ - When normalizing to HTTP origin, also remove stale `https://` entries in `config.yml` to avoid future regressions.

@@ -1,13 +1,25 @@
+"""Legacy agent chat test.
+
+Marked as httpapi so it's excluded from pure hermetic runs that avoid FastAPI.
 """
-Quick test of hermetic agent chat functionality
-"""
-import sys
-import os
+import sys, os
+import pytest
 sys.path.insert(0, os.path.abspath('.'))
 
-from fastapi.testclient import TestClient
-from app.main import app
-from app.utils import llm as llm_mod
+pytestmark = pytest.mark.httpapi
+
+if os.getenv("HERMETIC") == "1":
+    # Hermetic runs exclude http api tests; ensure import attempt won't cause collection error
+    try:  # pragma: no cover
+        from fastapi.testclient import TestClient  # type: ignore
+        from app.main import app
+        from app.utils import llm as llm_mod
+    except Exception:
+        pytest.skip("Skipping agent chat test in hermetic mode (FastAPI not available)")
+else:
+    from fastapi.testclient import TestClient  # type: ignore
+    from app.main import app
+    from app.utils import llm as llm_mod
 
 def _fake_llm(*, model, messages, temperature=0.2, top_p=0.9):
     """Mock LLM that returns canned responses without external calls."""

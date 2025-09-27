@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import pytest
+import os, pytest
+pytestmark = pytest.mark.httpapi
 from fastapi.testclient import TestClient
 
 from app.main import app

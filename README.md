@@ -1,5 +1,90 @@
 # AI Finance Agent (gpt-oss:20b)
 
+> Production-ready personal finance + LLM agent stack (FastAPI + React + Ollama/OpenAI) with KMS-backed encryption, Cloudflare tunnel ingress, and hardened nginx edge.
+
+## Quick Start (Prod Compose Path)
+
+```bash
+git clone https://github.com/leok974/ai-finance-agent-oss.git
+cd ai-finance-agent-oss
+
+# 1. Provide env (minimal example)
+cat > .env <<'EOF'
+ENCRYPTION_ENABLED=1
+GCP_KMS_KEY=projects/ledgermind-03445-3l/locations/global/keyRings/ledgermind/cryptoKeys/backend
+GCP_KMS_AAD=app=ledgermind,env=prod
+MODEL=gpt-oss:20b
+# Optional fallback OpenAI
+OPENAI_API_KEY=sk-...   # or placed as secret file
+EOF
+
+# 2. Place GCP service account JSON (not committed)
+mkdir -p secrets/gcp-sa.json
+cp /path/to/ledgermind-backend-sa.json secrets/gcp-sa.json/ledgermind-backend-sa.json
+
+# 3. Start stack (Docker Desktop context example)
+docker --context desktop-linux compose -f docker-compose.prod.yml -f docker-compose.prod.override.yml up -d
+
+# 4. Verify
+curl -s https://app.ledger-mind.org/ready | jq
+```
+
+Access the app via: https://app.ledger-mind.org
+
+Additional verification & smoke steps: see [`docs/VERIFY_PROD.md`](docs/VERIFY_PROD.md).
+
+## Environment Variables (Core Selection)
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `ENCRYPTION_ENABLED` | yes (prod) | `1` enables envelope encryption / KMS mode when credentials present |
+| `GOOGLE_APPLICATION_CREDENTIALS` | yes | Path inside container to SA JSON (`/secrets/gcp-sa.json`) |
+| `GCP_KMS_KEY` | yes (KMS) | Full resource id of KEK (see example above) |
+| `GCP_KMS_AAD` | recommended | Additional authenticated data (e.g. `app=ledgermind,env=prod`) |
+| `MODEL` | yes | Primary local model (e.g. `gpt-oss:20b`) |
+| `OPENAI_BASE_URL` | optional | Fallback or alt provider base (Ollama/vLLM) |
+| `OPENAI_API_KEY` / `OPENAI_API_KEY_FILE` | optional | Fallback LLM key; file path used in prod secret mount |
+| `DISABLE_PRIMARY` | optional | `1` forces using fallback only (diagnostics) |
+| `DEV_ALLOW_NO_LLM` | optional | Allow deterministic stubs when no model up (non-prod) |
+
+Secrets policy: `secrets/` is git-ignored; place SA JSON under `secrets/gcp-sa.json/`.
+
+## Services Overview
+
+```
+Browser ⇄ Cloudflare Edge ⇄ cloudflared (tunnel) ⇄ nginx (reverse proxy / static) ⇄ backend (FastAPI) ⇄ Postgres
+                                                              └── ollama (LLM runtime)
+                                                              └── agui (SSE gateway)
+```
+
+## Verification & Operations Docs
+
+| Topic | Doc |
+|-------|-----|
+| Deployment readiness & curls | [`VERIFY_PROD.md`](docs/VERIFY_PROD.md) |
+| Deployment checklist | [`DEPLOY_CHECKLIST.md`](docs/DEPLOY_CHECKLIST.md) |
+| Cloudflare tunnel issues | [`TROUBLESHOOTING_CLOUDFLARE_TUNNEL.md`](docs/TROUBLESHOOTING_CLOUDFLARE_TUNNEL.md) |
+| Crypto / KMS setup | [`CRYPTO_SETUP.md`](docs/CRYPTO_SETUP.md) |
+| LLM primary & fallback config | [`LLM_SETUP.md`](docs/LLM_SETUP.md) |
+| Smoke scripts overview | [`SMOKE_TESTS.md`](docs/SMOKE_TESTS.md) |
+| Architecture overview | [`ARCHITECTURE.md`](docs/ARCHITECTURE.md) |
+| Testing strategy | [`TESTING.md`](docs/TESTING.md) |
+| Security posture | [`SECURITY.md`](docs/SECURITY.md) |
+| Day-2 operations | [`OPERATIONS.md`](docs/OPERATIONS.md) |
+| Contributing guide | [`CONTRIBUTING.md`](docs/CONTRIBUTING.md) |
+| Changelog | [`CHANGELOG.md`](CHANGELOG.md) |
+
+## Common Issues & Fixes
+
+| Symptom | Cause | Fix |
+|---------|-------|-----|
+| `crypto_ready:false` on /ready | SA JSON missing or `ENCRYPTION_ENABLED=0` | Mount file at `/secrets/gcp-sa.json`, set env, restart backend |
+| 502 via edge, internal 200 | HTTPS origin mismatch (cloudflared → https://nginx:443, nginx only on :80) | Update tunnel ingress to `http://nginx:80` (see tunnel doc) |
+| `models_ok` = `unknown` | Frontend expecting legacy `/llm/models` | Use `/agent/models` or rely on `useLlmStore().modelsOk` |
+| Falling back to stub LLM | Primary model not loaded yet | Wait for Ollama pull / remove `DISABLE_PRIMARY` |
+
+---
+
 Offline-first finance agent with local inference via Ollama or vLLM. Designed for the Open Models hackathon.
 - **Agentic**: function-calling tools for categorization, rules, budgets, and insights
 - **Local**: point to your local LLM server (Ollama or vLLM) via env

@@ -39,7 +39,8 @@ ALLOW_ORIGINS = [
 class Settings(BaseSettings):
 	DATABASE_URL: str = "sqlite:///./data/finance.db"
 	# Environment flags
-	ENV: str = "dev"  # dev | staging | prod
+	# Prefer explicit ENV; fall back to APP_ENV for legacy compose files.
+	ENV: str = os.getenv("ENV", os.getenv("APP_ENV", "dev"))  # dev | staging | prod
 	DEBUG: bool = True
 	# Help / describe defaults (enable rephrase outside prod unless overridden)
 	HELP_REPHRASE_DEFAULT: bool = True

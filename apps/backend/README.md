@@ -82,10 +82,12 @@ Deep dive: see `../../docs/encryption.md` for diagrams, metrics, backup checklis
 Endpoints:
 
 | Path | Purpose | Notes |
+### Probe wiring (Compose / Nginx)
+
 |------|---------|-------|
 | `/live` | Pure liveness | Always `{ "ok": true }`, no DB/crypto access. Use for container liveness probes. |
 | `/ready` | Readiness (crypto) | 503 if crypto required & not ready (unless disabled). |
-| `/healthz` | Consolidated status | DB connectivity, Alembic sync, migration divergence, crypto mode, version info. |
+  test: ["CMD", "python", "-c", "import urllib.request,sys;hdr={'Host':'backend'};\nfor u in ('http://127.0.0.1:8000/live','http://127.0.0.1:8000/healthz'):\n  try:\n    req=urllib.request.Request(u,headers=hdr);\n    with urllib.request.urlopen(req,timeout=2) as r:\n      if r.getcode()==200: sys.exit(0)\n  except Exception: pass\nsys.exit(1)"]
 
 `/healthz` response (fields):
 
@@ -150,6 +152,8 @@ healthcheck:
   timeout: 3s
   retries: 10
   start_period: 60s
+  Recent hardening changes applied to the backend + edge:
+
 ```
 
 Nginx upstream lightweight probe:

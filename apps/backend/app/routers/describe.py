@@ -1,7 +1,7 @@
 from __future__ import annotations
 from fastapi import APIRouter, Body, Query, Depends, HTTPException
-from pydantic import BaseModel
-from typing import Any, Dict, Optional
+from pydantic import BaseModel, Field
+from typing import Any, Dict, Optional, Literal, List
 from app.db import get_db
 from sqlalchemy.orm import Session
 from app.config import settings
@@ -10,37 +10,24 @@ from app.utils import llm as llm_mod
 from app.analytics_emit import emit_fallback
 from app.services import help_cache
 from app.utils.filters import hash_filters
-import json, threading, os
+import json, threading, os, logging
 from app.services.llm_flags import llm_policy
-
-try:  # pragma: no cover - optional dependency
-    from prometheus_client import Counter  # type: ignore
-except Exception:  # pragma: no cover - prometheus not installed
-    Counter = None
-
-if Counter:
-    _HELP_DESCRIBE_REQUESTS = Counter(
-        "help_describe_requests_total",
-        "Help describe requests",
-        labelnames=("rephrase", "source"),
-    )
-    _HELP_DESCRIBE_REPHRASED = Counter(
-        "help_describe_rephrased_total",
-        "Help describe responses that were rephrased",
-        labelnames=("provider",),
-    )
-else:
-    _HELP_DESCRIBE_REQUESTS = None
-    _HELP_DESCRIBE_REPHRASED = None
+from app.metrics import help_describe_requests, help_describe_rephrased, help_describe_fallbacks
+from app.services.help_copy import get_static_help_for_panel
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
+
+ModeType = Literal["learn", "explain"]
+
 
 class DescribeRequest(BaseModel):
     month: Optional[str] = None
     filters: Optional[Dict[str, Any]] = None
     meta: Optional[Dict[str, Any]] = None
     data: Optional[Any] = None  # tiny preview slice
-    rephrase: Optional[bool] = None
+    rephrase: Optional[bool] = Field(default=None, description="Back-compat flag for explain mode")
+    mode: Optional[ModeType] = Field(default=None, description='Explicitly request "learn" or "explain" mode')
 
 ## cache now handled by app.services.help_cache
 
@@ -83,15 +70,22 @@ def _policy():
 __all__ = ["describe_panel"]
 
 
-def _record_metrics(rephrase_requested: bool, provider: Optional[str], rephrased: bool, cached: bool) -> None:
+def _record_metrics(
+    panel_id: str,
+    mode: ModeType,
+    llm_called: bool,
+    rephrased: bool,
+    provider: Optional[str],
+) -> None:
     provider_name = (provider or "none").strip() or "none"
-    if _HELP_DESCRIBE_REQUESTS:
-        _HELP_DESCRIBE_REQUESTS.labels(
-            rephrase="1" if rephrase_requested else "0",
-            source="cache" if cached else "fresh",
+    if help_describe_requests:
+        help_describe_requests.labels(
+            panel=panel_id,
+            mode=mode,
+            llm_called="1" if llm_called else "0",
         ).inc()
-    if rephrased and _HELP_DESCRIBE_REPHRASED:
-        _HELP_DESCRIBE_REPHRASED.labels(provider=provider_name).inc()
+    if rephrased and help_describe_rephrased:
+        help_describe_rephrased.labels(panel=panel_id, provider=provider_name).inc()
 
 @router.post("/agent/describe/{panel_id}")
 def describe_panel(
@@ -100,77 +94,221 @@ def describe_panel(
     rephrase_q: Optional[bool] = Query(None),
     db: Session = Depends(get_db),
 ):
-    # Body flag wins when explicitly provided; otherwise fall back to query/default.
     body_fields = getattr(req, "model_fields_set", getattr(req, "__fields_set__", set()))
     body_has_rephrase = "rephrase" in body_fields
+
+    rephrase_flag = settings.HELP_REPHRASE_DEFAULT
     if body_has_rephrase:
-        rephrase = bool(req.rephrase) if req.rephrase is not None else settings.HELP_REPHRASE_DEFAULT
+        rephrase_flag = bool(req.rephrase) if req.rephrase is not None else settings.HELP_REPHRASE_DEFAULT
     elif rephrase_q is not None:
-        rephrase = bool(rephrase_q)
-    else:
-        rephrase = settings.HELP_REPHRASE_DEFAULT
+        rephrase_flag = bool(rephrase_q)
+
+    mode: ModeType = req.mode or ("explain" if rephrase_flag else "learn")
+    rephrase_requested = mode == "explain"
 
     fhash = hash_filters(req.filters)
-    key = help_cache.make_key(panel_id, req.month, fhash, bool(rephrase))
+    key = help_cache.make_key(panel_id, req.month, fhash, rephrase_requested, mode=mode)
     cached = help_cache.get(key)
-    if cached and not (rephrase and cached.get("rephrased") is False):
-        cached.setdefault("provider", "none")
+    if cached:
         cached.setdefault("panel_id", panel_id)
+        cached.setdefault("provider", "none")
+        cached.setdefault("mode", mode)
+        cached.setdefault("llm_called", bool(cached.get("rephrased", False)))
         cached["rephrased"] = bool(cached.get("rephrased", False))
-        _record_metrics(bool(rephrase), cached.get("provider"), cached["rephrased"], cached=True)
+        cached.setdefault("reasons", [])
+        _record_metrics(
+            panel_id,
+            cached.get("mode", mode),
+            bool(cached.get("llm_called", False)),
+            cached["rephrased"],
+            cached.get("provider"),
+        )
         return cached
 
+    if mode == "learn":
+        text = get_static_help_for_panel(panel_id)
+        payload = {
+            "panel_id": panel_id,
+            "text": text,
+            "grounded": True,
+            "mode": "learn",
+            "rephrased": False,
+            "llm_called": False,
+            "provider": "none",
+            "reasons": [],
+        }
+        help_cache.set_(key, payload)
+        _record_metrics(panel_id, "learn", False, False, "none")
+        logger.info(
+            "help.describe",
+            extra={
+                "panel": panel_id,
+                "mode": "learn",
+                "llm_called": False,
+                "rephrased": False,
+                "provider": "none",
+            },
+        )
+        return payload
+
+    # explain mode: deterministic base plus optional LLM polish
     base = _deterministic(panel_id, req, db)
     text = base
     provider = "none"
     was_rephrased = False
+    llm_called = False
+    reasons: List[str] = []
+    fallback_reason = "none"  # model_unavailable | identical_output | rate_limited | none
+    effective_unavailable = False
+
+    # no-data fast path when a preview slice explicitly indicates empty data
+    data_obj = req.data
+    data_empty = False
+    if isinstance(data_obj, dict):
+        data_empty = len(data_obj) == 0
+    elif isinstance(data_obj, (list, tuple, set)):
+        data_empty = len(data_obj) == 0
+
+    if data_empty:
+        payload = {
+            "panel_id": panel_id,
+            "text": "No matching data for the selected context.",
+            "grounded": True,
+            "mode": "explain",
+            "rephrased": False,
+            "llm_called": False,
+            "provider": "none",
+            "reasons": ["no_data"],
+        }
+        help_cache.set_(key, payload)
+        _record_metrics(panel_id, "explain", False, False, "none")
+        logger.info(
+            "help.describe",
+            extra={
+                "panel": panel_id,
+                "mode": "explain",
+                "llm_called": False,
+                "rephrased": False,
+                "provider": "none",
+            },
+        )
+        return payload
 
     pol = _policy()
     allow_effective = bool(pol.get("allow"))
-    # Test override: FORCE_HELP_LLM, highest precedence
     ov = os.getenv("FORCE_HELP_LLM")
     if ov is not None:
         v = ov.strip().lower()
-        if v in {"1","true","yes","on"}:
+        if v in {"1", "true", "yes", "on"}:
             allow_effective = True
-        elif v in {"0","false","no","off"}:
+        elif v in {"0", "false", "no", "off"}:
             allow_effective = False
+    if not allow_effective:
+        reasons.append("llm_disabled")
     if pol.get("globally_disabled"):
         try:
             help_cache.clear()
         except Exception:
             pass
 
-    if rephrase and allow_effective:
-        getattr(llm_mod, 'reset_fallback_provider', lambda: None)()
-        new_text = agent_detect.try_llm_rephrase_summary(panel_id, {"intent": panel_id, "filters": req.filters, "result": req.data}, base)  # type: ignore
-        fb = getattr(llm_mod, 'get_last_fallback_provider', lambda: None)()
-        if new_text and new_text.strip():
+    if rephrase_requested and allow_effective:
+        getattr(llm_mod, "reset_fallback_provider", lambda: None)()
+        new_text = None
+        try:
+            llm_called = True
+            new_text = agent_detect.try_llm_rephrase_summary(  # type: ignore[arg-type]
+                panel_id,
+                {"intent": panel_id, "filters": req.filters, "result": req.data},
+                base,
+            )
+        except Exception:
+            # treat as model unavailable
+            fallback_reason = "model_unavailable"
+            effective_unavailable = True
+        fb = getattr(llm_mod, "get_last_fallback_provider", lambda: None)()
+        if new_text and hasattr(new_text, "strip"):
             cleaned = new_text.strip()
-            if cleaned != base or cleaned.startswith("[polished]"):
-                text = cleaned
-                was_rephrased = True
+            SENTINEL = "The language model is temporarily unavailable."
+            if cleaned:
+                if cleaned.startswith("[polished]") or (cleaned != base and cleaned != SENTINEL):
+                    text = cleaned
+                    was_rephrased = True
+                else:
+                    text = cleaned or base
+                    # classify fallback reason when not rephrased
+                    if cleaned == base:
+                        fallback_reason = "identical_output"
+                        reasons.append("identical_output")
+                    elif cleaned == SENTINEL:
+                        fallback_reason = "model_unavailable"
+                    else:
+                        # keep none
+                        pass
+            else:
+                reasons.append("empty_output")
+                fallback_reason = "model_unavailable"
+        else:
+            # no response text
+            reasons.append("llm_no_response")
+            fallback_reason = "model_unavailable"
         if fb:
             provider = f"fallback-{fb}"
-        else:
-            provider = "primary" if was_rephrased else "none"
-        def _emit():
-            try:
-                emit_fallback({"rid": key[:12], "provider": provider, "requested_model": getattr(settings, 'DEFAULT_LLM_MODEL', 'gpt-oss:20b'), "fallback_model": getattr(settings, 'DEFAULT_LLM_MODEL', 'gpt-oss:20b')})
-            except Exception:
-                pass
-        threading.Thread(target=_emit, daemon=True).start()
+        elif llm_called:
+            provider = "primary"
 
-    out = {
+        # Effective outage only when model_unavailable and not rephrased
+        if fallback_reason == "model_unavailable" and not was_rephrased:
+            effective_unavailable = True
+
+        if provider.startswith("fallback-"):
+            def _emit() -> None:
+                try:
+                    emit_fallback(
+                        {
+                            "rid": key[:12],
+                            "provider": provider,
+                            "requested_model": getattr(settings, "DEFAULT_LLM_MODEL", "gpt-oss:20b"),
+                            "fallback_model": getattr(settings, "DEFAULT_LLM_MODEL", "gpt-oss:20b"),
+                        }
+                    )
+                except Exception:
+                    pass
+
+            threading.Thread(target=_emit, daemon=True).start()
+
+    payload = {
+        "panel_id": panel_id,
         "text": text,
         "grounded": True,
+        "mode": "explain",
         "rephrased": bool(was_rephrased),
-        "provider": provider or "none",
-        "panel_id": panel_id,
+        "llm_called": bool(llm_called),
+        "provider": provider or ("primary" if llm_called else "none"),
+        "reasons": reasons if was_rephrased is False else [],
+        "fallback_reason": fallback_reason,
+        "effective_unavailable": effective_unavailable,
     }
-    help_cache.set_(key, out)
-    _record_metrics(bool(rephrase), out["provider"], out["rephrased"], cached=False)
-    return out
+    help_cache.set_(key, payload)
+    _record_metrics(panel_id, "explain", payload["llm_called"], payload["rephrased"], payload["provider"])
+    if (not payload["rephrased"]) and payload.get("fallback_reason") not in (None, "none"):
+        if help_describe_fallbacks:
+            try:
+                help_describe_fallbacks.labels(panel=panel_id, reason=payload["fallback_reason"]).inc()
+            except Exception:
+                pass
+    logger.info(
+        "help.describe",
+        extra={
+            "panel": panel_id,
+            "mode": "explain",
+            "llm_called": payload["llm_called"],
+            "rephrased": payload["rephrased"],
+            "provider": payload["provider"],
+            "fallback_reason": payload["fallback_reason"],
+            "effective_unavailable": payload["effective_unavailable"],
+        },
+    )
+    return payload
 
 
 @router.get("/help/describe")

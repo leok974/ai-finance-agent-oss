@@ -76,3 +76,12 @@ def me(user: User = Depends(get_current_user)):
         "roles": [ur.role.name for ur in user.roles],
         "is_active": user.is_active,
     }
+
+@router.get("/status")
+def auth_status(user: User = Depends(get_current_user)):
+    """Lightweight auth canary endpoint.
+
+    Returns {ok: true} if the access token cookie (or bearer) is valid.
+    Useful for frontend bootstrapping and debugging cookie attribute issues.
+    """
+    return {"ok": True}

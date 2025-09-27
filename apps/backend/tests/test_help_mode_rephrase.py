@@ -23,13 +23,16 @@ def test_help_mode_rephrase_and_cache(monkeypatch):
     monkeypatch.setattr(llm_mod, "reset_fallback_provider", lambda: None, raising=False)
     monkeypatch.setattr(llm_mod, "get_last_fallback_provider", lambda: None, raising=False)
 
-    body = {"rephrase": True}
+    body = {"mode": "explain"}
     first = client.post("/agent/describe/cards.top_merchants", json=body)
     assert first.status_code == 200
     data = first.json()
     assert data["panel_id"] == "cards.top_merchants"
     assert data["rephrased"] is True
     assert data["provider"] == "primary"
+    assert data["llm_called"] is True
+    assert data["mode"] == "explain"
+    assert data.get("reasons") == []
     assert data["text"].startswith("[polished]")
     assert calls["n"] == 1
 
@@ -37,6 +40,8 @@ def test_help_mode_rephrase_and_cache(monkeypatch):
     assert cached.status_code == 200
     cached_data = cached.json()
     assert cached_data["text"] == data["text"]
+    assert cached_data["llm_called"] is True
+    assert cached_data["mode"] == "explain"
     assert calls["n"] == 1  # cache hit, no extra rephrase
 
 
@@ -55,11 +60,13 @@ def test_help_mode_rephrase_disabled(monkeypatch):
     monkeypatch.setattr(llm_mod, "reset_fallback_provider", lambda: None, raising=False)
     monkeypatch.setattr(llm_mod, "get_last_fallback_provider", lambda: None, raising=False)
 
-    r = client.post("/agent/describe/cards.top_merchants", json={"rephrase": True})
+    r = client.post("/agent/describe/cards.top_merchants", json={"mode": "explain"})
     assert r.status_code == 200
     j = r.json()
     assert j["panel_id"] == "cards.top_merchants"
     # Rephrase should be suppressed
     assert j["rephrased"] is False
+    assert j["mode"] == "explain"
     assert j["provider"] in ("none", "primary")  # primary only if logic deems changed
+    assert "llm_disabled" in (j.get("reasons") or [])
     assert calls["n"] == 0

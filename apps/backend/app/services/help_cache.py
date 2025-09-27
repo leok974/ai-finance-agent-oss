@@ -21,8 +21,16 @@ _stats = {"hits": 0, "misses": 0, "evictions": 0}
 def _now() -> float:
     return time.time()
 
-def make_key(panel_id: str, month: Optional[str], filters_hash: str, rephrase: bool) -> str:
-    return f"{panel_id}|{month or 'none'}|{filters_hash}|r={1 if rephrase else 0}"
+def make_key(
+    panel_id: str,
+    month: Optional[str],
+    filters_hash: str,
+    rephrase: bool,
+    mode: Optional[str] = None,
+) -> str:
+    mode_token = (mode or ("explain" if rephrase else "learn")) or "learn"
+    safe_mode = mode_token.replace("|", ":")
+    return f"{panel_id}|{safe_mode}|{month or 'none'}|{filters_hash}|r={1 if rephrase else 0}"
 
 def get(key: str) -> Optional[Dict[str, Any]]:
     with _lock:

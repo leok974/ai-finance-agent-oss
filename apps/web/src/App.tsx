@@ -7,7 +7,7 @@ import SuggestionsPanel from "./components/SuggestionsPanel";
 import { AgentResultRenderer } from "./components/AgentResultRenderers";
 import { emitToastSuccess } from "@/lib/toast-helpers";
 // import RulesPanel from "./components/RulesPanel";
-import { getAlerts, getMonthSummary, getMonthMerchants, getMonthFlows, agentTools, meta, getHealthz, api, resolveMonthFromCharts } from './lib/api'
+import { getAlerts, getMonthSummary, getMonthMerchants, getMonthFlows, getHealthz, api, resolveMonthFromCharts, agentTools } from './lib/api'
 import { flags } from "@/lib/flags";
 import AboutDrawer from './components/AboutDrawer';
 import RulesPanel from "./components/RulesPanel";
@@ -44,6 +44,7 @@ import TransactionsButton from "@/components/header/TransactionsButton";
 import MonthPicker from "@/components/header/MonthPicker";
 import DevMenu from "@/components/dev/DevMenu";
 import logoPng from "@/assets/ledgermind-lockup-1024.png";
+import { useLlmStore } from '@/state/llmStore';
 
 // Log frontend version info
 console.info("[Web] branch=", __WEB_BRANCH__, "commit=", __WEB_COMMIT__);
@@ -135,12 +136,13 @@ const App: React.FC = () => {
       try {
         const h = await getHealthz();
         if (!alive) return;
-  const db = h?.db_engine || 'unknown-db';
-  const mig = h?.alembic_ok ?? h?.alembic?.in_sync ?? 'unknown';
-  const models = h?.models_ok ?? 'unknown';
+        const db = h?.db_engine || 'unknown-db';
+        const mig = h?.alembic_ok ?? h?.alembic?.in_sync ?? 'unknown';
+        // models_ok was formerly supplied by backend; prefer llmStore derived state now
+        const llmModelsOk = useLlmStore.getState().modelsOk;
         setDbRev((h as any)?.db_revision ?? (h as any)?.alembic?.db_revision ?? null);
         setInSync((h as any)?.alembic_ok ?? (h as any)?.alembic?.in_sync);
-        console.log(`[db] ${db} loaded | alembic_ok=${String(mig)} | models_ok=${String(models)}`);
+        console.log(`[db] ${db} loaded | alembic_ok=${String(mig)} | models_ok=${String(llmModelsOk)}`);
       } catch (e) {
         console.warn('[db] healthz failed:', e);
       }
@@ -173,7 +175,8 @@ const App: React.FC = () => {
     emitToastSuccess('CSV ingested', { description: 'Transactions imported. Panels refreshed.' });
   }, []);
 
-  
+  const refreshLlm = useLlmStore(s => s.refresh);
+  useEffect(() => { refreshLlm({ refreshModels: true }); }, [refreshLlm]);
 
   const showChatDock = useChatDockStore(s => s.visible);
 

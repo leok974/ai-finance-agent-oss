@@ -59,7 +59,30 @@ active-dek.json
 
 secrets/
 !secrets/.keep
+# GCP service account JSON (explicit patterns)
+secrets/gcp-sa.json
+secrets/*.gcp-sa.json
+*.gcp-sa.json
 
 # pnpm cache and logs
 **/.pnpm-store/
 pnpm-debug.log
+
+# Coverage & test artifacts
+coverage/
+apps/web/coverage/
+*/coverage/
+*.coverage
+*.lcov
+lcov.info
+htmlcov/
+
+# Python caches (extra)
+.mypy_cache/
+.pytest_cache/
+*.py[cod]
+
+# Misc build/test temps
+*.log
+*.tmp
+*.swp

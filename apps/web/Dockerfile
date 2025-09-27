@@ -16,8 +16,12 @@ FROM nginx:1.27-alpine
 # If uid 101 already exists, adduser will fail; use a guard pattern.
 RUN adduser -D -u 101 web 2>/dev/null || true \
 	&& rm -rf /usr/share/nginx/html/* \
-	&& mkdir -p /var/cache/nginx/client_temp /var/cache/nginx/proxy_temp /var/cache/nginx/fastcgi_temp /var/cache/nginx/uwsgi_temp /var/cache/nginx/scgi_temp /var/run \
-	&& chown -R 101:101 /var/cache/nginx /var/run
+	&& mkdir -p /var/cache/nginx/client_temp /var/cache/nginx/proxy_temp /var/cache/nginx/fastcgi_temp /var/cache/nginx/uwsgi_temp /var/cache/nginx/scgi_temp /var/run/nginx \
+	&& chown -R 101:101 /var/cache/nginx /var/run /etc/nginx
+
+# Configure nginx to place pid in writable location for non-root user (override default)
+# Provide custom root-level nginx configuration with explicit writable pid path
+COPY nginx-root.conf /etc/nginx/nginx.conf
 
 COPY --from=build /w/dist /usr/share/nginx/html
 COPY nginx.conf /etc/nginx/conf.d/default.conf

@@ -41,7 +41,7 @@ export default function HelpPopover(props: { rect: DOMRect; entry: HelpEntry; on
   const envDefault = (import.meta as any).env?.VITE_HELP_REPHRASE_DEFAULT === '0' ? false : true;
   const stored = sessionStorage.getItem('HELP_REPHRASE');
   const allowRephrase = stored ? stored === '1' : envDefault;
-  describe(panelId, payload, { rephrase: allowRephrase, signal: c.signal })
+  describe(panelId, payload, { rephrase: allowRephrase, mode: allowRephrase ? 'explain' : 'learn', signal: c.signal })
       .then(r => {
         setDesc(r);
         if (!fired) {
@@ -60,7 +60,7 @@ export default function HelpPopover(props: { rect: DOMRect; entry: HelpEntry; on
         }
       })
       .catch(() => {
-        setDesc({ text: entry.body, grounded: true, rephrased: false, provider: 'none' });
+        setDesc({ text: entry.body, grounded: true, rephrased: false, provider: 'none', panel_id: panelId, llm_called: false, mode: allowRephrase ? 'explain' : 'learn', reasons: [] });
         track("help_shown", { panel: panelId, error: true });
       })
       .finally(() => setLoading(false));
@@ -68,9 +68,15 @@ export default function HelpPopover(props: { rect: DOMRect; entry: HelpEntry; on
   }, [entryKey, entry]);
 
   const badges: string[] = [];
+  const reasons = desc?.reasons || [];
+  const fallbackReason = (desc as any)?.fallback_reason as string | undefined;
+  const effectiveUnavailable = (desc as any)?.effective_unavailable === true;
+  const aiCheckedNoChange = !!desc?.llm_called && !desc?.rephrased && (reasons.includes('identical_output') || fallbackReason === 'identical_output');
   if (desc?.grounded) badges.push('Grounded');
   if (desc?.rephrased) badges.push('AI‑polished');
-  if (desc?.provider && desc.provider.startsWith('fallback-')) badges.push('Fallback: OpenAI');
+  if (aiCheckedNoChange) badges.push('AI checked');
+  if (!desc?.rephrased && reasons.includes('policy_blocked')) badges.push('Policy blocked');
+  if (!desc?.rephrased && reasons.includes('no_data')) badges.push('No data');
 
   return (
     <div
@@ -81,17 +87,47 @@ export default function HelpPopover(props: { rect: DOMRect; entry: HelpEntry; on
       aria-label={entry.title}
     >
       <div className="flex items-start justify-between gap-2">
-        <div className="font-semibold mb-1 pr-2 leading-snug">{entry.title}</div>
+        <div className="font-semibold mb-1 pr-2 leading-snug flex items-center gap-2">
+          {entry.title}
+          {reasons.includes('identical_output') && (
+            <span
+              title="Model output matched deterministic summary."
+              className="inline-flex items-center justify-center w-4 h-4 text-[10px] rounded-full bg-zinc-800 text-zinc-300 border border-zinc-600 cursor-help"
+            >i</span>
+          )}
+        </div>
         <div className="flex flex-wrap gap-1">
-          {badges.map(b => (
-            <span key={b} className="bg-zinc-800 text-zinc-300 border border-zinc-600 rounded px-2 py-[2px] text-[10px] uppercase tracking-wide">
-              {b}
-            </span>
-          ))}
+          {badges.map(b => {
+            let extra = '';
+            if (b === 'Policy blocked') extra = 'bg-amber-800/40 text-amber-300 border-amber-600';
+            else if (b === 'No data') extra = 'bg-zinc-800 text-zinc-400 border-zinc-600';
+            else if (b === 'AI checked') extra = 'bg-zinc-800 text-zinc-200 border-zinc-600';
+            else extra = 'bg-zinc-800 text-zinc-300 border-zinc-600';
+            return (
+              <span
+                key={b}
+                title={b === 'AI checked' ? 'AI reviewed but kept original wording.' : undefined}
+                className={`rounded px-2 py-[2px] text-[10px] uppercase tracking-wide border ${extra}`}
+              >
+                {b}
+              </span>
+            );
+          })}
         </div>
       </div>
       <div className="text-sm opacity-90 whitespace-pre-line min-h-[48px]">
-        {loading ? <span className="opacity-60">Loading…</span> : (desc?.text || entry.body)}
+        {loading ? (
+          <span className="opacity-60">Loading…</span>
+        ) : effectiveUnavailable ? (
+          <span>The language model is temporarily unavailable. Showing deterministic description.</span>
+        ) : (
+          <>
+            {desc?.text || entry.body}
+            {aiCheckedNoChange && !effectiveUnavailable && (
+              <div className="mt-2 text-[11px] opacity-60">AI reviewed the description; original wording was already clear.</div>
+            )}
+          </>
+        )}
       </div>
       <div className="mt-3 flex items-center justify-between">
         <button ref={closeRef} className="text-xs opacity-80 hover:opacity-100 underline" onClick={onClose}>Close</button>

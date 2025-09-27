@@ -22,6 +22,8 @@ services:
         GIT_COMMIT: ${GIT_COMMIT:-unknown}
         BUILD_TIME: ${BUILD_TIME:-unknown}
     environment:
+      ENV: "prod"
+      DEBUG: "0"
       APP_ENV: "prod"
       ENCRYPTION_ENABLED: ${ENCRYPTION_ENABLED:-0}
       CRYPTO_STRICT_STARTUP: ${CRYPTO_STRICT_STARTUP:-0}
@@ -67,9 +69,16 @@ services:
     build:
       context: .
       dockerfile: deploy/Dockerfile.nginx
+      args:
+        EDGE_GIT_COMMIT: ${GIT_COMMIT:-unknown}
+        EDGE_BUILD_TIME: ${BUILD_TIME:-unknown}
     image: ai-finance-agent-oss-clean-nginx:latest
     depends_on:
+      web:
+        condition: service_healthy
       backend:
+        condition: service_healthy
+      agui:
         condition: service_healthy
     volumes:
       - certbot_www:/var/www/certbot
@@ -98,24 +107,15 @@ services:
       context: ./apps/web
       dockerfile: Dockerfile
     image: ai-finance-agent-oss-clean-web:latest
-    read_only: true
-    user: "101:101"
-    cap_drop: ["ALL"]
-    security_opt:
-      - no-new-privileges:true
-    tmpfs:
-      - /var/cache/nginx:rw,noexec,nosuid,nodev,size=64m,uid=101,gid=101,mode=0755
-      - /var/run:rw,noexec,nosuid,nodev,size=16m,uid=101,gid=101,mode=0755
+    expose:
+      - "8080"
+    restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL","wget -q -O /dev/null http://127.0.0.1:8080/_up || exit 1"]
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8080/_up || exit 1"]
       interval: 10s
       timeout: 3s
       retries: 10
       start_period: 20s
-    restart: unless-stopped
-    # Not exposed directly; nginx (edge) can proxy / to this container internally on 8080 if desired.
-    expose:
-      - "8080"
 
   certbot:
     image: certbot/certbot:latest
@@ -160,6 +160,12 @@ services:
       backend:
         condition: service_healthy
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "bun -e 'fetch(`http://127.0.0.1:3030/agui/ping`).then(r=>{if(r.ok)process.exit(0);process.exit(1)}).catch(()=>process.exit(1))'"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 20s
 
 volumes:
   pgdata:

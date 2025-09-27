@@ -29,7 +29,7 @@ def test_help_describe_allows_body_rephrase_flag(monkeypatch):
 
     response = client.post(
         "/agent/describe/top_merchants",
-        json={"rephrase": True},
+        json={"rephrase": True, "mode": "explain"},
     )
     assert response.status_code == 200
     data = response.json()
@@ -37,6 +37,9 @@ def test_help_describe_allows_body_rephrase_flag(monkeypatch):
     assert data.get("panel_id") == "top_merchants"
     assert data.get("rephrased") is True
     assert data.get("provider") == "primary"
+    assert data.get("llm_called") is True
+    assert data.get("mode") == "explain"
+    assert data.get("reasons") == []
     assert calls["n"] == 1
 
 
@@ -52,20 +55,24 @@ def test_help_describe_cache_distinguishes_rephrase(monkeypatch):
     monkeypatch.setattr(llm_mod, "get_last_fallback_provider", lambda: None, raising=False)
 
     # Explicitly request no rephrase on the first call so we exercise the upgrade path.
-    base = client.post("/agent/describe/top_merchants", json={"rephrase": False})
+    base = client.post("/agent/describe/top_merchants", json={"mode": "learn"})
     assert base.status_code == 200
     base_data = base.json()
     assert base_data["rephrased"] is False
+    assert base_data["llm_called"] is False
+    assert base_data["mode"] == "learn"
 
     upgraded = client.post(
         "/agent/describe/top_merchants",
-        json={"rephrase": True},
+        json={"mode": "explain"},
     )
     assert upgraded.status_code == 200
     upgraded_data = upgraded.json()
     assert upgraded_data["text"] != base_data["text"]
     assert upgraded_data["rephrased"] is True
     assert upgraded_data["provider"] == "primary"
+    assert upgraded_data["llm_called"] is True
+    assert upgraded_data["mode"] == "explain"
 
 
 def test_help_describe_fallback_provider(monkeypatch):
@@ -81,9 +88,11 @@ def test_help_describe_fallback_provider(monkeypatch):
 
     response = client.post(
         "/agent/describe/top_merchants",
-        json={"rephrase": True},
+        json={"mode": "explain"},
     )
     assert response.status_code == 200
     data = response.json()
     assert data["provider"] == "fallback-azure"
     assert data["rephrased"] is True
+    assert data["llm_called"] is True
+    assert data["mode"] == "explain"
