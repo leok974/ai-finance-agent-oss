@@ -28,30 +28,6 @@ if (-not (Test-Path $Py)) {
   if (Test-Path .venv/\Scripts/\Activate.ps1) { . .venv/\Scripts/\Activate.ps1; $Py = "$env:VIRTUAL_ENV/\Scripts/\python.exe" }
 }
 
-# Early install dev requirements to guarantee crypto/FastAPI present (with caching)
-try {
-  $reqDev = Join-Path $BACKEND 'requirements-dev.txt'
-  if (Test-Path $reqDev -and (Test-Path $Py)) {
-    $cacheDir = Join-Path $BACKEND '.cache'
-    if (-not (Test-Path $cacheDir)) { New-Item -ItemType Directory -Path $cacheDir | Out-Null }
-    $pyVersion = & $Py -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}')" 2>$null
-    $hashInput = @(
-      (Get-Content $reqDev -Raw),
-      $pyVersion
-    ) -join "\n--SEP--\n"
-    $hash = [System.BitConverter]::ToString((New-Object System.Security.Cryptography.SHA256Managed).ComputeHash([System.Text.Encoding]::UTF8.GetBytes($hashInput))).Replace('-','').Substring(0,32)
-    $hashFile = Join-Path $cacheDir 'requirements-dev.hash'
-    $prevHash = if (Test-Path $hashFile) { (Get-Content $hashFile -Raw).Trim() } else { '' }
-    if ($ForceDeps -or $hash -ne $prevHash) {
-      Write-Host "[deps] Installing dev dependencies (hash miss or forced)" -ForegroundColor Cyan
-      & $Py -m pip install -r $reqDev | Out-Null
-      Set-Content -LiteralPath $hashFile -Value $hash -Encoding ASCII
-    } else {
-      Write-Host "[deps] Cache hit (requirements-dev unchanged for Python $pyVersion)" -ForegroundColor DarkGreen
-    }
-  }
-} catch { Write-Host "[deps] install warning: $_" -ForegroundColor DarkYellow }
-
 # 1) Make sure source tree wins on sys.path (front of PYTHONPATH)
 $env:PYTHONPATH = "$BACKEND;$ROOT"
 
@@ -116,6 +92,35 @@ if (-not (Test-Path $Py)) {
     exit 2
   }
 }
+
+# Re-run dependency installation now that an interpreter is guaranteed
+try {
+  $reqDev = Join-Path $BACKEND 'requirements-dev.txt'
+  if (Test-Path $reqDev) {
+    $pythonExe = if (Test-Path $Py) { $Py } elseif (Get-Command python -ErrorAction SilentlyContinue) { (Get-Command python).Source } else { $null }
+    if ($null -ne $pythonExe) {
+      $cacheDir = Join-Path $BACKEND '.cache'
+      if (-not (Test-Path $cacheDir)) { New-Item -ItemType Directory -Path $cacheDir | Out-Null }
+      $pyVersion = & $pythonExe -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}')" 2>$null
+      $hashInput = @(
+        (Get-Content $reqDev -Raw),
+        $pyVersion
+      ) -join "\n--SEP--\n"
+      $hash = [System.BitConverter]::ToString((New-Object System.Security.Cryptography.SHA256Managed).ComputeHash([System.Text.Encoding]::UTF8.GetBytes($hashInput))).Replace('-','').Substring(0,32)
+      $hashFile = Join-Path $cacheDir 'requirements-dev.hash'
+      $prevHash = if (Test-Path $hashFile) { (Get-Content $hashFile -Raw).Trim() } else { '' }
+      if ($ForceDeps -or $hash -ne $prevHash) {
+        Write-Host "[deps] Installing dev dependencies (hash miss or forced)" -ForegroundColor Cyan
+        & $pythonExe -m pip install -r $reqDev | Out-Null
+        Set-Content -LiteralPath $hashFile -Value $hash -Encoding ASCII
+      } else {
+        Write-Host "[deps] Cache hit (requirements-dev unchanged for Python $pyVersion)" -ForegroundColor DarkGreen
+      }
+    } else {
+      Write-Host "[deps] Skipped install - no Python interpreter resolved" -ForegroundColor DarkYellow
+    }
+  }
+} catch { Write-Host "[deps] install warning: $_" -ForegroundColor DarkYellow }
 
 # (Legacy cleanup retained: explicit single-file removal harmless if still present)
 try {

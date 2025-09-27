@@ -1,5 +1,5 @@
 from __future__ import annotations
-from fastapi import APIRouter, Query, Depends, HTTPException
+from fastapi import APIRouter, Body, Query, Depends, HTTPException
 from pydantic import BaseModel
 from typing import Any, Dict, Optional
 from app.db import get_db
@@ -13,6 +13,26 @@ from app.utils.filters import hash_filters
 import json, threading, os
 from app.services.llm_flags import llm_policy
 
+try:  # pragma: no cover - optional dependency
+    from prometheus_client import Counter  # type: ignore
+except Exception:  # pragma: no cover - prometheus not installed
+    Counter = None
+
+if Counter:
+    _HELP_DESCRIBE_REQUESTS = Counter(
+        "help_describe_requests_total",
+        "Help describe requests",
+        labelnames=("rephrase", "source"),
+    )
+    _HELP_DESCRIBE_REPHRASED = Counter(
+        "help_describe_rephrased_total",
+        "Help describe responses that were rephrased",
+        labelnames=("provider",),
+    )
+else:
+    _HELP_DESCRIBE_REQUESTS = None
+    _HELP_DESCRIBE_REPHRASED = None
+
 router = APIRouter()
 
 class DescribeRequest(BaseModel):
@@ -20,6 +40,7 @@ class DescribeRequest(BaseModel):
     filters: Optional[Dict[str, Any]] = None
     meta: Optional[Dict[str, Any]] = None
     data: Optional[Any] = None  # tiny preview slice
+    rephrase: Optional[bool] = None
 
 ## cache now handled by app.services.help_cache
 
@@ -61,16 +82,42 @@ def _policy():
 # Explicit export (shim removed)
 __all__ = ["describe_panel"]
 
+
+def _record_metrics(rephrase_requested: bool, provider: Optional[str], rephrased: bool, cached: bool) -> None:
+    provider_name = (provider or "none").strip() or "none"
+    if _HELP_DESCRIBE_REQUESTS:
+        _HELP_DESCRIBE_REQUESTS.labels(
+            rephrase="1" if rephrase_requested else "0",
+            source="cache" if cached else "fresh",
+        ).inc()
+    if rephrased and _HELP_DESCRIBE_REPHRASED:
+        _HELP_DESCRIBE_REPHRASED.labels(provider=provider_name).inc()
+
 @router.post("/agent/describe/{panel_id}")
-def describe_panel(panel_id: str, req: DescribeRequest, rephrase: Optional[bool] = Query(None), db: Session = Depends(get_db)):
-    # decide default
-    if rephrase is None:
+def describe_panel(
+    panel_id: str,
+    req: DescribeRequest = Body(default=DescribeRequest()),
+    rephrase_q: Optional[bool] = Query(None),
+    db: Session = Depends(get_db),
+):
+    # Body flag wins when explicitly provided; otherwise fall back to query/default.
+    body_fields = getattr(req, "model_fields_set", getattr(req, "__fields_set__", set()))
+    body_has_rephrase = "rephrase" in body_fields
+    if body_has_rephrase:
+        rephrase = bool(req.rephrase) if req.rephrase is not None else settings.HELP_REPHRASE_DEFAULT
+    elif rephrase_q is not None:
+        rephrase = bool(rephrase_q)
+    else:
         rephrase = settings.HELP_REPHRASE_DEFAULT
 
     fhash = hash_filters(req.filters)
     key = help_cache.make_key(panel_id, req.month, fhash, bool(rephrase))
     cached = help_cache.get(key)
     if cached and not (rephrase and cached.get("rephrased") is False):
+        cached.setdefault("provider", "none")
+        cached.setdefault("panel_id", panel_id)
+        cached["rephrased"] = bool(cached.get("rephrased", False))
+        _record_metrics(bool(rephrase), cached.get("provider"), cached["rephrased"], cached=True)
         return cached
 
     base = _deterministic(panel_id, req, db)
@@ -114,6 +161,27 @@ def describe_panel(panel_id: str, req: DescribeRequest, rephrase: Optional[bool]
                 pass
         threading.Thread(target=_emit, daemon=True).start()
 
-    out = {"text": text, "grounded": True, "rephrased": was_rephrased, "provider": provider}
+    out = {
+        "text": text,
+        "grounded": True,
+        "rephrased": bool(was_rephrased),
+        "provider": provider or "none",
+        "panel_id": panel_id,
+    }
     help_cache.set_(key, out)
+    _record_metrics(bool(rephrase), out["provider"], out["rephrased"], cached=False)
     return out
+
+
+@router.get("/help/describe")
+def describe_help_get_hint():
+    raise HTTPException(status_code=405, detail="Use POST /agent/describe/{panel_id}")
+
+
+# Backwards/forwards compatibility aliases
+router.add_api_route("/api/agent/describe/{panel_id}", describe_panel, methods=["POST"])
+
+
+@router.get("/api/help/describe")
+def describe_help_get_hint_api():
+    raise HTTPException(status_code=405, detail="Use POST /agent/describe/{panel_id}")
