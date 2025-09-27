@@ -352,6 +352,12 @@ async def lifespan(app: FastAPI):
             from app.services.analytics_retention import retention_loop
             t = asyncio.create_task(retention_loop(keep_days, every_hours))
             app.state._bg_tasks.append(t)
+        # Start help_cache cleanup loop (all environments; low overhead) unless disabled
+        if os.environ.get("HELP_CACHE_CLEANUP_DISABLE", "0").lower() not in {"1","true","yes","on"}:
+            from app.services.help_cleanup import help_cache_cleanup_loop
+            interval = int(os.environ.get("HELP_CACHE_CLEANUP_INTERVAL_S", "1800"))
+            t2 = asyncio.create_task(help_cache_cleanup_loop(interval))
+            app.state._bg_tasks.append(t2)
     except Exception:
         pass
     try:
@@ -410,6 +416,8 @@ app.include_router(agent_plan_router.router)
 app.include_router(analytics.router)
 app.include_router(analytics_events_router.router)
 app.include_router(help_ui_router.router)
+from app.routers import help as help_router  # unified help endpoint (what/why)
+app.include_router(help_router.router)
 app.include_router(txns_edit_router.router)
 app.include_router(llm_health_router.router)
 app.include_router(config_router)  # /config endpoint

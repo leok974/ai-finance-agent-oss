@@ -99,6 +99,7 @@ Indexes: key (unique), etag, expires_at, (expires_at, cache_key) composite for e
 * To invalidate broadly, bump `REPHRASE_VERSION` or decrease `HELP_TTL_SECONDS` temporarily.
 * Admin cache reset endpoint (future) can prune table; currently lazy expiry.
 * Monitor size via future metrics (TBD). Entries are small (one paragraph + metadata).
+* A background task prunes expired rows every 30 minutes (configurable via `HELP_CACHE_CLEANUP_INTERVAL_S`). Disable with `HELP_CACHE_CLEANUP_DISABLE=1`.
 
 ## Future Enhancements (Backlog)
 * Background pruning task for expired rows
