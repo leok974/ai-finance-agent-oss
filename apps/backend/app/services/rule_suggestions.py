@@ -54,7 +54,7 @@ def _recent_window(now: Optional[datetime], days: int) -> Tuple[datetime, dateti
 def _active_rule_pairs(db: Session) -> Set[tuple[str | None, str]]:
     rows = (
         db.query(Rule.merchant, Rule.category)
-        .filter(or_(Rule.active == True, Rule.active.is_(None)))
+        .filter(or_(Rule.active, Rule.active.is_(None)))
         .all()
     )
     return set((m, c) for m, c in rows if c)
@@ -152,11 +152,11 @@ def evaluate_candidate(db: Session, merchant_norm: str, category: str) -> Option
         .filter(RuleSuggestion.merchant_norm == merchant_norm, RuleSuggestion.category == category)
         .one_or_none()
     )
-    created = False
+    # created flag omitted (was previously unused)
     if row is None:
         row = RuleSuggestion(merchant_norm=merchant_norm, category=category, support_count=0, positive_rate=1.0, last_seen=now)
         db.add(row)
-        created = True
+    # row created
 
     # Try metrics from feedback
     metrics = compute_metrics(db, merchant_norm, category)

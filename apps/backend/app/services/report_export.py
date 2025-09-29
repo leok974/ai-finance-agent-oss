@@ -1,13 +1,12 @@
 from __future__ import annotations
 
 from io import BytesIO
-from typing import Dict, Any
 
 import pandas as pd
 
 try:
     from reportlab.lib.pagesizes import LETTER
-    from reportlab.pdfgen import canvas
+    # from reportlab.pdfgen import canvas  # unused
     from reportlab.lib import colors
     from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
     from reportlab.lib.styles import getSampleStyleSheet
@@ -15,9 +14,7 @@ try:
 except Exception:  # pragma: no cover - during minimal envs
     REPORTLAB_AVAILABLE = False
 
-from sqlalchemy.orm import Session
-
-from .charts_data import get_month_summary, get_month_merchants, get_month_categories
+# (Removed unused Session and charts_data helpers imports)
 
 
 def build_excel_bytes(
@@ -69,8 +66,8 @@ def build_excel_bytes(
                         txns_df.to_excel(writer, index=False, sheet_name="Transactions")
             except Exception:
                 pass
-        wb = writer.book
-        money = wb.add_format({"num_format": "$#,##0.00"})
+    # wb = writer.book  # unused
+    # money = wb.add_format({"num_format": "$#,##0.00"})  # unused
         for sheet in ("Summary", "Categories", "TopMerchants", "Flows", "Trends"):
             if sheet in writer.sheets:
                 ws = writer.sheets[sheet]

@@ -1,0 +1,36 @@
+name: Uptime checks
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Hit /_up (204 expected)
+        run: |
+          set -euo pipefail
+          code=$(curl -sk -o /dev/null -w "%{http_code}" "https://app.ledger-mind.org/_up?__nocache=$(date +%s)")
+          echo "code=$code"
+          test "$code" = "204"
+
+      - name: Hit /api/auth/login (401/422 expected)
+        run: |
+          set -euo pipefail
+          body='{"email":"nobody@example.com","password":"bad"}'
+          code=$(curl -sk -o /dev/null -w "%{http_code}" -H "content-type: application/json" -d "$body" "https://app.ledger-mind.org/api/auth/login?__nocache=$(date +%s)")
+          echo "code=$code"
+          case "$code" in 401|422) exit 0;; *) exit 1;; esac
+
+      - name: Hit /help (200 or 304 expected)
+        run: |
+          set -euo pipefail
+          data='{"card_id":"overview","mode":"what","month":"2025-08","deterministic_ctx":{},"base_text":null}'
+          etag=$(curl -sk -D - -H "content-type: application/json" -d "$data" "https://app.ledger-mind.org/help?__nocache=$(date +%s)" | awk '/^ETag:/ {print $2}' | tr -d '\r')
+          test -n "$etag"
+          code=$(curl -sk -o /dev/null -w "%{http_code}" -H "content-type: application/json" -H "If-None-Match: $etag" -d "$data" "https://app.ledger-mind.org/help")
+          echo "code=$code"
+          case "$code" in 304|200) exit 0;; *) exit 1;; esac

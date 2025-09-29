@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react'
 import { getRules, deleteRule, type Rule, type RuleInput, type RuleListItem, fetchRuleSuggestConfig, type RuleSuggestConfig } from '@/api';
 import { addRule } from '@/state/rules';
 import { emitToastSuccess, emitToastError } from '@/lib/toast-helpers';
+import { t } from '@/lib/i18n';
 import { ToastAction } from '@/components/ui/toast';
 import { scrollToId } from '@/lib/scroll';
 import { setRuleDraft } from '@/state/rulesDraft';
@@ -60,7 +61,7 @@ function RulesPanelImpl({ month, refreshKey }: Props) {
       setTotal(Number((res as any).total || 0));
     } catch (e: any) {
       if (ac.signal.aborted) return; // ignore aborted
-  err('Could not load rules list', { description: 'Load failed' });
+  err(t('ui.toast.rules_list_load_failed'), { description: 'Load failed' });
     } finally {
       if (abortRef.current === ac) abortRef.current = null;
       setLoading(false);
@@ -97,7 +98,7 @@ function RulesPanelImpl({ month, refreshKey }: Props) {
       setForm({ name: '', enabled: true, when: { description_like: '' }, then: { category: '' } });
       load();
       // Use raw toast so we can attach actions
-      emitToastSuccess('Rule created', { description: `“${(res as any)?.display_name || name}” saved successfully.` });
+  emitToastSuccess(t('ui.toast.rule_created_title'), { description: t('ui.toast.rule_created_description', { name: (res as any)?.display_name || name }) });
     } catch (e: any) {
       const message = e?.message || 'Failed to create rule';
   err(message, { description: 'Create failed' });
@@ -139,16 +140,16 @@ function RulesPanelImpl({ month, refreshKey }: Props) {
   async function saveBudgetInline(category: string) {
     const amt = Number(editAmount);
     if (!Number.isFinite(amt) || amt <= 0) {
-  err('Enter a valid amount > 0');
+  err(t('ui.toast.budget_inline_invalid_amount'));
       return;
     }
     try {
       const r = await setBudget(category, amt);
-  ok(`Saved ${category} = $${r.budget.amount.toFixed(2)}`);
+  ok(t('ui.toast.budget_inline_saved_title', { category, amount: `$${r.budget.amount.toFixed(2)}` }));
       setEditingId(null);
       await load();
     } catch (e: any) {
-  err(e?.message ?? 'Failed to save');
+  err(e?.message ?? t('ui.toast.budget_inline_save_failed'));
     }
   }
 
@@ -163,12 +164,12 @@ function RulesPanelImpl({ month, refreshKey }: Props) {
         ok(`Restored ${cat} = $${amount.toFixed(2)}`);
         await load();
       } catch (e: any) {
-        err(e?.message ?? 'Failed to restore');
+        err(e?.message ?? t('ui.toast.budget_inline_restore_failed'));
       }
       setEditingId(null);
       await load();
     } catch (e: any) {
-  err(e?.message ?? 'Failed to delete budget');
+  err(e?.message ?? t('ui.toast.budget_inline_delete_failed'));
     }
   }
 

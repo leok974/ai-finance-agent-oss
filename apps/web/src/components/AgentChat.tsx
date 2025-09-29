@@ -1,6 +1,7 @@
 import React from "react";
 import { agentChat, getAgentModels, type AgentChatRequest, type AgentChatResponse, type AgentModelsResponse, type ChatMessage, txnsQueryCsv, applyBudgets, downloadReportPdf, type Anomaly, clearTempBudget, unignoreAnomaly } from "../lib/api";
 import { emitToastSuccess } from "@/lib/toast-helpers";
+import { t } from '@/lib/i18n';
 
 interface ExtendedMessage extends ChatMessage {
   meta?: {
@@ -343,7 +344,7 @@ export default function AgentChat() {
                               onClick={() => runAction(actionKey, async () => {
                                 const r = await clearTempBudget(cat, month);
                                 const amt = r?.deleted?.amount ?? 0;
-                                emitToastSuccess('Temporary budget removed', { description: `${cat}${amt ? ` ($${Number(amt).toFixed(2)})` : ''}` });
+                                emitToastSuccess(t('ui.toast.temp_budget_removed_title'), { description: `${cat}${amt ? ` ($${Number(amt).toFixed(2)})` : ''}` });
                               })}
                             >
                               {label}
@@ -364,7 +365,7 @@ export default function AgentChat() {
                               disabled={disabled}
                               onClick={() => runAction(actionKey, async () => {
                                 await unignoreAnomaly(cat);
-                                emitToastSuccess('Anomaly unignored', { description: cat });
+                                emitToastSuccess(t('ui.toast.anomaly_unignored_title'), { description: cat });
                               })}
                             >
                               {label}

@@ -30,8 +30,15 @@ import pytest
 
 @pytest.mark.rotation
 def test_dek_rotation_dryrun_smoke(db_session):
-    # Seed KEK for determinism
-    os.environ.setdefault("ENCRYPTION_MASTER_KEY_BASE64", base64.b64encode(os.urandom(32)).decode())
+    # Seed KEK for determinism (mirror to MASTER_KEK_B64 to satisfy unwrap paths referencing either)
+    if not os.getenv("ENCRYPTION_MASTER_KEY_BASE64") and not os.getenv("MASTER_KEK_B64"):
+        kek = base64.b64encode(os.urandom(32)).decode()
+        os.environ.setdefault("ENCRYPTION_MASTER_KEY_BASE64", kek)
+        os.environ.setdefault("MASTER_KEK_B64", kek)
+    elif os.getenv("MASTER_KEK_B64") and not os.getenv("ENCRYPTION_MASTER_KEY_BASE64"):
+        os.environ["ENCRYPTION_MASTER_KEY_BASE64"] = os.getenv("MASTER_KEK_B64")
+    elif os.getenv("ENCRYPTION_MASTER_KEY_BASE64") and not os.getenv("MASTER_KEK_B64"):
+        os.environ["MASTER_KEK_B64"] = os.getenv("ENCRYPTION_MASTER_KEY_BASE64")
 
     # Ensure active key exists and seed a few rows under 'active'
     _ensure_key(db_session, "active")

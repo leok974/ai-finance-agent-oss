@@ -8,7 +8,7 @@ import re as _re
 
 # --- analytics intent detection ---------------------------------------------
 import re as __re
-from typing import Optional, Tuple
+from typing import Optional
 
 ANALYTICS_HINTS = {
     "analytics.kpis": [

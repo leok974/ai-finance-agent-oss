@@ -1,4 +1,5 @@
-from fastapi import FastAPI, APIRouter
+from fastapi import FastAPI, APIRouter, Response
+from .startup_guard import require_db_or_exit
 from contextlib import asynccontextmanager
 import asyncio
 from .db import Base, engine
@@ -18,12 +19,18 @@ except Exception:  # pragma: no cover - fallback for older stacks
         ProxyHeadersMiddleware = None  # type: ignore
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 import os
+import sys
 from . import config as app_config
 from app.config import settings
 from .routers import ingest, txns, rules, ml, report, budget, alerts, insights, agent, explain
 from app.routers import analytics
 from app.routers import analytics_events as analytics_events_router
 from app.routers import llm_health as llm_health_router
+from app.routers import llm_echo as llm_echo_router
+from app.routers import status as status_router
+from app.routers import live as live_router
+from app.routers import ready as ready_router
+from app.startup_guard import require_db_or_exit  # fail-fast DB connectivity
 from .routers import meta
 from app.routers import agent_tools_transactions as agent_tools_txn
 from app.routers import agent_tools_budget as agent_tools_budget
@@ -48,6 +55,15 @@ from .routers import health as health_router
 from .routers import agent_plan as agent_plan_router
 from .utils.state import load_state, save_state
 import logging
+import time
+try:
+    import orjson  # type: ignore
+    def _dumps(obj):  # returns bytes
+        return orjson.dumps(obj)
+except Exception:  # pragma: no cover
+    import json as _json_mod
+    def _dumps(obj):  # returns bytes
+        return _json_mod.dumps(obj, separators=(",",":"), ensure_ascii=False).encode("utf-8")
 import subprocess
 from app.services.crypto import EnvelopeCrypto
 from app.core.crypto_state import set_crypto, set_active_label
@@ -56,9 +72,17 @@ from app.db import SessionLocal
 from app.core.crypto_state import load_and_cache_active_dek
 import base64
 from app.middleware.request_logging import RequestLogMiddleware
+from app.middleware.request_id import RequestIdMiddleware
 from datetime import datetime, timezone
+try:  # Prefer ultra-fast orjson if present
+    from starlette.responses import ORJSONResponse as _JSONResp  # type: ignore
+except Exception:  # pragma: no cover - fallback
+    from fastapi.responses import JSONResponse as _JSONResp  # type: ignore
 
 logger = logging.getLogger(__name__)
+
+# Fail fast immediately if DB misconfigured
+require_db_or_exit()
 
 # Print git info on boot
 try:
@@ -68,11 +92,54 @@ try:
 except Exception:
     pass
 
-# Enable JSON logs in production
+def _dev_bootstrap_logging():
+    """Bootstrap logging for dev & test with optional JSON formatting.
+
+    Controlled by env:
+      DEV_JSON_LOGS=1 -> emit structured JSON
+      LOG_LEVEL       -> default INFO
+    In prod (APP_ENV=prod) we defer to existing JSON logging configuration.
+    """
+    try:
+        env = os.environ.get("APP_ENV", os.environ.get("ENV", "dev")).lower()
+        if env == "prod":  # production path handled separately below
+            return
+        root = logging.getLogger()
+        # Always replace to avoid duplicate handlers during reloads
+        for h in list(root.handlers):
+            root.removeHandler(h)
+        h = logging.StreamHandler(sys.stdout)
+        if os.getenv("DEV_JSON_LOGS") == "1":
+            import json as _json
+            class _F(logging.Formatter):
+                def format(self, r):  # type: ignore[override]
+                    return _json.dumps({
+                        "lvl": r.levelname,
+                        "msg": r.getMessage(),
+                        "ts": r.created,
+                        "logger": r.name,
+                    }, ensure_ascii=False)
+            h.setFormatter(_F())
+        else:
+            h.setFormatter(logging.Formatter("[%(levelname)s] %(name)s: %(message)s"))
+        root.addHandler(h)
+        level = os.getenv("LOG_LEVEL", "INFO").upper()
+        try:
+            root.setLevel(level)
+        except Exception:
+            root.setLevel("INFO")
+        # Explicitly ensure LLM logger at INFO for breadcrumbs
+        logging.getLogger("app.utils.llm").setLevel(logging.INFO)
+    except Exception:
+        pass
+
+# Production JSON logging keeps previous behavior
 try:
     if os.environ.get("APP_ENV", os.environ.get("ENV", "dev")).lower() == "prod":
         from app.logging import configure_json_logging
         configure_json_logging("INFO")
+    else:
+        _dev_bootstrap_logging()
 except Exception:
     pass
 
@@ -84,6 +151,7 @@ app = FastAPI(
     redoc_url="/redoc",
     lifespan=None,  # will attach below
 )
+app.add_middleware(RequestIdMiddleware)  # must precede others for rid context
 # --- Help Rephrase Enablement ---------------------------------------------------
 # Force-enable help/describe rephrase path in production unless explicitly disabled.
 # Precedence:
@@ -394,7 +462,8 @@ app.include_router(agent.router, prefix="/agent", tags=["agent"])
 from app.routers import describe as describe_router
 app.include_router(describe_router.router)
 app.include_router(explain.router, prefix="/txns", tags=["explain"])
-app.include_router(charts.router, prefix="/charts", tags=["charts"]) 
+# charts.router already declares prefix="/charts"; avoid double /charts/charts
+app.include_router(charts.router, tags=["charts"]) 
 app.include_router(auth_router.router)
 app.include_router(auth_oauth_router.router)
 app.include_router(transactions_router.router)
@@ -416,10 +485,14 @@ app.include_router(agent_plan_router.router)
 app.include_router(analytics.router)
 app.include_router(analytics_events_router.router)
 app.include_router(help_ui_router.router)
+app.include_router(status_router.router)
+app.include_router(live_router.router)
+app.include_router(ready_router.router)
 from app.routers import help as help_router  # unified help endpoint (what/why)
 app.include_router(help_router.router)
 app.include_router(txns_edit_router.router)
 app.include_router(llm_health_router.router)
+app.include_router(llm_echo_router.router)
 app.include_router(config_router)  # /config endpoint
 app.include_router(admin_router.router)
 
@@ -435,13 +508,60 @@ except Exception:
 app.include_router(health_router.router)  # exposes GET /healthz
 
 
+_STARTUP_TS = int(time.time())  # process start captured once
+
 @app.get("/version")
-def version():  # pragma: no cover simple
+def version() -> Response:  # pragma: no cover simple
+    """Flattened version contract for tests: version, commit, built_at, startup_ts.
+    Keeps deterministic content-length by pre-encoding JSON.
+    """
+    payload = {
+        "version": os.getenv("BACKEND_BRANCH", os.getenv("APP_VERSION", os.getenv("GIT_BRANCH", "dev"))),
+        "commit": os.getenv("BACKEND_COMMIT", os.getenv("APP_COMMIT", os.getenv("GIT_COMMIT", "unknown"))),
+        "built_at": os.getenv("APP_BUILD_TIME", os.getenv("BUILD_TIME", "unknown")),
+        "startup_ts": _STARTUP_TS,
+    }
+    body = _dumps(payload)
     try:
-        from app import version as _v
-        return {"branch": getattr(_v, "GIT_BRANCH", "unknown"), "commit": getattr(_v, "GIT_COMMIT", "unknown"), "build_time": getattr(_v, "BUILD_TIME", "unknown")}
+        logging.getLogger("uvicorn").info(
+            f"/version bytes={len(body)} startup_ts={payload['startup_ts']} commit={payload['commit']}"
+        )
     except Exception:
-        return {"branch": "unknown", "commit": "unknown", "build_time": "unknown"}
+        pass
+    return Response(content=body, media_type="application/json")
+
+@app.get("/version_full")
+def version_full() -> Response:
+    payload = {
+        "app": "LedgerMind",
+        "backend": {
+            "branch": os.getenv("BACKEND_BRANCH", os.getenv("APP_VERSION", os.getenv("GIT_BRANCH", "dev"))),
+            "commit": os.getenv("BACKEND_COMMIT", os.getenv("APP_COMMIT", os.getenv("GIT_COMMIT", "unknown"))),
+            "built_at": os.getenv("APP_BUILD_TIME", os.getenv("BUILD_TIME", "unknown")),
+            "startup_ts": _STARTUP_TS,
+        },
+    }
+    return Response(content=_dumps(payload), media_type="application/json")
+
+# Temporary diagnostic endpoint to compare serialization & Content-Length issues.
+@app.get("/version2")
+def version2():  # pragma: no cover - diagnostics only
+    from fastapi.responses import JSONResponse
+    payload = {
+        "version": os.getenv("APP_VERSION", os.getenv("GIT_BRANCH", "dev")),
+        "commit": os.getenv("APP_COMMIT", os.getenv("GIT_COMMIT", "unknown")),
+        "built_at": os.getenv("APP_BUILD_TIME", os.getenv("BUILD_TIME", "unknown")),
+        "startup_ts": _STARTUP_TS,
+    }
+    # Explicit serialization to verify byte length
+    import json as _json
+    body_bytes = _json.dumps(payload, separators=(",",":"), ensure_ascii=False).encode()
+    # Log lengths for diagnostics
+    try:
+        logging.getLogger("uvicorn").info(f"/version2 bytes_len={len(body_bytes)} payload={payload}")
+    except Exception:
+        pass
+    return JSONResponse(content=payload)
 
 
 

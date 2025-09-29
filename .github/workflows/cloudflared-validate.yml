@@ -1,0 +1,41 @@
+name: Cloudflared Config Validation
+
+on:
+  pull_request:
+    paths:
+      - 'cloudflared/**'
+      - 'docker-compose*.yml'
+      - 'docker-compose*.yaml'
+      - 'scripts/validate-cloudflared-config.ps1'
+      - '.github/workflows/cloudflared-validate.yml'
+  push:
+    branches: [ main, Polish-clean-history ]
+    paths:
+      - 'cloudflared/**'
+      - 'docker-compose*.yml'
+      - 'docker-compose*.yaml'
+      - 'scripts/validate-cloudflared-config.ps1'
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Ubuntu runner already has PowerShell 7 installed as 'pwsh'
+      - name: Run validation
+        shell: pwsh
+        run: |
+          pwsh -File scripts/validate-cloudflared-config.ps1
+
+      - name: Fail if credentials leaked
+        if: success()
+        shell: bash
+        run: |
+          if ls cloudflared/*.json 2>/dev/null; then
+            echo "Credentials JSON present in repo. These files must NOT be committed." >&2
+            exit 1
+          else
+            echo "No committed credentials JSON files detected (good)."
+          fi

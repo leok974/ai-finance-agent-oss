@@ -31,7 +31,225 @@ curl -s https://app.ledger-mind.org/ready | jq
 
 Access the app via: https://app.ledger-mind.org
 
+> Security Note: `.env` is git-ignored and may include sensitive values (KMS keys, tunnel tokens, API keys). Never commit real secrets. For Cloudflare tunnel token mode add `CLOUDFLARE_TUNNEL_TOKEN=...` to `.env` (or use `secrets/cloudflared_token.txt` with the helper script `scripts/tunnel-token-fingerprint.ps1`). Rotate immediately if you suspect exposure.
+
 Additional verification & smoke steps: see [`docs/VERIFY_PROD.md`](docs/VERIFY_PROD.md).
+
+### Bootstrap Scripts
+
+Automate first-time or repeat prod stack bring-up with generated secrets, readiness gating, migration drift handling, JSON summaries, and optional authenticated smoke.
+
+PowerShell (Windows):
+```powershell
+# Fresh full stack; allow missing LLM; 2‑min readiness; auto-migrate if drift
+pwsh .\scripts\prod-bootstrap.ps1 -ResetPg -NoLLM -Full -ReadyTimeoutSec 120 -AutoMigrate
+
+# CI-friendly JSON summary + authenticated smoke prompt
+pwsh .\scripts\prod-bootstrap.ps1 -Full -Json -SmokeAuth
+
+# Minimal (just postgres+backend, default timeout)
+pwsh .\scripts\prod-bootstrap.ps1
+```
+
+Bash (Linux / CI):
+```bash
+./scripts/prod-bootstrap.sh -ResetPg -NoLLM -Full -ReadyTimeoutSec 120 -AutoMigrate -Json
+```
+
+Flags:
+| Flag | Purpose |
+|------|---------|
+| `-ResetPg` | Drop and recreate Postgres volume (`pgdata`) |
+| `-NoLLM` | Allow startup without an LLM key (sets `DEV_ALLOW_NO_LLM=1` if absent) |
+| `-Full` | Also start nginx, agui, cloudflared, certbot, nginx-reloader |
+| `-ReadyTimeoutSec <n>` | Max seconds to wait for `/api/status` (db + migrations) |
+| `-SmokeAuth` (PS only) | Run full smoke with interactive auth (prompts for password) |
+| `-Json` | Emit final machine-readable summary to stdout |
+| `-AutoMigrate` | Run `alembic upgrade head` automatically on drift |
+
+Readiness Criteria:
+- `/api/status` must report `ok=true`, `db.ok=true`, `migrations.ok=true`.
+- With `-Json`, a timeout prints `{ "ok": false, "reason": "timeout", "url": "..." }` and exits non-zero.
+
+Sample Summary (plain):
+```
+SUMMARY | ok=True db=True mig=True crypto=True llm=True t=42ms url=https://app.ledger-mind.org
+```
+
+Sample JSON:
+```json
+{
+  "ok": true,
+  "db_ok": true,
+  "mig_ok": true,
+  "mig_cur": "1a2b3c4d",
+  "mig_head": "1a2b3c4d",
+  "crypto_ok": true,
+  "llm_ok": true,
+  "t_ms": 42,
+  "drift": false,
+  "url": "https://app.ledger-mind.org"
+}
+```
+
+If drift is detected and `-AutoMigrate` not set, a command hint is printed. With `-AutoMigrate`, migrations are applied and status is re-queried.
+
+Both scripts generate `.env.prod.local` once (idempotent). Delete that file to rotate values.
+
+### Unified Bootstrap Endpoint
+
+The backend exposes a lightweight consolidated status at `/api/status` returning:
+
+```
+{
+  "ok": true,
+  "ts": 1730000000,
+  "auth": { "logged_in": false, "email": null },
+  "version": { "backend_branch": "main", "backend_commit": "abc1234" },
+  "llm": { "ready": true },
+  "health": { "ready": true }
+}
+```
+
+Frontend can call this once at boot to decide whether to render a logged-out shell **without** immediately triggering `/api/auth/me` / charts calls when unauthenticated. This reduces unnecessary 401/404 noise and speeds first paint.
+
+### Post-Deploy Cloudflare Cache Purge (HTML + Current Assets)
+
+After each production rebuild, purge stale cached HTML and reference the newly built hashed assets so users never load an index.html pointing at old JS/CSS.
+
+Quick usage (requires Zone cache purge token):
+
+```powershell
+$env:CLOUDFLARE_API_TOKEN="***"
+$env:CLOUDFLARE_ZONE_ID="***"
+pwsh -File scripts/cf-purge.ps1
+```
+
+Or via npm script:
+
+```bash
+CLOUDFLARE_API_TOKEN=*** CLOUDFLARE_ZONE_ID=*** npm run cf:purge
+```
+
+What it purges:
+- / (root)
+- /index.html
+- All /assets/*.js and *.css referenced in the built `apps/web/dist/index.html`
+- Extra entries (default: /site.webmanifest, /favicon.ico)
+
+CI step example:
+```yaml
+- name: Purge Cloudflare cache
+  env:
+    CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    CLOUDFLARE_ZONE_ID: ${{ secrets.CLOUDFLARE_ZONE_ID }}
+  run: |
+    node scripts/cf-purge.js \
+      --base=https://app.ledger-mind.org \
+      --dist=apps/web/dist \
+      --extra=/site.webmanifest,/favicon.ico
+- name: Edge smoke
+  run: pwsh -File scripts/smoke-edge.ps1
+```
+
+Scripts:
+- `scripts/cf-purge.js` (Node implementation)
+- `scripts/cf-purge.ps1` PowerShell wrapper
+
+These ensure the CDN never serves stale HTML pointing at removed hashed bundles (avoids text/plain module errors and white screens).
+
+#### Advanced Purge Modes
+
+Changed-only (hash compare on `index.html`):
+```bash
+npm run cf:purge:changed \
+  --silent # (optional) suppress npm prefix
+```
+
+Dry run (show what would purge, skip API call):
+```bash
+npm run cf:purge:dry
+```
+
+Direct Node invocation examples:
+```bash
+node scripts/cf-purge.js \
+  --base=https://app.ledger-mind.org \
+  --dist=apps/web/dist \
+  --onlyIfChanged=1 \
+  --snapshot=.cf-purge.last.json
+
+# Force purge even if unchanged (omit onlyIfChanged)
+node scripts/cf-purge.js --base=https://app.ledger-mind.org --dist=apps/web/dist
+
+# Dry run + verbose backoff settings
+node scripts/cf-purge.js --base=https://app.ledger-mind.org --dist=apps/web/dist --onlyIfChanged=1 --dryRun=1 --retries=3 --backoffMs=400
+```
+
+Snapshot file (`.cf-purge.last.json`) persists:
+```json
+{
+  "indexHash": "<sha256>",
+  "at": "2025-09-28T19:22:11.311Z",
+  "urls": ["https://app.ledger-mind.org/", "https://app.ledger-mind.org/index.html", "..."]
+}
+```
+
+If `--onlyIfChanged=1` and current `index.html` hash matches `indexHash`, purge is skipped (fast exit 0).
+
+Retry / backoff logic: exponential (2^n) * base `--backoffMs` (+ jitter) on 429 and 5xx up to `--retries` attempts.
+
+Integrate into rebuild:
+```powershell
+pwsh -File scripts/rebuild-prod.ps1 -PurgeEdge
+```
+Adds a post-deploy changed-only purge (skips if unchanged, warns if env vars missing).
+
+Environment requirements (unchanged):
+```
+CLOUDFLARE_API_TOKEN=...  # zone.cache_purge permission
+CLOUDFLARE_ZONE_ID=...
+```
+
+Flags summary (cf-purge.js):
+| Flag | Purpose | Default |
+|------|---------|---------|
+| `--base` | Public site base URL | (required) |
+| `--dist` | Build output directory | `apps/web/dist` |
+| `--extra` | CSV extra paths to purge | `/site.webmanifest,/favicon.ico` |
+| `--onlyIfChanged` | Skip purge when index hash unchanged | off |
+| `--snapshot` | Snapshot JSON path | `.cf-purge.last.json` |
+| `--retries` | Retry attempts on 429/5xx | 5 |
+| `--backoffMs` | Initial backoff ms | 500 |
+| `--dryRun` | Log targets, no API call | off |
+
+Credentials:
+- Preferred: `CLOUDFLARE_API_TOKEN` (scoped token: Zone -> Cache Purge:Edit)
+- Fallback (auto-detected if no token): `CLOUDFLARE_GLOBAL_KEY` + `CLOUDFLARE_EMAIL`
+
+CI Dry-Run Workflow:
+The workflow `cloudflare-purge-smoke.yml` performs a scheduled and on-change dry-run purge to ensure the script stays healthy without mutating cache:
+```yaml
+- name: Cloudflare purge dry-run (sanity)
+  env:
+    CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    CLOUDFLARE_ZONE_ID:   ${{ secrets.CLOUDFLARE_ZONE_ID }}
+  run: |
+    node scripts/cf-purge.js \
+      --base=https://app.ledger-mind.org \
+      --dist=apps/web/dist \
+      --extra=/site.webmanifest,/favicon.ico \
+      --dryRun=1
+```
+
+Result codes:
+| Exit | Meaning |
+|------|---------|
+| 0 | Purge success OR skipped (unchanged / dry-run) |
+| 1 | Purge attempted and failed after retries |
+| 2 | Usage / configuration error |
+
+Operational recommendation: run changed-only purge in deploy pipeline; schedule a weekly full purge (without `--onlyIfChanged`) if you rotate rarely referenced assets.
 
 ## Environment Variables (Core Selection)
 

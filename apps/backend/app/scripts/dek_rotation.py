@@ -1,4 +1,5 @@
-import os, base64, datetime
+import os
+import base64
 from app.utils.time import utc_now
 from typing import Optional, Tuple
 from sqlalchemy import text
@@ -90,7 +91,7 @@ def finalize_rotation(new_label: str) -> Tuple[str, str]:
         db.commit()
         return retired_label, "active"
     # Synthesize retired label (not tracked by service finalize) for backward compatibility
-    retired_label = f"retired::<service>"  # placeholder marker
+    retired_label = "retired::<service>"  # placeholder marker
     return retired_label, "active"
 
 

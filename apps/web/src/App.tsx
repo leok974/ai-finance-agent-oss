@@ -6,6 +6,7 @@ import SuggestionsPanel from "./components/SuggestionsPanel";
 // import RuleTesterPanel from "./components/RuleTesterPanel"; // rendered only inside DevDock
 import { AgentResultRenderer } from "./components/AgentResultRenderers";
 import { emitToastSuccess } from "@/lib/toast-helpers";
+import { t } from '@/lib/i18n';
 // import RulesPanel from "./components/RulesPanel";
 import { getAlerts, getMonthSummary, getMonthMerchants, getMonthFlows, getHealthz, api, resolveMonthFromCharts, agentTools } from './lib/api'
 import { flags } from "@/lib/flags";
@@ -77,12 +78,12 @@ const App: React.FC = () => {
           const next = !isDevUIEnabled();
           window.dispatchEvent(new CustomEvent('devui:soft', { detail: { value: next }}));
           window.dispatchEvent(new CustomEvent('devui:changed', { detail: { value: next, soft: true }}));
-          try { emitToastSuccess?.(`Dev UI (soft) ${next ? 'on' : 'off'}`); } catch {}
+          try { emitToastSuccess?.(next ? t('ui.toast.dev_ui_soft_on') : t('ui.toast.dev_ui_soft_off')); } catch {}
         } else if (e.shiftKey) {
           // Hard persistent toggle
           const next = !isDevUIEnabled();
           setDevUIEnabled(next);
-          try { emitToastSuccess?.(`Dev UI ${next ? 'enabled' : 'disabled'}`); } catch {}
+          try { emitToastSuccess?.(next ? t('ui.toast.dev_ui_enabled') : t('ui.toast.dev_ui_disabled')); } catch {}
           location.reload();
         }
       } catch {}
@@ -102,6 +103,21 @@ const App: React.FC = () => {
     if (booted.current) return; // guard re-run in dev (StrictMode)
     booted.current = true;
     (async () => {
+      // Core readiness gate: fetch /api/status to decide whether to defer heavier chart calls
+      try {
+        const statusResp = await fetch('/api/status', { credentials: 'include' });
+        if (statusResp.ok) {
+          const st = await statusResp.json();
+          const coreReady = st?.db?.ok && st?.migrations?.ok;
+          if (!coreReady) {
+            console.warn('[boot] backend core not ready (db/migrations). Charts fetch will be deferred.');
+          } else {
+            (window as any).__CORE_READY__ = true;
+          }
+        }
+      } catch (e) {
+        console.warn('[boot] status probe failed', e);
+      }
       console.info("[boot] resolving month…");
       const m = (await resolveMonth())
         ?? (() => {
@@ -121,6 +137,11 @@ const App: React.FC = () => {
   useEffect(() => {
     if (!authOk || !month) return;
     console.info("[boot] loading dashboards for month", month);
+    const coreReady = (window as any).__CORE_READY__ === true;
+    if (!coreReady) {
+      console.info('[boot] skipping charts prefetch (core not ready)');
+      return;
+    }
     void Promise.allSettled([
       agentTools.chartsSummary({ month }),
       agentTools.chartsMerchants({ month, limit: 10 }),
@@ -172,7 +193,7 @@ const App: React.FC = () => {
 
   const onCsvUploaded = useCallback(() => {
     setRefreshKey((k) => k + 1);
-    emitToastSuccess('CSV ingested', { description: 'Transactions imported. Panels refreshed.' });
+  emitToastSuccess(t('ui.toast.csv_ingested_title'), { description: t('ui.toast.csv_ingested_description') });
   }, []);
 
   const refreshLlm = useLlmStore(s => s.refresh);

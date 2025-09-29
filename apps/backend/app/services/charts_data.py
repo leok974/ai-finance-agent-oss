@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import date as _date, timedelta
-from typing import Any, Dict, List, Tuple, Optional
+from typing import Any, Dict, Optional
 
 from sqlalchemy import select, func, case, or_, and_
 from sqlalchemy.orm import Session
@@ -269,7 +269,6 @@ def get_category_timeseries(db: Session, category: str, months: int = 6):
     end = _date(nm_y, nm_m, 1)
 
     # Dialect-specific month key
-    from sqlalchemy import text
     if db.bind and getattr(db.bind.dialect, "name", "") == "sqlite":
         ym = func.strftime("%Y-%m", Transaction.date)
     else:

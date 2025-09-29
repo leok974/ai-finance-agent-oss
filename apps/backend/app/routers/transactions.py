@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from typing import Optional, List
+from typing import Optional  # noqa: F401 (kept for potential future query params)
 
 from app.db import get_db
 from app.transactions import Transaction

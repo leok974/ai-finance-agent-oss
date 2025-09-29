@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import List, Dict, Tuple, Optional
+from typing import List, Dict, Tuple, Optional, Any
 import os, requests, time, random, email.utils as eut
 import logging
 
@@ -175,6 +175,15 @@ def call_llm(*, model: str, messages: List[Dict[str,str]], temperature: float=0.
 
     # Use configured base URL and key regardless of provider; provider flag is kept for future branching
     base = settings.OPENAI_BASE_URL
+    # In container dev/prod, 'localhost' refers to the backend container, not the Ollama service.
+    # If default localhost base is still present, rewrite to the OLLAMA_BASE_URL service address.
+    try:
+        if 'localhost:11434' in base and getattr(settings, 'OLLAMA_BASE_URL', None):
+            ob = settings.OLLAMA_BASE_URL.rstrip('/')
+            if ob.endswith(':11434'):
+                base = ob + '/v1'
+    except Exception:
+        pass
     key  = _get_effective_openai_key()
 
     payload = {
@@ -183,6 +192,11 @@ def call_llm(*, model: str, messages: List[Dict[str,str]], temperature: float=0.
         "temperature": temperature,
         "top_p": top_p,
     }
+    try:
+        rid = get_request_id() or "-"
+        _log.info("LLM:call start rid=%s base=%s model=%s msgs=%d", rid, base, model, len(messages))
+    except Exception:
+        pass
 
     # Reset fallback flag at the start of each call
     try:
@@ -231,6 +245,12 @@ def call_llm(*, model: str, messages: List[Dict[str,str]], temperature: float=0.
 
     try:
         data = _post_chat(base, key, payload, timeout=int(LLM_READ_TIMEOUT))
+        try:
+            # Peek at tentative reply length
+            _tmp = ((data.get("choices") or [{}])[0].get("message") or {}).get("content") or ""
+            _log.info("LLM:primary ok chars=%d rid=%s", len(_tmp), get_request_id() or "-")
+        except Exception:
+            pass
     except (requests.exceptions.ConnectTimeout, requests.exceptions.ConnectionError, requests.HTTPError) as err:
         # One-shot retry on read/connect timeout during warm window if enabled
         is_timeout = isinstance(err, (requests.exceptions.ConnectTimeout)) or (
@@ -289,17 +309,38 @@ def call_llm(*, model: str, messages: List[Dict[str,str]], temperature: float=0.
                     _fallback_provider.set("openai")
                 except Exception:
                     pass
+                try:
+                    _tmp = ((data.get("choices") or [{}])[0].get("message") or {}).get("content") or ""
+                    _log.info("LLM:fallback openai ok chars=%d rid=%s", len(_tmp), get_request_id() or "-")
+                except Exception:
+                    pass
             except Exception:
                 # still provide a friendly message
+                try:
+                    _log.warning("LLM:fallback openai failed err=%s", err)
+                except Exception:
+                    pass
                 return ("The model backend is unavailable right now. Please try again shortly.", [])
         else:
             # Friendly messages for transient errors without fallback. Distinguish warm window timeouts.
             warm_window = (time.time() - _PROCESS_START_TS) <= LLM_WARM_WINDOW_S
             if warm_window and is_timeout:
+                try:
+                    _log.warning("LLM:timeout warm_window returning warming message")
+                except Exception:
+                    pass
                 return ("[model_warming] The model is still loading; please retry shortly.", [])
+            try:
+                _log.warning("LLM:transient failure no-fallback returning friendly stub (%s)", type(err))
+            except Exception:
+                pass
             return ("The language model is temporarily unavailable. Please try again shortly.", [])
     try:
         reply = data["choices"][0]["message"]["content"]
+        try:
+            _log.info("LLM:final reply chars=%d rid=%s", len(reply or ""), get_request_id() or "-")
+        except Exception:
+            pass
     except Exception:
         # If fallback dict sneaks through a different shape, provide a generic message
         reply = "I'm temporarily over capacity. Please retry in a moment."
@@ -343,3 +384,72 @@ def list_models() -> Dict[str, List[Dict[str, str]]]:
     # data = {"object":"list","data":[{"id":"gpt-5", ...}, ...]}
     models = [{"id": m.get("id")} for m in data.get("data", []) if m.get("id")]
     return {"provider": provider, "default": settings.DEFAULT_LLM_MODEL, "models": models}
+
+
+def invoke_llm_with_optional_stub(
+    *,
+    requested_model: str | None,
+    messages: List[Dict[str, Any]],
+    temperature: float,
+    top_p: float,
+    allow_stub: bool,
+    stub_reply: str = "stub reply",
+) -> Dict[str, Any]:
+    """Unified entrypoint for agent paths (bypass + main) to invoke the LLM or a deterministic stub.
+
+    Returns a dict with keys:
+      reply (str) – model output or stub text
+      model (str) – normalized model id
+      tool_trace (list)
+      fallback (str) – optional, only present if a provider fallback occurred
+      stub (bool) – True when a stub path was used
+
+    The helper:
+      * Normalizes aliases using MODEL_ALIASES
+      * Resets the fallback provider context var
+      * Invokes underlying call_local_llm (or call_llm) unless in pure stub mode
+      * Captures any fallback provider marker
+    """
+    # Lightweight alias handling (mirrors a subset of agent.MODEL_ALIASES to avoid import cycle)
+    alias_map = {"gpt": None, "default": None, "gpt-oss-20b": "gpt-oss:20b"}
+    model_norm = alias_map.get(requested_model, requested_model) if requested_model else None
+    model = model_norm or settings.DEFAULT_LLM_MODEL
+    # Always reset fallback marker so prior calls in same request don't leak
+    try:
+        _fallback_provider.set(None)
+    except Exception:
+        pass
+    if allow_stub:
+        try:
+            _log.info("LLM:invoke stub path model=%s", model)
+        except Exception:
+            pass
+        # Still exercise call path for alias side-effects (if possible) but ignore errors
+        try:
+            call_fn = globals().get('call_local_llm', call_llm)  # type: ignore[name-defined]
+            _ = call_fn(model=model, messages=messages, temperature=temperature, top_p=top_p)
+        except Exception:
+            pass
+        return {
+            "reply": stub_reply,
+            "model": model,
+            "tool_trace": [],
+            "stub": True,
+        }
+    # Real call
+    call_fn = globals().get('call_local_llm', call_llm)  # type: ignore[name-defined]
+    reply, tool_trace = call_fn(model=model, messages=messages, temperature=temperature, top_p=top_p)
+    fb = None
+    try:
+        fb = get_last_fallback_provider()
+    except Exception:
+        fb = None
+    out: Dict[str, Any] = {
+        "reply": reply,
+        "model": model,
+        "tool_trace": tool_trace,
+        "stub": False,
+    }
+    if fb:
+        out["fallback"] = fb
+    return out

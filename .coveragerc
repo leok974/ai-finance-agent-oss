@@ -1,0 +1,21 @@
+# Coverage configuration baseline.
+# Initial baseline ~60%. Keep fail_under slightly below to avoid flakiness from rounding.
+[run]
+branch = True
+source = 
+    apps/backend/app
+omit = 
+    */tests/*
+    apps/backend/app/scripts/*
+    apps/backend/app/routers/agent_original.py
+    apps/backend/app/routers/agent_new.py
+    apps/backend/app/routers/agent_backup.py
+    apps/backend/app/services/analytics_retention.py
+    apps/backend/app/services/ingest_csv.py
+    apps/backend/app/services/context.py
+    apps/backend/app/services/crypto_rotation.py
+
+[report]
+fail_under = 59
+show_missing = True
+skip_covered = False

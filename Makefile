@@ -9,6 +9,11 @@ dev:
 prod:
 	docker compose -f docker-compose.yml -f docker-compose.prod.override.yml up -d
 
+# Rebuild prod images (backend, web, nginx, agui) with cache bust + pull then bring stack up
+.PHONY: rebuild-prod
+rebuild-prod:
+	pwsh ./scripts/rebuild-prod.ps1 -Pull -NoCache
+
 stop:
 	docker compose down || true
 
@@ -27,6 +32,11 @@ tunnel-check:
 
 prod-down:
 	docker compose down
+
+# Validate cloudflared credentials / config consistency
+.PHONY: cloudflared-validate
+cloudflared-validate:
+	pwsh -File scripts/validate-cloudflared-config.ps1
 
 .PHONY: fmt lint dev build-web build-edge build-ui check-ui
 

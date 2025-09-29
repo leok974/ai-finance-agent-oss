@@ -19,7 +19,18 @@ _ENV_OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENAI_API_KEY = (_ENV_OPENAI_API_KEY.strip() if _ENV_OPENAI_API_KEY else None) or _read_openai_key_from_file() or "ollama"
 MODEL = os.getenv("MODEL", "gpt-oss:20b")
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://ollama:11434")
-DEV_ALLOW_NO_LLM = os.getenv("DEV_ALLOW_NO_LLM", "0") == "1"
+def _env_bool(name: str, default: bool=False) -> bool:
+	v = os.getenv(name)
+	if v is None:
+		return default
+	try:
+		return v.strip().lower() in {"1","true","yes","on"}
+	except Exception:
+		return default
+
+# Only accept explicit numeric '1' for stub mode (avoid accidental 'True' string from host env)
+_raw_dev_no_llm = os.getenv("DEV_ALLOW_NO_LLM", "0")
+DEV_ALLOW_NO_LLM = True if _raw_dev_no_llm == "1" else False
 
 """CORS allowlist (dev defaults include both localhost + 127.0.0.1 on 5173/5174).
 Read from env and split on commas; strip whitespace and any stray quotes per item.
@@ -51,6 +62,7 @@ class Settings(BaseSettings):
 	OPENAI_API_KEY: str = "ollama"  # real key when provider="openai"
 	OPENAI_API_KEY_FILE: str = "/run/secrets/openai_api_key"
 	OLLAMA_BASE_URL: str = "http://ollama:11434"
+	DEV_ALLOW_NO_LLM: bool = DEV_ALLOW_NO_LLM  # seed with parsed value
 	model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 

@@ -51,10 +51,13 @@ async def _finalize(provider: str, provider_user_id: str, email: str | None, db:
         user = db.query(User).filter(User.email == email).first() if email else None
         if not user:
             user = User(email=email or f"{provider_user_id}@{provider}.oauth", password_hash=hash_password(provider_user_id))
-            db.add(user); db.commit(); db.refresh(user)
+            db.add(user)
+            db.commit()
+            db.refresh(user)
             _ensure_roles(db, user, ["user"])
         link = OAuthAccount(user_id=user.id, provider=provider, provider_user_id=provider_user_id, email=email)
-        db.add(link); db.commit()
+    db.add(link)
+    db.commit()
     roles = [ur.role.name for ur in user.roles]
     pair = create_tokens(user.email, roles)
     redirect = os.environ.get("OAUTH_POST_LOGIN_REDIRECT", get_env("OAUTH_POST_LOGIN_REDIRECT", "http://localhost:5173/app"))

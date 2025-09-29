@@ -1,0 +1,17 @@
+services:
+  # Minimal deploy-time tunnel definition (token mode) separate from root compose.
+  # Run with: docker compose -f deploy/docker-compose.prod.yml up -d cloudflared-portfolio
+  # Expects CLOUDFLARE_TUNNEL_TOKEN provided via environment or .env file at repo root.
+  cloudflared-portfolio:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    # Array form avoids shell parsing issues on Windows / quoting problems.
+    command: ["tunnel","run","--no-autoupdate","--token","${CLOUDFLARE_TUNNEL_TOKEN}"]
+    # Auto protocol selection (QUIC -> HTTP2 fallback) can be tuned via env.
+    environment:
+      - TUNNEL_TRANSPORT_PROTOCOL=auto
+    depends_on:
+      - nginx
+    # We reference the existing nginx service defined in the root prod compose file
+    # when this file is combined with it ( -f docker-compose.prod.yml -f deploy/docker-compose.prod.yml ).
+    # If you run this file standalone, also include an nginx definition or use --service-ports with an existing stack.

@@ -1,20 +1,21 @@
 from __future__ import annotations
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Tuple, Optional, Any, Callable, cast
 from collections import defaultdict, Counter
 from datetime import date as _date, datetime as _dt
 import math
 import statistics as stats
 
 from sqlalchemy.orm import Session
-import time, logging
+import time
+import logging
 
 from app.transactions import Transaction
 try:  # avoid importing heavy stack (pandas/statsmodels) during hermetic test startup
     from .analytics_forecast import sarimax_cashflow_forecast, sarimax_forecast  # type: ignore
 except Exception:  # pragma: no cover
-    def sarimax_cashflow_forecast(*a, **k):  # fallback no-op
+    def sarimax_cashflow_forecast(db: Session, base_series_fn: Any, month: Optional[str], horizon: int) -> Optional[Dict[Any, Any]]:  # type: ignore[unused-ignore]
         return None
-    def sarimax_forecast(*a, **k):
+    def sarimax_forecast(month_series: Dict[str, float], horizon: int = 3, seasonal_periods: int = 12, alpha: float = 0.2) -> Optional[Tuple[List[float], List[float], List[float]]]:  # type: ignore[unused-ignore]
         return None
 
 log = logging.getLogger(__name__)
@@ -46,23 +47,23 @@ def _month_key(d: _date | _dt) -> str:
 def _months_window(all_months: List[str], ref_month: Optional[str], lookback: int) -> List[str]:
     if not all_months:
         return []
-    all_months = sorted(set(all_months))
+    # Ensure mypy understands this remains a list[str]
+    all_months_list: List[str] = sorted(set(all_months))  # dedupe & sort
+    all_months = all_months_list
     if ref_month and ref_month in all_months:
         end_idx = all_months.index(ref_month)
     else:
         end_idx = len(all_months) - 1
     start_idx = max(0, end_idx - max(0, lookback - 1))
-    return all_months[start_idx : end_idx + 1]
+    # Return slice from the typed list so mypy infers List[str]
+    return all_months_list[start_idx : end_idx + 1]
 
 
 def _fetch_txns_window(db: Session, months: List[str]) -> List[Transaction]:
     if not months:
-        return []
-    return (
-        db.query(Transaction)
-        .filter(Transaction.month.in_(months))
-        .all()
-    )
+        return cast(List[Transaction], [])
+    rows = db.query(Transaction).filter(Transaction.month.in_(months)).all()
+    return cast(List[Transaction], rows)
 
 
 def _monthly_sums(db: Session, lookback: int, ref_month: Optional[str]) -> Tuple[Dict[str, Dict[str, float]], Dict[str, List[Dict]]]:
@@ -304,7 +305,8 @@ def detect_recurring(db: Session, month: Optional[str] = None, lookback: int = 6
             "median_gap_days": median_gap,
             "strength": round(strength, 2),
         })
-    results.sort(key=lambda x: (x["strength"], x["count"], x["avg_amount"]), reverse=True)
+    # Sort by composite numeric tuple; mypy expects a key returning an orderable type
+    results.sort(key=lambda x: (float(x["strength"]), int(x["count"]), float(x["avg_amount"])), reverse=True)
     return {"items": results[:50]}
 
 
@@ -354,7 +356,7 @@ def budget_suggest(db: Session, month: Optional[str] = None, lookback: int = 6) 
         c = math.ceil(k)
         return xs[f] if f == c else xs[f] * (c - k) + xs[c] * (k - f)
 
-    items = []
+    items: List[Dict[str, Any]] = []
     for cat, vals in spend_per.items():
         if not vals:
             continue
@@ -366,7 +368,7 @@ def budget_suggest(db: Session, month: Optional[str] = None, lookback: int = 6) 
             "avg": round(sum(vals) / len(vals), 2),
             "months": len(vals),
         })
-    items.sort(key=lambda x: x["avg"], reverse=True)
+    items.sort(key=lambda x: float(x["avg"]), reverse=True)
     return {"items": items}
 
 

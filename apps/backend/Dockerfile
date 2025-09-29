@@ -5,6 +5,7 @@ FROM python:3.11-slim AS builder
 ARG GIT_BRANCH=unknown
 ARG GIT_COMMIT=unknown
 ARG BUILD_TIME=unknown
+ARG VERSION=dev
 ENV PIP_NO_CACHE_DIR=1 PIP_DISABLE_PIP_VERSION_CHECK=1 PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 WORKDIR /w
 
@@ -27,7 +28,10 @@ FROM gcr.io/distroless/python3-debian12 AS runtime
 ARG GIT_BRANCH=unknown
 ARG GIT_COMMIT=unknown
 ARG BUILD_TIME=unknown
-ENV GIT_BRANCH=${GIT_BRANCH} GIT_COMMIT=${GIT_COMMIT} BUILD_TIME=${BUILD_TIME} PYTHONPATH=/usr/local/lib/python3.11/site-packages:/app
+ARG VERSION=dev
+ENV GIT_BRANCH=${GIT_BRANCH} GIT_COMMIT=${GIT_COMMIT} BUILD_TIME=${BUILD_TIME} \
+    APP_VERSION=${VERSION} APP_COMMIT=${GIT_COMMIT} APP_BUILD_TIME=${BUILD_TIME} \
+    PYTHONPATH=/usr/local/lib/python3.11/site-packages:/app
 WORKDIR /app
 COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
 COPY --from=builder /w/src /app
@@ -37,7 +41,8 @@ EXPOSE 8000
 ENTRYPOINT ["python","/run_app.py"]
 
 LABEL org.opencontainers.image.title="LedgerMind Backend" \
-      org.opencontainers.image.source="https://github.com/leok974/ai-finance-agent-oss" \
-      org.opencontainers.image.revision="$GIT_COMMIT" \
-      org.opencontainers.image.version="$GIT_BRANCH" \
-      org.opencontainers.image.created="$BUILD_TIME"
+    org.opencontainers.image.source="https://github.com/leok974/ai-finance-agent-oss" \
+    org.opencontainers.image.revision="$GIT_COMMIT" \
+    org.opencontainers.image.version="$GIT_BRANCH" \
+    org.opencontainers.image.created="$BUILD_TIME" \
+    org.opencontainers.image.version.app="$VERSION"

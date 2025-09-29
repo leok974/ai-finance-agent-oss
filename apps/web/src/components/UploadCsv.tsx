@@ -1,6 +1,7 @@
 import React, { useCallback, useRef, useState } from "react";
 import { uploadCsv, fetchLatestMonth, agentTools } from "../lib/api"; // uses your existing helpers
 import { emitToastSuccess, emitToastError } from "@/lib/toast-helpers";
+import { t } from '@/lib/i18n';
 import { ToastAction } from "@/components/ui/toast";
 import { scrollToId } from "@/lib/scroll";
 import { useMonth } from "../context/MonthContext";
@@ -113,7 +114,7 @@ const UploadCsv: React.FC<UploadCsvProps> = ({ onUploaded, defaultReplace = true
   // snap month + refetch dashboards (non-blocking)
   void handleUploadSuccess();
       // Success toast with dual CTAs
-      emitToastSuccess("Import complete", { description: "Transactions imported successfully." });
+  emitToastSuccess(t('ui.toast.import_complete_title'), { description: t('ui.toast.import_complete_description') });
       // optional: reset file after success
       // reset();
     } catch (err: any) {

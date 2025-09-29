@@ -3,7 +3,6 @@ from typing import List, Optional, Dict, Any
 from sqlalchemy.orm import Session
 from sqlalchemy import select
 from app.db import get_db
-from app.config import settings
 from sqlalchemy import desc
 from sqlalchemy import text
 from sqlalchemy import func
@@ -13,7 +12,13 @@ from ..utils.dates import latest_month_from_txns
 from ..utils.state import save_state
 from app.utils.env import is_dev
 import datetime as dt
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+from app.services.tx_ops import link_transfer, unlink_transfer, upsert_splits
+from app.services.recurring import scan_recurring
+from app.orm_models import (
+    TransactionSplit as TransactionSplitORM,
+    RecurringSeries as RecurringSeriesORM,
+)
 from app.services.rules_apply import apply_all_active_rules, latest_month_from_data
 from app.utils.csrf import csrf_protect
 
@@ -181,13 +186,6 @@ def to_txn_dict(t: Transaction) -> Dict[str, Any]:
     }
 
 
-# ------------------------ Extended operations -------------------------------
-from pydantic import BaseModel, Field
-from app.services.tx_ops import link_transfer, unlink_transfer, upsert_splits
-from app.services.recurring import scan_recurring
-from app.orm_models import TransferLink as TransferLinkORM, TransactionSplit as TransactionSplitORM, RecurringSeries as RecurringSeriesORM
-
-
 # --- Transfers ---------------------------------------------------------------
 class TransferIn(BaseModel):
     txn_out_id: int = Field(..., description="Outflow txn id (negative amount)")
@@ -223,7 +221,7 @@ class SplitIn(BaseModel):
 @router.post("/{txn_id}/split", dependencies=[Depends(csrf_protect)])
 def create_or_replace_splits(txn_id: int, payload: SplitIn, db: Session = Depends(get_db)):
     try:
-        legs = upsert_splits(db, txn_id, [l.model_dump() for l in payload.legs])
+        legs = upsert_splits(db, txn_id, [leg.model_dump() for leg in payload.legs])
         return {"status": "ok", "count": len(legs)}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

@@ -26,6 +26,7 @@ def add_ignore(db: Session, merchant: str, category: str) -> List[Dict]:
 def remove_ignore(db: Session, merchant: str, category: str) -> List[Dict]:
     row = db.query(RSI).filter(and_(RSI.merchant == merchant, RSI.category == category)).one_or_none()
     if row:
-        db.delete(row); db.commit()
+        db.delete(row)
+        db.commit()
     _CACHE.invalidate(_CACHE_KEY)
     return list_ignores(db)

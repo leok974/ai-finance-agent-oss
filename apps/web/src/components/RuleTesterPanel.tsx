@@ -5,6 +5,7 @@ import type { SeedDraft } from '@/lib/rulesSeed';
 import { testRule, saveTrainReclassify, saveRule, type RuleInput } from '@/api';
 import { ThresholdsSchema } from '@/lib/schemas';
 import { emitToastSuccess, emitToastError } from '@/lib/toast-helpers';
+import { t } from '@/lib/i18n';
 import { consumeRuleDraft, onOpenRuleTester } from '@/state/rulesDraft';
 import { getGlobalMonth, onGlobalMonthChange } from '@/state/month';
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -138,10 +139,10 @@ export default function RuleTesterPanel({ onChanged }: { onChanged?: () => void 
         matchCount = Number((r as any).matched_count ?? (r as any).count ?? (r as any).matches ?? (r as any).total) || 0;
       }
       const category = form.then?.category || '—';
-      emitToastSuccess('Rule tested', {
+      emitToastSuccess(t('ui.toast.rule_tested_title'), {
         description: matchCount > 0
-          ? `Matched ${matchCount} transaction${matchCount === 1 ? '' : 's'}. Will set category: “${category}”.`
-          : `No matches for the selected month. Category would be: “${category}”.`,
+          ? t('ui.toast.rule_tested_matches_description', { count: matchCount, category })
+          : t('ui.toast.rule_tested_no_matches_description', { category }),
         action: {
           label: 'View charts',
           onClick: () => scrollToId('charts-panel')
@@ -156,7 +157,7 @@ export default function RuleTesterPanel({ onChanged }: { onChanged?: () => void 
         localStorage.setItem(key, JSON.stringify(cache));
       } catch {}
     } catch (e: any) {
-      emitToastError('Test failed', { description: e?.message ?? 'Could not validate the rule. Please check the inputs.' });
+  emitToastError(t('ui.toast.rule_test_failed_title'), { description: e?.message ?? 'Could not validate the rule. Please check the inputs.' });
     } finally {
       setTesting(false);
     }
@@ -183,18 +184,18 @@ export default function RuleTesterPanel({ onChanged }: { onChanged?: () => void 
         } else {
           reclassCount = Number((res as any)?.reclassified ?? 0) || 0;
         }
-        emitToastSuccess('Rule saved + retrained', { description: reclassCount > 0 ? `Reclassified ${reclassCount} txn${reclassCount===1?'':'s'} to “${categoryVal}”.` : 'No existing transactions required changes.' });
+  emitToastSuccess(t('ui.toast.rule_saved_retrained_title'), { description: reclassCount > 0 ? t('ui.toast.rule_saved_retrained_description', { count: reclassCount, category: categoryVal }) : t('ui.toast.rule_saved_retrained_no_changes_description') });
       } else {
         const when: Record<string, any> = { description_like: like };
         if (thresholds && Object.keys(thresholds).length) when.thresholds = thresholds;
   const selectedMonth = (seededMonth ?? ((useCurrentMonth ? getGlobalMonth() : month) || undefined));
   const res: any = await saveRule({ rule: { name, when, then: { category: categoryVal } }, month: selectedMonth }, { idempotencyKey: crypto.randomUUID() });
-        emitToastSuccess('Rule saved', { description: `Saved “${res?.display_name || name}”.` });
+  emitToastSuccess(t('ui.toast.rule_saved_title'), { description: t('ui.toast.rule_saved_description', { name: res?.display_name || name }) });
       }
       window.dispatchEvent(new CustomEvent('rules:refresh'));
       onChanged?.();
     } catch (e: any) {
-  emitToastError('Save failed', { description: e?.message || 'Unable to save rule' });
+  emitToastError(t('ui.toast.rule_save_failed_title'), { description: e?.message || 'Unable to save rule' });
     } finally {
       setSaving(false);
     }

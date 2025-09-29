@@ -2,8 +2,31 @@ param(
   [switch]$Hermetic = $false,
   [string]$PytestArgs = "",
   [switch]$FullTests = $false,
-  [string]$Py = ".venv/\Scripts/\python.exe"
+  # Optional explicit python interpreter. If not provided we'll auto-detect
+  [string]$Py
 )
+
+# --- Interpreter resolution (post-param so we can use $PSScriptRoot) ---------
+$backendRoot = Split-Path $PSScriptRoot -Parent
+if (-not $PSBoundParameters.ContainsKey('Py') -or [string]::IsNullOrWhiteSpace($Py)) {
+  $auto = Join-Path $backendRoot '.venv\Scripts\python.exe'
+  if (Test-Path $auto) { $Py = $auto } else { $Py = (Get-Command python).Source }
+  Write-Host "[py-detect] Auto-selected python: $Py" -ForegroundColor DarkGray
+} else {
+  Write-Host "[py-detect] User supplied -Py: $Py" -ForegroundColor DarkGray
+  if (-not (Test-Path $Py)) {
+    $candidate = Join-Path $backendRoot '.venv\Scripts\python.exe'
+    if (Test-Path $candidate) {
+      Write-Host "[py-detect] Provided -Py path missing. Falling back to backend venv: $candidate" -ForegroundColor Yellow
+      $Py = $candidate
+    } else {
+      Write-Host "[py-detect] Provided -Py path missing and no backend venv; will fallback to system python." -ForegroundColor Yellow
+      $Py = (Get-Command python).Source
+    }
+  }
+}
+
+Write-Host "[py-detect] Final python path: $Py" -ForegroundColor DarkGray
 
 # --- Hermetic env detection (robust) ---------------------------------------
 # Treat any non-empty, non-"0" HERMETIC value as truthy. This is more lenient
@@ -69,6 +92,86 @@ if (-not (Test-Path $Py)) {
   if (Test-Path .venv/\Scripts/\Activate.ps1) { . .venv/\Scripts/\Activate.ps1; $Py = "$env:VIRTUAL_ENV/\Scripts/\python.exe" }
 }
 
+# --- Ensure pip is available for the specified interpreter --------------------
+function Invoke-PythonDiag {
+  param([string]$Label = 'pre')
+  try {
+    $code = @'
+import sys, importlib.util, os
+print(f"[diag:{__name__}] label={os.environ.get('DIAG_LABEL')} exe={sys.executable}")
+print('  version:', sys.version.replace('\n',' '))
+print('  prefix:', sys.prefix, ' base_prefix:', sys.base_prefix)
+print('  executable:', sys.executable)
+print('  pip_spec:', importlib.util.find_spec('pip'))
+print('  full_sys_path_count:', len(sys.path))
+for i,p in enumerate(sys.path):
+  if i < 12:
+    print(f'    [{i}] {p}')
+  elif i == 12:
+    print('    ...')
+'@
+    $tmp = New-TemporaryFile
+    Set-Content -LiteralPath $tmp -Value $code -Encoding UTF8
+    $env:DIAG_LABEL = $Label
+    & $Py $tmp 2>$null | ForEach-Object { Write-Host $_ -ForegroundColor DarkGray }
+    Remove-Item $tmp -ErrorAction SilentlyContinue
+  } catch { Write-Host "[diag] Failed to run diagnostics: $_" -ForegroundColor DarkYellow }
+}
+
+Invoke-PythonDiag -Label 'pre-pip'
+
+try {
+  & $Py -m pip --version 2>$null | Out-Null
+} catch { }
+if ($LASTEXITCODE -ne 0) {
+  Write-Host "[deps] pip missing; bootstrapping via ensurepip" -ForegroundColor Yellow
+  try { & $Py -m ensurepip --upgrade 2>$null | Out-Null } catch { Write-Host "[deps] ensurepip failed: $_" -ForegroundColor Red }
+  # Fallback: direct ensurepip bootstrap invocation (guards against -m resolution issues)
+  try { & $Py -c "import ensurepip; ensurepip.bootstrap(upgrade=True)" 2>$null | Out-Null } catch { }
+  try { & $Py -m pip --version 2>$null | Out-Null } catch { }
+}
+
+if ($LASTEXITCODE -ne 0) {
+  Write-Host "[deps] WARNING: pip still unavailable after ensurepip. Will attempt fallback execution path." -ForegroundColor Yellow
+  Invoke-PythonDiag -Label 'pip-missing'
+  $global:PipUnavailable = $true
+} else {
+  Invoke-PythonDiag -Label 'post-pip'
+}
+
+# --- Fallback dependency installation using base interpreter if pip module execution failing ---
+if ($PipUnavailable) {
+  try {
+    # Derive base python from pyvenv.cfg (already shows base_prefix in diag; safer to parse file)
+    $pyvenv = Join-Path (Split-Path $Py -Parent -Parent) 'pyvenv.cfg'
+    $basePython = $null
+    if (Test-Path $pyvenv) {
+      $homeLine = (Get-Content $pyvenv | Where-Object { $_ -match '^home *= *' })
+      if ($homeLine) {
+        $baseHome = $homeLine -replace '^home *= *',''
+        $candidate = Join-Path $baseHome 'python.exe'
+        if (Test-Path $candidate) { $basePython = $candidate }
+      }
+    }
+    if (-not $basePython) { $basePython = (Get-Command python).Source }
+    Write-Host "[fallback] base python: $basePython" -ForegroundColor DarkYellow
+    $reqDev = Join-Path $backendRoot 'requirements-dev.txt'
+    if (Test-Path $reqDev) {
+      $target = Join-Path $backendRoot '.venv/Lib/site-packages'
+      Write-Host "[fallback] Installing dev requirements into target: $target" -ForegroundColor DarkYellow
+      & $basePython -m pip install --upgrade pip setuptools wheel 2>$null | Out-Null
+      & $basePython -m pip install -r $reqDev --target $target 2>$null | Out-Null
+      Write-Host "[fallback] Install complete (target mode)." -ForegroundColor DarkYellow
+      # Re-probe for iniconfig to short-circuit repeated attempts later
+      try { & $Py -c "import iniconfig,pytest; print('fallback import ok')" 2>$null | Out-Null } catch { Write-Host "[fallback] Import probe warning: $_" -ForegroundColor DarkYellow }
+    } else {
+      Write-Host "[fallback] requirements-dev.txt not found; skipping target install" -ForegroundColor Red
+    }
+  } catch {
+    Write-Host "[fallback] ERROR during base interpreter target install: $_" -ForegroundColor Red
+  }
+}
+
 # 1) Make sure source tree wins on sys.path (front of PYTHONPATH)
 $env:PYTHONPATH = "$BACKEND;$ROOT"
 
@@ -109,9 +212,20 @@ $root = $ROOT
 Set-Location $ROOT
 
 # Hermetic test env
+# Core test env flags
 $env:APP_ENV = "test"
-$env:DEV_ALLOW_NO_AUTH = "1"
-$env:DEV_ALLOW_NO_CSRF = "1"
+
+# Auth/CSRF bypass should be opt-in; enable only if ALLOW_NO_AUTH=1 provided by caller or Hermetic mode.
+if ($env:ALLOW_NO_AUTH -eq '1' -or $Hermetic) {
+  if (-not $env:DEV_ALLOW_NO_AUTH) { $env:DEV_ALLOW_NO_AUTH = '1' }
+  if (-not $env:DEV_ALLOW_NO_CSRF) { $env:DEV_ALLOW_NO_CSRF = '1' }
+  Write-Host "[auth-bypass] Enabled (ALLOW_NO_AUTH=${env:ALLOW_NO_AUTH}; Hermetic=$Hermetic)" -ForegroundColor DarkYellow
+} else {
+  # Ensure we don't silently leak previous shell value
+  Remove-Item Env:DEV_ALLOW_NO_AUTH -ErrorAction SilentlyContinue
+  Remove-Item Env:DEV_ALLOW_NO_CSRF -ErrorAction SilentlyContinue
+  Write-Host "[auth-bypass] Disabled (default secure mode)" -ForegroundColor DarkGray
+}
 # Optional: force deterministic no-LLM
 if (-not $env:DEV_ALLOW_NO_LLM) { $env:DEV_ALLOW_NO_LLM = "1" }
 
@@ -137,6 +251,9 @@ if (-not $Hermetic) {
     if (Test-Path $reqDev) {
       $pythonExe = if (Test-Path $Py) { $Py } elseif (Get-Command python -ErrorAction SilentlyContinue) { (Get-Command python).Source } else { $null }
       if ($null -ne $pythonExe) {
+        # Quick probe: if 'iniconfig' (pytest dep) missing, force dependency reinstall
+        & $pythonExe -c "import iniconfig" 2>$null
+        if ($LASTEXITCODE -ne 0) { $ForceDeps = $true; Write-Host "[deps] forcing install (iniconfig missing)" -ForegroundColor Yellow }
         $cacheDir = Join-Path $BACKEND '.cache'
         if (-not (Test-Path $cacheDir)) { New-Item -ItemType Directory -Path $cacheDir | Out-Null }
         $pyVersion = & $pythonExe -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}')" 2>$null
@@ -148,8 +265,12 @@ if (-not $Hermetic) {
         $hashFile = Join-Path $cacheDir 'requirements-dev.hash'
         $prevHash = if (Test-Path $hashFile) { (Get-Content $hashFile -Raw).Trim() } else { '' }
         if ($ForceDeps -or $hash -ne $prevHash) {
-          Write-Host "[deps] Installing dev dependencies (hash miss or forced)" -ForegroundColor Cyan
-          & $pythonExe -m pip install -r $reqDev | Out-Null
+          if (-not $PipUnavailable) {
+            Write-Host "[deps] Installing dev dependencies (hash miss or forced)" -ForegroundColor Cyan
+            & $pythonExe -m pip install -r $reqDev 2>$null | Out-Null
+          } else {
+            Write-Host "[deps] Skipping direct pip install due to earlier pip unavailability (fallback already attempted)." -ForegroundColor DarkYellow
+          }
           Set-Content -LiteralPath $hashFile -Value $hash -Encoding ASCII
         } else {
           Write-Host "[deps] Cache hit (requirements-dev unchanged for Python $pyVersion)" -ForegroundColor DarkGreen
@@ -223,7 +344,19 @@ if ($Files) {
 }
 
 Write-Host "[pytest] args: $($finalArgs -join ' ') $($fileTargets -join ' ')" -ForegroundColor Cyan
-& $py -m pytest @finalArgs @fileTargets
+if ($PipUnavailable) {
+  # Fallback: attempt to locate pytest.exe wrapper in Scripts and execute directly.
+  $pytestExe = Join-Path (Split-Path $Py -Parent) 'pytest.exe'
+  if (Test-Path $pytestExe) {
+    Write-Host "[pytest-fallback] Executing $pytestExe directly (pip module absent)" -ForegroundColor Yellow
+    & $pytestExe @finalArgs @fileTargets
+  } else {
+    Write-Host "[pytest-fallback] ERROR: pytest.exe not found; cannot run tests without pip." -ForegroundColor Red
+    exit 3
+  }
+} else {
+  & $py -m pytest @finalArgs @fileTargets
+}
 
 # Defensive guard (should never hit)
 if ($env:HERMETIC -eq '1' -and -not $Hermetic) {

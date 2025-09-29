@@ -1,0 +1,56 @@
+name: Edge health
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Edge asset smoke
+        shell: pwsh
+        run: ./scripts/edge-asset-smoke.ps1 -Base https://app.ledger-mind.org
+      - name: Fetch index and extract asset
+        id: a
+        run: |
+          set -e
+          BASE="https://app.ledger-mind.org"
+          TS=$(date +%s)
+          HTML=$(curl -sk "$BASE/?__nocache=$TS")
+          ASSET=$(printf "%s" "$HTML" | grep -oE "/assets/[-A-Za-z0-9_.]+\\.js" | head -n1)
+          if [ -z "$ASSET" ]; then echo "No asset found"; exit 1; fi
+          echo "asset=$ASSET" >> $GITHUB_OUTPUT
+
+      - name: Check asset MIME (application/javascript)
+        run: |
+          set -e
+          BASE="https://app.ledger-mind.org"
+          ASSET="${{ steps.a.outputs.asset }}"
+          H=$(curl -skI "$BASE$ASSET?__nocache=$(date +%s)")
+          printf "%s\n" "$H"
+          echo "$H" | grep -qi "^Content-Type: *application/javascript" || exit 1
+
+      - name: /_up is 204
+        run: |
+          code=$(curl -sk -o /dev/null -w "%{http_code}" "https://app.ledger-mind.org/_up?__nocache=$(date +%s)")
+          [ "$code" = "204" ]
+
+      - name: /api/auth/login is 401/422
+        run: |
+          body='{"email":"nobody@example.com","password":"bad"}'
+          code=$(curl -sk -o /dev/null -w "%{http_code}" -H "content-type: application/json" -d "$body" "https://app.ledger-mind.org/api/auth/login?__nocache=$(date +%s)")
+          case "$code" in 401|422) exit 0;; *) exit 1;; esac
+
+      - name: /help returns 200 then 304 with ETag
+        run: |
+          data='{"card_id":"overview","mode":"what","month":"2025-08","deterministic_ctx":{},"base_text":null}'
+          R=$(curl -sk -D - -H "content-type: application/json" -d "$data" "https://app.ledger-mind.org/help?__nocache=$(date +%s)")
+          echo "$R" | head -n 25
+          etag=$(printf "%s" "$R" | awk -F': ' '/^ETag:/ {print $2}' | tr -d '\r')
+          [ -n "$etag" ]
+          code=$(curl -sk -o /dev/null -w "%{http_code}" -H "content-type: application/json" -H "If-None-Match: $etag" -d "$data" "https://app.ledger-mind.org/help")
+          case "$code" in 304|200) exit 0;; *) exit 1;; esac

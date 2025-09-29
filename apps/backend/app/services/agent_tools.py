@@ -1,13 +1,11 @@
 # apps/backend/app/services/agent_tools.py
 from typing import Dict, Any, Optional, List
-from .rules_engine import apply_rules
-from collections import defaultdict
-import json
 import re
+from collections import defaultdict
 from sqlalchemy.orm import Session
 
 # New imports for deterministic tool routing
-from app.services.txns_nl_query import parse_nl_query, run_txn_query
+from app.services.txns_nl_query import run_txn_query
 from app.services.agent_detect import detect_txn_query, detect_analytics_intent
 from app.services.charts_data import (
     latest_month_str,

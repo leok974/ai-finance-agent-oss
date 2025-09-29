@@ -11,6 +11,7 @@ import {
 import { useCoalescedRefresh } from "@/utils/refreshBus";
 import InfoDot from "@/components/InfoDot";
 import { emitToastSuccess, emitToastError } from "@/lib/toast-helpers";
+import { t } from '@/lib/i18n';
 import Card from "./Card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
@@ -73,7 +74,7 @@ export default function SuggestionsPanel() {
     const nextPending = new Set(pending); nextPending.add(key); setPending(nextPending);
     try {
       const res = await applyRuleSuggestion({ merchant: s.merchant, category: s.category, backfill_month: s.recent_month_key ?? undefined });
-  ok(`Rule created (#${res.rule_id})`, { description: `${s.merchant} → ${s.category}` });
+  ok(t('ui.toast.rule_created_title') + ` (#${res.rule_id})`, { description: `${s.merchant} → ${s.category}` });
       setRows((prev) => prev.filter((r) => keyFor(r) !== key));
       setSelected((prev) => { const c = new Set(prev); c.delete(key); return c; });
     } catch (e) {

@@ -1,3 +1,21 @@
+import os
+import pytest
+
+@pytest.fixture(autouse=True)
+def _baseline_test_env(monkeypatch):
+    """Ensure test-friendly environment defaults.
+
+    - Skip DB startup guard (TESTING=1)
+    - Disable LLM real calls (DEV_ALLOW_NO_LLM=1)
+    - Allow auth bypass for non-auth specific tests (DEV_ALLOW_NO_AUTH=1)
+    Individual tests can override by assigning different env values locally.
+    """
+    monkeypatch.setenv("TESTING", "1")
+    monkeypatch.setenv("APP_ENV", "test")
+    monkeypatch.setenv("DEV_ALLOW_NO_LLM", os.getenv("DEV_ALLOW_NO_LLM", "1"))
+    monkeypatch.setenv("DEV_ALLOW_NO_AUTH", os.getenv("DEV_ALLOW_NO_AUTH", "1"))
+    yield
+
 """Pytest configuration & hermetic environment shims.
 
 Adds lightweight dependency stubs so the hermetic test harness can run
@@ -41,8 +59,6 @@ def _ensure_stub(module_name: str, filename: str):
 # A previous lightweight stub broke schema generation (missing 'min_length'). If a
 # real install is absent, tests that require it should fail loudly rather than
 # silently degrade. (If absolutely necessary, reintroduce a richer stub.)
- # apps/backend/tests/conftest.py
-import os
 import sys
 import warnings
 from pathlib import Path
@@ -65,8 +81,6 @@ warnings.filterwarnings(
 ROOT = Path(__file__).resolve().parents[1]  # .../apps/backend
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
-import pytest
-import os
 import httpx
 
 # Mark this module's tests / fixtures as HTTP API related so hermetic runs exclude it
@@ -94,6 +108,11 @@ if os.getenv("HERMETIC") != "1":
     @pytest.fixture(scope="session")
     def asgi_app():
         return app
+
+    @pytest.fixture
+    def client():
+        from fastapi.testclient import TestClient
+        return TestClient(app)
 
     @pytest.fixture
     async def asgi_client(asgi_app):

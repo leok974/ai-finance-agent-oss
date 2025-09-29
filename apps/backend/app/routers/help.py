@@ -68,11 +68,19 @@ def _build_key(req: HelpReq, fp: str) -> str:
 def _deterministic_why_fallback(base: str) -> str:
     return f"{base} (Explained without AI due to a temporary model issue.)"
 
-async def _cache_lookup(db: Session, key: str) -> Optional[HelpCache]:
-    row = db.execute(select(HelpCache).where(HelpCache.cache_key == key)).scalar_one_or_none()
+def _cache_lookup(db: Session, key: str) -> Optional[HelpCache]:
+    """Lookup cache entry (synchronous). Returns None if missing or expired.
+
+    Originally implemented as async but invoked synchronously; adjusted to avoid
+    un-awaited coroutine warnings and simplify monkeypatching in tests.
+    """
+    try:
+        row = db.execute(select(HelpCache).where(HelpCache.cache_key == key)).scalar_one_or_none()
+    except Exception:
+        return None
     if not row:
         return None
-    if row.expires_at < _now():
+    if getattr(row, "expires_at", _now()) < _now():
         return None
     return row
 

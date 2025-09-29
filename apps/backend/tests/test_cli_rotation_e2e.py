@@ -7,6 +7,7 @@ import ast
 import pytest
 
 import app.cli as cli
+from sqlalchemy import text  # noqa: F401 (future use if needed)
 
 
 def _run_cli(monkeypatch, capsys, *args: str) -> list[str]:
@@ -19,8 +20,21 @@ def _run_cli(monkeypatch, capsys, *args: str) -> list[str]:
 
 @pytest.mark.rotation
 def test_cli_rotation_begin_run_finalize_e2e(monkeypatch, capsys):
-    # Stable KEK for the process
-    monkeypatch.setenv("ENCRYPTION_MASTER_KEY_BASE64", base64.b64encode(os.urandom(32)).decode())
+    # Ensure KEK env vars are consistent. If either is set, mirror to the other.
+    # If neither is set, generate one and set both so unwrap paths using MASTER_KEK_B64 first stay aligned.
+    existing_master = os.getenv("MASTER_KEK_B64")
+    existing_env = os.getenv("ENCRYPTION_MASTER_KEY_BASE64")
+    if existing_master and existing_env:
+        if existing_master != existing_env:
+            monkeypatch.setenv("ENCRYPTION_MASTER_KEY_BASE64", existing_master)
+    elif existing_master and not existing_env:
+        monkeypatch.setenv("ENCRYPTION_MASTER_KEY_BASE64", existing_master)
+    elif existing_env and not existing_master:
+        monkeypatch.setenv("MASTER_KEK_B64", existing_env)
+    else:
+        new_kek = base64.b64encode(os.urandom(32)).decode()
+        monkeypatch.setenv("ENCRYPTION_MASTER_KEY_BASE64", new_kek)
+        monkeypatch.setenv("MASTER_KEK_B64", new_kek)
 
     # Initialize crypto and ensure active key exists
     _run_cli(monkeypatch, capsys, "crypto-init")

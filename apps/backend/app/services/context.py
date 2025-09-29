@@ -1,12 +1,17 @@
 from __future__ import annotations
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, cast
 from sqlalchemy.orm import Session
 from sqlalchemy import func, desc
 from app.utils.state import latest_month as _latest_month
 from app.models import Transaction, Rule  # use SQLAlchemy models
 
 def ctx_latest_month(db: Session) -> Optional[str]:
-    return _latest_month(db)
+    """Return the latest month string (YYYY-MM) if discoverable.
+
+    Wrapped with a cast because the underlying helper is loosely typed (returns Any).
+    Once `app.utils.state.latest_month` is annotated, this cast can be removed.
+    """
+    return cast(Optional[str], _latest_month(db))
 
 def ctx_month_summary(db: Session, month: str) -> Dict[str, Any]:
     # Minimal summary; adapt to your heuristics if needed
@@ -48,7 +53,8 @@ def ctx_suggestions(db: Session, month: str) -> List[Dict[str, Any]]:
 
 def ctx_txn_by_id(db: Session, txn_id: str) -> Optional[Dict[str, Any]]:
     t = db.query(Transaction).filter(Transaction.id == txn_id).first()
-    if not t: return None
+    if not t:
+        return None
     return {
         "id": t.id,
         "date": str(t.date),

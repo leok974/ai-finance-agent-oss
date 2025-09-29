@@ -1,10 +1,8 @@
 from typing import Dict, Any, Optional, List
-from collections import defaultdict
-import json
 import re
 from sqlalchemy.orm import Session
 
-from app.services.txns_nl_query import parse_nl_query, run_txn_query
+from app.services.txns_nl_query import run_txn_query
 from app.services.agent_detect import detect_txn_query, detect_analytics_intent
 from app.services.charts_data import (
 	latest_month_str,

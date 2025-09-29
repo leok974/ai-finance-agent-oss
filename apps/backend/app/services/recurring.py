@@ -1,6 +1,6 @@
 from collections import defaultdict
 from datetime import date, timedelta
-from typing import Iterable, List, Tuple
+from typing import List
 from sqlalchemy.orm import Session
 from app.transactions import Transaction
 from app.orm_models import RecurringSeries

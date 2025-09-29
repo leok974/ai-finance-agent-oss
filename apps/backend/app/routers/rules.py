@@ -1,11 +1,11 @@
 from fastapi import APIRouter, HTTPException, Depends, Query, Body, Path
 from typing import List, Dict, Any, Optional
 from sqlalchemy.orm import Session
-from sqlalchemy import select, delete, and_, or_, func
+from sqlalchemy import delete, or_, func
 from app.db import get_db
 from pydantic import BaseModel, ConfigDict, Field
 from app.models import Rule
-from app.services.rules_apply import latest_month_from_data, apply_all_active_rules
+# (Removed unused latest_month_from_data / apply_all_active_rules imports)
 from app.services import rules_service, ml_train_service, txns_service
 from app.transactions import Transaction
 from app.schemas.rules import (
@@ -20,24 +20,15 @@ from app.schemas.rules import (
 )
 from datetime import datetime, date
 import app.services.rule_suggestions as rs
-from app.services.rules_preview import preview_rule_matches, backfill_rule_apply, normalize_rule_input
+from app.services.rules_preview import preview_rule_matches, backfill_rule_apply
 from app.utils.auth import require_roles
 from app.utils.csrf import csrf_protect
 from app.services.rule_suggestions import mine_suggestions
 from app.services.rule_suggestions import (
     list_suggestions as list_persisted_suggestions,
-    accept_suggestion as accept_persisted_suggestion,
-    dismiss_suggestion as dismiss_persisted_suggestion,
 )
 from app.utils.state import current_month_key
 from app.services.rules_budget import list_budget_rules
-from app.utils.state import (
-    PERSISTED_SUGGESTIONS,
-    PERSISTED_SUGGESTIONS_SEQ,
-    PERSISTED_SUGGESTIONS_IDX,
-    _sugg_key,
-)
-from datetime import datetime as _dt
 from pydantic import Field as _Field
 from app.services.rule_suggestions_store import list_persisted as _db_list_persisted, upsert_from_mined as _db_upsert_from_mined, set_status as _db_set_status, clear_non_new as _db_clear_non_new
 from app.orm_models import RuleSuggestion  # legacy suggestions table for compat fallback

@@ -3,11 +3,17 @@ import react from "@vitejs/plugin-react";
 import { execSync } from "child_process";
 import path from "path";
 
-let BRANCH = "unknown", COMMIT = "unknown";
-try {
-  BRANCH = execSync("git rev-parse --abbrev-ref HEAD").toString().trim();
-  COMMIT = execSync("git rev-parse --short HEAD").toString().trim();
-} catch {}
+// Prefer injected environment variables (Docker build) before attempting local git commands.
+let BRANCH = process.env.WEB_BRANCH || "unknown";
+let COMMIT = process.env.WEB_COMMIT || "unknown";
+let BUILD_ID = process.env.WEB_BUILD_ID || "unknown";
+
+if (BRANCH === "unknown" || COMMIT === "unknown") {
+  try {
+    if (BRANCH === "unknown") BRANCH = execSync("git rev-parse --abbrev-ref HEAD").toString().trim();
+    if (COMMIT === "unknown") COMMIT = execSync("git rev-parse --short HEAD").toString().trim();
+  } catch {}
+}
 
 const API = "http://127.0.0.1:8000";
 
@@ -17,6 +23,7 @@ export default defineConfig({
   define: {
     __WEB_BRANCH__: JSON.stringify(BRANCH),
     __WEB_COMMIT__: JSON.stringify(COMMIT),
+    __WEB_BUILD_ID__: JSON.stringify(BUILD_ID),
   },
   resolve: {
     alias: {

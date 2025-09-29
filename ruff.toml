@@ -1,0 +1,14 @@
+select = ["F", "E"]
+ignore = ["E402"]
+line-length = 120
+
+extend-exclude = [
+	"apps/backend/app/routers/agent_original.py",
+	"apps/backend/app/routers/agent_tools_*",
+	"apps/backend/app/analytics/*",
+	"apps/backend/app/tests/*",
+	"apps/backend/app/scripts/*"
+]
+
+[per-file-ignores]
+"apps/backend/app/routers/help.py" = ["E402", "F401"]

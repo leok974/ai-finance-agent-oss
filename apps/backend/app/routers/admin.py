@@ -11,7 +11,12 @@ access runtime state via the per-request `Request` object instead.
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
-ADMIN_TOKEN = os.getenv("ADMIN_TOKEN")  # optional
+def _admin_token() -> str | None:
+    """Fetch ADMIN_TOKEN at request time so tests that monkeypatch the
+    environment after import still enforce auth. Previous implementation
+    captured the value at module import, causing authorization tests to
+    observe a 200 instead of 401 when ADMIN_TOKEN was later set."""
+    return os.getenv("ADMIN_TOKEN")
 
 @router.post("/help-cache/reset", status_code=204)
 def reset_help_cache(x_admin_token: str | None = Header(None)):
@@ -19,7 +24,8 @@ def reset_help_cache(x_admin_token: str | None = Header(None)):
     If ADMIN_TOKEN is set in the environment, require matching x-admin-token header.
     Returns 204 No Content on success.
     """
-    if ADMIN_TOKEN and x_admin_token != ADMIN_TOKEN:
+    token = _admin_token()
+    if token and x_admin_token != token:
         raise HTTPException(status_code=401, detail="unauthorized")
     help_cache.clear()
     # reset_stats clears hit/miss/eviction counters
@@ -29,7 +35,8 @@ def reset_help_cache(x_admin_token: str | None = Header(None)):
 
 @router.get("/toggles", summary="List runtime feature toggles")
 def list_toggles(request: Request, x_admin_token: str | None = Header(None)) -> Dict[str, Any]:
-    if ADMIN_TOKEN and x_admin_token != ADMIN_TOKEN:
+    token = _admin_token()
+    if token and x_admin_token != token:
         raise HTTPException(status_code=401, detail="unauthorized")
     state = request.app.state
     toggles = getattr(state, "runtime_toggles", {}).copy()
@@ -47,7 +54,8 @@ def update_toggles(
     ),
     x_admin_token: str | None = Header(None),
 ):
-    if ADMIN_TOKEN and x_admin_token != ADMIN_TOKEN:
+    token = _admin_token()
+    if token and x_admin_token != token:
         raise HTTPException(status_code=401, detail="unauthorized")
     state = request.app.state
     if not hasattr(state, "runtime_toggles"):

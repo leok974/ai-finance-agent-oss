@@ -1,6 +1,5 @@
 """Pydantic schemas used by transaction-related routers."""
 from pydantic import BaseModel
-from typing import Optional, Literal, Dict, List
 
 
 class Txn(BaseModel):

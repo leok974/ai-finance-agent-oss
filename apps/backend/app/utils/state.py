@@ -1,7 +1,8 @@
 from __future__ import annotations
-import json, os
+import json
+import os
 from pathlib import Path
-from typing import Any, Dict, List, Set, Tuple
+from typing import Dict, Set, Tuple
 from datetime import date
 
 STORE_DIR = Path(__file__).resolve().parent.parent / "data" / "store"
@@ -82,7 +83,7 @@ def current_month_key(today: date | None = None) -> str:
 # ---------------------------------------------------------------------------
 # Persisted Rule Suggestions (in-memory stub)
 # ---------------------------------------------------------------------------
-from typing import Dict, Literal
+from typing import Literal
 from datetime import datetime  # noqa: F401  # used by routers for timestamps
 
 SuggestionStatus = Literal["new", "accepted", "dismissed"]

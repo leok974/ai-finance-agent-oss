@@ -1,0 +1,157 @@
+name: security-scan
+
+on:
+  push:
+    branches: [ main, Polish-clean-history ]
+  pull_request:
+    branches: [ main, Polish-clean-history ]
+  schedule:
+    - cron: '0 3 * * *'  # nightly
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+  packages: read
+
+env:
+  DOCKER_BUILDKIT: '1'
+
+jobs:
+  lint-dockerfiles:
+    name: Hadolint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Find Dockerfiles
+        id: files
+        run: |
+          echo "files=$(git ls-files | grep -i 'dockerfile' | tr '\n' ' ')" >> $GITHUB_OUTPUT
+      - name: Run hadolint
+        if: steps.files.outputs.files != ''
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: ${{ steps.files.outputs.files }}
+
+  build-images:
+    name: Build images
+    runs-on: ubuntu-latest
+    outputs:
+      backend_image: ${{ steps.meta.outputs.backend_image }}
+      nginx_image: ${{ steps.meta.outputs.nginx_image }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set build metadata
+        id: meta
+        run: |
+          BRANCH=${GITHUB_REF_NAME}
+          COMMIT=${GITHUB_SHA::8}
+          BUILD_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          echo "backend_image=backend-ci:${COMMIT}" >> $GITHUB_OUTPUT
+          echo "nginx_image=nginx-ci:${COMMIT}" >> $GITHUB_OUTPUT
+          echo "GIT_BRANCH=$BRANCH" >> $GITHUB_ENV
+          echo "GIT_COMMIT=$COMMIT" >> $GITHUB_ENV
+          echo "BUILD_TIME=$BUILD_TIME" >> $GITHUB_ENV
+      - name: Build backend
+        run: |
+          docker build \
+            --build-arg GIT_BRANCH=$GIT_BRANCH \
+            --build-arg GIT_COMMIT=$GIT_COMMIT \
+            --build-arg BUILD_TIME=$BUILD_TIME \
+            -t ${{ steps.meta.outputs.backend_image }} \
+            apps/backend
+      - name: Build nginx
+        run: |
+          docker build \
+            -f deploy/Dockerfile.nginx \
+            -t ${{ steps.meta.outputs.nginx_image }} \
+            .
+
+  trivy-fs:
+    name: Trivy FS scan
+    runs-on: ubuntu-latest
+    needs: [build-images]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aquasecurity/trivy-action@0.20.0
+        with:
+          scan-type: 'fs'
+          format: 'sarif'
+          output: 'trivy-fs.sarif'
+          ignore-unfixed: true
+          vuln-type: 'os,library'
+      - name: Upload SARIF (fs)
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-fs.sarif
+
+  trivy-image:
+    name: Trivy image scan
+    runs-on: ubuntu-latest
+    needs: [build-images]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Load images (rebuild to ensure present)
+        run: |
+          BRANCH=${GITHUB_REF_NAME}
+          COMMIT=${GITHUB_SHA::8}
+          BUILD_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          docker build --build-arg GIT_BRANCH=$BRANCH --build-arg GIT_COMMIT=$COMMIT --build-arg BUILD_TIME=$BUILD_TIME -t backend-ci:${COMMIT} apps/backend
+          docker build -f deploy/Dockerfile.nginx -t nginx-ci:${COMMIT} .
+      - uses: aquasecurity/trivy-action@0.20.0
+        with:
+          image-ref: 'backend-ci:${{ github.sha[0:8] }}'
+          format: 'sarif'
+          output: 'trivy-backend.sarif'
+          ignore-unfixed: true
+      - uses: aquasecurity/trivy-action@0.20.0
+        with:
+          image-ref: 'nginx-ci:${{ github.sha[0:8] }}'
+          format: 'sarif'
+          output: 'trivy-nginx.sarif'
+          ignore-unfixed: true
+      - name: Upload SARIF (backend)
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-backend.sarif
+      - name: Upload SARIF (nginx)
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-nginx.sarif
+
+  sbom:
+    name: SBOM (Syft)
+    runs-on: ubuntu-latest
+    needs: [build-images]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Rebuild backend (ensure local)
+        run: |
+          BRANCH=${GITHUB_REF_NAME}
+          COMMIT=${GITHUB_SHA::8}
+          BUILD_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          docker build --build-arg GIT_BRANCH=$BRANCH --build-arg GIT_COMMIT=$COMMIT --build-arg BUILD_TIME=$BUILD_TIME -t backend-ci:${COMMIT} apps/backend
+      - name: Install Syft
+        uses: anchore/sbom-action/download-syft@v0.17.9
+      - name: Generate SBOM (CycloneDX JSON)
+        run: syft packages docker:backend-ci:${GITHUB_SHA::8} -o cyclonedx-json > sbom-backend-cdx.json
+      - name: Generate SBOM (SPDX JSON)
+        run: syft packages docker:backend-ci:${GITHUB_SHA::8} -o spdx-json > sbom-backend-spdx.json
+      - name: Upload SBOM artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-backend-${{ github.sha }}
+          path: |
+            sbom-backend-cdx.json
+            sbom-backend-spdx.json
+          retention-days: 14
+
+  summary:
+    name: Summary
+    runs-on: ubuntu-latest
+    needs: [lint-dockerfiles, trivy-fs, trivy-image, sbom]
+    steps:
+      - name: Report
+        run: |
+          echo "All security scanning jobs completed."

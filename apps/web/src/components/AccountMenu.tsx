@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Mail, LogOut, UserRound, ChevronDown } from "lucide-react";
 import { emitToastSuccess, emitToastError } from "@/lib/toast-helpers";
+import { t } from '@/lib/i18n';
 
 type Props = {
   email?: string | null;
@@ -30,9 +31,9 @@ export default function AccountMenu({ email, onLogout, avatarUrl }: Props) {
   const handleLogout = async () => {
     try {
       await onLogout?.();
-      emitToastSuccess("Signed out");
+      emitToastSuccess(t('ui.toast.signed_out_title'));
     } catch (err: any) {
-      emitToastError("Sign out failed", { description: String(err?.message || err) });
+      emitToastError(t('ui.toast.sign_out_failed_title'), { description: String(err?.message || err) });
     }
   };
 
@@ -79,7 +80,7 @@ export default function AccountMenu({ email, onLogout, avatarUrl }: Props) {
             onClick={() =>
               navigator.clipboard
                 .writeText(email)
-                .then(() => emitToastSuccess("Email copied"))
+                .then(() => emitToastSuccess(t('ui.toast.email_copied_title')))
             }
             className="flex items-center gap-2 cursor-pointer"
           >

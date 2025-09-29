@@ -43,9 +43,12 @@ _TXN_AAD = b"txn:v1"
 _FAIL_SAMPLE_LIMIT = 5
 
 def _to_bytes(x):
-    if x is None: return None
-    if isinstance(x, memoryview): x = x.tobytes()
-    if isinstance(x, bytearray): return bytes(x)
+    if x is None:
+        return None
+    if isinstance(x, memoryview):
+        x = x.tobytes()
+    if isinstance(x, bytearray):
+        return bytes(x)
     return x if isinstance(x, (bytes, bytearray)) else None
 
 def rotation_status(db: Session) -> Dict[str, Any]:

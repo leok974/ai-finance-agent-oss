@@ -1,3 +1,5 @@
+# Ignore Cloudflare tunnel credentials JSON files
+cloudflared/*.json
 cloudflared/*.json
 cloudflared/
 data/

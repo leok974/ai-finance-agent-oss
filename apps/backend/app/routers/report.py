@@ -10,7 +10,6 @@ from app.services.charts_data import (
     get_month_summary,
     get_month_merchants,
     get_month_categories,
-    month_bounds,
     resolve_window,
     get_month_flows,
     get_spending_trends,

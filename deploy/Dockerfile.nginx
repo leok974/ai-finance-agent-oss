@@ -1,13 +1,50 @@
-FROM nginx:1.27-alpine
+## Multi-stage: build frontend assets then produce hardened edge image
 
+FROM node:20-alpine AS webbuild
+## Build metadata args (injected by outer build):
+ARG WEB_BRANCH=unknown
+ARG WEB_COMMIT=unknown
+ARG WEB_BUILD_ID=not_set
+WORKDIR /w
+# Copy only manifest files first for dependency install.
+COPY apps/web/package.json apps/web/pnpm-lock.yaml* ./apps/web/
+WORKDIR /w/apps/web
+RUN corepack enable && corepack prepare pnpm@latest --activate \
+	&& pnpm install --frozen-lockfile
+
+# Copy source (exclude node_modules via .dockerignore); copy only dirs needed for build
+COPY apps/web/src ./src
+COPY apps/web/index.html ./
+COPY apps/web/tsconfig*.json ./
+COPY apps/web/vite.config.ts ./
+COPY apps/web/vitest.config.ts ./
+COPY apps/web/tailwind.config.* ./
+COPY apps/web/postcss.config.js ./
+COPY apps/web/components.json ./
+COPY apps/web/public ./public
+COPY apps/web/scripts ./scripts
+
+# Expose build metadata to the Vite build via env and a JSON stamp consumed by the app
+ENV WEB_BRANCH=${WEB_BRANCH} \
+	WEB_COMMIT=${WEB_COMMIT} \
+	WEB_BUILD_ID=${WEB_BUILD_ID}
+
+# Create a build-stamp file (must occur after src copied so it lands inside src/) then build
+RUN echo '{"branch":"'"${WEB_BRANCH}"'","commit":"'"${WEB_COMMIT}"'","buildId":"'"${WEB_BUILD_ID}"'"}' > src/build-stamp.json \
+ && pnpm build \
+ && mkdir -p dist \
+ && cp src/build-stamp.json dist/build.json
+
+FROM nginx:1.27-alpine
 ARG EDGE_GIT_COMMIT=unknown
 ARG EDGE_BUILD_TIME=unknown
 
-# Create a version metadata JSON baked into the image.
+# Dist assets
+COPY --from=webbuild /w/apps/web/dist /usr/share/nginx/html
+
+# Version metadata
 RUN mkdir -p /usr/share/nginx/html && echo "{\n  \"commit\": \"$EDGE_GIT_COMMIT\",\n  \"built_at\": \"$EDGE_BUILD_TIME\"\n}" > /usr/share/nginx/html/version.json
 
-# Copy nginx configuration (self-contained http/server layout)
+# Config
 COPY ./deploy/nginx.conf /etc/nginx/nginx.conf
-
-# Remove default config to avoid accidental overlap.
 RUN rm -f /etc/nginx/conf.d/default.conf 2>/dev/null || true

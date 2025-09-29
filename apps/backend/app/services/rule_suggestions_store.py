@@ -1,4 +1,3 @@
-from datetime import datetime
 from app.utils.time import utc_now
 from typing import List, Dict
 from sqlalchemy.orm import Session
@@ -61,7 +60,8 @@ def set_status(db: Session, sid: int, status: str) -> Dict:
         raise ValueError("not_found")
     row.status = status
     row.updated_at = utc_now()
-    db.commit(); db.refresh(row)
+    db.commit()
+    db.refresh(row)
     return to_dict(row)
 
 def clear_non_new(db: Session) -> int:

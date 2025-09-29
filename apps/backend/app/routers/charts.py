@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Query, HTTPException
+from fastapi import APIRouter, Depends, Query, HTTPException, Request
 from pydantic import BaseModel, Field, ConfigDict
 from sqlalchemy.orm import Session
 
@@ -13,11 +13,15 @@ from app.services.charts_data import (
 from app.services.charts_data import get_category_timeseries
 from app.utils.auth import get_current_user
 
-router = APIRouter()
+router = APIRouter(prefix="/charts", tags=["charts"])
 
 
 @router.get("/month_summary", dependencies=[Depends(get_current_user)])
-def month_summary(month: str | None = Query(None, pattern=r"^\d{4}-\d{2}$"), db: Session = Depends(get_db)):
+def month_summary(
+    month: str | None = Query(None, pattern=r"^\d{4}-\d{2}$"),
+    db: Session = Depends(get_db),
+    request: Request = None,  # type: ignore[assignment]
+):
     """Month financial summary.
 
     Behavior matrix:
@@ -34,8 +38,13 @@ def month_summary(month: str | None = Query(None, pattern=r"^\d{4}-\d{2}$"), db:
     latest_mem: str | None = None
     month_payload = {"month": None, "total_spend": 0.0, "total_income": 0.0, "net": 0.0, "categories": []}
     try:  # in-memory path (never raises outward)
-        from app.main import app as _app  # local import avoids circulars at startup
-        txns = getattr(_app.state, "txns", None)
+        # Prefer request.app.state if available so tests mutating app.state.txns
+        # after import are reflected. Fall back to late import if request absent.
+        if request is not None:
+            txns = getattr(request.app.state, "txns", None)
+        else:
+            from app.main import app as _app  # fallback
+            txns = getattr(_app.state, "txns", None)
         if txns:
             dates = [t.get("date", "") for t in txns if isinstance(t, dict) and t.get("date")]
             if dates:

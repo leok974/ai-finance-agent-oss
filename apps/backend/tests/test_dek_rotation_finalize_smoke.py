@@ -28,8 +28,15 @@ def _ensure_key(db, label: str) -> None:
 
 @pytest.mark.rotation
 def test_dek_rotation_finalize_smoke(db_session):
-    # Stable KEK
-    os.environ.setdefault("ENCRYPTION_MASTER_KEY_BASE64", base64.b64encode(os.urandom(32)).decode())
+    # Stable KEK (ensure both env names point to same value)
+    if not os.getenv("ENCRYPTION_MASTER_KEY_BASE64") and not os.getenv("MASTER_KEK_B64"):
+        kek = base64.b64encode(os.urandom(32)).decode()
+        os.environ.setdefault("ENCRYPTION_MASTER_KEY_BASE64", kek)
+        os.environ.setdefault("MASTER_KEK_B64", kek)
+    elif os.getenv("MASTER_KEK_B64") and not os.getenv("ENCRYPTION_MASTER_KEY_BASE64"):
+        os.environ["ENCRYPTION_MASTER_KEY_BASE64"] = os.getenv("MASTER_KEK_B64")
+    elif os.getenv("ENCRYPTION_MASTER_KEY_BASE64") and not os.getenv("MASTER_KEK_B64"):
+        os.environ["MASTER_KEK_B64"] = os.getenv("ENCRYPTION_MASTER_KEY_BASE64")
 
     # Seed under active
     _ensure_key(db_session, "active")

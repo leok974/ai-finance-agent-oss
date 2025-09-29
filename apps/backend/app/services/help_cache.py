@@ -1,4 +1,5 @@
-import time, threading
+import time
+import threading
 from typing import Any, Dict, Optional, Tuple
 
 # Optional Prometheus metrics (safe if library absent)
@@ -37,7 +38,8 @@ def get(key: str) -> Optional[Dict[str, Any]]:
         entry = _cache.get(key)
         if not entry:
             _stats["misses"] += 1
-            if _METRICS: _METRICS["misses"].inc()
+            if _METRICS:
+                _METRICS["misses"].inc()
             return None
         val, exp = entry
         # Treat an entry whose expiry second has arrived as expired (>=)
@@ -51,20 +53,23 @@ def get(key: str) -> Optional[Dict[str, Any]]:
                 _METRICS["size"].set(len(_cache))
             return None
         _stats["hits"] += 1
-        if _METRICS: _METRICS["hits"].inc()
+        if _METRICS:
+            _METRICS["hits"].inc()
         return val
 
 def set_(key: str, value: Dict[str, Any], ttl: Optional[float] = None) -> None:
     with _lock:
         t = float(_TTL_DEFAULT if ttl is None else ttl)
         _cache[key] = (value, _now() + t)
-        if _METRICS: _METRICS["size"].set(len(_cache))
+        if _METRICS:
+            _METRICS["size"].set(len(_cache))
 
 def clear() -> None:
     with _lock:
         _cache.clear()
         _stats["hits"] = _stats["misses"] = _stats["evictions"] = 0
-        if _METRICS: _METRICS["size"].set(0)
+        if _METRICS:
+            _METRICS["size"].set(0)
 
 def size() -> int:
     with _lock:

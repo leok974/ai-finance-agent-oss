@@ -30,11 +30,31 @@ services:
 
   cloudflared:
     image: cloudflare/cloudflared:latest
-    command: ["tunnel","run"]
+    # Credentials-file mode (authoritative). Place <UUID>.json + config.yml under ./cloudflared
+    # Acquire credentials:
+    #   cloudflared tunnel login
+    #   cloudflared tunnel create ledgermind-prod   (produces <UUID>.json)
+    # Create ./cloudflared/config.yml with:
+    #   tunnel: <UUID>
+    #   credentials-file: /etc/cloudflared/<UUID>.json
+    #   ingress:
+    #     - hostname: app.ledger-mind.org
+    #       service: http://nginx:80
+    #     - service: http_status:404
+    command: [
+      "tunnel",
+      "--config","/etc/cloudflared/config.yml",
+      "--no-autoupdate",
+      "--loglevel","info",
+      "--protocol","auto",
+      "--metrics","0.0.0.0:2000",
+      "run"
+    ]
     environment:
-      - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN}
-      # Optional: force HTTP/2 if QUIC buffer warnings/noisy logs are undesirable (uncomment to enable)
-      # - TUNNEL_TRANSPORT_PROTOCOL=http2
+      # Ensure token mode is fully disabled even if base compose supplies it
+      TUNNEL_TOKEN: ""
+    volumes:
+      - ./cloudflared:/etc/cloudflared:ro
     read_only: true
     cap_drop: ["ALL"]
     cap_add: ["NET_BIND_SERVICE"]
@@ -45,9 +65,9 @@ services:
     depends_on:
       - nginx
     healthcheck:
-      # Use internal DNS name to verify edge can reach origin
-      test: ["CMD-SHELL", "wget -q -O /dev/null http://nginx/_up || exit 1"]
-      interval: 30s
+      # Simple metrics probe; exits non-zero if metric missing
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:2000/metrics | grep -q cloudflared_tunnel_ha_connections"]
+      interval: 15s
       timeout: 5s
       retries: 5
       start_period: 20s
@@ -81,10 +101,13 @@ services:
       GOOGLE_APPLICATION_CREDENTIALS: "/secrets/gcp-sa.json"  # mount provided below
       GRPC_VERBOSITY: "ERROR"
       GRPC_TRACE: ""
-    # Unified Help API caching / rephrase knobs
-    HELP_TTL_SECONDS: "86400"
-    REPHRASE_VERSION: "v1"
-    PRIMARY_MODEL_TAG: "gpt-oss:20b"
+      # Unified Help API caching / rephrase knobs
+      HELP_TTL_SECONDS: "86400"
+      REPHRASE_VERSION: "v1"
+      PRIMARY_MODEL_TAG: "gpt-oss:20b"
+      # Build metadata (injected at deploy time by CI or local script)
+      BACKEND_BRANCH: ${BACKEND_BRANCH:-unknown}
+      BACKEND_COMMIT: ${BACKEND_COMMIT:-unknown}
     read_only: true
     user: "10001:10001"
     cap_drop: ["ALL"]
