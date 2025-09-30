@@ -1,7 +1,9 @@
 import os
+import pytest
 from fastapi.testclient import TestClient
 from app.main import app
 
+@pytest.mark.skipif(os.getenv("HERMETIC") == "1", reason="Skipped in hermetic mode (no external LLM)")
 def test_force_llm_primary(monkeypatch):
     # Ensure stub mode disabled
     monkeypatch.setenv("DEV_ALLOW_NO_LLM", "0")

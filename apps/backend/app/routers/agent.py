@@ -650,9 +650,11 @@ def agent_chat(
             # Emit analytics for fallback usage (prefer BackgroundTasks; fallback inline in tests)
             if llm_out.get("fallback"):
                 try:
-                    rid = (request.headers.get("X-Request-ID") if request else None) or str(uuid.uuid4())
+                    # Prefer context var request id (middleware-set) then header then uuid4
+                    from app.utils.request_ctx import get_request_id as _get_rid  # local import to avoid cycle
+                    rid_ctx = _get_rid() or (request.headers.get("X-Request-ID") if request else None) or str(uuid.uuid4())
                     props = {
-                        "rid": rid,
+                        "rid": rid_ctx,
                         "provider": str(llm_out.get("fallback")),
                         "requested_model": req.model or settings.DEFAULT_LLM_MODEL,
                         "fallback_model": getattr(llm_mod, '_model_for_openai', lambda m: 'gpt-4o-mini')(llm_out.get("model")),
