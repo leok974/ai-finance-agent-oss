@@ -1,4 +1,7 @@
 name: ingest-smoke
+permissions:
+  contents: read
+  actions: read
 on:
   pull_request:
   push:
@@ -19,6 +22,8 @@ on:
 jobs:
   ingest-smoke:
     runs-on: ubuntu-latest
+    env:
+      PYTHONPATH: apps/backend
     steps:
       - uses: actions/checkout@v4
         with:
@@ -26,28 +31,34 @@ jobs:
 
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
-          cache: 'pip'
+          python-version: '3.11'
+          cache: pip
           cache-dependency-path: |
+            apps/backend/requirements-dev.txt
             apps/backend/requirements.txt
-            requirements.txt
 
       - name: Install deps
         run: |
-          python -m pip install -q --upgrade pip
-          pip install -q -r apps/backend/requirements.txt
-          pip install -q pytest pytest-cov
+          python -m pip install -q --upgrade pip wheel
+          pip install -q -r apps/backend/requirements-dev.txt
+
+      - name: Sanity: test helpers import
+        run: python -c "import sys; sys.path.insert(0,'apps/backend'); import tests.helpers.auth_jwt; print('helpers OK')"
 
       - name: Ingest smoke (tolerant)
         working-directory: apps/backend
         run: |
           python -m pytest -q tests/test_ingest_csv_smoke.py 2>&1 | tee ingest-smoke.log
-      - name: Upload pytest log (on failure)
-        if: failure()
+      - name: Upload logs & reports (always)
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ingest-smoke.log
-          path: apps/backend/ingest-smoke.log
+          name: ingest-smoke-artifacts
+          path: |
+            apps/backend/ingest-smoke.log
+            apps/backend/.pytest_cache/**
+            apps/backend/logs/**
+          if-no-files-found: ignore
       - name: Summary (tolerant outcome)
         if: always()
         run: |
@@ -72,19 +83,25 @@ jobs:
   ingest-weekly:
     if: github.event_name == 'schedule'
     runs-on: ubuntu-latest
+    env:
+      PYTHONPATH: apps/backend
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
-          cache: 'pip'
-          cache-dependency-path: apps/backend/requirements.txt
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: |
+            apps/backend/requirements-dev.txt
+            apps/backend/requirements.txt
       - name: Install deps
         run: |
-          python -m pip install -q -r apps/backend/requirements.txt
-          python -m pip install -q pytest
+          python -m pip install -q --upgrade pip wheel
+          python -m pip install -q -r apps/backend/requirements-dev.txt
+      - name: Sanity: test helpers import
+        run: python -c "import sys; sys.path.insert(0,'apps/backend'); import tests.helpers.auth_jwt; print('helpers OK')"
       - name: Large + happy-path
         env:
           AUTH_E2E: "1"

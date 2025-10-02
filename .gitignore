@@ -80,6 +80,12 @@ apps/web/coverage/
 lcov.info
 htmlcov/
 
+# Reinforced coverage & report ignores
+**/coverage/
+**/coverage-*/**
+**/.pytest_cache/
+**/htmlcov/
+
 ### Python caches (extra)
 .mypy_cache/
 .pytest_cache/
