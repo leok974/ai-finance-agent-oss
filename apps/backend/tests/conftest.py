@@ -1,6 +1,20 @@
 import os
+import sys
+import pathlib
 import pytest
-from tests.helpers.auth_jwt import patch_server_secret, mint_access, preferred_csrf_key
+
+# Ensure backend tests parent (apps/backend) is on sys.path BEFORE importing test helpers.
+# This prevents the top-level repository 'tests' directory (without helpers/) from shadowing
+# the backend test helpers namespace during early import.
+_THIS_DIR = pathlib.Path(__file__).parent
+_BACKEND_ROOT = _THIS_DIR.parent  # apps/backend
+if str(_BACKEND_ROOT) not in sys.path:
+    sys.path.insert(0, str(_BACKEND_ROOT))
+
+try:  # primary absolute import (after path injection)
+    from tests.helpers.auth_jwt import patch_server_secret, mint_access, preferred_csrf_key  # type: ignore
+except ModuleNotFoundError:  # fallback to explicit relative import if namespace package resolution fails
+    from .helpers.auth_jwt import patch_server_secret, mint_access, preferred_csrf_key  # type: ignore
 
 @pytest.fixture(autouse=True)
 def _baseline_test_env(monkeypatch):
