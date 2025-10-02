@@ -281,7 +281,7 @@ export default function AgentChat() {
                           onClick={() => {
                             try {
                               window.scrollTo({ top: 0, behavior: 'smooth' });
-                            } catch {}
+                            } catch (_err) { /* intentionally empty: swallow to render empty-state */ }
                           }}
                         >
                           Open Insights

@@ -15,7 +15,7 @@ export default function SplitDialog({ open, onOpenChange, txnId, onDone }:{ open
     let alive = true;
     (async () => {
       try { const t = await getTxn(txnId); if (!alive) return; setOrig(Number(t?.amount || 0)); }
-      catch {}
+      catch (_err) { /* intentionally empty: swallow to render empty-state */ }
     })();
     return () => { alive = false; };
   }, [open, txnId]);

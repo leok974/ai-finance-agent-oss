@@ -144,9 +144,24 @@ def parse_nl_query(q: str, today: Optional[date] = None) -> NLQuery:
     if m:
         max_amount = float(m.group(2).replace(",", ""))
 
-    # --- merchants (naive): capture words after "from"/"at"/"merchant(s)" or quoted tokens
+    # --- merchants (naive, then heuristically cleaned): capture words after key prepositions or quoted tokens
     merchants: List[str] = []
     merchants += re.findall(r'"([^"]+)"', q)  # quoted multi-word merchants (preserve case)
+
+    # Heuristic control lists
+    VERB_LEADS = {"give", "show", "list", "summarize", "tell", "display", "provide", "get"}
+    SHORT_KEEP = {"ups", "ibm", "h&m", "ubs"}  # short brand/merchant codes we allow
+
+    def _is_noise(tok: str) -> bool:
+        t = tok.lower()
+        if not t:
+            return True
+        if t in VERB_LEADS:
+            return True
+        # filter very short unless explicitly whitelisted (allow 3+ chars baseline)
+        if len(t) < 3 and t not in SHORT_KEEP:
+            return True
+        return False
 
     def _clean_token(tok: str) -> str:
         # Remove trailing time/amount phrases and punctuation
@@ -168,7 +183,8 @@ def parse_nl_query(q: str, today: Optional[date] = None) -> NLQuery:
             cleaned = _clean_token(s)
             if cleaned:
                 # restore basic capitalization heuristic if originally lower
-                merchants.append(cleaned)
+                if not _is_noise(cleaned):
+                    merchants.append(cleaned)
 
     # Remove tokens that are actually time/window keywords mistakenly captured
     if merchants:
@@ -177,12 +193,24 @@ def parse_nl_query(q: str, today: Optional[date] = None) -> NLQuery:
             if not re.match(r"^(between|in|last|this)\b", t.strip().lower())
         ]
 
+    # Final pass: de-dup & preserve order
+    if merchants:
+        seen = set()
+        deduped: List[str] = []
+        for m_tok in merchants:
+            key = m_tok.lower()
+            if key not in seen:
+                seen.add(key)
+                deduped.append(m_tok)
+        merchants = deduped
+
     # if user typed a single capitalized word, treat as merchant heuristic (e.g., "Starbucks")
     if not merchants:
+        # fallback: single capitalized token(s); exclude verbs/noise
         solo = re.findall(r"\b([A-Z][A-Za-z0-9&\-]{2,})\b", q)
-        # filter obvious months
         months = {datetime(2000, m, 1).strftime("%B") for m in range(1,13)}
-        merchants = [s for s in solo if s not in months]
+        candidates = [s for s in solo if s not in months]
+        merchants = [s for s in candidates if not _is_noise(s)]
 
     # --- categories
     categories: List[str] = []

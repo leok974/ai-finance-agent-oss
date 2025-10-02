@@ -12,10 +12,10 @@ export default function DevMenuItem() {
     const next = !isDevUIEnabled();
     if (e.altKey) {      
       setDevUIEnabledSoft(next);
-      try { emitToastSuccess?.(`Dev UI (soft) ${next ? 'on' : 'off'}`); } catch {}
+  try { emitToastSuccess?.(`Dev UI (soft) ${next ? 'on' : 'off'}`); } catch { /* toast optional */ }
     } else {
       setDevUIEnabled(next);
-      try { emitToastSuccess?.(`Dev UI ${next ? 'enabled' : 'disabled'}`); } catch {}
+  try { emitToastSuccess?.(`Dev UI ${next ? 'enabled' : 'disabled'}`); } catch { /* toast optional */ }
     }
   }, []);
 

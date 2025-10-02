@@ -9,6 +9,8 @@
   [switch]$SkipReadyCheck,
   [switch]$EmitMetrics,
   [switch]$Generate,
+  [switch]$SkipIndexGuard,
+  [switch]$SkipPasswordAlign,
   [switch]$ShowConfig
 )
 <#
@@ -54,8 +56,12 @@ function Write-Err($m){ Write-Host "[err]  $m" -ForegroundColor Red }
 $composeFiles = @('-f','docker-compose.prod.yml','-f','docker-compose.prod.override.yml')
 $edgeVerify = Join-Path $PSScriptRoot 'edge-verify.ps1'
 $prodReady  = Join-Path $PSScriptRoot 'prod-ready.ps1'
+$guardIndex = Join-Path $PSScriptRoot 'deploy' 'guard-index.ps1'
+$preflightPw = Join-Path $PSScriptRoot 'prod' 'preflight-password.ps1'
 if(-not (Test-Path $edgeVerify)){ Write-Err "Missing edge-verify.ps1"; exit 2 }
 if(-not (Test-Path $prodReady)){ Write-Err "Missing prod-ready.ps1"; exit 2 }
+if(-not (Test-Path $guardIndex)){ Write-Warn 'guard-index.ps1 not found (index guard skipped)'; $SkipIndexGuard=$true }
+if(-not (Test-Path $preflightPw)){ Write-Warn 'preflight-password.ps1 not found (password alignment skipped)'; $SkipPasswordAlign=$true }
 
 # Basic env introspection (do not print secrets)
 $hasPg = [bool]$env:POSTGRES_PASSWORD
@@ -74,10 +80,31 @@ if($Build){
   if($LASTEXITCODE -ne 0){ Write-Err 'Build failed'; exit 3 }
 }
 
-# 2. Up
+# 2. Start core services (postgres first so we can align)
 Write-Info 'Starting stack (docker compose up -d)'
+docker compose $composeFiles up -d postgres
+if($LASTEXITCODE -ne 0){ Write-Err 'docker compose up postgres failed'; exit 4 }
+
+# Optional password alignment (non-destructive)
+if(-not $SkipPasswordAlign){
+  Write-Info 'Running preflight password alignment'
+  & pwsh $preflightPw -ComposeFiles @('docker-compose.prod.yml','docker-compose.prod.override.yml')
+  $pwExit = $LASTEXITCODE
+  switch($pwExit){
+    0 { Write-Ok 'Password already aligned' }
+    2 { Write-Ok 'Password aligned (role updated)' }
+    10 { Write-Warn 'Postgres not ready yet for alignment (will rely on backend retry/migrations)' }
+    20 { Write-Warn 'POSTGRES_PASSWORD missing – skipped alignment' }
+    30 { Write-Err 'Password alignment failed'; exit 8 }
+    default { Write-Warn "Unexpected preflight exit code: $pwExit (continuing)" }
+  }
+} else {
+  Write-Warn 'Skipped password alignment'
+}
+
+# Bring up remaining services
 docker compose $composeFiles up -d
-if($LASTEXITCODE -ne 0){ Write-Err 'docker compose up failed'; exit 4 }
+if($LASTEXITCODE -ne 0){ Write-Err 'docker compose up (remaining services) failed'; exit 4 }
 
 # 3. Internal readiness (poll backend through nginx container)
 if(-not $SkipReadyCheck){
@@ -106,6 +133,14 @@ if(-not $SkipEdgeVerify){
   if($EmitMetrics){ Write-Info 'Metrics file: ops/metrics/edge.prom' }
 } else { Write-Warn 'Skipped edge verification' }
 
-# 5. Summary
+# 5. Guard index (ensure production build served)
+if(-not $SkipIndexGuard){
+  Write-Info 'Running index guard'
+  & pwsh $guardIndex -ComposeFiles @('docker-compose.prod.yml','docker-compose.prod.override.yml')
+  if($LASTEXITCODE -ne 0){ Write-Err 'Index guard failed'; exit 7 }
+  Write-Ok 'Index guard passed'
+} else { Write-Warn 'Skipped index guard' }
+
+# 6. Summary
 Write-Ok 'Production stack deployed and verified'
 Write-Info 'Next: tail logs with: docker compose -f docker-compose.prod.yml -f docker-compose.prod.override.yml logs -f nginx'

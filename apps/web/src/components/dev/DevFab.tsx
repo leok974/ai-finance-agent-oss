@@ -9,7 +9,7 @@ export default function DevFab() {
   const toggle = useCallback(() => {
     const next = !isDevUIEnabled();
     setDevUIEnabled(next);
-    try { emitToastSuccess?.(`Dev UI ${next ? 'enabled' : 'disabled'}`); } catch {}
+  try { emitToastSuccess?.(`Dev UI ${next ? 'enabled' : 'disabled'}`); } catch { /* toast optional */ }
     // also persist dock visibility consistent with legacy usage
     if (!next) localStorage.setItem('DEV_DOCK', '0');
     location.reload();

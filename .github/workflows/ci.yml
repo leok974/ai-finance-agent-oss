@@ -56,6 +56,11 @@ jobs:
       - name: Alembic sanity (non-fatal)
         run: python -m alembic current || true
 
+      - name: Freeze omit list (.coveragerc)
+        run: |
+          if [ "${ALLOW_OMIT_DIFF}" = "1" ]; then echo "ALLOW_OMIT_DIFF=1 set; skipping omit diff guard"; exit 0; fi
+          git diff --exit-code .coveragerc || { echo "Change in .coveragerc detected. If intentional, set ALLOW_OMIT_DIFF=1 and add rationale to PR." ; exit 1 ; }
+
       - name: Run backend tests with coverage
         run: pytest --cov=app --cov-report=xml --cov-report=term
 

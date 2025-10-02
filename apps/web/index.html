@@ -13,10 +13,12 @@
   <meta property="og:title" content="LedgerMind" />
   <meta property="og:type" content="website" />
   <meta property="og:image:alt" content="LedgerMind" />
+    <!-- CSP meta removed; enforced via nginx headers -->
+  <link rel="stylesheet" href="/src/index.css" />
   </head>
   <body class="dark">
     <div id="root"></div>
-    <!-- change this line: -->
+    <!-- Main entry script -->
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

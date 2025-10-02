@@ -102,7 +102,7 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
           setMonthsWindow(Number(months ?? 6));
           // Scroll to this panel's root
           document.getElementById('charts-panel')?.scrollIntoView?.({ behavior: 'smooth' });
-        } catch {}
+        } catch (_err) { /* intentionally empty: swallow to render empty-state */ }
       }
     }
     window.addEventListener('open-category-chart', onOpenChart as any);

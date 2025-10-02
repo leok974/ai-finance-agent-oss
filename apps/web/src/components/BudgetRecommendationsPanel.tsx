@@ -26,7 +26,7 @@ export default function BudgetRecommendationsPanel() {
   const [busyRow, setBusyRow] = React.useState<string | null>(null);
 
   React.useEffect(() => {
-    try { localStorage.setItem(LS_KEY, String(months)); } catch {}
+    try { localStorage.setItem(LS_KEY, String(months)); } catch (_err) { /* intentionally empty: swallow to render empty-state */ }
   }, [months]);
 
   const load = React.useCallback(async (m: number) => {

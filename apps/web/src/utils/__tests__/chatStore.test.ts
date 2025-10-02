@@ -3,15 +3,19 @@ import { chatStore, snapshot, hasSnapshot, restoreFromSnapshot, discardSnapshot,
 
 // Provide minimal localStorage + BroadcastChannel polyfills for happy-dom
 class MockBroadcastChannel {
-  name: string; handlers: Record<string, Function[]> = {};
+  name: string; handlers: Record<string, Array<(ev: { data: unknown }) => void>> = {};
   constructor(name: string) { this.name = name; }
-  postMessage(_msg: any) { (this.handlers['message']||[]).forEach(fn=>fn({ data: _msg })); }
-  addEventListener(type: string, fn: any) { (this.handlers[type] ||= []).push(fn); }
+  postMessage(_msg: unknown) { (this.handlers['message']||[]).forEach(fn=>fn({ data: _msg })); }
+  addEventListener(type: string, fn: (ev: { data: unknown }) => void) { (this.handlers[type] ||= []).push(fn); }
   close() {}
 }
 
-// @ts-ignore
-if (!(globalThis as any).BroadcastChannel) (globalThis as any).BroadcastChannel = MockBroadcastChannel as any;
+// Assign polyfill only if missing (keep native type if present)
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+if (typeof (globalThis as any).BroadcastChannel === 'undefined') {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (globalThis as any).BroadcastChannel = MockBroadcastChannel;
+}
 
 function make(role: string, content: string): BasicMsg { return { role, content, createdAt: Date.now() }; }
 

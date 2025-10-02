@@ -3,10 +3,12 @@ services:
     image: postgres:15
     environment:
       POSTGRES_USER: myuser
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_password
       POSTGRES_DB: finance
     volumes:
       - pgdata:/var/lib/postgresql/data
+    secrets:
+      - db_password
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U myuser -d finance || exit 1"]
       interval: 10s
@@ -25,38 +27,48 @@ services:
       ENV: "prod"
       DEBUG: "0"
       APP_ENV: "prod"
-      ENCRYPTION_ENABLED: ${ENCRYPTION_ENABLED:-0}
+      ENCRYPTION_ENABLED: "1"
       CRYPTO_STRICT_STARTUP: ${CRYPTO_STRICT_STARTUP:-0}
-      GCP_KMS_KEY: "projects/ledgermind-03445-3l/locations/global/keyRings/ledgermind/cryptoKeys/backend"
-      MASTER_KEK_B64: ${MASTER_KEK_B64}
-      ENCRYPTION_MASTER_KEY_BASE64: ${ENCRYPTION_MASTER_KEY_BASE64:-${MASTER_KEK_B64}}
-      GCP_KMS_AAD: ${GCP_KMS_AAD:-ledgermind-prod}
+      GCP_KMS_KEY: "projects/ledgermind-03445-3l/locations/us-east1/keyRings/ledgermind/cryptoKeys/kek"
+      GCP_KMS_AAD: "app=ledgermind,env=prod"
       GOOGLE_APPLICATION_CREDENTIALS: /secrets/gcp-sa.json
-      DATABASE_URL: "postgresql+psycopg://myuser:${POSTGRES_PASSWORD}@postgres:5432/finance"
+      # Set CRYPTO_REQUIRED=false to allow startup without functioning KMS (downgrades errors to warnings)
+      CRYPTO_REQUIRED: "false"
+      # Use DATABASE_URL_FILE secret indirection (populated via entrypoint sh wrapper)
+      DATABASE_URL_FILE: /run/secrets/backend_db_url
       CORS_ALLOW_ORIGINS: "https://ledger-mind.org,https://www.ledger-mind.org"
       FRONTEND_ORIGIN: "https://ledger-mind.org"
       COOKIE_SAMESITE: ${COOKIE_SAMESITE:-none}
       COOKIE_SECURE: ${COOKIE_SECURE:-1}
       COOKIE_DOMAIN: ${COOKIE_DOMAIN:-app.ledger-mind.org}
       TRUSTED_PROXY_CIDRS: "172.21.0.0/16"
-      # LLM configuration (local Ollama runtime)
       OPENAI_BASE_URL: "${OPENAI_BASE_URL:-http://ollama:11434/v1}"
-      # For prod, prefer Docker secret; no env var for OPENAI_API_KEY here
-      # Optional: tell the app where to read the key from
       OPENAI_API_KEY_FILE: /run/secrets/openai_api_key
       OPENAI_FALLBACK_MODEL: "${OPENAI_FALLBACK_MODEL:-gpt-4o-mini}"
       MODEL: "${MODEL:-gpt-oss:20b}"
       DEV_ALLOW_NO_LLM: "${DEV_ALLOW_NO_LLM:-0}"
-      ALLOWED_HOSTS: "localhost,127.0.0.1,ledger-mind.org,app.ledger-mind.org,api.ledger-mind.org"
+      ALLOWED_HOSTS: "localhost,127.0.0.1,ledger-mind.org,app.ledger-mind.org,api.ledger-mind.org,nginx"
+      ANALYTICS_DB: "1"
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      LLM_CONNECT_TIMEOUT: "10"
+      LLM_READ_TIMEOUT: "45"
+      LLM_INITIAL_RETRY: "1"
+      LLM_WARM_WINDOW_S: "60"
+      KMS_PROVIDER: "gcp"
+      GRPC_VERBOSITY: "ERROR"
+      GRPC_TRACE: ""
+      HELP_TTL_SECONDS: "86400"
+      REPHRASE_VERSION: "v1"
+      PRIMARY_MODEL_TAG: "gpt-oss:20b"
+      BACKEND_BRANCH: ${BACKEND_BRANCH:-unknown}
+      BACKEND_COMMIT: ${BACKEND_COMMIT:-unknown}
     depends_on:
       postgres:
         condition: service_healthy
       ollama:
         condition: service_started
-    # Secrets temporarily disabled locally due to Windows bind issue; override can re-enable
-    # secrets:
-    #   - source: openai_api_key
-    #       target: openai_api_key
+    secrets:
+      - backend_db_url
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request,sys;hdr={'Host':'backend'};\nfor u in ('http://127.0.0.1:8000/live','http://127.0.0.1:8000/healthz'):\n  try:\n    req=urllib.request.Request(u,headers=hdr);\n    with urllib.request.urlopen(req,timeout=2) as r:\n      if r.getcode()==200: sys.exit(0)\n  except Exception: pass\nsys.exit(1)"]
       interval: 10s
@@ -64,6 +76,9 @@ services:
       retries: 10
       start_period: 60s
     restart: unless-stopped
+    volumes:
+      # Mount the actual service account JSON file (not the directory) so GOOGLE_APPLICATION_CREDENTIALS points to a file
+      - ./secrets/gcp-sa.json/ledgermind-backend-sa.json:/secrets/gcp-sa.json:ro
 
   nginx:
     build:
@@ -93,7 +108,7 @@ services:
       - /var/cache/nginx:rw,noexec,nosuid,nodev,size=64m,uid=101,gid=101,mode=0755
       - /var/run:rw,noexec,nosuid,nodev,size=16m,uid=101,gid=101,mode=0755
     healthcheck:
-      test: ["CMD-SHELL","wget -q -O /dev/null http://127.0.0.1:80/api/live || exit 1"]
+      test: ["CMD-SHELL","wget -q -O /dev/null http://127.0.0.1:80/_up || exit 1"]
       interval: 10s
       timeout: 3s
       retries: 10
@@ -124,10 +139,13 @@ services:
   cloudflared:
     image: cloudflare/cloudflared:latest
     command: tunnel run
-    environment:
-      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
+    # Using credentials-file mode via mounted config/credentials. Remove token env to avoid ambiguity.
+    # environment:
+    #   TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
     volumes:
       - ./cloudflared:/etc/cloudflared:ro
+    ports:
+      - "2000:2000" # expose metrics for strict verification
     depends_on:
       - nginx
     restart: unless-stopped
@@ -142,6 +160,9 @@ services:
       - OLLAMA_KEEP_ALIVE=5m
     ports:
       - "11434:11434"
+    volumes:
+      # Persist large model downloads across container recreations
+      - ollama-models:/root/.ollama
 
   # Sidecar to present 127.0.0.1:11434 inside backend netns, forwarding to ollama service
 
@@ -167,9 +188,14 @@ volumes:
   certbot_www:
   letsencrypt:
   # removed named volume 'ollama' in favor of bind mount for model store stability
+  ollama-models:
 
 secrets:
   openai_api_key:
     # Use absolute Windows path to avoid Docker Desktop bind issues on Windows
     file: C:/ai-finance-agent-oss-clean/secrets/openai_api_key
+  db_password:
+    file: ./secrets/db_password.txt
+  backend_db_url:
+    file: ./secrets/backend_database_url.txt
 

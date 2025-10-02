@@ -69,27 +69,22 @@ export async function getHelp({ cardId, mode, month, ctx, baseText }) {
     }
 
     if (!res.ok) {
-      // Retry once via /api/help for forward compatibility with canonical /api path
-      try {
-        const res2 = await fetch('/api/help', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json', ...(etag ? { 'If-None-Match': etag } : {}) },
-            body: JSON.stringify({ card_id: cardId, mode, month: month || null, deterministic_ctx: ctx, base_text: baseText || null }),
-          signal: ctrl.signal,
-        });
-        if (res2.status === 304) {
-          const cached = mem.get(key) || ls;
-          if (cached) return { ...cached, cached: true };
-        }
-        if (!res2.ok) throw new Error('help ' + res.status + '/' + res2.status);
-        const data2 = await res2.json();
-        data2.etag = res2.headers.get('ETag') || undefined;
-        mem.set(key, data2);
-        saveLS(key, data2);
-        return data2;
-      } catch (e) {
-        throw e;
+      const res2 = await fetch('/api/help', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', ...(etag ? { 'If-None-Match': etag } : {}) },
+        body: JSON.stringify({ card_id: cardId, mode, month: month || null, deterministic_ctx: ctx, base_text: baseText || null }),
+        signal: ctrl.signal,
+      });
+      if (res2.status === 304) {
+        const cached = mem.get(key) || ls;
+        if (cached) return { ...cached, cached: true };
       }
+      if (!res2.ok) throw new Error('help ' + res.status + '/' + res2.status);
+      const data2 = await res2.json();
+      data2.etag = res2.headers.get('ETag') || undefined;
+      mem.set(key, data2);
+      saveLS(key, data2);
+      return data2;
     }
     const data = await res.json();
     data.etag = res.headers.get('ETag') || undefined;

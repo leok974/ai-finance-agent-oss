@@ -68,7 +68,7 @@ describe('SaveRuleModal (unit)', () => {
     }
 
   await waitFor(() => expect((apiModule as any).saveRule).toHaveBeenCalledTimes(1));
-  try { await clickToastAction(/view rules/i, 300); } catch {}
+  try { await clickToastAction(/view rules/i, 300); } catch (_err) { /* intentionally empty: swallow to render empty-state */ }
     const call = (apiModule as any).saveRule.mock.calls[0][0];
     expect(call).toEqual(expect.objectContaining({
       rule: expect.objectContaining({ name: expect.stringMatching(/Dining spend -10%/i) }),

@@ -21,6 +21,7 @@ dependencies = [
     "cryptography>=42.0.0",
     "google-cloud-kms>=2.21.0",
     "prometheus-fastapi-instrumentator>=6.1.0",
+    "prometheus-client>=0.20.0",
 ]
 
 [tool.ruff]

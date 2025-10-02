@@ -77,10 +77,10 @@ const TOOL_GROUPS: Array<{ label: string; items: ToolSpec[] }> = [
   {
     label: "Charts",
     items: [
-      { key: "charts.summary",   label: "Charts: Summary",         path: "/agent/tools/charts/summary",          examplePayload: { month: undefined } },
-      { key: "charts.merchants", label: "Charts: Top Merchants",   path: "/agent/tools/charts/merchants",        examplePayload: { month: undefined, limit: 10 } },
-      { key: "charts.flows",     label: "Charts: Flows",           path: "/agent/tools/charts/flows",            examplePayload: { month: undefined } },
-      { key: "charts.trends",    label: "Charts: Spending Trends", path: "/agent/tools/charts/spending_trends",  examplePayload: { month: undefined, months_back: 6 } },
+  { key: "charts.summary",   label: "Charts: Summary",         path: "/agent/tools/charts/summary",          examplePayload: { month: undefined } },
+  { key: "charts.merchants", label: "Charts: Top Merchants",   path: "/agent/tools/charts/merchants",        examplePayload: { month: undefined, limit: 10 } },
+  { key: "charts.flows",     label: "Charts: Flows",           path: "/agent/tools/charts/flows",            examplePayload: { month: undefined } },
+  { key: "charts.trends",    label: "Charts: Spending Trends", path: "/agent/tools/charts/spending-trends",  examplePayload: { month: undefined, months_back: 6 } },
     ],
   },
   {
@@ -287,7 +287,7 @@ export default function ChatDock() {
         window.setTimeout(() => setRestoredVisible(false), 4500);
       }
       sessionStorage.removeItem('chat:restored_at');
-    } catch {}
+    } catch (_err) { /* intentionally empty: swallow to render empty-state */ }
   }, []);
 
   // --- helpers for timestamps & day dividers ---
@@ -317,7 +317,7 @@ export default function ChatDock() {
       if (provider) {
         telemetry.track('chat_fallback_used', { provider: String(provider) });
       }
-    } catch {}
+    } catch (_err) { /* intentionally empty: swallow to render empty-state */ }
     try { chatDiscardSnapshot(); } catch { /* ignore */ }
     setChatResp({
       reply: text,
@@ -519,10 +519,10 @@ export default function ChatDock() {
           }));
           setUiMessages(mapped);
         } catch { /* ignore */ }
-  try { sessionStorage.setItem('chat:restored_at', String(Date.now())); } catch {}
+  try { sessionStorage.setItem('chat:restored_at', String(Date.now())); } catch (_err) { /* intentionally empty: swallow to render empty-state */ }
   setRestoredVisible(true);
   window.setTimeout(() => setRestoredVisible(false), 4500);
-        try { /* optional: clear snapshot explicitly if needed */ chatDiscardSnapshot(); } catch {}
+        try { /* optional: clear snapshot explicitly if needed */ chatDiscardSnapshot(); } catch (_err) { /* intentionally empty: swallow to render empty-state */ }
       }
       // close snackbar shortly after click
       setUndoClosing(true);
@@ -576,7 +576,7 @@ export default function ChatDock() {
     try {
       const saved = sessionStorage.getItem('fa.model');
       if (saved) setSelectedModel(saved);
-    } catch {}
+    } catch (_err) { /* intentionally empty: swallow to render empty-state */ }
   }, []);
 
   // Save when it changes (per-tab)
@@ -584,7 +584,7 @@ export default function ChatDock() {
     try {
       if (selectedModel) sessionStorage.setItem('fa.model', selectedModel);
       else sessionStorage.removeItem('fa.model');
-    } catch {}
+    } catch (_err) { /* intentionally empty: swallow to render empty-state */ }
   }, [selectedModel]);
 
   // handle keyboard
@@ -726,7 +726,7 @@ export default function ChatDock() {
               if (unk) bullets.push(`Unknown spend: $${unk}`);
               return `Expanded insights${m}\n\n- ${bullets.join('\n- ')}\n\nRephrase clearly with MoM highlights if present, then one actionable tip.`;
             }
-          } catch {}
+          } catch (_err) { /* intentionally empty: swallow to render empty-state */ }
           // Generic fallback: pretty JSON
           return `Rephrase this result for the user, concise and clear.\n\n${JSON.stringify(payload, null, 2)}`;
         })(tool, data);
@@ -768,7 +768,7 @@ export default function ChatDock() {
   };
 
   // Composer send (optimistic append + context-aware) REPLACED to support AGUI SSE
-  function aguiLog(evt: string, data: any) { try { console.debug(`[agui] ${evt}`, data); } catch {} }
+  function aguiLog(evt: string, data: any) { try { console.debug(`[agui] ${evt}`, data); } catch (_err) { /* intentionally empty: swallow to render empty-state */ } }
   const handleSend = React.useCallback(async (ev?: React.MouseEvent | React.KeyboardEvent) => {
     if (busy) return;
     const text = input.trim();
@@ -1867,7 +1867,7 @@ export default function ChatDock() {
         defaultCategory={(() => {
           // Heuristic: attempt to extract category in quotes from scenario text e.g. "Dining out"
           const src = saveRuleScenario || '';
-            const q = src.match(/\"([^\"]{2,40})\"/);
+            const q = src.match(/"([^"]{2,40})"/);
             if (q) return q[1];
             // fallback: look for single word after 'cut' or 'reduce'
             const m = src.match(/(?:cut|reduce)\s+([A-Za-z][A-Za-z\s]{2,30})/i);

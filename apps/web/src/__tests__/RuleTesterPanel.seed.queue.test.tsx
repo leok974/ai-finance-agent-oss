@@ -1,17 +1,14 @@
-/// <reference types="vitest" />
-/// <reference types="vite/client" />
+// Removed legacy triple-slash references; explicit imports below provide types.
 import { describe, it, beforeEach, expect, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import React from 'react';
 
 // Provide deterministic crypto for idempotency key path if triggered
 beforeEach(() => {
   // No crypto override needed
   // Clean globals
-  // @ts-ignore
   delete window.__openRuleTester;
   // Queue pending seed prior to mount
-  // @ts-ignore
   window.__pendingRuleSeed = {
     name: 'If merchant contains "QUEUED"',
     when: { merchant: 'QUEUED' },
@@ -20,7 +17,7 @@ beforeEach(() => {
   };
 });
 
-vi.mock('@/lib/schemas', () => ({ ThresholdsSchema: { parse: (x: any) => x || {} } }));
+vi.mock('@/lib/schemas', () => ({ ThresholdsSchema: { parse: (x: unknown) => (x as Record<string, unknown>) || {} } }));
 
 // Avoid network code paths; we only assert the queued draft populates form on mount.
 vi.mock('@/api', () => ({
@@ -65,7 +62,6 @@ describe('RuleTesterPanel queued seed consumption', () => {
     expect(categoryField).toHaveValue('QueuedCat');
 
     // Ensure queue was cleared
-    // @ts-ignore (global augmentation)
-    expect(window.__pendingRuleSeed).toBeNull();
+  expect(window.__pendingRuleSeed).toBeNull();
   });
 });

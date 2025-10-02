@@ -8,7 +8,9 @@ function runtimeDevFlag(): boolean {
       localStorage.removeItem('DEV_UI');
       return true;
     }
-  } catch {}
+  } catch {
+    // ignore storage access errors (SSR / private mode)
+  }
   return (import.meta as any).env?.VITE_DEV_UI === '1';
 }
 

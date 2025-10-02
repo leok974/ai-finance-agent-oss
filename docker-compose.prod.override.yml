@@ -17,6 +17,13 @@ services:
       - /var/run:rw,noexec,nosuid,nodev,size=16m,uid=101,gid=101,mode=0755
     ulimits:
       nofile: 65536
+    healthcheck:
+      # Hardened curl healthcheck: fast connect, bounded total retry window
+      test: ["CMD", "sh", "-c", "curl --connect-timeout 2 --retry 5 --retry-delay 2 --retry-max-time 15 -fsS -o /dev/null http://127.0.0.1/_up || exit 1"]
+      interval: 10s
+      timeout: 4s
+      retries: 5
+      start_period: 30s
     deploy:
       resources:
         limits:
@@ -63,7 +70,8 @@ services:
       # - seccomp:./security/seccomp-tight.json
     restart: unless-stopped
     depends_on:
-      - nginx
+      nginx:
+        condition: service_healthy
     healthcheck:
       # Simple metrics probe; exits non-zero if metric missing
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:2000/metrics | grep -q cloudflared_tunnel_ha_connections"]
@@ -77,37 +85,6 @@ services:
     secrets: []
     env_file:
       - ./secrets/backend.env
-    environment:
-      OPENAI_BASE_URL: "http://host.docker.internal:11434/v1"
-      ANALYTICS_DB: "1"
-      OPENAI_API_KEY: ${OPENAI_API_KEY}
-      OPENAI_API_KEY_FILE: ""  # neutralize file-based loading locally
-      MODEL: "gpt-oss:20b"
-      OLLAMA_HOST: host.docker.internal
-      OLLAMA_PORT: "11434"
-      DEV_ALLOW_NO_LLM: "0"
-      # LLM warmup / timeout tuning (see OPERATIONS.md Model Warming section)
-      LLM_CONNECT_TIMEOUT: "10"
-      LLM_READ_TIMEOUT: "45"
-      LLM_INITIAL_RETRY: "1"
-      LLM_WARM_WINDOW_S: "60"
-      MASTER_KEK_B64: ${MASTER_KEK_B64}
-      ENCRYPTION_MASTER_KEY_BASE64: ${ENCRYPTION_MASTER_KEY_BASE64:-${MASTER_KEK_B64}}
-      ENCRYPTION_ENABLED: "1"           # flipped on for KMS mode
-      CRYPTO_STRICT_STARTUP: "0"        # allow init after start
-      KMS_PROVIDER: "gcp"
-      GCP_KMS_KEY: "projects/ledgermind-03445-3l/locations/us-east1/keyRings/ledgermind/cryptoKeys/kek"
-      GCP_KMS_AAD: "app=ledgermind,env=prod"
-      GOOGLE_APPLICATION_CREDENTIALS: "/secrets/gcp-sa.json"  # mount provided below
-      GRPC_VERBOSITY: "ERROR"
-      GRPC_TRACE: ""
-      # Unified Help API caching / rephrase knobs
-      HELP_TTL_SECONDS: "86400"
-      REPHRASE_VERSION: "v1"
-      PRIMARY_MODEL_TAG: "gpt-oss:20b"
-      # Build metadata (injected at deploy time by CI or local script)
-      BACKEND_BRANCH: ${BACKEND_BRANCH:-unknown}
-      BACKEND_COMMIT: ${BACKEND_COMMIT:-unknown}
     read_only: true
     user: "10001:10001"
     cap_drop: ["ALL"]
@@ -161,6 +138,14 @@ services:
       ollama pull phi3:3.8b      || true
       echo "Seeded models."
     restart: "no"
+
+  debugbox:
+    image: alpine:3.20
+    command: ["sh", "-lc", "sleep infinity"]
+    depends_on:
+      - nginx
+    networks:
+      - default
 
 volumes:
   letsencrypt:

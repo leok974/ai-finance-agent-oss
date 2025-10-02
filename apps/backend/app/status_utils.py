@@ -44,13 +44,31 @@ class LLMStatus:
 
 
 def check_db(url: str) -> DBStatus:
-    """Simple synchronous DB connectivity check (no ORM metadata load)."""
+    """Simple synchronous DB connectivity check (no ORM metadata load).
+
+    Uses existing global engine when URL matches to avoid transient new engine creation
+    (prevents leaked connections / ResourceWarnings in tests). Falls back to a one-off
+    ephemeral engine only if necessary (e.g., different URL passed explicitly).
+    """
     try:
-        engine = create_engine(url, pool_pre_ping=True, future=True)
-        with engine.connect() as c:
+        try:
+            from app.db import engine as global_engine  # type: ignore
+        except Exception:  # pragma: no cover - fallback path
+            global_engine = None  # type: ignore
+        eng = None
+        if global_engine is not None:
+            try:
+                if str(global_engine.url) == url:
+                    eng = global_engine
+            except Exception:
+                pass
+        if eng is None:
+            # Fallback ephemeral engine (will GC quickly). Not using pool_pre_ping to keep it lean.
+            eng = create_engine(url, future=True)
+        with eng.connect() as c:
             c.execute(text("select 1"))
         return DBStatus(ok=True)
-    except Exception as e:  # broad: we only surface class name to avoid secrets leakage
+    except Exception as e:  # broad: only class name to avoid secret leakage
         return DBStatus(ok=False, error=type(e).__name__)
 
 

@@ -8,7 +8,7 @@ import { AgentResultRenderer } from "./components/AgentResultRenderers";
 import { emitToastSuccess } from "@/lib/toast-helpers";
 import { t } from '@/lib/i18n';
 // import RulesPanel from "./components/RulesPanel";
-import { getAlerts, getMonthSummary, getMonthMerchants, getMonthFlows, getHealthz, api, resolveMonthFromCharts, agentTools } from './lib/api'
+import { getAlerts, getMonthSummary, getMonthMerchants, getMonthFlows, getHealthz, api, agentTools, fetchLatestMonth } from './lib/api'
 import { flags } from "@/lib/flags";
 import AboutDrawer from './components/AboutDrawer';
 import RulesPanel from "./components/RulesPanel";
@@ -78,48 +78,35 @@ const App: React.FC = () => {
           const next = !isDevUIEnabled();
           window.dispatchEvent(new CustomEvent('devui:soft', { detail: { value: next }}));
           window.dispatchEvent(new CustomEvent('devui:changed', { detail: { value: next, soft: true }}));
-          try { emitToastSuccess?.(next ? t('ui.toast.dev_ui_soft_on') : t('ui.toast.dev_ui_soft_off')); } catch {}
+          try { emitToastSuccess?.(next ? t('ui.toast.dev_ui_soft_on') : t('ui.toast.dev_ui_soft_off')); } catch (_err) { /* intentionally empty: swallow to render empty-state */ }
         } else if (e.shiftKey) {
           // Hard persistent toggle
           const next = !isDevUIEnabled();
           setDevUIEnabled(next);
-          try { emitToastSuccess?.(next ? t('ui.toast.dev_ui_enabled') : t('ui.toast.dev_ui_disabled')); } catch {}
+          try { emitToastSuccess?.(next ? t('ui.toast.dev_ui_enabled') : t('ui.toast.dev_ui_disabled')); } catch (_err) { /* intentionally empty: swallow to render empty-state */ }
           location.reload();
         }
-      } catch {}
+      } catch (_err) { /* intentionally empty: swallow to render empty-state */ }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  // Initialize month once
-  async function resolveMonth(): Promise<string> {
-    // GET-only path compatible with older backend
-    const viaCharts = await resolveMonthFromCharts();
-    return viaCharts || "";
-  }
+  // Legacy month initialization via charts retained only as fallback inside fetchLatestMonth (POST now canonical)
 
   useEffect(() => {
     if (booted.current) return; // guard re-run in dev (StrictMode)
     booted.current = true;
     (async () => {
-      // Core readiness gate: fetch /api/status to decide whether to defer heavier chart calls
+      // Core readiness gate: fetch /ready (new canonical) to decide whether to defer heavier chart calls
       try {
-        const statusResp = await fetch('/api/status', { credentials: 'include' });
-        if (statusResp.ok) {
-          const st = await statusResp.json();
-          const coreReady = st?.db?.ok && st?.migrations?.ok;
-          if (!coreReady) {
-            console.warn('[boot] backend core not ready (db/migrations). Charts fetch will be deferred.');
-          } else {
-            (window as any).__CORE_READY__ = true;
-          }
-        }
+        const statusResp = await fetch('/ready', { credentials: 'include' });
+        if (statusResp.ok) (window as any).__CORE_READY__ = true; else console.warn('[boot] readiness probe not OK');
       } catch (e) {
         console.warn('[boot] status probe failed', e);
       }
-      console.info("[boot] resolving month…");
-      const m = (await resolveMonth())
+      console.info("[boot] resolving month (meta POST)…");
+      const m = (await fetchLatestMonth())
         ?? (() => {
              const now = new Date();
              return `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}`;
@@ -177,7 +164,7 @@ const App: React.FC = () => {
     try {
       setInsights(await agentTools.insightsExpanded({ month, large_limit: 10 }))
       setAlerts(await getAlerts(month))
-    } catch {}
+    } catch (_err) { /* intentionally empty: swallow to render empty-state */ }
   })() }, [authOk, ready, month, refreshKey])
 
   // Probe backend emptiness (latest by default). If charts summary returns null or month:null, show banner.
@@ -249,7 +236,7 @@ const App: React.FC = () => {
                 commit={String((globalThis as any).__WEB_COMMIT__ ?? '')}
                 openDevDock={devDockOpen}
                 onToggleDevDock={() => {
-                  const next = !devDockOpen; setDevDockOpen(next); try { localStorage.setItem('DEV_DOCK', next ? '1' : '0'); } catch {}
+                  const next = !devDockOpen; setDevDockOpen(next); try { localStorage.setItem('DEV_DOCK', next ? '1' : '0'); } catch (_err) { /* intentionally empty: swallow to render empty-state */ }
                 }}
               />
             )}

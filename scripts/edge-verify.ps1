@@ -9,10 +9,6 @@ $UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like
 
 $ErrorActionPreference = "Stop"
 
-function Split-HeaderBlocks([string]$Raw) {
-  if (-not $Raw) { return @() }
-  return ($Raw -split "(`r?`n){2,}")
-}
 function Parse-HeaderMap([string]$Raw) {
   $map = @{}
   if (-not $Raw) { return $map }
@@ -27,16 +23,27 @@ function Parse-HeaderMap([string]$Raw) {
   }
   return $map
 }
-function Get-LastHeaderMap([string]$Url, [ValidateSet("HEAD","GET")]$Method="HEAD", [int]$TimeoutSec=15) {
-  if ($Method -eq "HEAD") {
-    $raw = & curl.exe --ssl-no-revoke --http1.1 -H "User-Agent: $UA" -sSIL --max-time $TimeoutSec $Url
-  } else {
-    $raw = & curl.exe --ssl-no-revoke --http1.1 -H "User-Agent: $UA" -sSL -D - -o NUL --max-time $TimeoutSec $Url
+function Get-LastHeaderMap {
+  param(
+    [Parameter(Mandatory=$true)][string]$Url,
+    [ValidateSet("HEAD","GET")]$Method="HEAD",
+    [int]$TimeoutSec=15
+  )
+  # Strategy: for header reliability we do a dedicated header fetch (-D - -o NUL) then separate body fetch if GET.
+  $headerRaw = & curl.exe --ssl-no-revoke --http1.1 -H "User-Agent: $UA" -sSL -D - -o NUL --max-time $TimeoutSec $Url 2>$null
+  # Split into potential multiple blocks (redirect chain); keep last block starting with HTTP/
+  $candidates = ($headerRaw -split '(?=HTTP/)') | Where-Object { $_ -match '^HTTP/' }
+  $lastBlock = if ($candidates.Count -gt 0) { $candidates[-1] } else { $headerRaw }
+  # Truncate at first blank line to remove any accidental body leakage
+  # Use non-capturing group so split does not inject delimiter tokens, preserving all header lines
+  $headerOnly = ($lastBlock -split "(?:`r?`n){2,}")[0]
+  $map = Parse-HeaderMap $headerOnly
+  $body = $null
+  if ($Method -eq 'GET') {
+    # Separate body fetch (final location, follow redirects)
+    $body = & curl.exe --ssl-no-revoke --http1.1 -H "User-Agent: $UA" -sSL --max-time $TimeoutSec $Url 2>$null
   }
-  $blocks = Split-HeaderBlocks $raw | Where-Object { $_ -match '^HTTP/' }
-  if (-not $blocks -or $blocks.Count -eq 0) { return @{ raw=$raw; map=@{} } }
-  $last = $blocks[-1]
-  return @{ raw=$last; map=(Parse-HeaderMap $last) }
+  return @{ raw=$headerOnly; map=$map; body=$body }
 }
 function HeadThenGetHeaders([string]$Url, [int]$TimeoutSec=15, [string]$UA='Mozilla/5.0') {
   # 1) HEAD
@@ -63,10 +70,10 @@ function HttpCode([string]$Url, [int]$TimeoutSec=15, [int]$Retries=0, [int]$Dela
   return $code
 }
 
-# 1) Index (GET+redirect) + HTML
-$idxHdrObj = Get-LastHeaderMap -Url $HostUrl -Method "GET"
+# 1) Index (GET+redirect) + HTML (final response only)
+$idxHdrObj = Get-LastHeaderMap -Url $HostUrl -Method 'GET' -TimeoutSec 15
 $idxHdr    = $idxHdrObj.map
-$indexHtml = & curl.exe --ssl-no-revoke --http1.1 -H "User-Agent: $UA" -sSL --max-time 15 $HostUrl
+$indexHtml = $idxHdrObj.body
 
 # 2) Asset paths from live index (match until next double quote)
 $jsPath  = ($indexHtml | Select-String -Pattern '/assets/[^" ]+\.js'  -AllMatches).Matches.Value | Select-Object -First 1
@@ -111,11 +118,56 @@ $jsSoftOK  = ($null -ne $jsPath)  -and (-not $jsMimeOK)  -and ( ([int]::TryParse
 [int]$u=0
 $cssSoftOK = ($null -ne $cssPath) -and (-not $cssMimeOK) -and ( ([int]::TryParse(($cssLen|Out-String).Trim(), [ref]$u) -and $u -gt 0) -or ($cssTE -match 'chunked') )
 
-# 4) CSP header or meta (both count)
-$cspHeader = $idxHdr.ContainsKey('content-security-policy')
-$cspMeta   = [bool]([regex]::IsMatch($indexHtml, '<meta\s+http-equiv=["'']content-security-policy["'']', 'IgnoreCase'))
+# 4) CSP header or meta (both count) with case-insensitive detection
+$cspHeader = $false
+$cspHeaderValue = $null
+$rawHeadersForCSP = $idxHdrObj.raw
+if ($rawHeadersForCSP) {
+  # If multiple HTTP/ blocks somehow remain, keep only last
+  $blocksTmp = ($rawHeadersForCSP -split '(?=HTTP/)') | Where-Object { $_ -match '^HTTP/' }
+  if ($blocksTmp.Count -gt 0) { $rawHeadersForCSP = $blocksTmp[-1] }
+  $cspLine = ($rawHeadersForCSP -split "`r?`n") | Where-Object { $_ -match '^(?i)content-security-policy\s*:' } | Select-Object -First 1
+  if ($cspLine) {
+    $cspHeader = $true
+    $cspHeaderValue = ($cspLine -split ':',2)[1].Trim()
+  }
+}
+$cspMeta = $false
+if ($indexHtml) {
+  $cspMeta = [bool]([regex]::IsMatch($indexHtml, '(?is)<meta[^>]+http-equiv\s*=\s*["'']content-security-policy["'']'))
+}
 $cspPresent = $cspHeader -or $cspMeta
 $cspNote = if ($cspHeader -and $cspMeta) { 'both' } elseif ($cspHeader) { 'header' } elseif ($cspMeta) { 'meta' } else { 'absent' }
+
+# Fallback: if header still undetected, use .NET HttpClient (robust against line wrapping)
+if (-not $cspHeader) {
+  try {
+    $handler = [System.Net.Http.HttpClientHandler]::new()
+    $client  = [System.Net.Http.HttpClient]::new($handler)
+    $client.Timeout = [TimeSpan]::FromSeconds(15)
+    $client.DefaultRequestHeaders.UserAgent.ParseAdd($UA)
+    $respMsg = $client.GetAsync($HostUrl).GetAwaiter().GetResult()
+    if ($respMsg -and $respMsg.Headers -and $respMsg.Headers.Contains('Content-Security-Policy')) {
+      $vals = $respMsg.Headers.GetValues('Content-Security-Policy')
+      if ($vals) {
+        $cspHeader = $true
+        $cspHeaderValue = ($vals -join ', ')
+        $cspPresent = $true
+        if ($cspMeta) { $cspNote = 'both' } else { $cspNote = 'header' }
+      }
+    }
+  } catch { }
+}
+
+# 4b) Policy length + SHA256 hash (stable change detector)
+function Get-StringSHA256([string]$s) {
+  if (-not $s) { return "" }
+  $sha = [System.Security.Cryptography.SHA256]::Create()
+  $bytes = [System.Text.Encoding]::UTF8.GetBytes($s)
+  ($sha.ComputeHash($bytes) | ForEach-Object { $_.ToString('x2') }) -join ''
+}
+$cspPolicyLen = if ($cspHeaderValue) { $cspHeaderValue.Length } else { 0 }
+$cspPolicySha = if ($cspHeaderValue) { Get-StringSHA256 $cspHeaderValue } else { '' }
 
 # 5) Core endpoints with healthz retry + transient detection
 $healthz1 = [int](HttpCode "$HostUrl/api/healthz" 15 1 250 $UA)
@@ -158,7 +210,7 @@ if (-not $auth.ok -and -not $auth.challenged) { $critical += 'auth' } elseif ($a
 
 $out=[pscustomobject]@{
   host=$HostUrl
-  index=@{ csp_present=$cspPresent; csp_header=$cspHeader; csp_meta=$cspMeta; csp_note=$cspNote; hdr_via="get+redirect" }
+  index=@{ csp_present=$cspPresent; csp_header=$cspHeader; csp_meta=$cspMeta; csp_note=$cspNote; csp_header_value=$cspHeaderValue; hdr_via="get+redirect" }
   assets=@{ js_path=$jsPath; css_path=$cssPath; js_ct=$jsCT; css_ct=$cssCT; js_len=$jsLen; css_len=$cssLen; js_via=$jsProbe.via; css_via=$cssProbe.via; js_mime_ok=$jsMimeOK; css_mime_ok=$cssMimeOK; js_soft_ok=$jsSoftOK; css_soft_ok=$cssSoftOK; js_te=$jsTE; css_te=$cssTE; js_hdr_raw=$jsRaw; css_hdr_raw=$cssRaw }
   endpoints=@{ healthz=$healthz; ready=$ready; live=$live; up=$up; healthz_transient=$healthz_transient }
   auth=$auth
@@ -176,11 +228,28 @@ edge_assets_soft_ok $assetsSoftOK
 edge_csp_present $([int]([bool]$cspPresent))
 edge_csp_header $([int]([bool]$cspHeader))
 edge_csp_meta $([int]([bool]$cspMeta))
+edge_csp_policy_length $cspPolicyLen
+edge_csp_policy_sha{sha="$cspPolicySha"} 1
 edge_auth_ok $([int]([bool]$auth.ok))
 edge_auth_challenged $([int]([bool]$auth.challenged))
 edge_probe_success $successFlag
 edge_probe_exit_code_os $exitOS
 "@ | Out-File -Encoding ascii -FilePath $MetricsFile
+
+# Optional push to backend edge metrics ingestion endpoint
+try {
+  $pushUrl = $env:EDGE_PUSH_URL
+  if ($pushUrl) {
+    $payload = @{ csp_policy_len = $cspPolicyLen; csp_policy_sha256 = $cspPolicySha }
+    $jsonPayload = $payload | ConvertTo-Json -Compress
+    $headers = @{"Content-Type"="application/json"}
+    if ($env:EDGE_METRICS_TOKEN) { $headers['X-Edge-Token'] = $env:EDGE_METRICS_TOKEN }
+    $resp = Invoke-WebRequest -Uri $pushUrl -Method POST -TimeoutSec 15 -Body $jsonPayload -Headers $headers -UseBasicParsing -ErrorAction Stop
+    # Treat 204/200 as success; ignore others silently to avoid failing primary probe
+  }
+} catch {
+  # swallow errors (network/auth) to keep probe success semantics pure
+}
 
 if ($Json) { $out | ConvertTo-Json -Depth 6 } else { $out }
 if (-not $out.summary.ok) { exit 1 } else { exit 0 }

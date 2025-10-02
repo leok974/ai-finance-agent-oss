@@ -93,7 +93,7 @@ export default function DevBadge({ branch, commit, openDevDock, onToggleDevDock 
       </DropdownMenuTrigger>
 
       <DropdownMenuContent align="end" className="min-w-[220px]">
-        <DropdownMenuItem onClick={() => { try { window.dispatchEvent(new Event('about:open')) } catch {} }}>
+        <DropdownMenuItem onClick={() => { try { window.dispatchEvent(new Event('about:open')) } catch (_err) { /* intentionally empty: swallow to render empty-state */ } }}>
           <Info className="mr-2 h-4 w-4" />
           <span className="flex-1">About (Health)</span>
           <Pill

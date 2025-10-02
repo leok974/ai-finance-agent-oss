@@ -457,13 +457,21 @@ def agent_chat(
             "llm" if bypass else "router",
         )
 
+        # Provide a default path early so middleware / early returns still surface a header.
+        if request is not None and not hasattr(request.state, "llm_path"):
+            request.state.llm_path = "primary" if bypass else "router"
+
         if bypass:
             # Always perform model alias normalization even if LLM disabled
             requested_model = req.model if req.model else settings.DEFAULT_LLM_MODEL
             aliased = MODEL_ALIASES.get(requested_model, requested_model)
             model = aliased or settings.DEFAULT_LLM_MODEL
-            from app.config import DEV_ALLOW_NO_LLM as _DEV_NO_LLM
+            # Dynamic evaluation so monkeypatch / env changes inside tests are honored each request
+            _DEV_NO_LLM = os.getenv("DEV_ALLOW_NO_LLM", str(getattr(settings, "DEV_ALLOW_NO_LLM", "0"))).lower() in {"1","true","yes","on"}
             if _DEV_NO_LLM:
+                if request is not None:
+                    # Under disabled LLM path we intentionally mark as fallback-stub unless a fallback provider appears
+                    request.state.llm_path = "fallback-stub"
                 # Even with LLM disabled, invoke call_llm so alias tests (which monkeypatch call_llm) observe the normalized model.
                 generic = not (req.force_llm or effective_mode or bypass_router or x_bypass_router)
                 try:
@@ -501,7 +509,15 @@ def agent_chat(
                             pass
                 except Exception:
                     pass
-                return JSONResponse(base_stub)
+                # Decide final path_hdr to keep parity with legacy behavior: primary when no fallback, else fallback-<provider>
+                path_hdr = "primary"
+                if base_stub.get("fallback"):
+                    path_hdr = f"fallback-{base_stub['fallback']}"
+                if base_stub.get("stub") and path_hdr == "primary":
+                    path_hdr = "fallback-stub"
+                if request is not None:
+                    request.state.llm_path = path_hdr
+                return JSONResponse(base_stub, headers={"X-LLM-Path": path_hdr})
             intent_hint = INTENT_HINTS.get(req.intent, INTENT_HINTS["general"])
             enhanced_system_prompt = f"{SYSTEM_PROMPT}\n\n{intent_hint}"
             final_messages = [{"role": "system", "content": enhanced_system_prompt}] + [{"role": m.role, "content": m.content} for m in req.messages]
@@ -563,6 +579,8 @@ def agent_chat(
                         "tool_trace": [{"tool": "router", "mode": tool_resp.get("mode"), "args": tool_resp.get("args"), "duration_ms": dt_ms, "status": "short_circuit"}],
                         "model": "deterministic",
                     }
+                    if request is not None and not getattr(request.state, "llm_path", None):
+                        request.state.llm_path = "router"
                 else:
                     _l = last_user_msg.lower()
                     if any(k in _l for k in ("kpi", "kpis", "forecast", "anomal", "recurring", "budget")):
@@ -776,6 +794,76 @@ def _fmt_window(f: Dict[str, Any]) -> str:
     if f and f.get("month"):
         return f" ({f['month']})"
     return ""
+
+# ---------------------------------------------------------------------------
+# Lightweight deterministic month summary (agent-scoped) --------------------
+# Provides a minimal aggregation without requiring charts module import.
+# Returns: { month, start, end, income, expenses, net, top_merchant: {name, spend} }
+# If month not supplied, picks latest Transaction.month.
+if not _HERMETIC:
+    from fastapi import Query
+    from sqlalchemy import func as _func
+
+    @router.get("/summary/month")
+    def agent_month_summary(
+        month: str | None = Query(None, pattern=r"^\d{4}-\d{2}$"),
+        db: Session = Depends(get_db),
+    ):
+        try:
+            # Determine target month
+            target = month
+            if not target:
+                latest = db.query(Transaction.month).order_by(desc(Transaction.month)).first()
+                target = latest.month if latest else None
+            if not target:
+                return {"month": None, "start": None, "end": None, "income": 0.0, "expenses": 0.0, "net": 0.0, "top_merchant": None}
+
+            # Bounds (assumes month format YYYY-MM)
+            try:
+                year, mon = target.split("-")
+                from calendar import monthrange as _mr
+                import datetime as _dt
+                y_i, m_i = int(year), int(mon)
+                last_day = _mr(y_i, m_i)[1]
+                start_date = _dt.date(y_i, m_i, 1)
+                end_date = _dt.date(y_i, m_i, last_day)
+            except Exception:
+                start_date = end_date = None  # defensive
+
+            # Aggregate income (positive) and expenses (abs negative)
+            amt_col = Transaction.amount
+            q_month = db.query(Transaction).filter(Transaction.month == target)
+            income_val = db.query(_func.sum(amt_col)).filter(Transaction.month == target, amt_col > 0).scalar() or 0.0
+            expense_val = db.query(_func.sum(_func.abs(amt_col))).filter(Transaction.month == target, amt_col < 0).scalar() or 0.0
+            net_val = float(income_val) - float(expense_val)
+
+            # Top merchant by absolute spend magnitude (expenses only)
+            merchant_col = _func.coalesce(Transaction.merchant_canonical, Transaction.merchant).label("merchant")
+            spend_col = _func.sum(_func.abs(amt_col)).label("spend")
+            # Deterministic tie-break: order by spend desc, then merchant name asc
+            top_row = (
+                db.query(merchant_col, spend_col)
+                .filter(Transaction.month == target, amt_col < 0)
+                .group_by(merchant_col)
+                .order_by(spend_col.desc(), merchant_col.asc())
+                .limit(1)
+                .first()
+            )
+            top_payload = None
+            if top_row and getattr(top_row, "merchant", None):
+                top_payload = {"name": top_row.merchant, "spend": float(getattr(top_row, "spend", 0.0) or 0.0)}
+
+            return {
+                "month": target,
+                "start": start_date.isoformat() if start_date else None,
+                "end": end_date.isoformat() if end_date else None,
+                "income": float(income_val) or 0.0,
+                "expenses": float(expense_val) or 0.0,
+                "net": float(net_val) or 0.0,
+                "top_merchant": top_payload,
+            }
+        except Exception as e:  # pragma: no cover - defensive
+            raise HTTPException(status_code=500, detail={"error": "month_summary_failed", "message": str(e)})
 
 
 def _summarize_tool_result(tool_resp: Dict[str, Any]) -> str:

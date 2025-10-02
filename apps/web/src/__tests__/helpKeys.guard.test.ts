@@ -26,7 +26,7 @@ describe('Help key integrity', () => {
     const content = files.map(f => fs.readFileSync(f, 'utf8')).join('\n');
 
     // Match cardId="cards.something" or data-help-key="cards.something"
-  const regex = /(?:cardId|data-help-key)=\"([a-zA-Z0-9_.-]+)\"/g;
+    const regex = /(?:cardId|data-help-key)="([a-zA-Z0-9_.-]+)"/g;
     const found = new Set<string>();
     let m: RegExpExecArray | null;
     while ((m = regex.exec(content))) {

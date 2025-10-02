@@ -54,6 +54,10 @@ export default defineConfig({
       "/agent": { target: API, changeOrigin: true },
       "/health": { target: API, changeOrigin: true },
       "/charts": { target: API, changeOrigin: true },
+      "/metrics": { target: API, changeOrigin: true },
+      "/api/metrics": { target: API, changeOrigin: true },
+      "/ready": { target: API, changeOrigin: true },
+      "/_up": { target: API, changeOrigin: true },
     },
   },
   build: {

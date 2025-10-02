@@ -1,4 +1,6 @@
 import { RuleSuggestion as MinedRuleSuggestionStrict, isRuleSuggestionArray } from "@/types/rules";
+import { fetchJSON, fetchAuth, dashSlug } from '@/lib/http';
+import { FEATURES } from '@/config/featureFlags';
 
 // Resolve API base from env, with a dev fallback when running Vite on port 5173
 const rawApiBase = (import.meta as any).env?.VITE_API_BASE;
@@ -39,29 +41,27 @@ export async function api<T = any>(path: string, options: RequestInit = {}): Pro
   }
 }
 
-export const charts = {
-  monthSummary: () => api(`/charts/month_summary`),
-};
-
-// prefer GET-only month resolution to avoid 422s on some branches
-export async function resolveMonthFromCharts(): Promise<string> {
-  try {
-    const r = await charts.monthSummary();
-    return (r as any)?.month ?? "";
-  } catch {
-    return "";
+// Charts: migrated to /agent/tools/charts/* POST endpoints (legacy /charts/* removed backend-side)
+// Helper: generate an array of YYYY-MM strings going backwards from an anchor month (inclusive)
+function monthsBack(anchor: string, count: number): string[] {
+  if (!/^[0-9]{4}-[0-9]{2}$/.test(anchor)) return [];
+  const [y0, m0] = anchor.split('-').map(Number);
+  const out: string[] = [];
+  for (let i = 0; i < count; i++) {
+    const d = new Date(y0, m0 - 1 - i, 1);
+    out.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
   }
+  return out.reverse(); // chronological ascending
 }
 
-// GET-only: older backend compatibility
+// Resolve latest month directly from new meta endpoint
 export async function resolveMonth(): Promise<string> {
   try {
-    const r = await charts.monthSummary();
-    return (r as any)?.month ?? "";
-  } catch {
-    return "";
-  }
+    const r: any = await http('/agent/tools/meta/latest_month');
+    return r?.month || '';
+  } catch { return ''; }
 }
+export const resolveMonthFromCharts = resolveMonth; // alias for backward references
 
 // Optional bearer fallback: keep a transient token if needed (e.g., dev/testing)
 let accessToken: string | null = null;
@@ -78,7 +78,7 @@ function withCreds(init: RequestInit = {}): RequestInit {
       const m = typeof document !== 'undefined' ? document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/) : null;
       const csrf = m && m[1] ? decodeURIComponent(m[1]) : undefined;
       if (csrf && !headers.has("X-CSRF-Token")) headers.set("X-CSRF-Token", csrf);
-    } catch {}
+    } catch (_err) { /* intentionally empty: swallow to render empty-state */ }
   }
   return { ...init, headers, credentials: "include" };
 }
@@ -155,7 +155,7 @@ export async function http<T=any>(path: string, init?: RequestInit): Promise<T> 
   let res = await doFetch();
   if (res.status === 401) {
     // Attempt cookie-based refresh once, then retry original request
-    try { await fetch(apiUrl('/auth/refresh'), withCreds({ method: 'POST' })); } catch {}
+    try { await fetch(apiUrl('/auth/refresh'), withCreds({ method: 'POST' })); } catch (_err) { /* intentionally empty: swallow to render empty-state */ }
     res = await doFetch();
   }
   if (!res.ok) {
@@ -180,7 +180,7 @@ export async function apiPost<T = any>(path: string, body?: any, init?: RequestI
     body: body === undefined ? undefined : JSON.stringify(body),
   }));
   if (res.status === 401) {
-    try { await fetch(`${API_BASE || ''}/auth/refresh`, withCreds({ method: 'POST' })); } catch {}
+    try { await fetch(`${API_BASE || ''}/auth/refresh`, withCreds({ method: 'POST' })); } catch (_err) { /* intentionally empty: swallow to render empty-state */ }
     res = await fetch(url, withCreds({
       ...init,
       method: 'POST',
@@ -275,89 +275,48 @@ const mapKeys = <T extends object>(src: any, pairs: Record<string, string>) => {
 // ---------- Insights / Alerts ----------
 // Use robust fetchJson; keep optional month for backward-compat callers
 export const getInsights = (month?: string) =>
-  fetchJson(`/insights${month ? `?month=${encodeURIComponent(month)}` : ""}`)
+  fetchJSON(`insights`, { query: month ? { month } : undefined })
 export const getAlerts = (month?: string) =>
-  fetchJson(`/alerts${month ? `?month=${encodeURIComponent(month)}` : ""}`)
+  fetchJSON(`alerts`, { query: month ? { month } : undefined })
 export const downloadReportCsv = (month: string) => window.open(`${apiUrl('/report_csv')}${q({ month })}`,'_blank')
 
 // ---------- Charts ----------
-export async function fetchJson(path: string, init?: RequestInit) {
-  const url = API_BASE ? `${API_BASE}${path}` : path;
-  const key = keyFromInit(url, init);
+// (Removed legacy fetchJson wrapper; use fetchJSON from http.ts directly)
 
-  // Pause network work when tab is hidden (prevents background waterfalls)
-  if (typeof document !== "undefined" && (document as any).hidden) {
-    await new Promise<void>((resolve) => {
-      const onVis = () => {
-        if (!(document as any).hidden) {
-          document.removeEventListener("visibilitychange", onVis as any);
-          resolve();
-        }
-      };
-      document.addEventListener("visibilitychange", onVis as any, { once: true } as any);
-    });
+// Minimal shapes for charts responses (only fields accessed by components)
+export interface MonthSummaryResp { month: string | null; categories?: Array<{ category: string; amount: number }>; }
+export interface MonthMerchantsResp { month?: string | null; merchants?: Array<{ name: string; amount: number }>; }
+export interface MonthFlowsResp { month?: string | null; series?: Array<{ name: string; value: number; month?: string }>; }
+
+async function postChart<T>(endpoint: string, body: any): Promise<T | null> {
+  try {
+    return await fetchJSON<T>(`agent/tools/charts/${endpoint}`, { method: 'POST', body: JSON.stringify(body) });
+  } catch (e) {
+    // Swallow 404/410 gracefully – treat as null (empty state)
+    return null;
   }
-
-  // Cached recent response?
-  const now = Date.now();
-  const hit = responseCache.get(key);
-  if (hit && now - hit.t < CACHE_TTL_MS) return hit.p;
-
-  // De-dupe identical in-flight requests
-  if (inflight.has(key)) return inflight.get(key)!;
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 30_000); // 30s hard timeout
-  const merged: RequestInit = { ...init, signal: controller.signal };
-
-  const p = new Promise<any>((resolve, reject) => {
-    runOrQueue(async () => {
-      try {
-        const doFetch = async () => {
-          const headers = withAuthHeaders(merged.headers);
-          return fetch(url, withCreds({ ...merged, headers }));
-        };
-        let res = await doFetch();
-        if (res.status === 401) {
-          try { await fetch(apiUrl('/auth/refresh'), withCreds({ method: 'POST' })); } catch {}
-          res = await doFetch();
-        }
-        if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
-        const json = res.status === 204 ? null : await res.json();
-        resolve(json);
-      } catch (e) {
-        reject(e);
-      } finally {
-        clearTimeout(timeout);
-        inflight.delete(key);
-        responseCache.set(key, { t: Date.now(), p });
-        done();
-      }
-    });
-  });
-
-  inflight.set(key, p);
-  responseCache.set(key, { t: now, p });
-  return p;
 }
 
-export async function getMonthSummary(month?: string) {
-  const qs = month ? `?month=${encodeURIComponent(month)}` : "";
-  return fetchJson(`/charts/month_summary${qs}`);
+export async function getMonthSummary(month?: string): Promise<MonthSummaryResp | null> {
+  if (!month) month = await resolveMonth();
+  return postChart<MonthSummaryResp>('summary', { month });
 }
 
-export async function getMonthMerchants(month?: string) {
-  const qs = month ? `?month=${encodeURIComponent(month)}` : "";
-  return fetchJson(`/charts/month_merchants${qs}`);
+export async function getMonthMerchants(month?: string): Promise<MonthMerchantsResp | null> {
+  if (!month) month = await resolveMonth();
+  return postChart<MonthMerchantsResp>('merchants', { month });
 }
 
-export async function getMonthFlows(month?: string) {
-  const qs = month ? `?month=${encodeURIComponent(month)}` : "";
-  return fetchJson(`/charts/month_flows${qs}`);
+export async function getMonthFlows(month?: string): Promise<MonthFlowsResp | null> {
+  if (!month) month = await resolveMonth();
+  return postChart<MonthFlowsResp>('flows', { month });
 }
 
-export async function getSpendingTrends(months = 6) {
-  return fetchJson(`/charts/spending_trends?months=${months}`);
+export async function getSpendingTrends(windowMonths = 6, anchorMonth?: string) {
+  let month = anchorMonth || await resolveMonth();
+  if (!month) return { trends: [] } as any;
+  const monthsArr = monthsBack(month, windowMonths);
+  return postChart<any>('spending_trends', { months: monthsArr });
 }
 
 // ---------- Analytics (agent tools) ----------
@@ -437,7 +396,7 @@ export async function describe(
   if (res.status === 401) {
     try {
       await fetch(`${API_BASE || ''}/auth/refresh`, withCreds({ method: 'POST' }));
-    } catch {}
+    } catch (_err) { /* intentionally empty: swallow to render empty-state */ }
     res = await doFetch();
   }
 
@@ -452,22 +411,22 @@ export async function describe(
 // ---------- Budgets ----------
 export const budgetCheck = (month?: string) => {
   const qs = month ? `?month=${encodeURIComponent(month)}` : "";
-  return fetchJson(`/budget/check${qs}`);
+  return fetchJSON('budget/check', { query: month ? { month } : undefined });
 }
 export const getBudgetCheck = (month?: string) => {
   const qs = month ? `?month=${encodeURIComponent(month)}` : "";
-  return fetchJson(`/budget/check${qs}`);
+  return fetchJSON('budget/check', { query: month ? { month } : undefined });
 }
 
 // ---------- Unknowns / Suggestions ----------
 export async function getUnknowns(month?: string) {
   const qs = month ? `?month=${encodeURIComponent(month)}` : "";
-  return fetchJson(`/txns/unknowns${qs}`);
+  return fetchJSON('txns/unknowns', { query: month ? { month } : undefined });
 }
 
 export async function getSuggestions(month?: string) {
   const qs = month ? `?month=${encodeURIComponent(month)}` : "";
-  return fetchJson(`/ml/suggest${qs}`);
+  return fetchJSON('ml/suggest', { query: month ? { month } : undefined });
 }
 
 // Rule Suggestions config (thresholds + window)
@@ -476,7 +435,11 @@ export type RuleSuggestConfig = {
   min_positive: number;
   window_days: number | null;
 };
-export const fetchRuleSuggestConfig = () => http<RuleSuggestConfig>(`/rules/suggestions/config`);
+// Suggestions permanently disabled: export guarded stub so any legacy import fails fast in dev
+export const fetchRuleSuggestConfig = () => {
+  if (!FEATURES.suggestions) throw new Error('Rule suggestions disabled');
+  return http<RuleSuggestConfig>(`/rules/suggestions/config`);
+};
 
 // If you have explain/categorize helpers, keep them as-is
 export const categorizeTxn = (id: number, category: string) => http(`/txns/${id}/categorize`, { method: 'POST', body: JSON.stringify({ category }) })
@@ -602,7 +565,7 @@ export async function createRule(body: RuleInput): Promise<RuleCreateResponse> {
       try {
         const t = await r.text();
         if (t) msg += ` — ${t}`;
-      } catch {}
+      } catch (_err) { /* intentionally empty: swallow to render empty-state */ }
     }
     throw new Error(msg);
   }
@@ -810,16 +773,16 @@ export async function agentChat(
     }
     request = { messages, intent: 'general' };
   }
-  return fetchJson(`/agent/chat`, {
+  return fetchJSON<AgentChatResponse>('agent/chat', {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(request),
-  });
+  } as any);
 }
 
 // ---------- Agent status ----------
 export async function agentStatus() {
-  return fetchJson(`/agent/status`).catch(() => ({}));
+  return fetchJSON('agent/status').catch(() => ({}));
 }
 
 // ---------- Reports (Excel/PDF) ----------
@@ -1163,7 +1126,7 @@ export const agentTools = {
   chartsSummary: (body: any, signal?: AbortSignal) => http('/agent/tools/charts/summary', { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' }, signal }),
   chartsMerchants: (body: any, signal?: AbortSignal) => http('/agent/tools/charts/merchants', { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' }, signal }),
   chartsFlows: (body: any, signal?: AbortSignal) => http('/agent/tools/charts/flows', { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' }, signal }),
-  chartsSpendingTrends: (body: any, signal?: AbortSignal) => http('/agent/tools/charts/spending_trends', { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' }, signal }),
+  chartsSpendingTrends: (body: any, signal?: AbortSignal) => http('/agent/tools/charts/spending-trends', { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' }, signal }),
   // Insights
   insightsExpanded: (body: any, signal?: AbortSignal) => http('/agent/tools/insights/expanded', { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' }, signal }),
   // Transactions
@@ -1227,16 +1190,33 @@ export async function getMlStatus() { return http('/ml/status'); }
 export async function mlSelftest() { return http('/ml/selftest', { method: 'POST', body: JSON.stringify({}) }); }
 
 // Simple CSV upload (auto-detect month server side). Backend expected route: /ingest/csv
-export async function uploadCsv(file: File, replace = true): Promise<any> {
+export async function uploadCsv(file: File | Blob, replace = true): Promise<unknown> {
+  // New canonical ingest path: POST /ingest?replace=bool (no /csv suffix)
   const form = new FormData();
-  form.append('file', file);
-  form.append('replace', String(!!replace));
-  // If backend only accepts raw file under a specific field, keep 'file'
-  const res = await fetch(apiUrl('/ingest/csv'), withCreds({ method: 'POST', body: form } as any));
-  if (!res.ok) throw new Error(`Upload failed ${res.status}`);
-  const ct = res.headers.get('content-type') || '';
-  return ct.includes('application/json') ? res.json() : res.text();
+  let toSend: File | Blob = file;
+  let filename = (file as File)?.name;
+  if (!filename) {
+    // Environment's FormData may otherwise assign a generic name like 'blob'; wrap into a File for stable name.
+    try {
+  const blobType = (file as unknown as { type?: string })?.type || 'text/csv';
+  toSend = new File([file], 'upload.csv', { type: blobType });
+      filename = 'upload.csv';
+    } catch {
+      // Fallback: append with explicit filename argument (some polyfills allow Blob + filename)
+      filename = 'upload.csv';
+    }
+  }
+  form.append('file', toSend, filename || 'upload.csv');
+  const path = `/ingest`;
+  return fetchJSON(path + `?replace=${replace ? 'true' : 'false'}`, {
+    method: 'POST',
+    body: form
+  });
 }
 export async function fetchLatestMonth(): Promise<string | null> {
-  try { const ms = await getMonthSummary(); return (ms as any)?.month ?? null; } catch { return null; }
+  // Canonical method: POST meta endpoint (GET may 405)
+  try {
+  const r = await fetchJSON('agent/tools/meta/latest_month', { method: 'POST' }) as { month?: string | null };
+  return r.month ?? null;
+  } catch { return null; }
 }

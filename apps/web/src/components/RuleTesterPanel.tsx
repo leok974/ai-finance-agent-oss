@@ -68,7 +68,7 @@ export default function RuleTesterPanel({ onChanged }: { onChanged?: () => void 
     };
     // Consume any queued seed that arrived pre-mount
     if (window.__pendingRuleSeed) {
-      try { window.__openRuleTester?.(window.__pendingRuleSeed); } catch {}
+      try { window.__openRuleTester?.(window.__pendingRuleSeed); } catch (_err) { /* intentionally empty: swallow to render empty-state */ }
       window.__pendingRuleSeed = null;
     }
     return () => { delete window.__openRuleTester; };
@@ -155,7 +155,7 @@ export default function RuleTesterPanel({ onChanged }: { onChanged?: () => void 
   const ruleKey = (form.name?.trim()) || JSON.stringify(form.when || {});
   cache[ruleKey] = { matched_count: (r as any).matched_count ?? (r as any).count ?? 0, tested_at: new Date().toISOString() };
         localStorage.setItem(key, JSON.stringify(cache));
-      } catch {}
+      } catch (_err) { /* intentionally empty: swallow to render empty-state */ }
     } catch (e: any) {
   emitToastError(t('ui.toast.rule_test_failed_title'), { description: e?.message ?? 'Could not validate the rule. Please check the inputs.' });
     } finally {

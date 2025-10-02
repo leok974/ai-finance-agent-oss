@@ -50,7 +50,7 @@ function RulesPanelImpl({ month, refreshKey }: Props) {
     if (now - lastReqRef.current < COALESCE_MS) return; // coalesce bursts
     lastReqRef.current = now;
     if (abortRef.current) {
-      try { abortRef.current.abort(); } catch {}
+      try { abortRef.current.abort(); } catch (_err) { /* intentionally empty: swallow to render empty-state */ }
     }
     const ac = new AbortController();
     abortRef.current = ac;

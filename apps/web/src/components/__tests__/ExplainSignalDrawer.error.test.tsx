@@ -17,7 +17,7 @@ describe('ExplainSignalDrawer – error state', () => {
   })
 
   it('shows skeletons, then replaces them with an error message on failure', async () => {
-    ;(getExplain as any).mockRejectedValue(new Error('load failed'))
+  (getExplain as unknown as { mockRejectedValue: (v: unknown) => void }).mockRejectedValue(new Error('load failed'))
 
     render(<ExplainSignalDrawer txnId={555} open={true} onOpenChange={() => {}} />)
 

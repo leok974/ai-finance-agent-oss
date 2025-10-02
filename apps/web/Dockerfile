@@ -7,7 +7,8 @@ COPY package.json pnpm-lock.yaml* ./
 RUN corepack enable && corepack prepare pnpm@latest --activate \
 	&& pnpm install --frozen-lockfile
 COPY . .
-RUN pnpm build
+# Generate dynamic build stamp (branch/commit) then build
+RUN node scripts/build-stamp.mjs && pnpm build
 
 # ---- runtime ----
 FROM nginx:1.27-alpine

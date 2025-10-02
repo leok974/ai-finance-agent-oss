@@ -3,11 +3,11 @@ import { render, screen, waitFor } from '@testing-library/react'
 import React from 'react'
 
 vi.mock('@/api', async (orig) => {
-  const mod: any = await orig();
+  const mod = await orig() as Record<string, unknown>;
   return {
     ...mod,
-    getRules: async (...a: any[]) => {
-      (globalThis as any).__rules_getCalls = [ ...(globalThis as any).__rules_getCalls || [], a ];
+    getRules: async (...a: unknown[]) => {
+      g.__rules_getCalls = [ ...(g.__rules_getCalls || []), a ];
       return {
         items: [
           {
@@ -28,12 +28,24 @@ vi.mock('@/api', async (orig) => {
 import RulesPanel from '@/components/RulesPanel'
 import { TooltipProvider } from '@/components/ui/tooltip'
 
+// Force-enable suggestions flag locally to bypass guarded stub throwing in api layer.
+vi.mock('@/config/featureFlags', async (orig) => {
+  const mod = await orig() as { FEATURES?: { suggestions?: boolean } } & Record<string, unknown>;
+  return { ...mod, FEATURES: { ...(mod.FEATURES ?? {}), suggestions: true } };
+});
+
+// Augment global for test bookkeeping
+type TestGlobal = typeof globalThis & {
+  __rules_getCalls?: unknown[];
+}
+const g = globalThis as TestGlobal;
+
 describe('RulesPanel — thresholds badge', () => {
-  beforeEach(() => { (globalThis as any).__rules_getCalls = [] })
+  beforeEach(() => { g.__rules_getCalls = [] })
 
   it('renders a badge summarizing thresholds', async () => {
   render(<TooltipProvider><RulesPanel /></TooltipProvider>)
-  await waitFor(() => expect(((globalThis as any).__rules_getCalls || []).length).toBeGreaterThan(0))
+  await waitFor(() => expect((g.__rules_getCalls || []).length).toBeGreaterThan(0))
 
     expect(await screen.findByText(/Rule A/i)).toBeInTheDocument();
 

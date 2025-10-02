@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from uuid import uuid4
 from decimal import Decimal, ROUND_HALF_UP
-from datetime import datetime
+from datetime import datetime, date
 from app.utils.time import utc_now
 from typing import Optional
 
@@ -106,14 +106,37 @@ def patch_txn(id: int, payload: TxnPatch, db: Session = Depends(get_db)):
     t = db.get(Transaction, id)
     if not t or t.deleted_at:
         raise HTTPException(404, "Not found")
-    for k, v in payload.model_dump(exclude_none=True).items():
+    # We want to explicitly treat amount=None as invalid rather than silently ignoring it;
+    # so iterate over raw dict (include None) and validate.
+    # Only iterate over fields the client actually supplied. Using model_fields_set
+    # lets us distinguish between omission (should ignore) and explicit null (e.g. amount=None -> 400).
+    for k in payload.model_fields_set:
+        v = getattr(payload, k)
         if k == "merchant_raw":
             setattr(t, "merchant", v)
         elif k == "amount":
+            if v is None:
+                raise HTTPException(400, "Invalid amount")
             try:
                 setattr(t, k, Decimal(str(v)))
             except Exception:
                 raise HTTPException(400, "Invalid amount")
+        elif k == "date":
+            # Accept ISO date string (YYYY-MM-DD) from patched schema workaround.
+            # If the client omitted date (None) we ignore rather than error (date is optional).
+            if v is None:
+                # explicit null provided -> treat as invalid for now to avoid clearing required business date
+                raise HTTPException(400, "Invalid date format; expected YYYY-MM-DD")
+            try:
+                parsed = datetime.fromisoformat(v).date() if isinstance(v, str) else v
+                if isinstance(parsed, date):
+                    t.date = parsed
+                    # keep month in sync
+                    t.month = f"{parsed.year:04d}-{parsed.month:02d}"
+                else:
+                    raise ValueError("not a date")
+            except Exception:
+                raise HTTPException(400, "Invalid date format; expected YYYY-MM-DD")
         else:
             setattr(t, k, v)
     db.commit()

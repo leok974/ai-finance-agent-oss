@@ -11,7 +11,7 @@ import ExplainSignalDrawer from '@/components/ExplainSignalDrawer'
 import { getExplain, type ExplainResponse } from '@/api'
 
 const baseTxn = { id: 777, date: '2025-09-01', merchant: 'Target', amount: -25.15, category: 'Groceries' }
-const evidence = { merchant_norm: 'target', rule_match: { id: 12, category: 'Groceries' }, similar: { total: 1, by_category: [{ category: 'Groceries', count: 1 }] }, feedback: { merchant_feedback: [] } }
+const evidence = { merchant_norm: 'target', rule_match: { id: 12, category: 'Groceries' } }
 
 function renderDrawer() {
   return render(<ExplainSignalDrawer txnId={777} open={true} onOpenChange={() => {}} txn={baseTxn} />)
@@ -24,15 +24,8 @@ describe('ExplainSignalDrawer – deterministic fallback rendering', () => {
   })
 
   it('renders fallback HTML when rationale is short', async () => {
-    const mockShort: ExplainResponse = {
-      txn: baseTxn as any,
-      evidence: evidence as any,
-      candidates: [{ source: 'rule', category: 'Groceries', confidence: 1 }],
-      rationale: 'ok',
-      llm_rationale: null,
-      mode: 'deterministic',
-    }
-    ;(getExplain as any).mockResolvedValue(mockShort)
+    const mockShort = { rationale: 'ok', mode: 'deterministic', evidence } as unknown as ExplainResponse
+    (getExplain as unknown as { mockResolvedValue: (v: unknown) => void }).mockResolvedValue(mockShort)
 
     renderDrawer()
     await waitFor(() => expect(screen.getByTestId('explain-drawer')).toBeTruthy())
@@ -48,17 +41,10 @@ describe('ExplainSignalDrawer – deterministic fallback rendering', () => {
 
   it('renders original rationale when content is sufficiently long', async () => {
     const longText = 'This transaction was categorized as Groceries based on prior labeling and explicit rule match.'
-    const mockLong: ExplainResponse = {
-      txn: baseTxn as any,
-      evidence: evidence as any,
-      candidates: [{ source: 'rule', category: 'Groceries', confidence: 1 }],
-      rationale: longText,
-      llm_rationale: null,
-      mode: 'deterministic',
-    }
-    ;(getExplain as any).mockResolvedValue(mockLong)
+    const mockLong = { rationale: longText, mode: 'deterministic', evidence } as unknown as ExplainResponse
+    (getExplain as unknown as { mockResolvedValue: (v: unknown) => void }).mockResolvedValue(mockLong)
 
-    renderDrawer()
+  renderDrawer()
     await waitFor(() => expect(screen.getByTestId('explain-drawer')).toBeTruthy())
 
     // Should not show fallback chip

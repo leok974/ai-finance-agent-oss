@@ -30,7 +30,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (alive) setAuthReady(true);
       }
     })();
-    return () => { alive = false; };
+  return () => { alive = false; };
   }, []);
 
   const login = async (email: string, password: string) => {
@@ -48,7 +48,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = async () => {
-    try { await apiPost("/auth/logout"); } catch {}
+  try { await apiPost("/auth/logout"); } catch { /* ignore logout errors */ }
     setUser(null);
   };
 

@@ -1,4 +1,4 @@
-import { defineConfig } from 'vitest/config'
+import { defineConfig, configDefaults } from 'vitest/config'
 import react from '@vitejs/plugin-react'
 import tsconfigPaths from 'vite-tsconfig-paths'
 
@@ -13,6 +13,19 @@ export default defineConfig({
     setupFiles: ['./src/test/setupTests.ts', './src/__tests__/setup.fetch-mock.ts'],
     globals: true,
     clearMocks: true,
+    // Narrow what we actively collect so third‑party package internal tests (msw, etc.) are never included.
+    include: [
+      'src/**/*.{test,spec}.{ts,tsx}',
+      'tests/unit/**/*.{test,spec}.{ts,tsx}',
+    ],
+    // Start from Vitest's default excludes, then add project‑specific ones.
+    exclude: [
+      ...configDefaults.exclude,
+      'tests/e2e/**', // Playwright tests (handled separately by Playwright)
+      'playwright.config.*',
+      '**/node_modules/**/msw/**', // any path segment containing msw within node_modules
+      '**/.pnpm/**/msw/**',        // pnpm store layout (defensive)
+    ],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'html', 'lcov'],

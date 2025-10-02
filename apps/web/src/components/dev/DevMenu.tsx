@@ -10,9 +10,7 @@ import React from "react";
 
 export default function DevMenu() {
   const isDev = import.meta.env.MODE !== "production";
-  if (!isDev) return null;
-
-  const apiBase = (import.meta as any).env?.VITE_API_BASE || "";
+  const apiBase: string = (import.meta as unknown as { env: Record<string, string | undefined> }).env?.VITE_API_BASE || "";
   const [throttle, setThrottle] = React.useState<{ rate_per_min: number; capacity: number; tokens: number } | null>(null);
   const [open, setOpen] = React.useState(false);
   const [bypass, setBypass] = React.useState<boolean>(() => localStorage.getItem("planner:bypass") === "1");
@@ -34,6 +32,8 @@ export default function DevMenu() {
     setBypass(v);
     localStorage.setItem("planner:bypass", v ? "1" : "0");
   };
+
+  if (!isDev) return null;
 
   return (
   <DropdownMenu open={open} onOpenChange={setOpen}>

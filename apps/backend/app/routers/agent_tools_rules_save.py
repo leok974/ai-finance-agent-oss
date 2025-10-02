@@ -6,26 +6,26 @@ import json, os, threading, time, uuid
 
 try:
     from app.utils.csrf import csrf_protect  # type: ignore
-except Exception:  # pragma: no cover
-    def csrf_protect():  # type: ignore
-        return True
+except Exception:  # pragma: no cover  # optional dependency fallback; see docs/coverage-ratchet.md
+    def csrf_protect():  # type: ignore  # pragma: no cover
+        return True  # pragma: no cover
 
 try:
     from app.services.rules_service import create_rule as create_rule_db  # type: ignore
-except Exception:  # pragma: no cover
-    create_rule_db = None  # type: ignore
+except Exception:  # pragma: no cover  # optional dependency fallback; see docs/coverage-ratchet.md
+    create_rule_db = None  # type: ignore  # pragma: no cover
 
 try:
     from app.services.ack_service import build_ack  # type: ignore
-except Exception:  # pragma: no cover
-    def build_ack(scope: str, updated_count: int = 1) -> str:  # type: ignore
-        return f"[ack] {scope}: ok ({updated_count})"
+except Exception:  # pragma: no cover  # optional dependency fallback; see docs/coverage-ratchet.md
+    def build_ack(scope: str, updated_count: int = 1) -> str:  # type: ignore  # pragma: no cover
+        return f"[ack] {scope}: ok ({updated_count})"  # pragma: no cover
 
 try:
     from app.db import get_db  # type: ignore
-except Exception:  # pragma: no cover
-    def get_db():  # type: ignore
-        yield None
+except Exception:  # pragma: no cover  # optional dependency fallback; see docs/coverage-ratchet.md
+    def get_db():  # type: ignore  # pragma: no cover
+        yield None  # pragma: no cover
 
 router = APIRouter(prefix="/agent/tools/rules", tags=["agent-tools:rules-save"])
 

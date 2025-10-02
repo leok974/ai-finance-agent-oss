@@ -124,7 +124,7 @@ export function Toaster() {
             {item.description && <ToastDescription>{item.description}</ToastDescription>}
             {item.action && typeof item.action === 'object' && item.action.label && (
               <div className='mt-2'>
-                <ToastAction altText={item.action.label} onClick={() => { try { item.action.onClick?.() } catch {} }}> {item.action.label} </ToastAction>
+                <ToastAction altText={item.action.label} onClick={() => { try { item.action.onClick?.() } catch (_err) { /* intentionally empty: swallow to render empty-state */ } }}> {item.action.label} </ToastAction>
               </div>
             )}
           </div>

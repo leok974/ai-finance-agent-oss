@@ -1,5 +1,8 @@
 # AI Finance Agent (gpt-oss:20b)
 
+![Coverage](docs/badges/coverage.svg) 
+![Ingest smoke](https://img.shields.io/github/actions/workflow/status/leok974/ai-finance-agent-oss/ingest-smoke.yml?label=ingest%20smoke)
+
 > Production-ready personal finance + LLM agent stack (FastAPI + React + Ollama/OpenAI) with KMS-backed encryption, Cloudflare tunnel ingress, and hardened nginx edge.
 
 ## Quick Start (Prod Compose Path)
@@ -35,6 +38,401 @@ Access the app via: https://app.ledger-mind.org
 
 Additional verification & smoke steps: see [`docs/VERIFY_PROD.md`](docs/VERIFY_PROD.md).
 
+For a production-like local stack workflow (hash-rendered CSP, nginx edge), see [`docs/PROD_LOCAL_RUNBOOK.md`](docs/PROD_LOCAL_RUNBOOK.md).
+
+> Canonical local edge port is now **80** (legacy 8080 mapping removed). The helper script `scripts/edge-port.ps1` remains for resilience (auto-detects 80/8080 and can fail with `-FailOnMulti` if multiple nginx containers exist). CI enforces a single nginx + port 80; use `make edge-port-strict` locally to mirror that check.
+
+#### Fast Prod-Local Shortcuts
+
+If you have GNU Make installed:
+
+```bash
+make prod-local         # build (unless FAST=1) + up + health/header checks
+make prod-local FAST=1  # skip nginx rebuild
+make prod-local NGINX_ONLY=1  # only start nginx first
+make prod-local-down    # tear down prod-local stack
+```
+
+Windows / environments without `make`:
+
+```powershell
+pwsh scripts/prod-local.ps1                # full flow (build + up + probes)
+pwsh scripts/prod-local.ps1 -Fast          # skip build
+pwsh scripts/prod-local.ps1 -Fast -NginxOnly  # only nginx service
+pwsh scripts/prod-local-down.ps1           # tear down
+```
+
+These invoke the same steps as the runbook: CSP hash render (`pnpm run csp:hash`), optional nginx image build, compose up, then local health and header spot checks (CSP, Referrer, Permissions, /api/metrics 307 alias).
+
+> Legacy /api/* compatibility: see `docs/deprecation-compat.md` for headers, metrics, and sunset plan.
+
+### Extended Edge & LLM Verification
+
+For a deeper end-to-end check (edge → backend → LLM runtime → tunnel metrics) use the script `scripts/edge-verify.ps1`.
+
+Make target (runs with model generate + verbose models):
+```powershell
+make edge-verify
+```
+
+Direct usage examples:
+```powershell
+# Basic (human readable)
+pwsh ./scripts/edge-verify.ps1
+
+# Include a lightweight generate call and emit JSON (CI friendly)
+pwsh ./scripts/edge-verify.ps1 -IncludeGenerate -Json | jq
+
+# Different hostname + stricter latency thresholds
+pwsh ./scripts/edge-verify.ps1 -HostName app.ledger-mind.org -WarnLatencyMs 600 -CriticalLatencyMs 1500
+```
+
+Checks performed:
+- Core endpoints: `/ready`, `/api/healthz`, `/health/simple`, `/api/live`, `/agui/ping`, `/llm/health`
+- Parses `/api/healthz` for: status, reasons, Alembic sync, crypto readiness, model status
+- Model discovery via `/agent/models` (provider, default, merged ids)
+- LLM echo latency (`/llm/echo`)
+- Optional generate request (`/api/generate`) with `-IncludeGenerate`
+- Cloudflared tunnel metrics (`:2000/metrics`) summarizing HA connection series
+ - Optional auth register/login probe with Cloudflare challenge fallback (see below)
+
+Exit codes:
+| Code | Meaning |
+|------|---------|
+| 0 | All critical checks passed |
+| 2 | One or more critical failures (endpoint non-200, generate fail, etc.) |
+
+JSON schema (abridged):
+```jsonc
+{
+  "host": "app.ledger-mind.org",
+  "ts": "2025-09-29T12:34:56.789Z",
+  "endpoints": {
+    "ready": {"code":"200","latency_ms":42,"severity":"ok"},
+    "healthz": {"code":"200","details":{"crypto_ready":true,"alembic_in_sync":true}}
+  },
+  "llm": {"provider":"ollama","default":"gpt-oss:20b","models":["gpt-oss:20b","default"],"echo_latency_ms":123},
+  "tunnel": {"status":"ok","metrics_present":true},
+  "summary": {"critical":[],"warnings":[],"ok":true}
+}
+```
+
+Typical remediation hints:
+- Crypto not ready → verify GCP SA mount & `GCP_KMS_KEY` correctness.
+- Models missing → ensure Ollama container healthy & model pulled (`docker compose logs ollama`).
+- Tunnel metrics absent → check `cloudflared` container health / credentials and that metrics port is exposed (`--metrics 0.0.0.0:2000`).
+- High latency warnings → investigate network path (Cloudflare status, local ISP) or container CPU throttling.
+
+Integrate into CI for a post-deploy gate:
+```yaml
+- name: Extended edge verification
+  run: pwsh ./scripts/edge-verify.ps1 -IncludeGenerate -Json | tee edge-verify.json
+```
+
+Future enhancements (not yet implemented): streaming token rate metrics, per-model warm cache probe, optional auth flow.
+
+## CSP pipeline (nginx hash rendering)
+
+We keep nginx’s `script-src` strict while still allowing future inline scripts if needed.
+
+**How it works**
+
+- `deploy/nginx.conf` contains `script-src 'self' __INLINE_SCRIPT_HASHES__` (placeholder).
+- `apps/web/dist/index.html` is scanned for inline `<script>` blocks.
+- A rendered config `deploy/nginx.conf.rendered` replaces the placeholder with `'sha256-…'` hashes (or nothing if zero inline scripts).
+
+**Commands**
+
+```bash
+# Render CSP (OK when zero inline scripts)
+pnpm run csp:hash
+
+# Local prod-like
+docker --context desktop-linux compose -f docker-compose.prod.yml -f docker-compose.prod.override.yml build nginx
+docker --context desktop-linux compose -f docker-compose.prod.yml -f docker-compose.prod.override.yml up -d nginx
+```
+
+**Verification**
+
+```bash
+curl -sI http://127.0.0.1:8080/ | grep -i content-security-policy
+# Expect: script-src 'self' (no __INLINE_SCRIPT_HASHES__ literal)
+```
+
+**CI guard**
+
+The workflow renders the CSP (`pnpm run csp:hash`) and fails if the placeholder survives in `nginx.conf.rendered`. A hash manifest is uploaded as an artifact for traceability.
+
+
+### Cloudflare Challenge Mitigation for Auth Scripts
+
+Automated auth flows (CI probes, edge verification) can be blocked by Cloudflare's managed or bot rules, returning an interstitial HTML challenge (commonly surfaced to curl as a 3xx -> HTML body). We implement a resilient fallback via `scripts/test-auth.ps1` that:
+
+1. Attempts register/login against the public edge hostname with a browser-like User-Agent and follows redirects.
+2. Detects an HTML challenge or non-JSON body.
+3. Falls back to origin loopback (`http://127.0.0.1`) for the same endpoints.
+4. Reports mode (`edge` or `origin_fallback`) + `challenged=true/false` in JSON.
+
+Integrated into `edge-verify.ps1` when `-AuthTest` is supplied. Prometheus metrics exported (when `-EmitPromMetrics`):
+```
+edge_auth_ok            1|0
+edge_auth_challenged    1|0   # 1 indicates the edge blocked direct auth and origin fallback was needed
+```
+
+#### Recommended Cloudflare WAF Skip Rule
+Create a dedicated rule allowing your auth endpoints for non-browser automation to reduce fallback frequency (still retaining other protections):
+
+Dashboard → Security → WAF → Custom Rules → Create:
+```
+When (any):
+  (http.request.uri.path contains "/api/auth/login") OR
+  (http.request.uri.path contains "/api/auth/register") OR
+  (http.request.uri.path contains "/api/auth/refresh")
+And (not ip.src in { <optional allowlist CIDRs> }) # optional
+
+Then: Skip (WAF Managed Rules / Bot Fight Mode) OR Set Action: Allow
+```
+
+Alternative fine-grained expression (skip only higher sensitivity bot challenges but keep basic rate limiting):
+```
+(http.request.uri.path starts_with "/api/auth/" and http.request.method in {"POST","GET"})
+```
+
+If you want to scope by a special header the script can send (less exposure):
+1. Add a custom header in `test-auth.ps1` (e.g. `-H "X-Auth-Probe: 1"`).
+2. Use rule expression:
+```
+(http.request.headers["x-auth-probe"] eq "1")
+```
+
+Keep rate limiting separate (a lightweight per-IP rule) to avoid brute force; allow only minimal bypass.
+
+#### Operational Signals
+- Rising `edge_auth_challenged == 1` rate: review recent Cloudflare security setting changes or new managed rule updates.
+- Persistent fallback usage: confirm the skip rule is active (Rules → Custom Rules list) and not shadowed by a higher-priority block rule.
+
+#### Manual Verification
+```
+pwsh ./scripts/test-auth.ps1 -Email probe@example.com -Password P@ssw0rd123! -Edge https://app.ledger-mind.org -Origin http://127.0.0.1 -Json | jq
+```
+Expected fields:
+```jsonc
+{ "ok": true, "mode": "edge" | "origin_fallback", "challenged": false | true }
+```
+
+If `mode=origin_fallback` and `challenged=true`, Cloudflare blocked the initial edge attempt; confirm the WAF rule or reduce challenge sensitivity (turn off Browser Integrity Check for these endpoints only).
+
+#### If the UI Appears Unstyled
+Occasionally a stale service worker, aggressive extension (privacy/ad blockers), or cached incorrect MIME type can cause the SPA to load without proper CSS:
+
+1. Open the site in an Incognito/Private or Guest profile with all extensions disabled.
+2. Hard-reload (Shift+Reload) to bypass the HTTP cache.
+3. Clear any service workers: Chrome DevTools → Application → Service Workers → Unregister.
+4. Verify the CSS asset MIME from the edge:
+  ```powershell
+  curl --ssl-no-revoke -sI https://app.ledger-mind.org/ | findstr /i "Content-Security-Policy"
+  curl --ssl-no-revoke -sI https://app.ledger-mind.org/assets/<your-css-hash>.css
+  ```
+  Expected: `Content-Type: text/css` and CSP header present on index.
+5. If MIME is wrong or missing, re-run the lightweight asset probe:
+  ```powershell
+  pwsh ./scripts/edge-verify-assets.ps1 -Json | jq
+  ```
+6. Still broken? Flush CDN/browser cache and ensure the deployed `nginx.conf` has the `/assets/` block above the SPA fallback with long-lived immutable caching.
+
+If the CSS MIME is correct and CSP present but styling still fails, inspect DevTools Console for blocked resources (CSP violations) or 404s referencing `/src/` paths (which indicates a build/guard failure).
+
+#### Tunnel Health & Recovery
+
+New tooling hardens tunnel operations:
+
+Targets / Scripts:
+| Command | Purpose |
+|---------|---------|
+| `make port-guard` | Fails if another compose project still binds 80/443/11434 |
+| `make tunnel-verify` | Runs strict edge verification (`-TunnelStrict`) including DNS + HA connection threshold |
+| `make tunnel-bootstrap` | Generates/refreshes `cloudflared/config.yml` skeleton (credentials not created) |
+
+Strict Mode adds:
+- DNS resolution timing (fail if no A records)
+- Tunnel metrics parsing (`cloudflared_tunnel_ha_connections`) enforcing `-MinHaConnections` ≥ 1
+- Fails build/deploy gate if metrics missing or below threshold.
+
+Bootstrap Flow (first-time or rotated account):
+```powershell
+cloudflared tunnel login
+cloudflared tunnel create ledgermind-prod   # outputs <UUID>.json
+```
+
+### Prometheus CSP Edge Metrics & Rules
+
+End-to-end CSP observability includes:
+
+- Probe → pushes CSP hash/length to backend (`/api/metrics/edge`).
+- Backend exposes gauges (`edge_csp_policy_length`, `edge_csp_policy_sha{sha="..."}`, `edge_metrics_timestamp_seconds`).
+- Recording & alert rules: see `prometheus/rules/csp.yml` and `prometheus/rules/csp_alerts.yml`.
+- Manual workflow: `.github/workflows/prom-rules-update.yml` can regenerate/update rule files via a PR.
+
+Add to Prometheus config (example):
+```yaml
+rule_files:
+  - prometheus/rules/*.yml
+```
+
+> See `docs/observability-contract.md` for metric/header invariants and resilient test patterns (avoid brittle formatting assumptions).
+
+Badge exposure: coverage/status JSON lives on the `status-badge` branch; see section below for enabling coverage badge.
+
+### Coverage Badge & Workflow Integration
+
+Once test coverage is published (via unit CI writing `coverage-summary.json` to `status-badge`), a shields endpoint JSON (`coverage-shields.json`) is generated and committed to the same branch. Add the badge:
+
+```markdown
+![Coverage](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/<USER>/<REPO>/status-badge/coverage-shields.json)
+```
+
+Color thresholds (Lines %): 90+=brightgreen, 80+=green, 70+=yellowgreen, 60+=yellow, 50+=orange, else red.
+
+### Pre-Commit Hooks (Husky + lint-staged)
+
+Install dependencies (one-time):
+```bash
+pnpm add -D husky lint-staged
+pnpm exec husky install
+```
+
+Sample `package.json` additions:
+```jsonc
+{
+  "scripts": { "prepare": "husky install" },
+  "lint-staged": {
+    "*.{js,ts,tsx}": [
+      "eslint --max-warnings=0",
+      "vitest related --run --passWithNoTests"
+    ],
+    "*.{json,md,yml,yaml}": [
+      "eslint --max-warnings=0 --ext .json,.md,.yml,.yaml"
+    ]
+  }
+}
+```
+
+Create hook:
+```bash
+npx husky add .husky/pre-commit "npx lint-staged"
+```
+
+Result: staged JS/TS + config/text files are linted and related tests run before commit; CI still performs full, authoritative verification.
+copy ~/.cloudflared/<UUID>.json cloudflared/<UUID>.json
+make tunnel-bootstrap                       # creates/updates config.yml
+docker compose -f docker-compose.prod.yml -f docker-compose.prod.override.yml restart cloudflared
+make tunnel-verify
+```
+
+If `tunnel-verify` reports `tunnel` critical:
+1. Check credentials filename matches the `tunnel:` UUID.
+2. Ensure `cloudflared` container log shows connection lines (QUIC/Websocket established).
+3. Confirm DNS hostnames map in Cloudflare dashboard to the tunnel.
+4. Re-run `make port-guard` to ensure no legacy stack still holds ports.
+
+All JSON outputs can be captured for CI gates:
+```powershell
+pwsh ./scripts/edge-verify.ps1 -Json -TunnelStrict > edge-verify.json
+```
+
+### CI Gate
+
+To block releases when the tunnel, DNS, or TLS certificate is unhealthy:
+
+```powershell
+pwsh ./scripts/edge-verify.ps1 -Json -TunnelStrict -MinHaConnections 1 -CertMinDays 14 > edge-verify.json
+```
+
+Criticals cause CI failure (`edge-health.yml`). The workflow uploads the JSON artifact for auditing. Add `cert-check` target locally:
+
+```powershell
+make cert-check
+```
+
+Ensure `cloudflared/<UUID>.json` filename matches `config.yml:tunnel`. Use `make tunnel-bootstrap` (or `./scripts/tunnel-bootstrap.sh` on Linux) after rotating credentials.
+
+Planned enhancements: automated retry/backoff, certificate days-remaining alerting in Slack, and schema validation via `ops/schemas/edge-verify.schema.json`.
+
+### Hostname Binding & Origin Debug
+
+If the tunnel shows healthy HA connections but all edge probes return `000`, verify that each public hostname is actually bound to the active tunnel UUID.
+
+### Frontend Styling Incident Post-Mortem (Sep 2025)
+**Impact:** UI appeared unstyled (HTML loaded, CSS not applying) for a single operator session; production users not broadly affected.
+
+**Root Cause:** Client-side interference (extension-injected stylesheet + stale service worker/cache state) caused the loaded hashed CSS bundle to report `cssRules.length === 0` despite being served correctly (200 + `text/css`). Server & build pipeline were healthy.
+
+**Red Herrings:**
+- Windows `curl` Schannel revocation errors (`CRYPT_E_NO_REVOCATION_CHECK`) – local trust chain quirk, not edge failure.
+- Initial asset probe ordering issue already fixed earlier.
+
+**Server Validation:**
+```
+curl -sI https://app.ledger-mind.org/assets/<hash>.css | grep -i 'Content-Type'
+Content-Type: text/css
+```
+
+**Never-Again Kit:**
+1. CSP at server scope with `always` + explicit `connect-src` (deployed).
+2. `index.html` served `Cache-Control: no-store`; hashed assets long-lived + immutable.
+3. Build guard (`scripts/ci/check-built-index.sh`) blocks dev index leakage.
+4. Container startup assert (`/docker-entrypoint.d/10-assert-assets.sh`) fails fast if CSS not served with `text/css`.
+5. Lightweight asset/CSP probe (`scripts/edge-verify-assets.ps1`) – integrate post-deploy.
+6. README runbook for unstyled UI (clear SW/caches, verify MIME, inspect `document.styleSheets`).
+
+**Runbook Snippet:**
+```js
+navigator.serviceWorker?.getRegistrations?.().then(rs=>rs.forEach(r=>r.unregister()));
+caches?.keys?.().then(keys=>keys.forEach(k=>caches.delete(k)));
+Array.from(document.styleSheets).map(s=>{try{return{href:s.href,rules:s.cssRules?.length||0}}catch(e){return{href:s.href,error:e.message}}})
+```
+
+If server MIME + CSP are correct and rules still 0: open a Guest window (no extensions). If styling returns, isolate the extension.
+
+Quick manual binding (credentials-file mode):
+```bash
+TUNNEL=6a9e2d7e-9c48-401b-bdfd-ab219d3d4df5
+cloudflared tunnel route dns $TUNNEL app.ledger-mind.org
+cloudflared tunnel route dns $TUNNEL ledger-mind.org
+cloudflared tunnel route dns $TUNNEL www.ledger-mind.org
+```
+
+Programmatic (API) binding & verification:
+```powershell
+# Bind (creates or repairs CNAME -> <UUID>.cfargotunnel.com)
+make bind-hosts
+
+# Verify (writes ops/artifacts/cf-hosts.json)
+make verify-hosts
+```
+
+Internal origin sanity (should show `UP 204` and `READY 200`):
+```bash
+make origin-check
+```
+
+If origin is OK and hostnames are missing or mis-targeted, re-run the binding commands and then rerun strict edge verification:
+```powershell
+pwsh ./scripts/edge-verify.ps1 -Json -TunnelStrict -MinHaConnections 1 -CertMinDays 14 | jq '.summary'
+```
+
+Temporary debug logs (override example):
+```yaml
+services:
+  cloudflared:
+    command: ["tunnel","run","--loglevel","debug"]
+```
+Apply with:
+```bash
+docker compose -f docker-compose.prod.yml -f docker-compose.prod.override.yml up -d --force-recreate cloudflared
+```
+
+
 ### Bootstrap Scripts
 
 Automate first-time or repeat prod stack bring-up with generated secrets, readiness gating, migration drift handling, JSON summaries, and optional authenticated smoke.
@@ -68,7 +466,7 @@ Flags:
 | `-AutoMigrate` | Run `alembic upgrade head` automatically on drift |
 
 Readiness Criteria:
-- `/api/status` must report `ok=true`, `db.ok=true`, `migrations.ok=true`.
+- `/api/status` must report `ok=true`, `db.ok=true`, `migrations.ok=true`, `crypto.ok=true`, `llm.ok=true`.
 - With `-Json`, a timeout prints `{ "ok": false, "reason": "timeout", "url": "..." }` and exits non-zero.
 
 Sample Summary (plain):
@@ -301,6 +699,37 @@ Browser ⇄ Cloudflare Edge ⇄ cloudflared (tunnel) ⇄ nginx (reverse proxy / 
 | `models_ok` = `unknown` | Frontend expecting legacy `/llm/models` | Use `/agent/models` or rely on `useLlmStore().modelsOk` |
 | Falling back to stub LLM | Primary model not loaded yet | Wait for Ollama pull / remove `DISABLE_PRIMARY` |
 
+### Dev Postgres Password Mismatch
+
+If the backend keeps restarting with `FATAL:  password authentication failed for user "myuser"` it usually means the persisted Postgres volume was initialized with a different password than the one currently exported / in `.env.dev`.
+
+Non‑destructive fix (preferred):
+
+```powershell
+# 1. Exec into the running postgres container using local trust auth
+docker exec ledgermind-dev-postgres-1 psql -U myuser -d postgres -c "ALTER ROLE myuser WITH PASSWORD 'changeme';"
+
+# 2. Export the same password for compose interpolation (new shell or before starting backend)
+$env:POSTGRES_PASSWORD='changeme'
+
+# 3. Restart (or start) only the backend so it picks up the correct password
+docker compose -f docker-compose.dev.yml -p ledgermind-dev up -d backend
+
+# 4. Verify
+curl -s http://127.0.0.1:8000/health/simple
+```
+
+Destructive reset (if you do NOT need existing dev data):
+```powershell
+docker compose -f docker-compose.dev.yml -p ledgermind-dev down
+docker volume rm ledgermind-dev_pgdata
+$env:POSTGRES_PASSWORD='changeme'
+docker compose -f docker-compose.dev.yml -p ledgermind-dev up -d
+```
+
+Tip: Always ensure your shell has `POSTGRES_PASSWORD` exported before bringing up `backend` so that `DATABASE_URL` is interpolated correctly. The helper script will attempt to read it from `.env.dev.local` / `.env.dev`, but an explicit export avoids ambiguity.
+
+
 ---
 
 Offline-first finance agent with local inference via Ollama or vLLM. Designed for the Open Models hackathon.
@@ -515,8 +944,6 @@ Response should include `"flip_auto": true` if your CSV has positive expenses.
 ### 4. Verify
 ```powershell
 # Check latest month
-Invoke-WebRequest -UseBasicParsing -Method POST http://127.0.0.1:8000/agent/tools/meta/latest_month | Select -Expand Content
-
 # DB peek
 docker exec -it finance-pg psql -U myuser -d finance -c "SELECT MAX(date), month, COUNT(*) FROM transactions GROUP BY month ORDER BY month DESC;"
 ```

@@ -1,12 +1,12 @@
 export type AguiHandlers = {
   onStart?(meta: { intent?: string; month?: string; ts?: number }): void;
-  onIntent?(intent: string, meta: any): void;
+  onIntent?(intent: string, meta: unknown): void;
   onToolStart?(name: string): void;
   onToolEnd?(name: string, ok: boolean, error?: string): void;
   onChunk?(text: string): void;
-  onMeta?(meta: any): void;
+  onMeta?(meta: unknown): void;
   onFinish?(): void;
-  onError?(err: any): void;
+  onError?(err: unknown): void;
   onSuggestions?(chips: Array<{ label: string; action: string }>): void;
 };
 
@@ -22,7 +22,9 @@ export function wireAguiStream(
 
   const es = new EventSource(url.toString(), { withCredentials: true });
 
-  const safe = (fn?: Function, ...a: any[]) => { try { fn && fn(...a); } catch { /* swallow */ } };
+  const safe = <T extends unknown[]>(fn: ((...args: T) => void) | undefined, ...a: T) => {
+    try { fn && fn(...a); } catch { /* swallow */ }
+  };
 
   es.addEventListener('INTENT_DETECTED', (e: MessageEvent) => {
     const meta = JSON.parse(e.data || '{}');

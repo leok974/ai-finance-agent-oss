@@ -1,5 +1,39 @@
 # Backend notes: Merchant canonicalization and suggestions
 
+## Recent Additions (Agent Enhancements)
+
+### Merchant Parsing Heuristics
+Natural language merchant extraction now ignores leading verbs (give, show, list, summarize, tell, display, provide, get) and filters very short tokens (<3 chars) unless whitelisted (UPS, IBM, H&M, UBS). This prevents prompts like "Give me Starbucks spend" from misclassifying "Give" as a merchant. Quoted multi‑word merchants continue to be supported.
+
+### Agent Month Summary Endpoint
+New lightweight deterministic endpoint:
+
+`GET /agent/summary/month?month=YYYY-MM`
+
+Response shape:
+```jsonc
+{
+  "month": "2025-09",
+  "start": "2025-09-01",
+  "end": "2025-09-30",
+  "income": 3200.0,        // sum of positive amounts for month
+  "expenses": 124.90,      // sum of absolute value of negative amounts
+  "net": 3075.10,          // income - expenses
+  "top_merchant": {        // highest expense merchant by absolute spend
+    "name": "WholeFoods",
+    "spend": 120.40
+  }
+}
+```
+If `month` omitted, it resolves the latest month present in transactions.
+
+### Bulk Synthetic Data Seeding
+`python -m app.cli txn-demo-bulk --month 2025-09`
+
+Inserts a deterministic mini dataset (paycheck, MacBook purchase, multiple Starbucks coffees, grocery trip, transfer pair) useful for demos and consistent test baselines. Existing rows are left intact (duplicates possible on repeated runs).
+
+---
+
 ## Encryption (overview Sep 2025)
 The backend uses an envelope model: a Data Encryption Key (DEK) encrypts sensitive free‑text columns; that DEK is itself wrapped by either an env KEK (AES‑GCM) or Google Cloud KMS.
 

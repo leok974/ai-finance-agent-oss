@@ -1,5 +1,6 @@
 import os
 import pytest
+from tests.helpers.auth_jwt import patch_server_secret, mint_access, preferred_csrf_key
 
 @pytest.fixture(autouse=True)
 def _baseline_test_env(monkeypatch):
@@ -112,7 +113,9 @@ if os.getenv("HERMETIC") != "1":
     @pytest.fixture
     def client():
         from fastapi.testclient import TestClient
-        return TestClient(app)
+        # Use context manager to ensure underlying transport / connections close cleanly.
+        with TestClient(app) as c:
+            yield c
 
     @pytest.fixture
     async def asgi_client(asgi_app):
@@ -199,6 +202,42 @@ def _force_sqlite_for_all_tests(_engine, _SessionLocal):
     yield
     app.dependency_overrides.pop(app_db.get_db, None)
 
+# ---------------------------------------------------------------------------
+# Deterministic time & edge metrics token fixtures
+# ---------------------------------------------------------------------------
+from freezegun import freeze_time
+
+@pytest.fixture(autouse=True, scope="session")
+def _freeze_now_for_determinism():
+    """Freeze system time so relative date logic ("last month", window_days) is stable.
+
+    Chosen date: 2025-09-15T12:00:00Z so that "last month" = 2025-08 and
+    a 60-day window spans mid-July through mid-September, capturing seeded data.
+    """
+    with freeze_time("2025-09-15T12:00:00Z"):
+        yield
+
+@pytest.fixture(autouse=True)
+def _edge_metrics_token(monkeypatch):
+    """Inject the edge metrics auth token expected by /api/metrics/edge route for tests.
+
+    Production keeps its configured secret; tests use a stable value.
+    """
+    monkeypatch.setenv("EDGE_METRICS_TOKEN", "test-token")
+    yield
+
+@pytest.fixture(autouse=True, scope="session")
+def _dispose_engine_at_end():
+    """Ensure SQLAlchemy engine is disposed at end of session (belt + suspenders vs app lifespan)."""
+    yield
+    try:
+        from app.db import engine as _engine
+        u = str(_engine.url)
+        if ":memory:" not in u:
+            _engine.dispose()
+    except Exception:
+        pass
+
 
 ## Legacy sync TestClient fixture removed to avoid annotated_types schema issues.
 
@@ -266,3 +305,29 @@ def _reset_in_memory_state():
         app.state.user_labels = labels_orig
     except Exception:
         pass
+
+# ---------------------------------------------------------------------------
+# Auth-enabled TestClient fixture (for rules save deeper path tests)
+# ---------------------------------------------------------------------------
+from fastapi.testclient import TestClient
+from app.main import app as _app_for_auth
+
+@pytest.fixture
+def auth_client(monkeypatch):
+    """Client with Authorization header so auth-gated endpoints reach deeper logic.
+
+    Sets permissive feature flags and aligns JWT secret to a test value.
+    """
+    secret = "test-secret-rules-auth"
+    patch_server_secret(monkeypatch, secret)
+    for k in ("RULES_ENABLED", "FEATURE_RULES", "ENABLE_RULES"):
+        monkeypatch.setenv(k, "1")
+    # Detect CSRF claim key (fallback to 'csrf' if detection cannot)
+    with TestClient(_app_for_auth) as probe:
+        try:
+            csrf_key, _cookie_hint, _token_from_login = preferred_csrf_key(probe)
+        except Exception:
+            csrf_key = "csrf"
+    token = mint_access("user@example.com", secret, csrf_key=csrf_key, csrf_value="csrf-rules-123", ttl_seconds=900)
+    with TestClient(_app_for_auth, headers={"Authorization": f"Bearer {token}"}) as c:
+        yield c

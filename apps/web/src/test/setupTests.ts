@@ -7,7 +7,7 @@ class MockEventSource {
   url: string;
   withCredentials: boolean;
   readyState = 0; // 0 connecting, 1 open, 2 closed
-  private listeners: Record<string, Function[]> = {};
+  private listeners: Record<string, Array<(e: MessageEvent) => void>> = {};
 
   constructor(url: string, init?: EventSourceInit) {
     this.url = url;
@@ -15,8 +15,8 @@ class MockEventSource {
     ES_REG.push(this);
     setTimeout(() => { this.readyState = 1; this._dispatch('open'); }, 0);
   }
-  addEventListener(t: string, cb: any) { (this.listeners[t] ||= []).push(cb); }
-  removeEventListener(t: string, cb: any) { this.listeners[t] = (this.listeners[t]||[]).filter(x => x!==cb); }
+  addEventListener(t: string, cb: (e: MessageEvent) => void) { (this.listeners[t] ||= []).push(cb); }
+  removeEventListener(t: string, cb: (e: MessageEvent) => void) { this.listeners[t] = (this.listeners[t]||[]).filter(x => x!==cb); }
   close() { this.readyState = 2; }
   _emit(type: string, data?: any) {
     const e = new MessageEvent(type, { data: data != null ? JSON.stringify(data) : '' });
@@ -36,5 +36,5 @@ class MockEventSource {
       const mod = await import('vitest');
       (globalThis as any).fetch = (mod as any).vi.fn(() => Promise.resolve(new Response('{}', { status: 200 }))) as any;
     }
-  } catch {}
+  } catch (_err) { /* intentionally empty: swallow to render empty-state */ }
 })());

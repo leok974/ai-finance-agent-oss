@@ -250,6 +250,50 @@ def cmd_txn_demo(args):
     print({"inserted_id": t.id})
 
 
+def cmd_txn_demo_bulk(args):
+    """Insert a small deterministic synthetic dataset for demos/tests.
+
+    Dataset includes:
+      - Income paycheck
+      - MacBook purchase (large expense)
+      - Multiple Starbucks coffees across days
+      - Grocery run (WholeFoods)
+      - Transfer out + transfer in (net zero pair)
+    Existing data is left untouched; IDs may differ per run.
+    """
+    from datetime import date
+    from app.orm_models import Transaction
+    _ensure_crypto_initialized()
+    db: Session = next(get_db())
+    month = args.month or date.today().isoformat()[:7]
+    # Choose a middle-month day spread for realism
+    base = date.fromisoformat(month + "-10")
+    def d(offset):
+        try:
+            return (base + dt.timedelta(days=offset))
+        except Exception:
+            return base
+
+    rows = [
+        {"merchant_canonical": "Employer Inc", "amount": 3200.00, "date": d(0)},  # income
+        {"merchant_canonical": "Apple Store", "amount": -1899.99, "date": d(1), "description_text": "MacBook Pro 14"},
+        {"merchant_canonical": "Starbucks", "amount": -4.50, "date": d(2)},
+        {"merchant_canonical": "Starbucks", "amount": -5.25, "date": d(3)},
+        {"merchant_canonical": "Starbucks", "amount": -6.10, "date": d(9)},
+        {"merchant_canonical": "WholeFoods", "amount": -120.40, "date": d(4)},
+        {"merchant_canonical": "Internal Transfer", "amount": -250.00, "date": d(5), "description_text": "Transfer to savings"},
+        {"merchant_canonical": "Internal Transfer", "amount": 250.00, "date": d(5), "description_text": "Transfer from checking"},
+    ]
+    inserted = []
+    for r in rows:
+        t = Transaction(**r)
+        db.add(t)
+        db.flush()
+        inserted.append({"id": t.id, "merchant": t.merchant_canonical, "amount": float(t.amount), "date": str(t.date)})
+    db.commit()
+    print({"inserted": inserted, "count": len(inserted), "month": month})
+
+
 def cmd_txn_show_latest(args):
     from app.orm_models import Transaction
     _ensure_crypto_initialized()
@@ -543,6 +587,10 @@ def main():
     d.add_argument("--raw")
     d.add_argument("--note")
     d.set_defaults(fn=cmd_txn_demo)
+
+    b = sub.add_parser("txn-demo-bulk", help="Insert a standard synthetic dataset (idempotent style; duplicates possible)")
+    b.add_argument("--month", help="Target month YYYY-MM (default current month)")
+    b.set_defaults(fn=cmd_txn_demo_bulk)
 
     sub.add_parser("txn-show-latest").set_defaults(fn=cmd_txn_show_latest)
 

@@ -1,4 +1,6 @@
+import app.env_bootstrap  # earliest import: loads DATABASE_URL from file secret if provided
 from fastapi import FastAPI, APIRouter, Response
+from fastapi.responses import RedirectResponse
 from .startup_guard import require_db_or_exit
 from contextlib import asynccontextmanager
 import asyncio
@@ -53,6 +55,9 @@ from .routers import dev as dev_router
 from app.routers import admin as admin_router
 from .routers import health as health_router
 from .routers import agent_plan as agent_plan_router
+from app.routes import csp as csp_routes
+from app.routes import metrics as metrics_routes  # provides fallback metrics if instrumentation missing
+from app.routes import edge_metrics as edge_metrics_routes  # NEW: ingest edge-observed metrics
 from .utils.state import load_state, save_state
 import logging
 import time
@@ -81,8 +86,30 @@ except Exception:  # pragma: no cover - fallback
 
 logger = logging.getLogger(__name__)
 
-# Fail fast immediately if DB misconfigured
-require_db_or_exit()
+_LLM_PATH_MIDDLEWARE_ATTACHED = False  # guard to avoid duplicate registration under reloads
+
+# Sanitize and log DB connection origin (dev aid only; omits password)
+try:
+    _db_url = os.environ.get("DATABASE_URL", "")
+    if _db_url:
+        # Strip password section: postgresql+psycopg://user:pass@host:port/db -> user@host:port/db
+        import re
+        _scrub = re.sub(r"(postgresql[+a-z]*://[^:]+):[^@]*@", r"\\1@", _db_url)
+        logging.getLogger("uvicorn").info(f"DB connect string (sanitized)={_scrub}")
+        # Additional parsed summary (no password)
+        from urllib.parse import urlparse, parse_qsl
+        try:
+            _p = urlparse(_db_url)
+            _host = _p.hostname or "?"
+            _dbn = (_p.path or "/").lstrip("/") or "?"
+            _ssl = dict(parse_qsl(_p.query)).get("sslmode", "default")
+            logging.getLogger("uvicorn").info(f"[db] host={_host} db={_dbn} sslmode={_ssl}")
+        except Exception:
+            pass
+    else:
+        logging.getLogger("uvicorn").warning("DATABASE_URL not set at import time")
+except Exception:
+    pass
 
 # Print git info on boot
 try:
@@ -151,6 +178,22 @@ app = FastAPI(
     redoc_url="/redoc",
     lifespan=None,  # will attach below
 )
+
+# Attach LLM path injection middleware (after final app instantiation)
+from fastapi import Request as _FastRequest
+if not _LLM_PATH_MIDDLEWARE_ATTACHED:  # pragma: no cover - simple guard
+    @app.middleware("http")
+    async def _ensure_llm_path_header(request: _FastRequest, call_next):  # pragma: no cover - exercised via tests
+        if not hasattr(request.state, "llm_path"):
+            request.state.llm_path = "unknown"
+        response = await call_next(request)
+        if "X-LLM-Path" not in response.headers:
+            response.headers["X-LLM-Path"] = getattr(request.state, "llm_path", "unknown")
+        return response
+    _LLM_PATH_MIDDLEWARE_ATTACHED = True
+
+# Fail fast immediately if DB misconfigured (after app exists)
+require_db_or_exit()
 app.add_middleware(RequestIdMiddleware)  # must precede others for rid context
 # --- Help Rephrase Enablement ---------------------------------------------------
 # Force-enable help/describe rephrase path in production unless explicitly disabled.
@@ -220,6 +263,12 @@ try:
 except Exception:
     pass
 
+# Register CSP reporting route (under /api for consistency with other endpoints)
+try:
+    app.include_router(csp_routes.router, prefix="/api")
+except Exception:
+    pass
+
 @app.get("/ping")
 def root_ping():
     return {"ok": True}
@@ -276,9 +325,29 @@ class SecurityHeaders(BaseHTTPMiddleware):
 app.add_middleware(SecurityHeaders)
 
 # Optional: Prometheus metrics (disable if not needed)
-try:
-    from prometheus_fastapi_instrumentator import Instrumentator
+_metrics_attached = False
+try:  # Prefer full instrumentation if library available
+    from prometheus_fastapi_instrumentator import Instrumentator  # type: ignore
     Instrumentator().instrument(app).expose(app, endpoint="/metrics", include_in_schema=False)
+    _metrics_attached = True
+except Exception:
+    _metrics_attached = False
+
+if not _metrics_attached:
+    # Fallback simple /metrics from metrics_routes (already includes CSP fallback counter)
+    app.include_router(metrics_routes.router, prefix="/api")
+else:
+    # Always provide compatibility alias /api/metrics regardless of prometheus_client availability.
+    # Use a redirect to /metrics so we don't duplicate generation logic or depend on prometheus_client import.
+    if not any(getattr(r, 'path', None) == '/api/metrics' for r in app.routes):  # pragma: no cover - simple wiring
+        @app.get('/api/metrics', include_in_schema=False)
+        def _metrics_alias():  # type: ignore
+            # 307 keeps method (supports future POST if ever added) though Prometheus uses GET.
+            return RedirectResponse(url='/metrics', status_code=307)
+
+# Edge metrics ingestion (always mounted under /api)
+try:
+    app.include_router(edge_metrics_routes.router, prefix="/api")
 except Exception:
     pass
 
@@ -291,9 +360,20 @@ app.add_middleware(
 
 # CSRF is attached per-route on unsafe endpoints only (see routers)
 
-# Legacy in-memory stores (kept for compatibility; safe to remove if unused)
+ # Legacy in-memory stores (kept for compatibility; safe to remove if unused)
 app.state.rules = []
 app.state.txns = []
+
+# Adjust crypto initialization behavior based on CRYPTO_REQUIRED flag. If crypto
+# previously failed (logged above) but CRYPTO_REQUIRED explicitly set to false,
+# downgrade to warning semantics so startup isn't treated as hard failure.
+try:
+    _crypto_required = os.getenv("CRYPTO_REQUIRED", "true").lower() in {"1","true","yes","on"}
+    if not _crypto_required:
+        # The earlier errors (if any) have already been logged; emit a clarifying note.
+        logging.getLogger("uvicorn").warning("[crypto] disabled enforcement (CRYPTO_REQUIRED=false); operating without encryption KMS")
+except Exception:
+    pass
 app.state.user_labels = []
 
 # Persisted state lifecycle
@@ -350,6 +430,13 @@ async def _startup_load_state():
             set_active_label(label)
             with _session_scope() as db:
                 load_and_cache_active_dek(db)
+                try:
+                    # Emit explicit success log for operational visibility of KMS unwrap
+                    key = os.environ.get("GCP_KMS_KEY", "unknown")
+                    aad = os.environ.get("GCP_KMS_AAD", "unknown")
+                    logging.getLogger("uvicorn").info("[CRYPTO] KMS unwrap OK | key=%s | aad=%s", key, aad)
+                except Exception:
+                    pass
                 # Active label age warning (optional)
                 try:
                     threshold_days = int(os.environ.get("CRYPTO_ACTIVE_AGE_WARN_DAYS", "90"))
@@ -440,6 +527,15 @@ async def lifespan(app: FastAPI):
             t.cancel()
         if getattr(app.state, "_bg_tasks", []):
             await asyncio.gather(*app.state._bg_tasks, return_exceptions=True)
+        # Dispose SQLAlchemy engine to close pooled connections (prevent ResourceWarnings).
+        # Skip disposal for in-memory SQLite during test runs to avoid dropping ephemeral schema mid-suite.
+        try:  # pragma: no cover - lifecycle cleanup
+            from app.db import engine as _engine
+            u = str(_engine.url)
+            if ":memory:" not in u:
+                _engine.dispose()
+        except Exception:
+            pass
 
 # Attach lifespan
 app.router.lifespan_context = lifespan
@@ -571,9 +667,20 @@ def health():
     return {"ok": True}
 
 from app.routes import llm_compat as llm_compat_router  # compatibility shim
+from app.routers import compat as compat_router  # legacy /api/* compatibility endpoints
+from app.observability import metrics_router  # prometheus counters (/metrics)
 
 # After app creation and before other routers registration
 app.include_router(llm_compat_router.router)
+app.include_router(compat_router.router)
+# Include metrics exposition (Instrumentation may already expose /metrics; duplicate path raises)
+try:
+    # If prometheus_fastapi_instrumentator already registered /metrics we skip
+    existing = any(r.path == "/metrics" for r in app.routes)
+    if not existing:
+        app.include_router(metrics_router)
+except Exception:
+    pass
 
 # --- Exception Handlers -------------------------------------------------------
 try:

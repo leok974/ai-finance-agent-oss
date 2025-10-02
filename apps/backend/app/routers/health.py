@@ -244,6 +244,25 @@ def healthz(db: Session = Depends(get_db)):
         "version": version_info,
     }
 
+@router.get("/health/simple")
+def health_simple(db: Session = Depends(get_db)):
+    """Lightweight health for probes: only DB reachability + minimal metadata.
+    Returns 200 JSON: { ok: bool, db: bool, branch, commit }
+    Avoids heavy Alembic + crypto checks used in /healthz.
+    """
+    db_ok = _db_ping(db)
+    try:
+        branch = getattr(app_version, "GIT_BRANCH", "unknown")
+        commit = getattr(app_version, "GIT_COMMIT", "unknown")
+    except Exception:
+        branch, commit = "unknown", "unknown"
+    return {"ok": db_ok, "db": db_ok, "branch": branch, "commit": commit}
+
+# Alias path without slash for environments that block nested health style
+@router.get("/health_simple")
+def health_simple_alias(db: Session = Depends(get_db)):
+    return health_simple(db)  # reuse logic
+
 
 @router.get("/encryption/status")
 def encryption_status(db: Session = Depends(get_db)):

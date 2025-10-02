@@ -2,6 +2,38 @@
 
 A grab-bag of fixes we used to get app.ledger-mind.org stable behind Cloudflare + Nginx + Docker on Windows.
 
+## Dev Postgres Password Mismatch
+
+**Symptom**: Backend restarts with `FATAL:  password authentication failed for user "myuser"` even though `POSTGRES_PASSWORD=changeme` is set in `.env.dev`.
+
+**Cause**: The persisted Postgres volume (`pgdata`) was initialized earlier with a different password; updating `.env.dev` alone does not rotate the existing user's credential.
+
+**Non‑destructive fix** (keep data):
+```powershell
+# Update password inside running postgres (local trust auth)
+docker exec ledgermind-dev-postgres-1 psql -U myuser -d postgres -c "ALTER ROLE myuser WITH PASSWORD 'changeme';"
+
+# Export for compose interpolation (new shell or before starting backend)
+$env:POSTGRES_PASSWORD='changeme'
+
+# Restart (or start) backend only
+docker compose -f docker-compose.dev.yml -p ledgermind-dev up -d backend
+
+# Verify
+curl -s http://127.0.0.1:8000/health/simple
+```
+
+**Destructive reset** (discard data):
+```powershell
+docker compose -f docker-compose.dev.yml -p ledgermind-dev down
+docker volume rm ledgermind-dev_pgdata
+$env:POSTGRES_PASSWORD='changeme'
+docker compose -f docker-compose.dev.yml -p ledgermind-dev up -d
+```
+
+**Tip**: The helper script `scripts/set-dev-password.ps1` (if present) can automate this. Always ensure the shell has `POSTGRES_PASSWORD` exported before starting `backend`.
+
+
 ## API returns HTML → Unexpected token '<' in UI
 
 **Symptom**

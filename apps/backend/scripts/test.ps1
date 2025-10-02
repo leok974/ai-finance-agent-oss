@@ -2,9 +2,25 @@ param(
   [switch]$Hermetic = $false,
   [string]$PytestArgs = "",
   [switch]$FullTests = $false,
+  [switch]$Fast = $false, # Skip dependency reinstall if venv already exists
   # Optional explicit python interpreter. If not provided we'll auto-detect
   [string]$Py
 )
+
+<#
+Usage examples:
+  # Normal (installs/updates deps each run if needed)
+  ./scripts/test.ps1 -PytestArgs "tests/test_file.py"
+
+  # Fast mode (reuse existing venv + deps; much quicker for iterative runs)
+  ./scripts/test.ps1 -Fast -PytestArgs "tests/test_file.py::test_case"
+
+Notes:
+  -Fast only affects the non-hermetic path. Hermetic mode (-Hermetic or HERMETIC env)
+  already short-circuits dependency work.
+  If you add new packages to requirements files you must run without -Fast once
+  (or delete the .venv) so they are installed.
+#>
 
 # --- Interpreter resolution (post-param so we can use $PSScriptRoot) ---------
 $backendRoot = Split-Path $PSScriptRoot -Parent
@@ -41,8 +57,18 @@ if ($rawHermeticEnv) {
 # Optional debug output (always shown for now; could gate behind HERMETIC_DEBUG)
 Write-Host "[hermetic-detect] env:HERMETIC='${rawHermeticEnv}' => switch Hermetic=$Hermetic" -ForegroundColor DarkGray
 
-# Always set PYTHONPATH so sitecustomize.py loads
-$env:PYTHONPATH = (Resolve-Path 'apps/backend')
+# Always set PYTHONPATH so sitecustomize.py loads. Use repo root (parent of backend) to avoid double apps/backend/apps/backend when invoked from backend dir.
+try {
+  $repoRootCandidate = (& git rev-parse --show-toplevel 2>$null)
+} catch { $repoRootCandidate = '' }
+if ($repoRootCandidate -and (Test-Path $repoRootCandidate)) {
+  $resolvedBackend = Join-Path $repoRootCandidate 'apps/backend'
+} else {
+  # Fallback: parent of script directory is backend root already
+  $resolvedBackend = $backendRoot
+}
+if (-not (Test-Path $resolvedBackend)) { throw "Unable to resolve backend root for PYTHONPATH: $resolvedBackend" }
+$env:PYTHONPATH = $resolvedBackend
 
 if ($Hermetic) {
   Write-Host "[hermetic] early short-circuit path engaged." -ForegroundColor Cyan
@@ -56,7 +82,10 @@ if ($Hermetic) {
   $hermeticArgs += $noPlugins
   $hermeticArgs += @('--maxfail','1','-q')
   $hermeticArgs += 'apps/backend/hermetic_tests'
-  if ($FullTests) { $hermeticArgs += 'apps/backend/tests' }
+  # Always include standard tests directory so new tests (e.g., edge metrics) run in hermetic CI when enabled
+  if ($FullTests) {
+    $hermeticArgs += 'apps/backend/tests'
+  }
   $hermeticArgs += @('-m','not heavy and not httpapi')
   if ($PytestArgs) { $hermeticArgs += ($PytestArgs -split ' +') }
   Write-Host "[hermetic] args: $($hermeticArgs -join ' ')" -ForegroundColor Cyan
@@ -89,33 +118,42 @@ $BACKEND = Join-Path $ROOT 'apps\backend'
 if (-not $Hermetic) {
   Write-Host "[bootstrap] Simplified non-hermetic path" -ForegroundColor Cyan
   $venvRoot = Join-Path $BACKEND '.venv'
-  if (-not (Test-Path (Join-Path $venvRoot 'Scripts/python.exe'))) {
+  $venvPython = Join-Path $venvRoot 'Scripts/python.exe'
+  $firstCreate = $false
+  if (-not (Test-Path $venvPython)) {
     $basePy = (Get-Command python -ErrorAction SilentlyContinue).Source
     if (-not $basePy) { throw 'No system python found for venv creation' }
     Write-Host "[venv] Creating virtualenv ($basePy)" -ForegroundColor Yellow
     & $basePy -m venv $venvRoot
+    $firstCreate = $true
   }
-  $Py = Join-Path $venvRoot 'Scripts/python.exe'
-  # Ensure pip
-  & $Py -m pip --version 2>$null | Out-Null
-  if ($LASTEXITCODE -ne 0) {
-    Write-Host "[deps] pip missing; running ensurepip" -ForegroundColor Yellow
-    & $Py -m ensurepip --upgrade
-  }
-  & $Py -m pip install --upgrade pip setuptools wheel
-  $reqDev = Join-Path $BACKEND 'requirements-dev.txt'
-  if (Test-Path $reqDev) {
-    Write-Host "[deps] Installing dev requirements" -ForegroundColor Cyan
-    & $Py -m pip install -r $reqDev
+  $Py = $venvPython
+
+  if ($Fast -and -not $firstCreate) {
+    Write-Host "[fast] Skipping dependency reinstall (reuse existing venv)" -ForegroundColor DarkCyan
   } else {
-    Write-Host "[deps] WARNING requirements-dev.txt not found; installing base project deps" -ForegroundColor Yellow
-    $reqTxt = Join-Path $BACKEND 'requirements.txt'
-    if (Test-Path $reqTxt) { & $Py -m pip install -r $reqTxt }
+    # Minimal bootstrap / upgrade path
+    & $Py -m pip --version 2>$null | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+      Write-Host "[deps] pip missing; running ensurepip" -ForegroundColor Yellow
+      & $Py -m ensurepip --upgrade
+    }
+    & $Py -m pip install --upgrade pip setuptools wheel
+    $reqDev = Join-Path $BACKEND 'requirements-dev.txt'
+    if (Test-Path $reqDev) {
+      Write-Host "[deps] Installing dev requirements" -ForegroundColor Cyan
+      & $Py -m pip install -r $reqDev
+    } else {
+      Write-Host "[deps] WARNING requirements-dev.txt not found; installing base project deps" -ForegroundColor Yellow
+      $reqTxt = Join-Path $BACKEND 'requirements.txt'
+      if (Test-Path $reqTxt) { & $Py -m pip install -r $reqTxt }
+    }
+    if ($Fast -and -not $firstCreate) { Write-Host "[fast] (Info) Fast ignored because first run requires ensuring deps" -ForegroundColor DarkGray }
+    Write-Host "[bootstrap] Completed dependency install" -ForegroundColor Cyan
   }
   $env:PYTHONPATH = "$BACKEND;$ROOT"
   $env:APP_ENV = 'test'
   if (-not $env:DEV_ALLOW_NO_LLM) { $env:DEV_ALLOW_NO_LLM = '1' }
-  Write-Host "[bootstrap] Completed dependency install" -ForegroundColor Cyan
 }
 
 # Hermetic path variables if needed beyond this point (non-hermetic already handled)
@@ -154,6 +192,16 @@ $finalArgs = @()
 if ($PytestArgs) {
   # Naively split on spaces unless quoted (simple parser)
   $finalArgs += ($PytestArgs -split ' +')
+}
+# Auto-prefix relative backend test paths (tests/... or hermetic_tests/...) since we chdir to repo root
+for ($i = 0; $i -lt $finalArgs.Count; $i++) {
+  $tok = $finalArgs[$i]
+  if ($tok -and ($tok -notlike '-*')) {
+    if ($tok -match '^(tests|hermetic_tests)[/\\]') {
+      # Preserve entire token (may include ::nodeid) when prefixing
+      $finalArgs[$i] = 'apps/backend/' + $tok
+    }
+  }
 }
 if (-not ($finalArgs | Where-Object { $_ -like '-q*' })) {
   # Ensure quiet by default if user didn't override
