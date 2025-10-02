@@ -1,0 +1,67 @@
+// Removed legacy triple-slash references; explicit imports below provide types.
+import { describe, it, beforeEach, expect, vi } from 'vitest';
+import { render, screen } from '@testing-library/react';
+import React from 'react';
+
+// Provide deterministic crypto for idempotency key path if triggered
+beforeEach(() => {
+  // No crypto override needed
+  // Clean globals
+  delete window.__openRuleTester;
+  // Queue pending seed prior to mount
+  window.__pendingRuleSeed = {
+    name: 'If merchant contains "QUEUED"',
+    when: { merchant: 'QUEUED' },
+    then: { category: 'QueuedCat' },
+    month: '2025-09'
+  };
+});
+
+vi.mock('@/lib/schemas', () => ({ ThresholdsSchema: { parse: (x: unknown) => (x as Record<string, unknown>) || {} } }));
+
+// Avoid network code paths; we only assert the queued draft populates form on mount.
+vi.mock('@/api', () => ({
+  saveRule: vi.fn(),
+  testRule: vi.fn(async () => []),
+  saveTrainReclassify: vi.fn()
+}));
+vi.mock('@/lib/toast-helpers', () => {
+  const success = vi.fn();
+  const error = vi.fn();
+  return {
+    toast: { success, error },
+    emitToastSuccess: success,
+    emitToastError: error,
+    showToast: success,
+    useOkErrToast: () => ({ ok: success, err: error })
+  };
+});
+
+import RuleTesterPanel from '@/components/RuleTesterPanel';
+import { TooltipProvider } from '@radix-ui/react-tooltip';
+
+/*
+  This test simulates a seed arriving before the panel mounts by priming window.__pendingRuleSeed.
+  On mount, the panel should consume it, open itself, and populate description/category fields.
+*/
+
+describe('RuleTesterPanel queued seed consumption', () => {
+  it('opens and populates from __pendingRuleSeed on first mount', async () => {
+  render(<TooltipProvider><RuleTesterPanel /></TooltipProvider>);
+
+    // The panel renders as a portal overlay when open: look for heading
+    const heading = await screen.findByRole('heading', { name: /rule tester/i });
+    expect(heading).toBeInTheDocument();
+
+    // Merchant / description_like field becomes the match input
+    const matchInput = await screen.findByPlaceholderText(/case-insensitive/i);
+    expect(matchInput).toHaveValue('QUEUED');
+
+    // Category field
+    const categoryField = await screen.findByPlaceholderText(/subscriptions/i);
+    expect(categoryField).toHaveValue('QueuedCat');
+
+    // Ensure queue was cleared
+  expect(window.__pendingRuleSeed).toBeNull();
+  });
+});

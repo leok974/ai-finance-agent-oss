@@ -1,0 +1,130 @@
+{
+  "__inputs": [
+    {
+      "name": "DS_POSTGRES",
+      "label": "PostgreSQL",
+      "description": "",
+      "type": "datasource",
+      "pluginId": "postgres",
+      "pluginName": "PostgreSQL"
+    }
+  ],
+  "__requires": [
+    { "type": "grafana", "id": "grafana", "name": "Grafana", "version": "10.0.0" },
+    { "type": "datasource", "id": "postgres", "name": "PostgreSQL", "version": "1.0.0" },
+    { "type": "panel", "id": "timeseries", "name": "Time series", "version": "" },
+    { "type": "panel", "id": "barchart", "name": "Bar chart", "version": "" },
+    { "type": "panel", "id": "stat", "name": "Stat", "version": "" }
+  ],
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": "-- Grafana --",
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 1,
+  "graphTooltip": 1,
+  "id": null,
+  "iteration": 1,
+  "links": [],
+  "panels": [
+    {
+      "id": 1,
+      "title": "Fallbacks (count)",
+      "type": "timeseries",
+      "datasource": { "type": "postgres", "uid": "${DS_POSTGRES}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "fieldConfig": {
+        "defaults": { "unit": "short", "decimals": 0 },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "showLegend": true, "placement": "bottom" },
+        "tooltip": { "mode": "multi", "sort": "none" },
+        "stacking": { "mode": "none", "group": "A" }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawQuery": true,
+          "datasource": { "type": "postgres", "uid": "${DS_POSTGRES}" },
+          "rawSql": "SELECT\n  $__time(to_timestamp(server_ts/1000)) AS time,\n  count(*) AS value\nFROM analytics_events\nWHERE event = 'chat_fallback_used'\n  AND $__timeFilter(to_timestamp(server_ts/1000))\nGROUP BY 1\nORDER BY 1;",
+          "editorMode": "code"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Fallbacks by provider (stacked)",
+      "type": "timeseries",
+      "datasource": { "type": "postgres", "uid": "${DS_POSTGRES}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "fieldConfig": {
+        "defaults": { "unit": "short", "decimals": 0 },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "showLegend": true, "placement": "bottom" },
+        "tooltip": { "mode": "multi", "sort": "none" },
+        "stacking": { "mode": "normal", "group": "A" }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawQuery": true,
+          "datasource": { "type": "postgres", "uid": "${DS_POSTGRES}" },
+          "rawSql": "SELECT\n  $__time(to_timestamp(server_ts/1000)) AS time,\n  props_json->>'provider' AS metric,\n  count(*) AS value\nFROM analytics_events\nWHERE event = 'chat_fallback_used'\n  AND $__timeFilter(to_timestamp(server_ts/1000))\nGROUP BY 1, 2\nORDER BY 1;",
+          "editorMode": "code"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Fallback rate",
+      "type": "timeseries",
+      "datasource": { "type": "postgres", "uid": "${DS_POSTGRES}" },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 8 },
+      "fieldConfig": {
+        "defaults": { "unit": "percentunit", "decimals": 1 },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "showLegend": true, "placement": "bottom" },
+        "tooltip": { "mode": "multi", "sort": "none" },
+        "stacking": { "mode": "none", "group": "A" }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawQuery": true,
+          "datasource": { "type": "postgres", "uid": "${DS_POSTGRES}" },
+          "rawSql": "WITH f AS (\n  SELECT date_trunc('minute', to_timestamp(server_ts/1000)) AS t, count(*) AS c\n  FROM analytics_events\n  WHERE event = 'chat_fallback_used'\n    AND $__timeFilter(to_timestamp(server_ts/1000))\n  GROUP BY 1\n), a AS (\n  SELECT date_trunc('minute', to_timestamp(server_ts/1000)) AS t, count(*) AS c\n  FROM analytics_events\n  WHERE event = 'chat_attempt'\n    AND $__timeFilter(to_timestamp(server_ts/1000))\n  GROUP BY 1\n)\nSELECT\n  $__time(COALESCE(f.t, a.t)) AS time,\n  (COALESCE(f.c,0)::float / NULLIF(a.c,0)) AS value\nFROM f\nFULL JOIN a ON f.t = a.t\nORDER BY 1;",
+          "editorMode": "code"
+        }
+      ]
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 38,
+  "style": "dark",
+  "tags": ["LedgerMind", "Analytics"],
+  "templating": { "list": [] },
+  "time": { "from": "now-24h", "to": "now" },
+  "timepicker": { "hidden": false },
+  "timezone": "",
+  "title": "LedgerMind • Fallback analytics",
+  "uid": "ledgermind-fallback",
+  "version": 1,
+  "weekStart": ""
+}

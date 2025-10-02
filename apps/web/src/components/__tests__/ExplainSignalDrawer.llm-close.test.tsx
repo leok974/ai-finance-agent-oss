@@ -18,26 +18,19 @@ describe('ExplainSignalDrawer – LLM mode close behavior', () => {
   })
 
   it('renders LLM badge/lead and calls onOpenChange(false) when Close is clicked', async () => {
-    const mock: ExplainResponse = {
-      txn: { id: 4242, date: '2025-08-03', merchant: 'Starbucks', amount: -3.21, category: 'Coffee' },
-      evidence: {
-        merchant_norm: 'starbucks',
-        similar: { total: 12, by_category: [{ category: 'Coffee', count: 12 }] },
-        feedback: { merchant_feedback: [{ category: 'Coffee', positives: 7, negatives: 0 }] },
-        rule_match: null,
-      },
-      candidates: [{ source: 'history', category: 'Coffee', confidence: 0.95 }],
+    const mock = {
       rationale: 'Base deterministic',
       llm_rationale: 'This was classified as Coffee because you consistently mark Starbucks as Coffee (12 prior).',
       mode: 'llm',
-    }
+      evidence: { merchant_norm: 'starbucks' }
+    } as unknown as ExplainResponse;
 
-    ;(getExplain as any).mockResolvedValue(mock)
+    (getExplain as unknown as { mockResolvedValue: (v: unknown) => void }).mockResolvedValue(mock)
 
     const onOpenChange = vi.fn()
     const user = userEvent.setup()
 
-    render(<ExplainSignalDrawer txnId={4242} open={true} onOpenChange={onOpenChange} />)
+  render(<ExplainSignalDrawer txnId={4242} open={true} onOpenChange={onOpenChange} txn={{ id:4242, merchant:'Starbucks', date:'2025-08-03', amount:-3.21, category:'Coffee' }} />)
 
     await waitFor(() => {
       expect(screen.getByTestId('explain-drawer')).toBeTruthy()

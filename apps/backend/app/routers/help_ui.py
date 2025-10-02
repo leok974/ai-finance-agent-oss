@@ -22,51 +22,58 @@ router = APIRouter(prefix="/agent/tools/help/ui", tags=["help"])
 @router.post("/describe")
 def describe(payload: dict = Body(...), db: Session = Depends(get_db)):
     key = (payload.get("key") or "").strip()
+    orig_key = key
     with_context = bool(payload.get("with_context", False))
     month = payload.get("month")
 
     if not key:
-        return {"keys": sorted(UI_HELP.keys())}
+        canonical_keys = sorted(k for k in UI_HELP.keys() if k not in ALIASES)
+        return {"keys": canonical_keys}
 
-    # resolve alias before lookup
-    key = ALIASES.get(key, key)
-    base = UI_HELP.get(key)
+    if with_context:
+        lookup_key = ALIASES.get(key, key)  # resolve for content but echo original
+        resp_key = key
+    else:
+        key = ALIASES.get(key, key)  # mutate to canonical for non-context
+        lookup_key = key
+        resp_key = key
+    base = UI_HELP.get(lookup_key)
     if not base:
         return {"key": key, "help": None}
 
-    out = {"key": key, "help": base}
+    out = {"key": resp_key, "help": base}
 
     if with_context:
         ctx = {}
         try:
-            if key == "charts.month_merchants":
+            if lookup_key == "charts.month_merchants":
                 if not month:
                     # try to infer latest month for context
                     from app.services.charts_data import latest_month_str
                     month = latest_month_str(db)
                 if month:
                     ctx["data"] = charts_svc.get_month_merchants(db, month)
-            elif key == "charts.top_categories":
+            elif lookup_key == "charts.top_categories":
                 if not month:
                     from app.services.charts_data import latest_month_str
                     month = latest_month_str(db)
                 if month:
                     ctx["data"] = charts_svc.get_month_categories(db, month)
-            elif key == "charts.month_flows":
+            elif lookup_key == "charts.month_flows":
                 if not month:
                     from app.services.charts_data import latest_month_str
                     month = latest_month_str(db)
                 if month:
                     ctx["data"] = charts_svc.get_month_flows(db, month)
-            elif key == "charts.daily_flows":
+            elif lookup_key == "charts.daily_flows":
                 if not month:
                     from app.services.charts_data import latest_month_str
                     month = latest_month_str(db)
                 if month:
                     ctx["data"] = charts_svc.get_month_flows(db, month)
-            elif key == "charts.spending_trends":
+            elif lookup_key == "charts.spending_trends":
                 ctx["data"] = charts_svc.get_spending_trends(db, months=6)
-            elif key == "cards.month_summary" or key == "cards.overview":
+            elif lookup_key == "cards.month_summary" or lookup_key == "cards.overview":
                 ctx["data"] = analytics_svc.compute_kpis(db, month=month, lookback=6)
             # add more as needed
         except Exception as e:

@@ -6,6 +6,7 @@ from datetime import date, timedelta
 import time
 import threading
 import os
+from app.services.llm_flags import llm_policy
 
 from app.transactions import Transaction  # shim to ORM
 from app.orm_models import Feedback, RuleORM as Rule
@@ -362,9 +363,9 @@ def render_deterministic_reasoning(txn: Transaction, evidence: Dict[str, Any], c
 
 
 def try_llm_polish(rationale: str, txn: Transaction, evidence: Dict[str, Any]) -> Optional[str]:
-    """Optional LLM rephrase; safe fallback to deterministic text."""
-    # Allow skipping entirely in dev without an LLM
-    if os.getenv("DEV_ALLOW_NO_LLM", "0") == "1":
+    """Optional LLM rephrase; safe fallback to deterministic text respecting llm_policy."""
+    pol = llm_policy("explain")
+    if not pol.get("allow"):
         return None
     if not _take_token():
         return None
@@ -389,8 +390,27 @@ def try_llm_polish(rationale: str, txn: Transaction, evidence: Dict[str, Any]) -
         return None
 
 
-def build_explain_response(db: Session, txn_id: int, use_llm: bool = False) -> Dict[str, Any]:
+def build_explain_response(db: Session, txn_id: int, use_llm: bool = False, allow_llm: Optional[bool] = None) -> Dict[str, Any]:
+    """Build explanation response.
+    use_llm: legacy flag kept for backwards compatibility.
+    allow_llm: authoritative flag (if provided) controlling whether LLM path is attempted.
+    """
+    pol = llm_policy("explain")
+    if allow_llm is not None:
+        use_llm = bool(allow_llm) and pol.get("allow", False)
+    else:
+        use_llm = bool(use_llm) and pol.get("allow", False)
     txn, evidence = compute_explain_evidence(db, txn_id)
+    # If globally disabled, proactively purge any cached LLM variant for this txn to avoid stale reuse
+    if pol.get("globally_disabled"):
+        try:
+            sig = _sources_signature(db, txn, evidence.get("merchant_norm"))
+            model = getattr(settings, "DEFAULT_LLM_MODEL", "gpt-oss:20b")
+            llm_key = ("explain", int(txn.id), sig, True, model)
+            with _CACHE_LOCK:
+                _EXPLAIN_CACHE.pop(llm_key, None)
+        except Exception:
+            pass
     # Cache key includes sources signature and LLM parameters
     sig = _sources_signature(db, txn, evidence.get("merchant_norm"))
     model = getattr(settings, "DEFAULT_LLM_MODEL", "gpt-oss:20b")
@@ -402,8 +422,26 @@ def build_explain_response(db: Session, txn_id: int, use_llm: bool = False) -> D
     cand = _pick_candidates(txn, evidence)
     det = render_deterministic_reasoning(txn, evidence, cand)
     llm_text: Optional[str] = None
-    if use_llm:
-        llm_text = try_llm_polish(det, txn, evidence)
+    if use_llm and pol.get("allow"):
+        try:
+            from app.utils import llm as llm_mod
+            prompt = (
+                "Rewrite this explanation to be concise and friendly. "
+                "Do not change any numbers or categories. Keep 1-2 sentences max.\n\n"
+                f"Explanation: {det}"
+            )
+            reply, _trace = llm_mod.call_local_llm(
+                model=getattr(settings, "DEFAULT_LLM_MODEL", "gpt-oss:20b"),
+                messages=[
+                    {"role": "system", "content": "You are a helpful finance assistant."},
+                    {"role": "user", "content": prompt},
+                ],
+                temperature=0.2,
+                top_p=0.9,
+            )
+            llm_text = (reply or "").strip() or None
+        except Exception:
+            llm_text = try_llm_polish(det, txn, evidence)
 
     resp = {
         "txn": {

@@ -1,8 +1,10 @@
 import React from "react";
 import { getBudgetRecommendations, type BudgetRecommendation, applyBudgets, downloadReportPdf } from "@/lib/api";
 import Card from "./Card";
-import { showToast } from "@/lib/toast-helpers";
-import HelpBadge from "./HelpBadge";
+import { emitToastSuccess, emitToastError } from "@/lib/toast-helpers";
+import CardHelpTooltip from "./CardHelpTooltip";
+import { getHelpBaseText } from '@/lib/helpBaseText';
+import { t } from '@/lib/i18n';
 
 const LS_KEY = "budgets_lookback_months";
 
@@ -24,7 +26,7 @@ export default function BudgetRecommendationsPanel() {
   const [busyRow, setBusyRow] = React.useState<string | null>(null);
 
   React.useEffect(() => {
-    try { localStorage.setItem(LS_KEY, String(months)); } catch {}
+    try { localStorage.setItem(LS_KEY, String(months)); } catch (_err) { /* intentionally empty: swallow to render empty-state */ }
   }, [months]);
 
   const load = React.useCallback(async (m: number) => {
@@ -54,9 +56,9 @@ export default function BudgetRecommendationsPanel() {
     try {
       const resp = await applyBudgets({ strategy, months, categories_include: [category] });
       const amt = resp.applied?.[0]?.amount ?? 0;
-      showToast?.(`Applied ${category} = $${amt.toFixed(2)}`, { type: "success" });
+      emitToastSuccess(t('ui.toast.budget_single_applied_title'), { description: t('ui.toast.budget_single_applied_description', { category, amount: `$${amt.toFixed(2)}` }) });
     } catch (e: any) {
-      showToast?.(e?.message ?? `Failed to apply ${category}`, { type: "error" });
+      emitToastError(t('ui.toast.budget_single_apply_failed_title', { category }), { description: e?.message });
     } finally {
       setBusyRow(null);
       load(months);
@@ -68,7 +70,7 @@ export default function BudgetRecommendationsPanel() {
       <div className="flex items-center justify-between mb-2">
         <h3 className="text-base font-semibold flex items-center">
           Smart Budget Recommendations
-          <HelpBadge k="cards.budget_recommendations" className="ml-2" />
+          <CardHelpTooltip cardId="cards.budget_recommendations" ctx={{ data }} baseText={getHelpBaseText('cards.budget_recommendations')} className="ml-2" />
         </h3>
       </div>
       <div className="flex flex-col gap-3 pb-2 mb-3">
@@ -113,9 +115,9 @@ export default function BudgetRecommendationsPanel() {
                   const includeList = include ? include.split(",").map(s=>s.trim()).filter(Boolean) : undefined;
                   const excludeList = exclude ? exclude.split(",").map(s=>s.trim()).filter(Boolean) : undefined;
       const r = await applyBudgets({ strategy, months, categories_include: includeList, categories_exclude: excludeList });
-      showToast?.(`Applied ${r.applied_count} categories — Total $${r.applied_total.toFixed(2)}`, { type: "success" });
+  emitToastSuccess(t('ui.toast.budget_bulk_applied_title'), { description: t('ui.toast.budget_bulk_applied_description', { count: r.applied_count, total: `$${r.applied_total.toFixed(2)}` }) });
                 } catch (e: any) {
-      showToast?.(e?.message ?? "Failed to apply budgets", { type: "error" });
+  emitToastError(t('ui.toast.budget_bulk_apply_failed_title'), { description: e?.message });
                 } finally {
                   setApplyBusy("");
                 }

@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, asdict
 import os
 from datetime import datetime, timedelta
+from app.utils.time import utc_now
 from typing import List, Dict, Any, Optional, Tuple, Set
 
 from sqlalchemy import func, and_, or_
@@ -45,7 +46,7 @@ def get_config() -> Dict[str, Any]:
 
 
 def _recent_window(now: Optional[datetime], days: int) -> Tuple[datetime, datetime]:
-    end = now or datetime.utcnow()
+    end = now or utc_now()
     start = end - timedelta(days=days)
     return start, end
 
@@ -53,7 +54,7 @@ def _recent_window(now: Optional[datetime], days: int) -> Tuple[datetime, dateti
 def _active_rule_pairs(db: Session) -> Set[tuple[str | None, str]]:
     rows = (
         db.query(Rule.merchant, Rule.category)
-        .filter(or_(Rule.active == True, Rule.active.is_(None)))
+        .filter(or_(Rule.active, Rule.active.is_(None)))
         .all()
     )
     return set((m, c) for m, c in rows if c)
@@ -144,18 +145,18 @@ def evaluate_candidate(db: Session, merchant_norm: str, category: str) -> Option
     - Otherwise, increment a per-(merchant_norm, category) counter (called on accept only).
     - Return the row only once thresholds are met; else return None.
     """
-    now = datetime.utcnow()
+    now = utc_now()
     # Upsert row first so we can increment when metrics aren't derivable
     row = (
         db.query(RuleSuggestion)
         .filter(RuleSuggestion.merchant_norm == merchant_norm, RuleSuggestion.category == category)
         .one_or_none()
     )
-    created = False
+    # created flag omitted (was previously unused)
     if row is None:
         row = RuleSuggestion(merchant_norm=merchant_norm, category=category, support_count=0, positive_rate=1.0, last_seen=now)
         db.add(row)
-        created = True
+    # row created
 
     # Try metrics from feedback
     metrics = compute_metrics(db, merchant_norm, category)
@@ -335,7 +336,7 @@ def list_suggestions(
 
 
 def accept_suggestion(db: Session, sug_id: int) -> Optional[int]:
-    s = db.get(RuleSuggestion, sug_id) if hasattr(db, "get") else db.query(RuleSuggestion).get(sug_id)  # type: ignore[attr-defined]
+    s = db.get(RuleSuggestion, sug_id)
     if not s:
         return None
     # Create a rule; for simplicity, use merchant_norm as pattern targeting merchant
@@ -354,7 +355,7 @@ def accept_suggestion(db: Session, sug_id: int) -> Optional[int]:
 
 
 def dismiss_suggestion(db: Session, sug_id: int) -> bool:
-    s = db.get(RuleSuggestion, sug_id) if hasattr(db, "get") else db.query(RuleSuggestion).get(sug_id)  # type: ignore[attr-defined]
+    s = db.get(RuleSuggestion, sug_id)
     if not s:
         return False
     db.delete(s)

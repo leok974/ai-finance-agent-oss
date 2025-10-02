@@ -2,8 +2,8 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from typing import Optional, Dict
-from app.database import get_db
-from app.transactions import Transaction
+from app.db import get_db
+from app.orm_models import Transaction
 import subprocess
 
 router = APIRouter(prefix="/agent/tools/meta", tags=["agent_tools.meta"])

@@ -1,7 +1,14 @@
 import { RuleSuggestion as MinedRuleSuggestionStrict, isRuleSuggestionArray } from "@/types/rules";
+import { fetchJSON, fetchAuth, dashSlug } from '@/lib/http';
+import { FEATURES } from '@/config/featureFlags';
 
 // Resolve API base from env, with a dev fallback when running Vite on port 5173
-export const API_BASE = ((import.meta as any).env?.VITE_API_BASE?.replace(/\/+$/, "")) || "http://127.0.0.1:8000";
+const rawApiBase = (import.meta as any).env?.VITE_API_BASE;
+export const API_BASE = ((rawApiBase ?? '/api') as string).replace(/\/+$/, '') || '/api';
+
+export function apiUrl(path: string): string {
+  return `${API_BASE}${path.startsWith('/') ? path : `/${path}`}`;
+}
 
 function cookieGet(name: string): string | null {
   try {
@@ -13,7 +20,7 @@ function cookieGet(name: string): string | null {
 }
 
 export async function api<T = any>(path: string, options: RequestInit = {}): Promise<T> {
-  const url = `${API_BASE}${path.startsWith("/") ? path : `/${path}`}`;
+  const url = apiUrl(path);
   const method = (options.method || "GET").toString().toUpperCase();
   const headers = new Headers(options.headers || {});
   if (!headers.has("Content-Type") && !["GET", "HEAD"].includes(method)) {
@@ -34,29 +41,27 @@ export async function api<T = any>(path: string, options: RequestInit = {}): Pro
   }
 }
 
-export const charts = {
-  monthSummary: () => api(`/charts/month_summary`),
-};
-
-// prefer GET-only month resolution to avoid 422s on some branches
-export async function resolveMonthFromCharts(): Promise<string> {
-  try {
-    const r = await charts.monthSummary();
-    return (r as any)?.month ?? "";
-  } catch {
-    return "";
+// Charts: migrated to /agent/tools/charts/* POST endpoints (legacy /charts/* removed backend-side)
+// Helper: generate an array of YYYY-MM strings going backwards from an anchor month (inclusive)
+function monthsBack(anchor: string, count: number): string[] {
+  if (!/^[0-9]{4}-[0-9]{2}$/.test(anchor)) return [];
+  const [y0, m0] = anchor.split('-').map(Number);
+  const out: string[] = [];
+  for (let i = 0; i < count; i++) {
+    const d = new Date(y0, m0 - 1 - i, 1);
+    out.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
   }
+  return out.reverse(); // chronological ascending
 }
 
-// GET-only: older backend compatibility
+// Resolve latest month directly from new meta endpoint
 export async function resolveMonth(): Promise<string> {
   try {
-    const r = await charts.monthSummary();
-    return (r as any)?.month ?? "";
-  } catch {
-    return "";
-  }
+    const r: any = await http('/agent/tools/meta/latest_month');
+    return r?.month || '';
+  } catch { return ''; }
 }
+export const resolveMonthFromCharts = resolveMonth; // alias for backward references
 
 // Optional bearer fallback: keep a transient token if needed (e.g., dev/testing)
 let accessToken: string | null = null;
@@ -73,7 +78,7 @@ function withCreds(init: RequestInit = {}): RequestInit {
       const m = typeof document !== 'undefined' ? document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/) : null;
       const csrf = m && m[1] ? decodeURIComponent(m[1]) : undefined;
       if (csrf && !headers.has("X-CSRF-Token")) headers.set("X-CSRF-Token", csrf);
-    } catch {}
+    } catch (_err) { /* intentionally empty: swallow to render empty-state */ }
   }
   return { ...init, headers, credentials: "include" };
 }
@@ -142,7 +147,7 @@ function q(params: Record<string, any>) {
 
 // Core HTTP: do not loop on 401. One shot; caller handles auth state.
 export async function http<T=any>(path: string, init?: RequestInit): Promise<T> {
-  const url = API_BASE ? `${API_BASE}${path}` : path;
+  const url = apiUrl(path);
   const doFetch = async () => {
   const headers = withAuthHeaders({ 'Content-Type': 'application/json', ...(init?.headers || {}) as any });
   return fetch(url, withCreds({ ...init, headers }));
@@ -150,9 +155,7 @@ export async function http<T=any>(path: string, init?: RequestInit): Promise<T> 
   let res = await doFetch();
   if (res.status === 401) {
     // Attempt cookie-based refresh once, then retry original request
-    try {
-      await fetch(`${API_BASE || ''}/auth/refresh`, withCreds({ method: 'POST' }));
-    } catch {}
+    try { await fetch(apiUrl('/auth/refresh'), withCreds({ method: 'POST' })); } catch (_err) { /* intentionally empty: swallow to render empty-state */ }
     res = await doFetch();
   }
   if (!res.ok) {
@@ -177,7 +180,7 @@ export async function apiPost<T = any>(path: string, body?: any, init?: RequestI
     body: body === undefined ? undefined : JSON.stringify(body),
   }));
   if (res.status === 401) {
-    try { await fetch(`${API_BASE || ''}/auth/refresh`, withCreds({ method: 'POST' })); } catch {}
+    try { await fetch(`${API_BASE || ''}/auth/refresh`, withCreds({ method: 'POST' })); } catch (_err) { /* intentionally empty: swallow to render empty-state */ }
     res = await fetch(url, withCreds({
       ...init,
       method: 'POST',
@@ -248,6 +251,17 @@ export async function getMetaInfo(): Promise<MetaInfo> {
   return http<MetaInfo>('/meta/info');
 }
 
+// LLM health
+export type LlmHealth = {
+  ok: boolean;
+  status: { ollama: string; openai: string };
+  openai_key?: { present: boolean; source: 'env'|'file'|'absent' };
+};
+
+export async function getLlmHealth(): Promise<LlmHealth> {
+  return http<LlmHealth>('/llm/health');
+}
+
 // mapper: rename keys (camelCase -> snake_case) and allow snake_case passthrough
 const mapKeys = <T extends object>(src: any, pairs: Record<string, string>) => {
   const o: any = {};
@@ -261,89 +275,48 @@ const mapKeys = <T extends object>(src: any, pairs: Record<string, string>) => {
 // ---------- Insights / Alerts ----------
 // Use robust fetchJson; keep optional month for backward-compat callers
 export const getInsights = (month?: string) =>
-  fetchJson(`/insights${month ? `?month=${encodeURIComponent(month)}` : ""}`)
+  fetchJSON(`insights`, { query: month ? { month } : undefined })
 export const getAlerts = (month?: string) =>
-  fetchJson(`/alerts${month ? `?month=${encodeURIComponent(month)}` : ""}`)
-export const downloadReportCsv = (month: string) => window.open(`${API_BASE || ""}/report_csv${q({ month })}`,'_blank')
+  fetchJSON(`alerts`, { query: month ? { month } : undefined })
+export const downloadReportCsv = (month: string) => window.open(`${apiUrl('/report_csv')}${q({ month })}`,'_blank')
 
 // ---------- Charts ----------
-export async function fetchJson(path: string, init?: RequestInit) {
-  const url = API_BASE ? `${API_BASE}${path}` : path;
-  const key = keyFromInit(url, init);
+// (Removed legacy fetchJson wrapper; use fetchJSON from http.ts directly)
 
-  // Pause network work when tab is hidden (prevents background waterfalls)
-  if (typeof document !== "undefined" && (document as any).hidden) {
-    await new Promise<void>((resolve) => {
-      const onVis = () => {
-        if (!(document as any).hidden) {
-          document.removeEventListener("visibilitychange", onVis as any);
-          resolve();
-        }
-      };
-      document.addEventListener("visibilitychange", onVis as any, { once: true } as any);
-    });
+// Minimal shapes for charts responses (only fields accessed by components)
+export interface MonthSummaryResp { month: string | null; categories?: Array<{ category: string; amount: number }>; }
+export interface MonthMerchantsResp { month?: string | null; merchants?: Array<{ name: string; amount: number }>; }
+export interface MonthFlowsResp { month?: string | null; series?: Array<{ name: string; value: number; month?: string }>; }
+
+async function postChart<T>(endpoint: string, body: any): Promise<T | null> {
+  try {
+    return await fetchJSON<T>(`agent/tools/charts/${endpoint}`, { method: 'POST', body: JSON.stringify(body) });
+  } catch (e) {
+    // Swallow 404/410 gracefully – treat as null (empty state)
+    return null;
   }
-
-  // Cached recent response?
-  const now = Date.now();
-  const hit = responseCache.get(key);
-  if (hit && now - hit.t < CACHE_TTL_MS) return hit.p;
-
-  // De-dupe identical in-flight requests
-  if (inflight.has(key)) return inflight.get(key)!;
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 30_000); // 30s hard timeout
-  const merged: RequestInit = { ...init, signal: controller.signal };
-
-  const p = new Promise<any>((resolve, reject) => {
-    runOrQueue(async () => {
-      try {
-        const doFetch = async () => {
-          const headers = withAuthHeaders(merged.headers);
-          return fetch(url, withCreds({ ...merged, headers }));
-        };
-        let res = await doFetch();
-        if (res.status === 401) {
-          try { await fetch(`${API_BASE || ''}/auth/refresh`, withCreds({ method: 'POST' })); } catch {}
-          res = await doFetch();
-        }
-        if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
-        const json = res.status === 204 ? null : await res.json();
-        resolve(json);
-      } catch (e) {
-        reject(e);
-      } finally {
-        clearTimeout(timeout);
-        inflight.delete(key);
-        responseCache.set(key, { t: Date.now(), p });
-        done();
-      }
-    });
-  });
-
-  inflight.set(key, p);
-  responseCache.set(key, { t: now, p });
-  return p;
 }
 
-export async function getMonthSummary(month?: string) {
-  const qs = month ? `?month=${encodeURIComponent(month)}` : "";
-  return fetchJson(`/charts/month_summary${qs}`);
+export async function getMonthSummary(month?: string): Promise<MonthSummaryResp | null> {
+  if (!month) month = await resolveMonth();
+  return postChart<MonthSummaryResp>('summary', { month });
 }
 
-export async function getMonthMerchants(month?: string) {
-  const qs = month ? `?month=${encodeURIComponent(month)}` : "";
-  return fetchJson(`/charts/month_merchants${qs}`);
+export async function getMonthMerchants(month?: string): Promise<MonthMerchantsResp | null> {
+  if (!month) month = await resolveMonth();
+  return postChart<MonthMerchantsResp>('merchants', { month });
 }
 
-export async function getMonthFlows(month?: string) {
-  const qs = month ? `?month=${encodeURIComponent(month)}` : "";
-  return fetchJson(`/charts/month_flows${qs}`);
+export async function getMonthFlows(month?: string): Promise<MonthFlowsResp | null> {
+  if (!month) month = await resolveMonth();
+  return postChart<MonthFlowsResp>('flows', { month });
 }
 
-export async function getSpendingTrends(months = 6) {
-  return fetchJson(`/charts/spending_trends?months=${months}`);
+export async function getSpendingTrends(windowMonths = 6, anchorMonth?: string) {
+  let month = anchorMonth || await resolveMonth();
+  if (!month) return { trends: [] } as any;
+  const monthsArr = monthsBack(month, windowMonths);
+  return postChart<any>('spending_trends', { months: monthsArr });
 }
 
 // ---------- Analytics (agent tools) ----------
@@ -371,31 +344,89 @@ export const analytics = {
   whatif: (payload: any) => apiPost(`/agent/tools/analytics/whatif`, payload),
 };
 
+// ---------- Telemetry ----------
+export const telemetry = {
+  helpOpen: (payload: { key: string; path: string; ts: number }) =>
+    apiPost(`/analytics/help_open`, payload),
+  track: (event: string, props?: Record<string, any>) =>
+    apiPost(`/analytics/track`, { event, props, ts: Date.now() }).catch(() => {}),
+};
+
 // ---------- UI Help ----------
 export const uiHelp = {
   describe: (key: string, month?: string, withContext = false) =>
     apiPost(`/agent/tools/help/ui/describe`, { key, month, with_context: withContext }),
 };
 
+// Unified describe (new panel help) endpoint
+export type DescribeResponse = {
+  text: string;
+  grounded: boolean;
+  rephrased: boolean;
+  llm_called?: boolean;
+  provider: string;
+  panel_id: string;
+  mode?: 'learn' | 'explain';
+  reasons?: string[];
+};
+
+export async function describe(
+  panelId: string,
+  body: any,
+  opts?: { mode?: 'learn' | 'explain'; rephrase?: boolean; signal?: AbortSignal }
+): Promise<DescribeResponse> {
+  const basePayload = body && typeof body === 'object' ? body : {};
+  const payload: Record<string, unknown> = { ...(basePayload as Record<string, unknown>) };
+  if (opts?.mode) payload.mode = opts.mode;
+  if (opts?.rephrase !== undefined) payload.rephrase = opts.rephrase;
+  const panelPath = `/agent/describe/${encodeURIComponent(panelId)}`;
+  const apiPrefix = API_BASE ? (API_BASE.endsWith('/api') ? API_BASE : `${API_BASE}/api`) : '/api';
+  const url = `${apiPrefix}${panelPath}`;
+  const headers = withAuthHeaders({ 'Content-Type': 'application/json' });
+  const bodyJson = JSON.stringify(payload);
+  const doFetch = () =>
+    fetch(url, withCreds({
+      method: 'POST',
+      headers,
+      body: bodyJson,
+      signal: opts?.signal,
+    }));
+
+  let res = await doFetch();
+  if (res.status === 401) {
+    try {
+      await fetch(`${API_BASE || ''}/auth/refresh`, withCreds({ method: 'POST' }));
+    } catch (_err) { /* intentionally empty: swallow to render empty-state */ }
+    res = await doFetch();
+  }
+
+  if (!res.ok) {
+    const msg = res.status === 405 ? 'Use POST /api/agent/describe/{panel_id}' : 'Help service temporarily unavailable';
+    throw new Error(msg);
+  }
+
+  return res.json() as Promise<DescribeResponse>;
+}
+
 // ---------- Budgets ----------
 export const budgetCheck = (month?: string) => {
   const qs = month ? `?month=${encodeURIComponent(month)}` : "";
-  return fetchJson(`/budget/check${qs}`);
+  return fetchJSON('budget/check', { query: month ? { month } : undefined });
 }
 export const getBudgetCheck = (month?: string) => {
   const qs = month ? `?month=${encodeURIComponent(month)}` : "";
-  return fetchJson(`/budget/check${qs}`);
+  return fetchJSON('budget/check', { query: month ? { month } : undefined });
 }
 
 // ---------- Unknowns / Suggestions ----------
 export async function getUnknowns(month?: string) {
   const qs = month ? `?month=${encodeURIComponent(month)}` : "";
-  return fetchJson(`/txns/unknowns${qs}`);
+  return fetchJSON('txns/unknowns', { query: month ? { month } : undefined });
 }
 
 export async function getSuggestions(month?: string) {
   const qs = month ? `?month=${encodeURIComponent(month)}` : "";
-  return fetchJson(`/ml/suggest${qs}`);
+  return fetchJSON('ml/suggest', { query: month ? { month } : undefined });
 }
 
 // Rule Suggestions config (thresholds + window)
@@ -404,7 +435,11 @@ export type RuleSuggestConfig = {
   min_positive: number;
   window_days: number | null;
 };
-export const fetchRuleSuggestConfig = () => http<RuleSuggestConfig>(`/rules/suggestions/config`);
+// Suggestions permanently disabled: export guarded stub so any legacy import fails fast in dev
+export const fetchRuleSuggestConfig = () => {
+  if (!FEATURES.suggestions) throw new Error('Rule suggestions disabled');
+  return http<RuleSuggestConfig>(`/rules/suggestions/config`);
+};
 
 // If you have explain/categorize helpers, keep them as-is
 export const categorizeTxn = (id: number, category: string) => http(`/txns/${id}/categorize`, { method: 'POST', body: JSON.stringify({ category }) })
@@ -509,7 +544,7 @@ export const listRules = getRules;
 export const deleteRule = (id: number) => http(`/rules/${id}`, { method: 'DELETE' });
 // Enhanced createRule with richer FastAPI error reporting (e.g., 422 validation errors)
 export async function createRule(body: RuleInput): Promise<RuleCreateResponse> {
-  const url = API_BASE ? `${API_BASE}/rules` : `/rules`;
+  const url = apiUrl('/rules');
   const r = await fetch(url, withCreds({
     method: 'POST',
     headers: withAuthHeaders({ 'Content-Type': 'application/json' }),
@@ -530,7 +565,7 @@ export async function createRule(body: RuleInput): Promise<RuleCreateResponse> {
       try {
         const t = await r.text();
         if (t) msg += ` — ${t}`;
-      } catch {}
+      } catch (_err) { /* intentionally empty: swallow to render empty-state */ }
     }
     throw new Error(msg);
   }
@@ -698,69 +733,8 @@ export async function saveTrainReclassify(
 }
 
 // ---------- Explain & Agent ----------
-// Explain API types aligned with backend
-export type ExplainEvidence = {
-  merchant_norm?: string;
-  rule_match?: { id: number; category?: string; display_name?: string } | null;
-  similar?: {
-    total: number;
-    by_category: Array<{ category: string; count: number }>;
-    recent_samples?: Array<{ id: number; amount: number; date: string; category?: string | null }>;
-  } | null;
-  feedback?: {
-    txn_feedback?: Array<{ id: number; action: string; category: string; created_at?: string }>;
-    merchant_feedback?: Array<{ category: string; positives: number; negatives: number }>;
-  } | null;
-};
-
-export type ExplainResponse = {
-  txn: { id: number; date?: string; amount?: number; merchant?: string; description?: string; category?: string | null };
-  evidence: ExplainEvidence;
-  candidates: Array<{ source: 'rule' | 'history' | 'model' | string; category: string; confidence?: number }>;
-  rationale: string;
-  llm_rationale?: string | null;
-  mode: 'deterministic' | 'llm';
-  actions?: Array<{ label: string; action: string; payload?: any }>;
-};
-
-// Real explain call hitting backend route
-export async function getExplain(txnId: number, opts?: { use_llm?: boolean }): Promise<ExplainResponse> {
-  const qs = opts?.use_llm ? `?use_llm=true` : '';
-  return http<ExplainResponse>(`/txns/${txnId}/explain${qs}`);
-}
-
-// Helper: unified chat for transaction explanations (returns formatted response for UI)
-export async function explainTxnForChat(txnId: string | number): Promise<{
-  reply: string;
-  meta: {
-    citations?: { type: string; id?: string; count?: number }[];
-    ctxMonth?: string;
-    trace?: any[];
-    model?: string;
-  };
-}> {
-  const resp = await agentChat({
-    messages: [{ role:'user', content:`Explain transaction ${txnId} and suggest one action.` }],
-    intent: 'explain_txn',
-    txn_id: String(txnId)
-  });
-  return {
-    reply: resp.reply,
-    meta: {
-      citations: resp.citations,
-      ctxMonth: resp.used_context?.month,
-      trace: resp.tool_trace,
-      model: resp.model
-    }
-  };
-}
-
-export async function agentStatus() {
-  return fetchJson(`/agent/status`).catch(() => ({}));
-}
-
+// (Moved agent chat types & function earlier to satisfy references)
 export type ChatMessage = { role: "system" | "user" | "assistant"; content: string };
-
 export type AgentChatRequest = {
   messages: { role: 'system'|'user'|'assistant', content: string }[];
   context?: any;
@@ -770,7 +744,6 @@ export type AgentChatRequest = {
   temperature?: number;
   top_p?: number;
 };
-
 export type AgentChatResponse = {
   mode?: string;
   reply: string;
@@ -782,24 +755,14 @@ export type AgentChatResponse = {
   tool_trace: any[];
   model: string;
 };
-
-export type AgentModelsResponse = {
-  provider: 'ollama' | 'openai' | string;
-  default: string;
-  models: { id: string }[];
-};
-
 export async function agentChat(
   input: string | ChatMessage[] | AgentChatRequest,
   opts?: { system?: string }
 ): Promise<AgentChatResponse> {
   let request: AgentChatRequest;
-  
   if (typeof input === 'object' && 'messages' in input) {
-    // New unified API format
     request = input;
   } else {
-    // Legacy compatibility - convert to new format
     let messages: ChatMessage[];
     if (Array.isArray(input)) {
       messages = input;
@@ -810,280 +773,19 @@ export async function agentChat(
     }
     request = { messages, intent: 'general' };
   }
-
-  return fetchJson(`/agent/chat`, {
+  return fetchJSON<AgentChatResponse>('agent/chat', {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(request),
-  });
+  } as any);
 }
 
-export async function getAgentModels(): Promise<AgentModelsResponse> {
-  return fetchJson(`/agent/models`);
+// ---------- Agent status ----------
+export async function agentStatus() {
+  return fetchJSON('agent/status').catch(() => ({}));
 }
 
-export async function agentStatusOk(): Promise<boolean> {
-  try {
-    const r = await fetchJson(`/agent/status`);
-    return !!(r?.pong === true || r?.status === "ok" || r?.ok === true || /pong/i.test(JSON.stringify(r)));
-  } catch {
-    return false;
-  }
-}
-
-// --- Force LLM rephrase of plain text via /agent/chat ---
-export const agentRephrase = (text: string, meta?: Record<string, any>) =>
-  http<{ reply: string; model: string }>("/agent/chat", {
-    method: "POST",
-    body: JSON.stringify({
-      messages: [{ role: "user", content: `Rephrase for a user:\n\n${text}` }],
-      ...(meta ?? {}),
-    }),
-  });
-
-// ---------- ML: selftest ----------
-export async function mlSelftest(): Promise<any> {
-  return http('/ml/selftest', { method: 'POST' });
-}
-
-// ---- De-dupe ml/status requests to avoid floods/overlaps ----
-let _mlStatusInflight: Promise<any> | null = null;
-export async function getMlStatus(): Promise<{
-  classes?: string[];
-  feedback_count?: number;
-  updated_at?: string | null;
-  details?: any;
-}> {
-  if (_mlStatusInflight) return _mlStatusInflight;
-  _mlStatusInflight = http('/ml/status')
-    .catch((e) => { throw e; })
-    .finally(() => { _mlStatusInflight = null; });
-  return _mlStatusInflight;
-}
-
-// ---------- CSV ingest ----------
-// web/src/lib/api.ts
-export async function uploadCsv(file: File, replace = true, expensesArePositive?: boolean) {
-  const form = new FormData();
-  form.append("file", file, file.name);
-  const params = new URLSearchParams({
-    replace: replace ? "true" : "false",
-  });
-  // Only add expenses_are_positive if explicitly provided
-  if (expensesArePositive !== undefined) {
-    params.set("expenses_are_positive", expensesArePositive ? "true" : "false");
-  }
-  return fetchJson(`/ingest?${params.toString()}`, {
-    method: "POST",
-    body: form,
-  });
-}
-
-// ---------- Agent Tools (Transactions, Budget, Insights, Charts, Rules) ----------
-// Generic POST helper for Agent Tools (reuses existing http() which handles API_BASE and JSON headers)
-async function postTool<T = any>(path: string, payload: any, init?: RequestInit): Promise<T> {
-  return http<T>(path, { method: "POST", body: JSON.stringify(payload), ...(init || {}) });
-}
-
-// ---------- Meta (Agent Tools) ----------
-export const meta = {
-  // No body; simple POST
-  latestMonth: () => http("/agent/tools/meta/latest_month", { method: "POST", body: "{}" }),
-  
-  // Optional: distinct months list (if you add it later)
-  months: () => http("/agent/tools/meta/months", { method: "POST" }),
-  
-  // Git version info
-  version: () => http("/agent/tools/meta/version", { method: "POST" }),
-};
-
-// Namespaced helpers for agent tool endpoints
-export const agentTools = {
-  // Transactions
-  searchTransactions: (payload: {
-    month?: string;
-    limit?: number;
-    offset?: number;
-  sort?: { field: string; dir: "asc" | "desc" };
-    filters?: {
-      merchant?: string;
-      minAmount?: number;
-      maxAmount?: number;
-      category?: string;
-      labeled?: boolean; // true = labeled only, false = unlabeled only, omit = all
-    };
-  }, signal?: AbortSignal) => postTool("/agent/tools/transactions/search", payload, { signal }),
-
-  categorizeTransactions: (payload: {
-    updates: Array<{ id: number | string; category: string }>;
-    onlyIfUnlabeled?: boolean; // backend should respect this; defaults true
-  }, signal?: AbortSignal) => postTool("/agent/tools/transactions/categorize", payload, { signal }),
-
-  getTransactionsByIds: (payload: { ids: Array<number | string> }, signal?: AbortSignal) =>
-    postTool("/agent/tools/transactions/get_by_ids", payload, { signal }),
-
-  // Budget
-  budgetSummary: (payload: { month?: string }, signal?: AbortSignal) =>
-    postTool("/agent/tools/budget/summary", payload, { signal }),
-
-  budgetCheck: (payload: { month?: string }, signal?: AbortSignal) =>
-    postTool("/agent/tools/budget/check", payload, { signal }),
-
-  // Insights
-  insightsExpanded: (payload: { month?: string; large_limit?: number; largeLimit?: number }, signal?: AbortSignal) =>
-    postTool("/agent/tools/insights/expanded", {
-      month: payload?.month,
-      ...mapKeys(payload, { largeLimit: "large_limit" }),
-    }, { signal }),
-
-  // Charts
-  chartsSummary: (payload: { month?: string }, signal?: AbortSignal) =>
-    postTool("/agent/tools/charts/summary", payload, { signal }),
-
-  chartsMerchants: (payload: { month?: string; limit?: number }, signal?: AbortSignal) =>
-    postTool("/agent/tools/charts/merchants", payload, { signal }),
-
-  chartsFlows: (payload: { month?: string }, signal?: AbortSignal) =>
-    postTool("/agent/tools/charts/flows", payload, { signal }),
-
-  chartsSpendingTrends: (
-    payload: { month?: string; monthsBack?: number; months_back?: number },
-    signal?: AbortSignal
-  ) =>
-    postTool(
-      "/agent/tools/charts/spending_trends",
-      {
-        month: payload.month,
-  ...mapKeys(payload, { monthsBack: "months_back" }),
-        ...(payload.months_back !== undefined ? { months_back: payload.months_back } : {}),
-      },
-      { signal }
-    ),
-
-  // Rules
-  rulesTest: (payload: {
-    rule: { merchant?: string; description?: string; pattern?: string; category?: string };
-    month?: string;
-  }, signal?: AbortSignal) => postTool("/agent/tools/rules/test", payload, { signal }),
-
-  rulesApply: (payload: {
-    rule: { merchant?: string; description?: string; pattern?: string; category: string };
-    month?: string;
-    onlyUnlabeled?: boolean; // default true in backend
-  }, signal?: AbortSignal) => postTool("/agent/tools/rules/apply", payload, { signal }),
-
-  rulesApplyAll: (payload: { month?: string }, signal?: AbortSignal) =>
-    postTool("/agent/tools/rules/apply_all", payload, { signal }),
-};
-
-// ---------- Agent Tools: Rules CRUD ----------
-export const rulesCrud = {
-  list: () => http("/agent/tools/rules"),
-  create: (rule: { merchant?: string; description?: string; pattern?: string; category: string; active?: boolean }) =>
-    http("/agent/tools/rules", { method: "POST", body: JSON.stringify(rule) }),
-  update: (
-    id: number,
-    rule: Partial<{ merchant: string; description: string; pattern: string; category: string; active: boolean }>
-  ) => http(`/agent/tools/rules/${id}`, { method: "PUT", body: JSON.stringify(rule) }),
-  remove: (id: number) => http(`/agent/tools/rules/${id}`, { method: "DELETE" }),
-};
-
-// ---------- Helper: resolve latest month from backend ----------
-export async function fetchLatestMonth(): Promise<string | null> {
-  const res = await fetch(`${API_BASE}/agent/tools/meta/latest_month`, withCreds({
-    method: "POST",
-    headers: withAuthHeaders({ "Content-Type": "application/json" }),
-    body: "{}"
-  }));
-  if (!res.ok) return null;
-  const data = await res.json(); // { month: "YYYY-MM" | null }
-  return data?.month ?? null;
-}
-
-// Original fetchLatestMonth with retry and fallback (kept for compatibility)
-export async function fetchLatestMonthWithFallback(): Promise<string | null> {
-  // Try meta route (fast path) with a tiny retry
-  for (let i = 0; i < 2; i++) {
-    try {
-      const r = await meta.latestMonth();
-      if (r && typeof r.month === "string" && r.month.length >= 7) return r.month;
-    } catch { /* ignore and retry once */ }
-  }
-
-  // Fallback: ask transactions.search for the newest txn and derive YYYY-MM
-  try {
-    const res = await agentTools.searchTransactions({
-      limit: 1,
-      sort: { field: "date", dir: "desc" }, // harmless if backend ignores
-    });
-    if (typeof res?.month === "string") return res.month;
-    const first = res?.items?.[0] ?? res?.transactions?.[0] ?? res?.data?.[0];
-    if (first?.month) return first.month;
-    if (typeof first?.date === "string" && first.date.length >= 7) {
-      return first.date.slice(0, 7);
-    }
-  } catch { /* ignore */ }
-
-  return null;
-}
-
-// Hybrid resolver used by App boot
-export async function resolveLatestMonthHybrid(): Promise<string | null> {
-  // A) meta.latest_month (fast path, 1 retry)
-  for (let i = 0; i < 2; i++) {
-    try {
-      console.debug("[boot] try meta.latestMonth");
-      const r = await meta.latestMonth();
-      const m = (r && typeof r.month === "string") ? r.month : null;
-      if (m && m.length >= 7) {
-        console.debug("[boot] meta.latestMonth OK:", m);
-        return m;
-      }
-      console.debug("[boot] meta.latestMonth returned:", r);
-    } catch (e) {
-      console.debug("[boot] meta.latestMonth failed:", e);
-    }
-  }
-
-  // B) charts.summary without month; backend should default & echo back
-  try {
-    console.debug("[boot] try charts.summary {}");
-    const cs = await agentTools.chartsSummary({}); // intentionally empty body
-    const m = (cs && typeof cs.month === "string") ? cs.month : null;
-    if (m && m.length >= 7) {
-      console.debug("[boot] charts.summary OK:", m);
-      return m;
-    }
-    console.debug("[boot] charts.summary returned:", cs);
-  } catch (e) {
-    console.debug("[boot] charts.summary failed:", e);
-  }
-
-  // C) transactions.search newest → derive YYYY-MM
-  try {
-    console.debug("[boot] try transactions.search newest");
-    const ts = await agentTools.searchTransactions({
-      limit: 1,
-      sort: { field: "date", dir: "desc" },
-    });
-    const first = ts?.items?.[0] ?? ts?.transactions?.[0] ?? ts?.data?.[0] ?? null;
-    const m =
-      (first && typeof first.month === "string" && first.month) ||
-      (first && typeof first.date === "string" && first.date.slice(0, 7)) ||
-      null;
-    console.debug("[boot] transactions.search returned:", first);
-    if (m && m.length >= 7) {
-      console.debug("[boot] transactions.search OK:", m);
-      return m;
-    }
-  } catch (e) {
-    console.debug("[boot] transactions.search failed:", e);
-  }
-
-  return null;
-}
-
-// === Reports (Excel/PDF) ===
+// ---------- Reports (Excel/PDF) ----------
 function parseDispositionFilename(disposition: string | null) {
   if (!disposition) return null;
   const m = /filename="([^"]+)"/i.exec(disposition);
@@ -1095,34 +797,55 @@ export async function downloadReportExcel(
   includeTransactions: boolean = true,
   opts?: { start?: string; end?: string; splitAlpha?: boolean }
 ) {
-  const base = (import.meta as any)?.env?.VITE_API_BASE || API_BASE || "";
-  const url = new URL("/report/excel", base);
-  if (month) url.searchParams.set("month", month);
-  if (opts?.start) url.searchParams.set("start", opts.start);
-  if (opts?.end) url.searchParams.set("end", opts.end);
-  url.searchParams.set("include_transactions", String(includeTransactions));
-  if (opts?.splitAlpha) url.searchParams.set("split_transactions_alpha", String(!!opts.splitAlpha));
-  const res = await fetch(url.toString(), withCreds({ method: "GET", headers: withAuthHeaders() }));
+  const params = new URLSearchParams();
+  if (month) params.set('month', month);
+  if (opts?.start) params.set('start', opts.start);
+  if (opts?.end) params.set('end', opts.end);
+  params.set('include_transactions', String(includeTransactions));
+  if (opts?.splitAlpha) params.set('split_transactions_alpha', String(!!opts.splitAlpha));
+  const url = apiUrl(`/report/excel${params.toString() ? `?${params.toString()}` : ''}`);
+  const res = await fetch(url, withCreds({ method: 'GET', headers: withAuthHeaders() }));
   if (!res.ok) throw new Error(`Excel export failed: ${res.status}`);
   const blob = await res.blob();
-  const filename = parseDispositionFilename(res.headers.get("Content-Disposition")) || "finance_report.xlsx";
+  const filename = parseDispositionFilename(res.headers.get('Content-Disposition')) || 'finance_report.xlsx';
   return { blob, filename };
 }
 
 export async function downloadReportPdf(month?: string, opts?: { start?: string; end?: string }) {
-  const base = (import.meta as any)?.env?.VITE_API_BASE || API_BASE || "";
-  const url = new URL("/report/pdf", base);
-  if (month) url.searchParams.set("month", month);
-  if (opts?.start) url.searchParams.set("start", opts.start);
-  if (opts?.end) url.searchParams.set("end", opts.end);
-  const res = await fetch(url.toString(), withCreds({ method: "GET", headers: withAuthHeaders() }));
+  const params = new URLSearchParams();
+  if (month) params.set('month', month);
+  if (opts?.start) params.set('start', opts.start);
+  if (opts?.end) params.set('end', opts.end);
+  const url = apiUrl(`/report/pdf${params.toString() ? `?${params.toString()}` : ''}`);
+  const res = await fetch(url, withCreds({ method: 'GET', headers: withAuthHeaders() }));
   if (!res.ok) throw new Error(`PDF export failed: ${res.status}`);
   const blob = await res.blob();
-  const filename = parseDispositionFilename(res.headers.get("Content-Disposition")) || "finance_report.pdf";
+  const filename = parseDispositionFilename(res.headers.get('Content-Disposition')) || 'finance_report.pdf';
   return { blob, filename };
 }
 
 // ---------- Natural-language Transactions Query ----------
+export type TransactionsNlRequest = {
+  query?: string;
+  filters?: Record<string, any>;
+};
+
+export type TransactionsNlResponse = {
+  reply: string;
+  rephrased?: boolean;
+  meta: Record<string, any>;
+};
+
+export const transactionsNl = async (
+  payload: TransactionsNlRequest = {}
+): Promise<TransactionsNlResponse> => {
+  return http<TransactionsNlResponse>("/transactions/nl", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload ?? {}),
+  });
+};
+
 export type TxnQueryResult =
   | { intent: "sum"; filters: any; result: { total_abs: number }; meta?: any }
   | { intent: "count"; filters: any; result: { count: number }; meta?: any }
@@ -1150,16 +873,15 @@ export async function txnsQueryCsv(
   q: string,
   opts?: { start?: string; end?: string; page_size?: number; flow?: 'expenses'|'income'|'all' }
 ): Promise<{ blob: Blob; filename: string }> {
-  const base = (import.meta as any)?.env?.VITE_API_BASE || API_BASE || "";
-  const url = new URL("/agent/txns_query/csv", base);
-  const res = await fetch(url.toString(), withCreds({
-    method: "POST",
-    headers: withAuthHeaders({ "Content-Type": "application/json" }),
+  const url = apiUrl('/agent/txns_query/csv');
+  const res = await fetch(url, withCreds({
+    method: 'POST',
+    headers: withAuthHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({ q, ...opts }),
   }));
   if (!res.ok) throw new Error(`CSV export failed: ${res.status} ${res.statusText}`);
   const blob = await res.blob();
-  const filename = parseDispositionFilename(res.headers.get("Content-Disposition")) || "txns_query.csv";
+  const filename = parseDispositionFilename(res.headers.get('Content-Disposition')) || 'txns_query.csv';
   return { blob, filename };
 }
 
@@ -1198,6 +920,62 @@ export type ApplyBudgetsReq = {
   categories_exclude?: string[] | null;
   months?: number;
 };
+
+// ---------- Transactions (Edit & Manage) ----------
+// Backend routes live under /txns/edit to avoid conflicts with legacy /txns
+export async function listTxns(params: {
+  q?: string;
+  month?: string;
+  category?: string;
+  merchant?: string;
+  include_deleted?: boolean;
+  limit?: number;
+  offset?: number;
+  sort?: string;
+}) {
+  const usp = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) {
+    if (v === undefined || v === null || v === "") continue;
+    usp.set(k, String(v));
+  }
+  const qs = usp.toString();
+  return http<{ items: any[]; total: number; limit: number; offset: number }>(`/txns/edit${qs ? `?${qs}` : ""}`);
+}
+
+export function getTxn(id: number) {
+  return http(`/txns/edit/${id}`);
+}
+
+export function patchTxn(id: number, patch: any) {
+  return http(`/txns/edit/${id}`, { method: "PATCH", body: JSON.stringify(patch) });
+}
+
+export function bulkPatchTxns(ids: number[], patch: any) {
+  return http(`/txns/edit/bulk`, { method: "POST", body: JSON.stringify({ ids, patch }) });
+}
+
+export function deleteTxn(id: number) {
+  return http(`/txns/edit/${id}`, { method: "DELETE" });
+}
+
+export function restoreTxn(id: number) {
+  return http(`/txns/edit/${id}/restore`, { method: "POST" });
+}
+
+export function splitTxn(
+  id: number,
+  parts: { amount: number | string; category?: string; note?: string }[]
+) {
+  return http(`/txns/edit/${id}/split`, { method: "POST", body: JSON.stringify({ parts }) });
+}
+
+export function mergeTxns(ids: number[], merged_note?: string) {
+  return http(`/txns/edit/merge`, { method: "POST", body: JSON.stringify({ ids, merged_note }) });
+}
+
+export function linkTransfer(id: number, counterpart_id: number, group?: string) {
+  return http(`/txns/edit/${id}/transfer`, { method: "POST", body: JSON.stringify({ counterpart_id, group }) });
+}
 export type ApplyBudgetsResp = {
   ok: boolean;
   applied: Array<{ category: string; amount: number }>;
@@ -1301,4 +1079,144 @@ export async function agentPlanStatus() {
     // For other errors, still return default to avoid dev console noise
     return { mode: "deterministic", steps: 0, throttle: null, available: false };
   }
+}
+
+// ---- Save Rule endpoint helper ----
+export type SaveRulePayload = {
+  rule?: { name?: string; when?: Record<string, any>; then?: { category?: string } };
+  scenario?: string;
+  month?: string;
+  backfill?: boolean;
+};
+
+export async function saveRule(payload: SaveRulePayload, opts?: { idempotencyKey?: string }) {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (opts?.idempotencyKey) headers['Idempotency-Key'] = opts.idempotencyKey;
+  return http('/agent/tools/rules/save', {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(payload),
+    credentials: 'include',
+  });
+}
+
+// ---------- Agent models ----------
+export type AgentModelsResponse = {
+  provider?: string;
+  default?: string;
+  models?: { id: string }[];
+  primary?: { provider?: string; reachable?: boolean; model?: string };
+  fallback?: { provider?: string; reachable?: boolean; model?: string };
+  models_ok?: boolean; // legacy / server-supplied if present
+};
+
+export async function fetchModels(refresh = false): Promise<AgentModelsResponse & { models_ok: boolean }> {
+  const url = `/agent/models${refresh ? '?refresh=1' : ''}`;
+  const res = await fetch(url, { headers: { Accept: 'application/json' }, credentials: 'include' });
+  if (!res.ok) throw new Error(`models fetch failed: ${res.status}`);
+  const d = await res.json();
+  const primaryOk = !!(d?.primary?.reachable && d?.primary?.model);
+  const fallbackOk = !!(d?.fallback?.reachable && d?.fallback?.model);
+  return { ...d, models_ok: primaryOk || fallbackOk };
+}
+
+// Lightweight agentTools wrapper (reintroduced)
+export const agentTools = {
+  // Charts
+  chartsSummary: (body: any, signal?: AbortSignal) => http('/agent/tools/charts/summary', { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' }, signal }),
+  chartsMerchants: (body: any, signal?: AbortSignal) => http('/agent/tools/charts/merchants', { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' }, signal }),
+  chartsFlows: (body: any, signal?: AbortSignal) => http('/agent/tools/charts/flows', { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' }, signal }),
+  chartsSpendingTrends: (body: any, signal?: AbortSignal) => http('/agent/tools/charts/spending-trends', { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' }, signal }),
+  // Insights
+  insightsExpanded: (body: any, signal?: AbortSignal) => http('/agent/tools/insights/expanded', { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' }, signal }),
+  // Transactions
+  searchTransactions: (body: any, signal?: AbortSignal) => http('/agent/tools/transactions/search', { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' }, signal }),
+  categorizeTransactions: (body: any, signal?: AbortSignal) => http('/agent/tools/transactions/categorize', { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' }, signal }),
+  getTransactionsByIds: (body: any, signal?: AbortSignal) => http('/agent/tools/transactions/get_by_ids', { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' }, signal }),
+  // Budget
+  budgetSummary: (body: any, signal?: AbortSignal) => http('/agent/tools/budget/summary', { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' }, signal }),
+  budgetCheck: (body: any, signal?: AbortSignal) => http('/agent/tools/budget/check', { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' }, signal }),
+  // Rules
+  rulesTest: (body: any, signal?: AbortSignal) => http('/agent/tools/rules/test', { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' }, signal }),
+  rulesApply: (body: any, signal?: AbortSignal) => http('/agent/tools/rules/apply', { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' }, signal }),
+  rulesApplyAll: (body: any, signal?: AbortSignal) => http('/agent/tools/rules/apply_all', { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' }, signal }),
+};
+
+// ---- Legacy / compatibility helpers expected by components ----
+export async function getAgentModels(refresh = false) { return fetchModels(refresh); }
+
+// Explain endpoint wrappers
+export type ExplainResponse = {
+  reply: string;
+  meta?: any;
+  model?: string;
+  llm_rationale?: string;
+  rationale?: string;
+  mode?: string;
+  evidence?: any;
+};
+export async function getExplain(txnId: number | string, opts?: { use_llm?: boolean }) {
+  const use = opts?.use_llm ? '?use_llm=1' : '';
+  return http<ExplainResponse>(`/txns/${encodeURIComponent(String(txnId))}/explain${use}`);
+}
+export async function explainTxnForChat(txnId: number | string) {
+  return getExplain(txnId, { use_llm: true });
+}
+
+// Rephrase (fallback implementation uses /agent/chat with a system prompt if dedicated endpoint absent)
+export async function agentRephrase(text: string, _opts?: any): Promise<{ reply: string; model?: string }> {
+  try {
+    // Try a hypothetical fast endpoint first (ignore failure)
+    const r = await fetch(apiUrl('/agent/rephrase'), withCreds({
+      method: 'POST',
+      headers: withAuthHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ text })
+    }));
+    if (r.ok) {
+      const d: any = await r.json();
+      return { reply: d.reply || d.text || '', model: d.model };
+    }
+  } catch { /* swallow */ }
+  // Fallback: call agentChat with a system instruction
+  const resp = await agentChat({ messages: [
+    { role: 'system', content: 'Rephrase user content clearly and concisely without changing factual meaning.' },
+    { role: 'user', content: text }
+  ]});
+  return { reply: resp.reply, model: resp.model };
+}
+
+// ML status + selftest
+export async function getMlStatus() { return http('/ml/status'); }
+export async function mlSelftest() { return http('/ml/selftest', { method: 'POST', body: JSON.stringify({}) }); }
+
+// Simple CSV upload (auto-detect month server side). Backend expected route: /ingest/csv
+export async function uploadCsv(file: File | Blob, replace = true): Promise<unknown> {
+  // New canonical ingest path: POST /ingest?replace=bool (no /csv suffix)
+  const form = new FormData();
+  let toSend: File | Blob = file;
+  let filename = (file as File)?.name;
+  if (!filename) {
+    // Environment's FormData may otherwise assign a generic name like 'blob'; wrap into a File for stable name.
+    try {
+  const blobType = (file as unknown as { type?: string })?.type || 'text/csv';
+  toSend = new File([file], 'upload.csv', { type: blobType });
+      filename = 'upload.csv';
+    } catch {
+      // Fallback: append with explicit filename argument (some polyfills allow Blob + filename)
+      filename = 'upload.csv';
+    }
+  }
+  form.append('file', toSend, filename || 'upload.csv');
+  const path = `/ingest`;
+  return fetchJSON(path + `?replace=${replace ? 'true' : 'false'}`, {
+    method: 'POST',
+    body: form
+  });
+}
+export async function fetchLatestMonth(): Promise<string | null> {
+  // Canonical method: POST meta endpoint (GET may 405)
+  try {
+  const r = await fetchJSON('agent/tools/meta/latest_month', { method: 'POST' }) as { month?: string | null };
+  return r.month ?? null;
+  } catch { return null; }
 }

@@ -1,11 +1,32 @@
 import json
+import asyncio
+import random
+import time
+import email.utils as eut
+import os
 import httpx
 from ..config import OPENAI_BASE_URL, OPENAI_API_KEY, MODEL, DEV_ALLOW_NO_LLM
+from app.utils.request_ctx import get_request_id
+
+
+def _parse_retry_after(v: str | None) -> float | None:
+    if not v:
+        return None
+    try:
+        return float(v)
+    except Exception:
+        try:
+            dt = eut.parsedate_to_datetime(v)
+            return max(0.0, (dt.timestamp() - time.time()))
+        except Exception:
+            return None
 
 class LLMClient:
     def __init__(self):
         self.base = OPENAI_BASE_URL.rstrip("/")
-        self.key = OPENAI_API_KEY
+        # Prefer env-provided key (dev) else secret file (prod)
+        key = os.getenv("OPENAI_API_KEY") or OPENAI_API_KEY
+        self.key = (key.strip() if isinstance(key, str) else key)
         self.model = MODEL
 
     async def chat(self, messages, tools=None, tool_choice="auto"):
@@ -21,10 +42,36 @@ class LLMClient:
         if tools:
             payload["tools"] = tools
             payload["tool_choice"] = tool_choice
+        delays = [1.5, 3.0, 6.0, 0.0]
         async with httpx.AsyncClient(timeout=60) as client:
-            r = await client.post(f"{self.base}/chat/completions", headers=headers, json=payload)
-            r.raise_for_status()
-            return r.json()
+            attempt = 0
+            total_wait = 0.0
+            max_attempts = 4
+            rid = get_request_id()
+            while True:
+                r = await client.post(f"{self.base}/chat/completions", headers=headers, json=payload)
+                if r.status_code == 429:
+                    # Respect Retry-After when available
+                    ra = _parse_retry_after(r.headers.get("Retry-After"))
+                    base = delays[attempt] if attempt < len(delays) else delays[-1]
+                    wait = ra if (ra is not None and ra > 0) else base
+                    # full jitter up to 40%
+                    wait = min(8.0, wait + random.uniform(0, max(0.0, wait * 0.4)))
+                    # cap total budget ~15s
+                    if attempt >= (max_attempts - 1) or (total_wait + wait > 15.0):
+                        return {"choices":[{"message":{"role":"assistant","content":"I'm temporarily over capacity. Please retry in a moment.","tool_calls":[]}}]}
+                    # minimal structured log
+                    try:
+                        print({"evt":"llm.retry","rid":rid,"attempt":attempt+1,"status":429,"retry_after":ra,"wait":round(wait,2)})
+                    except Exception:
+                        pass
+                    await asyncio.sleep(wait)
+                    total_wait += wait
+                    attempt += 1
+                    continue
+
+                r.raise_for_status()
+                return r.json()
 
     async def suggest_categories(self, txn):
         # Ask the model for top-3 categories with confidences. Keep it short.

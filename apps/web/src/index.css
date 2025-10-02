@@ -159,6 +159,7 @@
   --bg-card:       #0f0f13;   /* cards/panels */
   --bg-card-alt:   #141419;   /* zebra rows / subtler blocks */
   --bg-elevated:   #0f0f13;   /* modals, dock */
+  --panel:         26 28 33;  /* brighter elevated panel (drawer, explain) */
 
   /* borders & grid lines */
   --border-subtle: #2f3037;   /* neutral-700ish */
@@ -250,5 +251,55 @@ body { @apply bg-neutral-950 text-neutral-100; }
 
 /* Tiny polish: smooth chat autoscroll */
 .chat-scroll { scroll-behavior: smooth; }
+
+
+/* --- AGUI streaming status chips & ribbon --- */
+@layer components {
+  .agui-ribbon {
+    @apply flex flex-wrap items-center gap-1.5 mb-2; /* sits above messages input */
+  }
+  .agui-chip-base {
+    @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium tracking-wide uppercase border select-none;
+    letter-spacing: .06em;
+  }
+  .agui-chip-pending { @apply agui-chip-base bg-white/5 border-white/15 text-white/70; }
+  .agui-chip-active  { @apply agui-chip-base bg-blue-500/15 border-blue-400/40 text-blue-300; }
+  .agui-chip-done    { @apply agui-chip-base bg-emerald-500/15 border-emerald-400/40 text-emerald-300; }
+  .agui-chip-error   { @apply agui-chip-base bg-rose-500/15 border-rose-400/40 text-rose-300; }
+  .agui-chip-warn    { @apply agui-chip-base bg-amber-500/15 border-amber-400/40 text-amber-300; }
+
+  /* subtle pulsing dot for active tool */
+  @keyframes agui-pulse { 0%,100% { opacity:.35 } 50% { opacity:1 } }
+  .agui-dot { @apply w-1.5 h-1.5 rounded-full bg-current opacity-60; }
+  .agui-dot-pulse { animation: agui-pulse 1.2s ease-in-out infinite; }
+
+  /* container that fades out after completion */
+  @keyframes agui-fade-away { 0% { opacity:1 } 80% { opacity:1 } 100% { opacity:0 } }
+  .agui-ribbon-fade { animation: agui-fade-away 5.5s forwards; }
+}
+
+/* Optional: brighten grid lines slightly in transactions drawer */
+.transactions-drawer .table {
+  --tw-border-opacity: 0.2;
+}
+
+/* Hard neutralizer for brand logo: avoid accidental blending/filters */
+img[data-brand-logo] {
+  filter: none !important;
+  mix-blend-mode: normal !important;
+  opacity: 1 !important;
+}
+
+/* ---- Help mode highlight & stacking ---- */
+html[data-help] [data-help-key] { position: relative; z-index: 9600; }
+.help-popover { position: fixed; z-index: 70; max-width: 360px; }
+html[data-help] [data-help-active="true"]::after {
+  content: "";
+  position: absolute; inset: -6px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,.18);
+  box-shadow: 0 0 0 3px rgba(251,191,36,.25), 0 6px 22px rgba(0,0,0,.55);
+  pointer-events: none;
+}
 
 

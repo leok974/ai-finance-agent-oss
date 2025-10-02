@@ -1,13 +1,11 @@
 # apps/backend/app/services/agent_tools.py
-from typing import Dict, Any, Optional
-from .rules_engine import apply_rules
-from collections import defaultdict
-import json
+from typing import Dict, Any, Optional, List
 import re
+from collections import defaultdict
 from sqlalchemy.orm import Session
 
 # New imports for deterministic tool routing
-from app.services.txns_nl_query import parse_nl_query, run_txn_query
+from app.services.txns_nl_query import run_txn_query
 from app.services.agent_detect import detect_txn_query, detect_analytics_intent
 from app.services.charts_data import (
     latest_month_str,
@@ -22,6 +20,43 @@ from app.utils.state import TEMP_BUDGETS, ANOMALY_IGNORES, current_month_key
 from app.services.charts_data import get_category_timeseries
 from app.services.insights_anomalies import compute_anomalies
 from app.services import analytics as analytics_svc
+from app.services.agent_tools.common import no_data_msg
+
+
+def _human_period_label(month: Optional[str], lookback: Optional[int]) -> str:
+    if month:
+        return month
+    if lookback:
+        if lookback == 1:
+            return "this month"
+        return f"the last {lookback} months"
+    return "this period"
+
+def _no_data_response(
+    mode: str,
+    filters: Dict[str, Any],
+    data: Dict[str, Any],
+    *,
+    month: Optional[str] = None,
+    lookback: Optional[int] = None,
+    tool_label: str,
+    tips: Optional[List[str]] = None,
+) -> Dict[str, Any]:
+    label = _human_period_label(month, lookback)
+    base = no_data_msg(label, tool=tool_label, tips=tips)
+    meta = {**base.get("meta", {})}
+    suggestions = meta.get("suggestions")
+    if isinstance(suggestions, list):
+        meta["suggestions"] = suggestions
+    return {
+        "mode": mode,
+        "filters": filters,
+        "result": data,
+        "message": base["reply"],
+        "reply": base["reply"],
+        "rephrased": base.get("rephrased", False),
+        "meta": meta,
+    }
 
 def tool_specs():
     return [
@@ -342,17 +377,28 @@ def route_to_tool(user_text: str, db: Session) -> Optional[Dict[str, Any]]:
             threshold_pct=p["threshold"],
             max_results=p["max"],
         )
-        return {
-            "mode": "insights.anomalies",
-            "filters": {
+        anomalies_list = []
+        if isinstance(result, dict):
+            anomalies_list = result.get("items") or []
+        elif isinstance(result, list):
+            anomalies_list = result
+        # Friendly empty-state if no anomalies
+        if not anomalies_list:
+            from app.services.agent_tools.common import no_data_anomalies
+            month_label = _extract_month(user_text) or latest_month_str(db) or "this period"
+            return no_data_anomalies(month_label)
+        from app.services.agent_tools.common import reply
+        return reply(
+            f"Found **{len(anomalies_list)}** anomalies for {( _extract_month(user_text) or latest_month_str(db) or 'this period') }.",
+            mode="insights.anomalies",
+            result=result if isinstance(result, dict) else {"items": anomalies_list},
+            filters={
                 "months": p["months"],
                 "min": p["min"],
                 "threshold": p["threshold"],
                 "max": p["max"],
             },
-            "result": result,
-            "message": None,
-        }
+        )
 
     # 2) Category chart (single category) — explicit detector ahead of txn NL
     if det.detect_open_category_chart(user_text):
@@ -394,38 +440,73 @@ def route_to_tool(user_text: str, db: Session) -> Optional[Dict[str, Any]]:
         if mode == "analytics.kpis":
             lookback = int(args.get("lookback_months") or 6)
             lookback = max(1, min(24, lookback))
-            data = analytics_svc.compute_kpis(db, month=month, lookback=lookback)
-            return {"mode": mode, "filters": {"month": month, "lookback_months": lookback}, "result": data}
+            user_month = _extract_month(user_text) or month
+            data = analytics_svc.compute_kpis(db, month=user_month, lookback=lookback)
+            filters = {"month": user_month, "lookback_months": lookback}
+            if not data.get("months"):
+                from app.services.agent_tools.common import no_data_kpis, reply
+                return no_data_kpis(user_month)
+            from app.services.agent_tools.common import reply
+            return reply(
+                "Here are your KPIs.",
+                mode="analytics.kpis",
+                result=data,
+                filters=filters,
+            )
 
         if mode == "analytics.forecast":
             horizon = int(args.get("horizon") or 3)
             horizon = max(1, min(12, horizon))
             data = analytics_svc.forecast_cashflow(db, month=month, horizon=horizon)
-            return {"mode": mode, "filters": {"month": month, "horizon": horizon}, "result": data}
+            filters = {"month": month, "horizon": horizon}
+            if not data.get("ok", True) or not data.get("forecast"):
+                return _no_data_response(mode, filters, data, month=month, tool_label="Forecast", tips=["Use Insights: Expanded (last 60 days)", "Pick a month with \u22653 months of history"] )
+            return {"mode": mode, "filters": filters, "result": data}
 
         if mode == "analytics.anomalies":
             lookback = int(args.get("lookback_months") or 6)
             lookback = max(1, min(24, lookback))
-            data = analytics_svc.find_anomalies(db, month=month, lookback=lookback)
-            return {"mode": mode, "filters": {"month": month, "lookback_months": lookback}, "result": data}
+            user_month = _extract_month(user_text) or month
+            data = analytics_svc.find_anomalies(db, month=user_month, lookback=lookback)
+            filters = {"month": user_month, "lookback_months": lookback}
+            items = data.get("items") or []
+            if not items:
+                from app.services.agent_tools.common import no_data_anomalies
+                return no_data_anomalies(user_month)
+            from app.services.agent_tools.common import reply
+            return reply(
+                f"Found **{len(items)}** anomalies for {user_month}.",
+                mode="insights.anomalies",
+                result=data,
+                filters=filters,
+            )
 
         if mode == "analytics.recurring":
             lookback = int(args.get("lookback_months") or 6)
             lookback = max(1, min(24, lookback))
             data = analytics_svc.detect_recurring(db, month=month, lookback=lookback)
-            return {"mode": mode, "filters": {"month": month, "lookback_months": lookback}, "result": data}
+            filters = {"month": month, "lookback_months": lookback}
+            if not (data.get("items") or []):
+                return _no_data_response(mode, filters, data, month=month, lookback=lookback, tool_label="KPIs")
+            return {"mode": mode, "filters": filters, "result": data}
 
         if mode == "analytics.subscriptions":
             lookback = int(args.get("lookback_months") or 6)
             lookback = max(1, min(24, lookback))
             data = analytics_svc.find_subscriptions(db, month=month, lookback=lookback)
-            return {"mode": mode, "filters": {"month": month, "lookback_months": lookback}, "result": data}
+            filters = {"month": month, "lookback_months": lookback}
+            if not (data.get("items") or []):
+                return _no_data_response(mode, filters, data, month=month, lookback=lookback, tool_label="KPIs")
+            return {"mode": mode, "filters": filters, "result": data}
 
         if mode == "analytics.budget_suggest":
             lookback = int(args.get("lookback_months") or 6)
             lookback = max(1, min(24, lookback))
             data = analytics_svc.budget_suggest(db, month=month, lookback=lookback)
-            return {"mode": mode, "filters": {"month": month, "lookback_months": lookback}, "result": data}
+            filters = {"month": month, "lookback_months": lookback}
+            if not (data.get("items") or []):
+                return _no_data_response(mode, filters, data, month=month, lookback=lookback, tool_label="KPIs")
+            return {"mode": mode, "filters": filters, "result": data}
 
         if mode == "analytics.whatif":
             payload = dict(args)
@@ -504,5 +585,11 @@ def route_to_tool(user_text: str, db: Session) -> Optional[Dict[str, Any]]:
             "result": None,
             "message": "Budget queries are not implemented yet. Try: 'Top categories this month' or 'Export Excel for last month'.",
         }
+
+    # Final heuristic: user explicitly mentioned anomalies but detector did not classify.
+    if "anomal" in text_low:
+        from app.services.agent_tools.common import no_data_anomalies
+        month = _extract_month(user_text) or latest_month_str(db) or current_month_key()
+        return no_data_anomalies(month)
 
     return None

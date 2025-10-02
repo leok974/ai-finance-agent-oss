@@ -9,3 +9,15 @@ repos:
     hooks:
       - id: ruff
         args: [--fix]
+  - repo: local
+    hooks:
+      - id: docker-compose-config
+        name: docker compose config lint
+        entry: python scripts/precommit/check_compose.py
+        language: python
+        files: ^docker-compose.*\.ya?ml$
+      - id: forbid-secret-artifacts
+        name: block wrapped key exports and service accounts
+        entry: python scripts/precommit/block_secret_files.py
+        language: python
+        stages: [commit]

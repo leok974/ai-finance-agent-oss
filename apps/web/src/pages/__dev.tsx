@@ -8,8 +8,8 @@ export default function DevPage() {
 
   React.useEffect(() => {
     (async () => {
-      try { setMe(await apiGet('/auth/me')); } catch {}
-      try { setHealth(await apiGet('/healthz')); } catch {}
+  try { setMe(await apiGet('/auth/me')); } catch { /* ignore */ }
+  try { setHealth(await apiGet('/healthz')); } catch { /* ignore */ }
     })();
   }, []);
 

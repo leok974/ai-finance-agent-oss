@@ -1,6 +1,6 @@
 # app/services/rules_apply.py
 from sqlalchemy.orm import Session
-from sqlalchemy import or_, and_
+from sqlalchemy import or_
 from typing import Iterable, Optional, Tuple, Dict, Any, List
 from app.transactions import Transaction
 from app.models import Rule

@@ -1,4 +1,5 @@
 import * as React from "react";
+import { Button } from "@/components/ui/button";
 import { analytics } from "@/lib/api";
 import { useMonth } from "@/context/MonthContext";
 import ForecastChart from "@/components/ForecastChart";
@@ -45,7 +46,10 @@ export default function ForecastCard({ className = "" }: { className?: string })
 
   return (
     <section
+      data-help-id={month}
+      data-help-key="card.forecast"
       className={[
+        "help-spot",
         "rounded-2xl border bg-card/50 shadow-sm p-4 md:p-5",
         "overflow-visible",
         className,
@@ -108,17 +112,13 @@ export default function ForecastCard({ className = "" }: { className?: string })
         </label>
 
         <div className="self-end">
-          <button
-            className="rounded-md border px-3 py-1 text-sm hover:bg-muted disabled:opacity-60"
-            onClick={() => run()}
-            disabled={busy}
-            aria-busy={busy}
-          >
+          <Button variant="pill-primary" className="h-9 px-4 ml-2" onClick={() => run()} disabled={busy} aria-busy={busy}>
             {busy ? "Running…" : "Run"}
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
-            className="ml-2 align-middle text-xs text-muted-foreground hover:underline underline-offset-2"
+            variant="pill-outline"
+            className="ml-2 align-middle text-xs"
             onClick={() => {
               setModel("auto");
               setCi(0.8);
@@ -129,7 +129,7 @@ export default function ForecastCard({ className = "" }: { className?: string })
             aria-label="Reset forecast options"
           >
             Reset
-          </button>
+          </Button>
         </div>
 
         {/* subtle hint only when empty */}

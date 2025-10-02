@@ -1,10 +1,13 @@
 import React, { useCallback, useRef, useState } from "react";
 import { uploadCsv, fetchLatestMonth, agentTools } from "../lib/api"; // uses your existing helpers
-import { useToast } from "@/hooks/use-toast";
+import { emitToastSuccess, emitToastError } from "@/lib/toast-helpers";
+import { t } from '@/lib/i18n';
 import { ToastAction } from "@/components/ui/toast";
 import { scrollToId } from "@/lib/scroll";
 import { useMonth } from "../context/MonthContext";
 import Card from "./Card";
+import { Button } from "@/components/ui/button";
+import { Upload } from "lucide-react";
 
 type UploadResult = {
   ok: boolean;
@@ -41,7 +44,7 @@ const UploadCsv: React.FC<UploadCsvProps> = ({ onUploaded, defaultReplace = true
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<UploadResult | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
-  const { toast } = useToast();
+  // useToast replaced with emit helpers
 
   const onPick = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0] ?? null;
@@ -111,21 +114,7 @@ const UploadCsv: React.FC<UploadCsvProps> = ({ onUploaded, defaultReplace = true
   // snap month + refetch dashboards (non-blocking)
   void handleUploadSuccess();
       // Success toast with dual CTAs
-      toast({
-        title: "Import complete",
-        description: "Transactions imported successfully.",
-        duration: 4000,
-        action: (
-          <div className="flex gap-2">
-            <ToastAction altText="View unknowns" onClick={() => scrollToId("unknowns-panel")}>
-              View unknowns
-            </ToastAction>
-            <ToastAction altText="View charts" onClick={() => scrollToId("charts-panel")}>
-              View charts
-            </ToastAction>
-          </div>
-        ),
-      });
+  emitToastSuccess(t('ui.toast.import_complete_title'), { description: t('ui.toast.import_complete_description') });
       // optional: reset file after success
       // reset();
     } catch (err: any) {
@@ -156,13 +145,14 @@ const UploadCsv: React.FC<UploadCsvProps> = ({ onUploaded, defaultReplace = true
               />
               Replace existing data
             </label>
-            <button
+            <Button
               onClick={reset}
               type="button"
-              className="btn btn-sm"
+              variant="pill-outline"
+              size="sm"
             >
               Reset
-            </button>
+            </Button>
           </div>
         </header>
 
@@ -202,14 +192,15 @@ const UploadCsv: React.FC<UploadCsvProps> = ({ onUploaded, defaultReplace = true
         </label>
 
         <div className="mt-4 flex items-center justify-end">
-          <button
-            type="button"
-            disabled={disabled}
+          <Button
+            variant="pill"
             onClick={doUpload}
-            className="btn"
+            disabled={disabled}
+            className="gap-2 px-3.5 h-9"
           >
+            <Upload className="h-4 w-4" />
             {busy ? "Uploading…" : "Upload CSV"}
-          </button>
+          </Button>
         </div>
 
         {/* Progress / Result */}

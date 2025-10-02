@@ -1,9 +1,38 @@
-﻿# Keep this super small first; we can add more after it builds once.
+﻿## Backend build context pruning
+# Keep required source, pyproject.toml, alembic/, app/, requirements*, start scripts.
+
+# Virtual envs & caches
 .venv
 __pycache__
 *.pyc
 *.pyo
+.mypy_cache
+.pytest_cache
+
+# VCS & metadata
 .git
+.gitignore
+
+# Logs & local env files
 *.log
 .env
 .env.*
+
+# Editors / IDE
+.vscode
+.idea
+
+# Coverage & test artifacts (tests themselves are not needed in runtime image build)
+coverage/
+htmlcov/
+reports/
+app/tests/
+tests/
+
+# Misc
+*.sqlite
+*.db
+*.DS_Store
+node_modules/
+
+# Do NOT ignore alembic migration scripts or app code.

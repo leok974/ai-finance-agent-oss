@@ -3,6 +3,9 @@ import { getExplain, type ExplainResponse } from '@/api'
 import Chip from '@/components/ui/chip'
 import { Skeleton } from '@/components/ui/skeleton'
 import { selectTopMerchantCat } from '@/selectors/explain'
+import * as ReactDOM from 'react-dom'
+import { buildDeterministicExplain } from '@/lib/explainFallback'
+import Pill from '@/components/ui/pill'
 
 function GroundedBadge() {
   return (
@@ -12,10 +15,12 @@ function GroundedBadge() {
   )
 }
 
-export default function ExplainSignalDrawer({ txnId, open, onOpenChange }: {
+
+export default function ExplainSignalDrawer({ txnId, open, onOpenChange, txn }: {
   txnId: number | null
   open: boolean
   onOpenChange: (v: boolean) => void
+  txn?: any
 }) {
   const [loading, setLoading] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
@@ -43,85 +48,81 @@ export default function ExplainSignalDrawer({ txnId, open, onOpenChange }: {
   const mode = data?.mode || (data?.llm_rationale ? 'llm' : 'deterministic')
   const top = React.useMemo(() => selectTopMerchantCat(data), [data])
 
-  return (
-    <>
-      {open && (
-        <div className="fixed inset-0 z-50 flex">
-          <div className="absolute inset-0 bg-black/50" onClick={() => onOpenChange(false)} />
-          <div className="ml-auto h-full w-full max-w-xl bg-background border-l border-border p-4 overflow-auto" data-testid="explain-drawer">
-            <div className="flex items-center justify-between mb-2">
-              <div className="text-lg font-semibold">Why this category?</div>
-              <button
-                className="text-sm opacity-70 hover:opacity-100"
-                aria-label="Close"
-                data-testid="drawer-close"
-                onClick={() => onOpenChange(false)}
-              >
-                Close
-              </button>
-            </div>
-
-            {loading && (
-              <div className="space-y-4">
-                <div className="flex items-center gap-2">
-                  <Skeleton className="h-5 w-16 rounded-full" />
-                  <Skeleton className="h-5 w-28 rounded-full" />
-                </div>
-                <Skeleton className="h-4 w-[85%]" />
-                <Skeleton className="h-4 w-[70%]" />
-                <div className="border-t border-border pt-3">
-                  <div className="space-y-2">
-                    <Skeleton className="h-4 w-24" />
-                    <div className="flex flex-wrap gap-2">
-                      <Skeleton className="h-6 w-40 rounded-2xl" />
-                      <Skeleton className="h-6 w-48 rounded-2xl" />
-                      <Skeleton className="h-6 w-36 rounded-2xl" />
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-            {error && (
-              <div className="text-sm text-amber-300/90 bg-amber-500/10 border border-amber-500/30 rounded-xl p-3">
-                Failed to load: <code>{error}</code>
-              </div>
-            )}
-
-            {data && (
-              <div className="space-y-3">
-                <div className="flex items-center gap-2">
-                  <GroundedBadge />
-                  <Chip tone={mode === 'llm' ? 'good' : 'muted'} size="sm">{mode === 'llm' ? 'LLM rephrase' : 'Deterministic'}</Chip>
-                </div>
-
-                <div className="text-sm leading-6 whitespace-pre-wrap">{rationale}</div>
-
-                <div className="mt-2">
-                  <div className="text-xs uppercase text-muted-foreground tracking-wide mb-1">Evidence</div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {data.evidence?.rule_match?.category && (
-                      <Chip tone="good" title={`Rule #${data.evidence.rule_match.id}`}>Rule → {data.evidence.rule_match.category}</Chip>
-                    )}
-                    {top && (
-                      <Chip tone="muted" title="Top historical category">History → {top.cat || 'Unknown'} • {top.count}</Chip>
-                    )}
-                    {(() => {
-                      const fb = data.evidence?.feedback?.merchant_feedback?.[0]
-                      if (!fb) return null
-                      const pos = fb.positives || 0
-                      const neg = fb.negatives || 0
-                      return <Chip tone={pos >= neg ? 'good' : 'warn'} title="Feedback aggregate">Feedback {fb.category} • +{pos}/-{neg}</Chip>
-                    })()}
-                    {data.evidence?.merchant_norm && (
-                      <Chip tone="muted" title="Canonical merchant">Merchant • {data.evidence.merchant_norm}</Chip>
-                    )}
-                  </div>
-                </div>
-              </div>
-            )}
+  if (!open) return null;
+  const fallbackHtml = buildDeterministicExplain(txn, data?.evidence, rationale);
+  return ReactDOM.createPortal(
+    <div className="fixed inset-0 z-[9900]" aria-modal role="dialog" data-testid="explain-drawer">
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-[2px]" onClick={() => onOpenChange(false)} />
+      <aside className="absolute right-0 top-0 h-full w-full max-w-[460px] bg-[rgb(var(--panel))] text-zinc-100 ring-1 ring-white/10 shadow-2xl border-l border-white/5 z-[1] overflow-y-auto">
+        <header className="sticky top-0 bg-[rgb(var(--panel))]/95 backdrop-blur px-4 py-3 border-b border-white/5">
+          <div className="flex items-center justify-between">
+            <h2 className="text-base font-semibold">Why this category?</h2>
+            <button data-testid="drawer-close" className="text-sm opacity-80 hover:opacity-100" onClick={() => onOpenChange(false)}>Close</button>
           </div>
-        </div>
-      )}
-    </>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <Pill tone="muted">grounded</Pill>
+            <Pill>{mode === 'llm' ? 'LLM rephrase' : 'Deterministic'}</Pill>
+            {fallbackHtml && <Pill tone="muted">fallback</Pill>}
+          </div>
+        </header>
+        <main className="px-4 py-4 prose-invert prose-sm space-y-4">
+          {loading && (
+            <div className="space-y-4">
+              <div className="flex items-center gap-2">
+                <Skeleton className="h-5 w-16 rounded-full" />
+                <Skeleton className="h-5 w-28 rounded-full" />
+              </div>
+              <Skeleton className="h-4 w-[85%]" />
+              <Skeleton className="h-4 w-[70%]" />
+              <div className="border-t border-white/10 pt-3">
+                <div className="space-y-2">
+                  <Skeleton className="h-4 w-24" />
+                  <div className="flex flex-wrap gap-2">
+                    <Skeleton className="h-6 w-40 rounded-2xl" />
+                    <Skeleton className="h-6 w-48 rounded-2xl" />
+                    <Skeleton className="h-6 w-36 rounded-2xl" />
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+          {error && (
+            <div className="text-sm text-amber-300/90 bg-amber-500/10 border border-amber-500/30 rounded-xl p-3">
+              Failed to load: <code>{error}</code>
+            </div>
+          )}
+          {data && !fallbackHtml && (
+            <div className="text-sm leading-6 whitespace-pre-wrap">{rationale}</div>
+          )}
+          {fallbackHtml && (
+            <div className="text-sm leading-6" dangerouslySetInnerHTML={{ __html: fallbackHtml }} />
+          )}
+          {data && (
+            <div className="mt-2">
+              <div className="text-xs uppercase tracking-wide mb-1 opacity-70">Evidence</div>
+              <div className="flex flex-wrap gap-1.5">
+                {data.evidence?.rule_match?.category && (
+                  <Chip tone="good" title={`Rule #${data.evidence.rule_match.id}`}>Rule → {data.evidence.rule_match.category}</Chip>
+                )}
+                {top && (
+                  <Chip tone="muted" title="Top historical category">History → {top.cat || 'Unknown'} • {top.count}</Chip>
+                )}
+                {(() => {
+                  const fb = data.evidence?.feedback?.merchant_feedback?.[0]
+                  if (!fb) return null
+                  const pos = fb.positives || 0
+                  const neg = fb.negatives || 0
+                  return <Chip tone={pos >= neg ? 'good' : 'warn'} title="Feedback aggregate">Feedback {fb.category} • +{pos}/-{neg}</Chip>
+                })()}
+                {data.evidence?.merchant_norm && (
+                  <Chip tone="muted" title="Canonical merchant">Merchant • {data.evidence.merchant_norm}</Chip>
+                )}
+              </div>
+            </div>
+          )}
+        </main>
+      </aside>
+    </div>,
+    document.body
   )
 }

@@ -17,7 +17,7 @@ export function onRefreshFire(fn: Listener) {
 }
 function emit(key: string, count: number) {
   for (const l of listeners) {
-    try { l(key, count); } catch {}
+    try { l(key, count); } catch (_err) { /* intentionally empty: swallow to render empty-state */ }
   }
 }
 
@@ -79,7 +79,7 @@ export function triggerRefresh(delay = 450) {
   _simpleTimer = setTimeout(() => {
     if (_simpleQueued) {
       for (const fn of _simpleListeners) {
-        try { fn(); } catch {}
+        try { fn(); } catch (_err) { /* intentionally empty: swallow to render empty-state */ }
       }
       _simpleQueued = false;
     }

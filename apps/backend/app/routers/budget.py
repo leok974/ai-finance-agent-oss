@@ -7,7 +7,7 @@ from sqlalchemy import func
 from datetime import date
 from app.db import get_db
 from app.services.budget_recommend import compute_recommendations
-from pydantic import BaseModel, Field, RootModel
+from pydantic import BaseModel, Field, RootModel, ConfigDict
 from app.orm_models import Budget, Transaction
 from app.utils.state import TEMP_BUDGETS, current_month_key
 from app.utils.csrf import csrf_protect
@@ -239,9 +239,9 @@ class TempBudgetReq(BaseModel):
 
 # Mount under both /budget/temp (legacy) and /budgets/temp (new)
 class TempBudgetItem(BaseModel):
-    month: str = Field(..., example="2025-09")
-    category: str = Field(..., example="Groceries")
-    amount: float = Field(..., example=500.0)
+    month: str = Field(..., json_schema_extra={"examples":["2025-09"]})
+    category: str = Field(..., json_schema_extra={"examples":["Groceries"]})
+    amount: float = Field(..., json_schema_extra={"examples":[500.0]})
 
 
 class TempBudgetResp(BaseModel):
@@ -250,7 +250,7 @@ class TempBudgetResp(BaseModel):
 
 
 class TempBudgetListResp(BaseModel):
-    month: str = Field(..., example="2025-09")
+    month: str = Field(..., json_schema_extra={"examples":["2025-09"]})
     items: list[TempBudgetItem] = Field(default_factory=list)
 
 
@@ -332,8 +332,8 @@ def clear_temp_budget_budgets(category: str = Path(..., min_length=1), month: st
 
 # ------------------ Read budgets with optional overlay merge -----------------
 class BudgetSetReq(BaseModel):
-    category: str = Field(..., min_length=1, description="Budget category", example="Groceries")
-    amount: float = Field(..., gt=0, description="New persistent budget cap", example=450.00)
+    category: str = Field(..., min_length=1, description="Budget category", json_schema_extra={"examples":["Groceries"]})
+    amount: float = Field(..., gt=0, description="New persistent budget cap", json_schema_extra={"examples":[450.00]})
 
 
 class BudgetSetResp(BaseModel):
@@ -342,30 +342,31 @@ class BudgetSetResp(BaseModel):
 
 
 class BudgetReadItem(BaseModel):
-    category: str = Field(..., example="Groceries")
-    base_amount: Optional[float] = Field(None, description="DB budget (if any)", example=450.0)
-    temp_overlay: Optional[float] = Field(None, description="Overlay (if merged)", example=500.0)
-    effective_amount: Optional[float] = Field(None, description="temp if present else base", example=500.0)
-    source: Literal["temp","db","none"] = Field(..., description="Effective source", example="temp")
+    category: str = Field(..., json_schema_extra={"examples":["Groceries"]})
+    base_amount: Optional[float] = Field(None, description="DB budget (if any)", json_schema_extra={"examples":[450.0]})
+    temp_overlay: Optional[float] = Field(None, description="Overlay (if merged)", json_schema_extra={"examples":[500.0]})
+    effective_amount: Optional[float] = Field(None, description="temp if present else base", json_schema_extra={"examples":[500.0]})
+    source: Literal["temp","db","none"] = Field(..., description="Effective source", json_schema_extra={"examples":["temp"]})
 
 
 class BudgetReadResp(BaseModel):
-    month: str = Field(..., example="2025-09")
+    month: str = Field(..., json_schema_extra={"examples":["2025-09"]})
     merge_temp: bool = Field(..., description="Were overlays merged?")
-    count: int = Field(..., example=3)
+    count: int = Field(..., json_schema_extra={"examples":[3]})
     items: list[BudgetReadItem]
 
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "examples": [{
-                "month":"2025-09","merge_temp":True,"count":3,
-                "items":[
-                  {"category":"Dining out","base_amount":None,"temp_overlay":200.0,"effective_amount":200.0,"source":"temp"},
-                  {"category":"Groceries","base_amount":450.0,"temp_overlay":500.0,"effective_amount":500.0,"source":"temp"},
-                  {"category":"Transport","base_amount":160.0,"temp_overlay":None,"effective_amount":160.0,"source":"db"}
+                "month": "2025-09", "merge_temp": True, "count": 3,
+                "items": [
+                    {"category": "Dining out", "base_amount": None, "temp_overlay": 200.0, "effective_amount": 200.0, "source": "temp"},
+                    {"category": "Groceries", "base_amount": 450.0, "temp_overlay": 500.0, "effective_amount": 500.0, "source": "temp"},
+                    {"category": "Transport", "base_amount": 160.0, "temp_overlay": None, "effective_amount": 160.0, "source": "db"}
                 ]
             }]
         }
+    )
 
 
 @router.get(

@@ -53,3 +53,42 @@ _Date: 2025-09-04_
 - Optional **Rules CRUD** persistence (table + list/create/update/delete).
 - Expanded insights (month-over-month diffs, anomaly flags) + rule suggestions.
 - Optional CI lane: `pytest -m agent_tools` for fast feedback.
+
+## LLM help gating update (Sep 2025)
+- Removed legacy `_llm_enabled` test shim from `describe` route.
+- Added explicit env override `FORCE_HELP_LLM` (truthy/falsey) with highest precedence for help summary rephrase path.
+- Documented `HELP_REPHRASE_DEFAULT` to control default rephrase behavior when query param omitted.
+
+## Ops Health Snapshot (2025-09-26)
+```
+{
+  "as_of": "2025-09-26T19:55:00Z",
+  "project": "LedgerMind (prod)",
+  "status": {
+    "cloudflare": "ok",
+    "tunnel": "ok",
+    "nginx": "ok",
+    "backend": "ok (healthy)"
+  },
+  "health": {
+    "liveness": "/live -> 200 {ok:true}",
+    "readiness": "/healthz -> {ok:true, reasons:[], info_reasons:[\"crypto_disabled\"], warn_reasons:[]}",
+    "crypto_mode": "disabled",
+    "alembic": {"in_sync": true, "migration_diverged": false},
+    "version": {"branch": "Polish-clean-history", "commit": "2c50f2ce"}
+  },
+  "metrics": [
+    "health_reason{reason, severity}",
+    "alembic_multiple_heads",
+    "crypto_* (mode/ready as gauges)"
+  ],
+  "probe_wiring": {
+    "compose_healthcheck": "curl /live || curl /healthz",
+    "nginx_upstream_probe": "/_up -> backend /live"
+  },
+  "strict_mode": {
+    "env": "CRYPTO_STRICT_STARTUP",
+    "behavior": "if true, crypto_disabled => degraded"
+  }
+}
+```

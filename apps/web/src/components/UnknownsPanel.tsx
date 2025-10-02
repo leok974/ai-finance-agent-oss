@@ -3,19 +3,20 @@ import Card from './Card'
 import EmptyState from './EmptyState'
 import { categorizeTxn, mlFeedback } from '@/api'
 import { useCoalescedRefresh } from '@/utils/refreshBus'
-import { setRuleDraft } from '@/state/rulesDraft'
-import { getGlobalMonth } from '@/state/month'
-import { useOkErrToast } from '@/lib/toast-helpers'
-import { useToast } from '@/hooks/use-toast'
+// removed useOkErrToast hook (deprecated)
 import { ToastAction } from '@/components/ui/toast'
-import { scrollToId } from '@/lib/scroll'
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 import { InfoDot } from './InfoDot'
 import LearnedBadge from './LearnedBadge'
 import ExplainSignalDrawer from './ExplainSignalDrawer'
 import { useUnknowns } from '@/hooks/useUnknowns'
 import { Skeleton } from '@/components/ui/skeleton'
-import HelpBadge from './HelpBadge'
+import CardHelpTooltip from './CardHelpTooltip'
+import { getHelpBaseText } from '@/lib/helpBaseText';
+import { seedRuleFromTxn } from '@/lib/rulesSeed'
+import { emitToastSuccess, emitToastError } from '@/lib/toast-helpers'
+import { Button } from '@/components/ui/button'
+import { t } from '@/lib/i18n'
 
 export default function UnknownsPanel({ month, onSeedRule, onChanged, refreshKey }: {
   month?: string
@@ -24,11 +25,11 @@ export default function UnknownsPanel({ month, onSeedRule, onChanged, refreshKey
   refreshKey?: number
 }) {
   const { items, loading, error, currentMonth, refresh } = useUnknowns(month)
-  const { ok, err } = (useOkErrToast as any)?.() ?? { ok: console.log, err: console.error }
-  const { toast } = useToast()
+  const ok = emitToastSuccess; const err = emitToastError;
   const [learned, setLearned] = useState<Record<number, boolean>>({})
   const [explainOpen, setExplainOpen] = useState(false)
   const [explainTxnId, setExplainTxnId] = useState<number | null>(null)
+  const [explainTxn, setExplainTxn] = useState<any | null>(null)
   // One shared timer for all unknowns refresh requests across this tab
   const scheduleUnknownsRefresh = useCoalescedRefresh('unknowns-refresh', () => refresh(), 450)
 
@@ -46,51 +47,43 @@ export default function UnknownsPanel({ month, onSeedRule, onChanged, refreshKey
         })
       }, 4500)
     } catch (e: any) {
-      err(`ML feedback failed (${e?.message ?? String(e)}). DB updated.`)
+  err(t('ui.toast.ml_feedback_failed', { error: e?.message ?? String(e) }))
     }
   // Optimistically remove the row
   // items comes from the hook; since we can't mutate it here, trigger a refresh
   refresh()
     onChanged?.()
-  ok?.(`Set category → ${category}`)
+  ok?.(t('ui.toast.category_applied', { category }))
   // Batch multiple quick applies into a single reload (coalesced by key)
   scheduleUnknownsRefresh()
   }
 
   function seedRuleFromRow(row: any) {
-    const name = String(row.merchant || row.description || 'New Rule').slice(0, 40)
-    const description_like = String(row.merchant || row.description || '').slice(0, 64)
-    setRuleDraft({
-      name,
-      enabled: true,
-      when: { description_like },
-      then: { category: '' },
-      // pass current global month so Rule Tester can honor it when toggle is off
-      // (Rule Tester will sync to global month when toggle is on)
-      month: getGlobalMonth() || undefined,
-    } as any)
-    // Dual CTA: open Rule Tester or jump to Charts
-    toast({
-      title: 'Seeded into Rule Tester',
-      description: 'Merchant & description copied; adjust and test.',
-      duration: 4000,
-      action: (
-        <div className="flex gap-2">
-          <ToastAction altText="Open Rule Tester" onClick={() => scrollToId('rule-tester-anchor')}>
-            Rule Tester
-          </ToastAction>
-          <ToastAction altText="View charts" onClick={() => scrollToId('charts-panel')}>
-            View charts
-          </ToastAction>
-        </div>
-      ),
+    const draft = seedRuleFromTxn({
+      merchant: row.merchant,
+      description: row.description,
+      category_guess: row.category_guess,
+    }, { month: currentMonth || month })
+    // Provide a toast with an action to forcibly open (if listener not auto-opened)
+    emitToastSuccess(t('ui.toast.seed_rule_title'), {
+      description: t('ui.toast.seed_rule_description'),
+      action: {
+        label: t('ui.toast.seed_rule_action_open'),
+        onClick: () => (window as any).__openRuleTester?.(draft),
+      },
     })
   }
 
-  const titleMonth = (currentMonth ?? month) ? `— ${currentMonth ?? month}` : '— (latest)'
+  const resolvedMonth = (currentMonth ?? month) || '(latest)'
   return (
-  <section id="unknowns-panel" className="panel p-4 md:p-5" data-explain-key="cards.unknowns">
-        <Card title={`Unknowns ${titleMonth}`} className="border-0 bg-transparent shadow-none p-0">
+  <section
+    id="unknowns-panel"
+    className="panel p-4 md:p-5 help-spot"
+    data-explain-key="cards.unknowns"
+  data-help-key="cards.unknowns"
+  data-help-id={currentMonth || month}
+  >
+  <Card title={t('ui.cards.unknowns_title', { month: resolvedMonth })} className="border-0 bg-transparent shadow-none p-0">
   {loading && (
         <div className="space-y-2">
           {[0,1,2].map(i => (
@@ -113,24 +106,24 @@ export default function UnknownsPanel({ month, onSeedRule, onChanged, refreshKey
       )}
       {!loading && error && <div className="text-sm text-rose-300">{error}</div>}
       {!loading && !error && items.length === 0 && (
-        <EmptyState title="No transactions yet" note="Upload a CSV to view and categorize unknowns." />
+        <EmptyState title={t('ui.empty.no_transactions_title')} note={t('ui.empty.unknowns_note')} />
       )}
       <div className="flex items-center justify-between mb-2 text-sm font-medium">
         <div className="flex items-center gap-2">
           <span className="flex items-center">
-            Uncategorized transactions
-            <HelpBadge k="cards.unknowns" className="ml-2" />
+            {t('ui.unknowns.header_label')}
+            <CardHelpTooltip cardId="cards.unknowns" month={currentMonth || month} ctx={{ items }} baseText={getHelpBaseText('cards.unknowns', { month: currentMonth || month })} className="ml-2" />
           </span>
           <Tooltip>
             <TooltipTrigger asChild>
               <InfoDot />
             </TooltipTrigger>
             <TooltipContent>
-              These are transactions without a category. Use “Seed rule” to quickly create a rule in the Rule Tester.
+              {t('ui.unknowns.tooltip_info')}
             </TooltipContent>
           </Tooltip>
         </div>
-        <div className="text-xs opacity-70">Review → Seed → Categorize</div>
+  <div className="text-xs opacity-70">{t('ui.unknowns.workflow_hint')}</div>
       </div>
   <ul className="space-y-2">
         {items.map(tx => (
@@ -148,27 +141,34 @@ export default function UnknownsPanel({ month, onSeedRule, onChanged, refreshKey
             <div className="mt-2 flex items-center gap-2">
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <button
-                    className="btn btn-sm hover:bg-accent"
+                  <Button
+                    type="button"
+                    variant="pill-outline"
+                    size="sm"
                     onClick={()=> seedRuleFromRow(tx)}
-                    aria-label="Seed rule (prefill Rule Tester)"
+                    aria-label={t('ui.unknowns.seed_rule_aria')}
                   >
-                    Seed rule
-                  </button>
+                    {t('ui.unknowns.seed_rule')}
+                  </Button>
                 </TooltipTrigger>
                 <TooltipContent>
-                  Sends merchant/description (and current month) into Rule Tester so you can test & save a rule quickly.
+                  {t('ui.unknowns.seed_rule_tooltip')}
                 </TooltipContent>
               </Tooltip>
-              <button
-                className="px-2 py-1 rounded-md border border-border hover:bg-accent/10"
-                onClick={() => { setExplainTxnId(tx.id); setExplainOpen(true); }}
+              <Button
+                variant="pill-outline"
+                size="sm"
+                onClick={() => { setExplainTxnId(tx.id); setExplainTxn(tx); setExplainOpen(true); }}
               >
-                Explain
-              </button>
-              {['Groceries','Dining','Shopping'].map(c => (
-                <button key={c} className="px-2 py-1 rounded bg-blue-700 hover:bg-blue-600" onClick={()=>quickApply(tx.id, c)}>
-                  Apply {c}
+                {t('ui.unknowns.explain')}
+              </Button>
+              {([
+                { key: 'groceries', label: t('ui.categories.groceries') },
+                { key: 'dining', label: t('ui.categories.dining') },
+                { key: 'shopping', label: t('ui.categories.shopping') },
+              ] as const).map(c => (
+                <button key={c.key} className="px-2 py-1 rounded bg-blue-700 hover:bg-blue-600" onClick={()=>quickApply(tx.id, c.label)}>
+                  {t('ui.unknowns.apply_category', { category: c.label })}
                 </button>
               ))}
               {learned[tx.id] && <LearnedBadge />}
@@ -176,7 +176,7 @@ export default function UnknownsPanel({ month, onSeedRule, onChanged, refreshKey
           </li>
         ))}
       </ul>
-      <ExplainSignalDrawer txnId={explainTxnId} open={explainOpen} onOpenChange={setExplainOpen} />
+  <ExplainSignalDrawer txnId={explainTxnId} txn={explainTxn} open={explainOpen} onOpenChange={(v)=>{ setExplainOpen(v); if(!v){ setExplainTxnId(null); setExplainTxn(null);} }} />
       </Card>
     </section>
   )

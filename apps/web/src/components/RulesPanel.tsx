@@ -1,8 +1,8 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import { getRules, deleteRule, type Rule, type RuleInput, type RuleListItem, fetchRuleSuggestConfig, type RuleSuggestConfig } from '@/api';
 import { addRule } from '@/state/rules';
-import { useOkErrToast } from '@/lib/toast-helpers';
-import { useToast } from '@/hooks/use-toast';
+import { emitToastSuccess, emitToastError } from '@/lib/toast-helpers';
+import { t } from '@/lib/i18n';
 import { ToastAction } from '@/components/ui/toast';
 import { scrollToId } from '@/lib/scroll';
 import { setRuleDraft } from '@/state/rulesDraft';
@@ -10,13 +10,13 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { InfoDot } from './InfoDot';
 import Card from './Card';
 import { setBudget, deleteBudget } from '@/lib/api';
-import { showToast } from '@/lib/toast-helpers';
+import { Button } from '@/components/ui/button';
 
 type Props = { month?: string; refreshKey?: number };
 
 function RulesPanelImpl({ month, refreshKey }: Props) {
-  const { ok, err } = useOkErrToast();
-  const { toast } = useToast();
+  const ok = emitToastSuccess; const err = emitToastError;
+  // Removed useToast in favor of unified emit helpers
   const [rules, setRules] = useState<RuleListItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -42,26 +42,44 @@ function RulesPanelImpl({ month, refreshKey }: Props) {
     return { like: _like, category: _category, derivedName: _derivedName, canCreate: _like.length > 0 && _category.length > 0 };
   }, [form]);
 
-  async function load() {
+  const abortRef = useRef<AbortController | null>(null);
+  const lastReqRef = useRef(0);
+  const COALESCE_MS = 400;
+  const load = useCallback(async () => {
+    const now = Date.now();
+    if (now - lastReqRef.current < COALESCE_MS) return; // coalesce bursts
+    lastReqRef.current = now;
+    if (abortRef.current) {
+      try { abortRef.current.abort(); } catch (_err) { /* intentionally empty: swallow to render empty-state */ }
+    }
+    const ac = new AbortController();
+    abortRef.current = ac;
     setLoading(true);
     try {
-      const res = await getRules({ q: q || undefined, limit, offset: page * limit });
-      setRules(Array.isArray(res.items) ? res.items : []);
-      setTotal(Number(res.total || 0));
-    } catch (e) {
-      err('Could not load rules list', 'Load failed');
+      const res = await getRules({ q: q || undefined, limit, offset: page * limit, signal: ac.signal } as any);
+      setRules(Array.isArray((res as any).items) ? (res as any).items : []);
+      setTotal(Number((res as any).total || 0));
+    } catch (e: any) {
+      if (ac.signal.aborted) return; // ignore aborted
+  err(t('ui.toast.rules_list_load_failed'), { description: 'Load failed' });
     } finally {
+      if (abortRef.current === ac) abortRef.current = null;
       setLoading(false);
     }
-  }
+  }, [q, page, err]);
 
-  useEffect(() => { load(); }, [q, page]);
+  useEffect(() => { load(); }, [load]);
   useEffect(() => { fetchRuleSuggestConfig().then(setCfg).catch(() => {}); }, []);
   useEffect(() => {
-    if (typeof refreshKey !== 'undefined') {
-      load();
-    }
-  }, [refreshKey]);
+    if (typeof refreshKey !== 'undefined') load();
+  }, [refreshKey, load]);
+
+  // Listen for external refresh events (e.g., RuleTesterPanel simple save)
+  useEffect(() => {
+    const onRefresh = () => queueMicrotask(() => load());
+    window.addEventListener('rules:refresh', onRefresh);
+    return () => window.removeEventListener('rules:refresh', onRefresh);
+  }, [load]);
 
   async function onCreate(e: React.FormEvent) {
     e.preventDefault();
@@ -80,24 +98,10 @@ function RulesPanelImpl({ month, refreshKey }: Props) {
       setForm({ name: '', enabled: true, when: { description_like: '' }, then: { category: '' } });
       load();
       // Use raw toast so we can attach actions
-      toast({
-        title: 'Rule created',
-        description: `“${(res as any)?.display_name || name}” saved successfully.`,
-        duration: 4000,
-        action: (
-          <div className="flex gap-2">
-            <ToastAction altText="View unknowns" onClick={() => scrollToId('unknowns-panel')}>
-              View unknowns
-            </ToastAction>
-            <ToastAction altText="View charts" onClick={() => scrollToId('charts-panel')}>
-              View charts
-            </ToastAction>
-          </div>
-        ),
-      });
+  emitToastSuccess(t('ui.toast.rule_created_title'), { description: t('ui.toast.rule_created_description', { name: (res as any)?.display_name || name }) });
     } catch (e: any) {
       const message = e?.message || 'Failed to create rule';
-      err(message, 'Create failed');
+  err(message, { description: 'Create failed' });
     } finally {
       setCreating(false);
     }
@@ -136,16 +140,16 @@ function RulesPanelImpl({ month, refreshKey }: Props) {
   async function saveBudgetInline(category: string) {
     const amt = Number(editAmount);
     if (!Number.isFinite(amt) || amt <= 0) {
-      showToast?.('Enter a valid amount > 0', { type: 'error' });
+  err(t('ui.toast.budget_inline_invalid_amount'));
       return;
     }
     try {
       const r = await setBudget(category, amt);
-      showToast?.(`Saved ${category} = $${r.budget.amount.toFixed(2)}`, { type: 'success' });
+  ok(t('ui.toast.budget_inline_saved_title', { category, amount: `$${r.budget.amount.toFixed(2)}` }));
       setEditingId(null);
       await load();
     } catch (e: any) {
-      showToast?.(e?.message ?? 'Failed to save', { type: 'error' });
+  err(e?.message ?? t('ui.toast.budget_inline_save_failed'));
     }
   }
 
@@ -153,23 +157,19 @@ function RulesPanelImpl({ month, refreshKey }: Props) {
     try {
       const r = await deleteBudget(category);
       const { category: cat, amount } = r.deleted;
-      showToast?.(`Deleted budget for ${cat}`, {
-        type: 'success',
-        actionLabel: 'Undo',
-        onAction: async () => {
-          try {
-            await setBudget(cat, amount);
-            showToast?.(`Restored ${cat} = $${amount.toFixed(2)}`, { type: 'success' });
-            await load();
-          } catch (e: any) {
-            showToast?.(e?.message ?? 'Failed to restore', { type: 'error' });
-          }
-        },
-      });
+      ok(`Deleted budget for ${cat}`);
+      // Provide a simple immediate undo without custom toast action for now
+      try {
+        await setBudget(cat, amount);
+        ok(`Restored ${cat} = $${amount.toFixed(2)}`);
+        await load();
+      } catch (e: any) {
+        err(e?.message ?? t('ui.toast.budget_inline_restore_failed'));
+      }
       setEditingId(null);
       await load();
     } catch (e: any) {
-      showToast?.(e?.message ?? 'Failed to delete budget', { type: 'error' });
+  err(e?.message ?? t('ui.toast.budget_inline_delete_failed'));
     }
   }
 
@@ -198,22 +198,25 @@ function RulesPanelImpl({ month, refreshKey }: Props) {
         </div>
         <div className="flex flex-col items-end gap-2">
           <div className="flex items-center gap-2">
-            <button
+            <Button
               onClick={load}
-              className="btn btn-sm hover:bg-accent"
+              variant="pill-outline"
+              size="sm"
               disabled={loading}
             >
               {loading ? 'Refreshing…' : 'Refresh'}
-            </button>
-            <button
+            </Button>
+            <Button
               type="submit"
               form="rules-create-form"
-              className={`btn btn-sm hover:bg-accent ${!canCreate ? 'opacity-60 cursor-not-allowed' : ''}`}
+              variant="pill-primary"
+              size="sm"
+              className={!canCreate ? 'opacity-60 cursor-not-allowed' : ''}
               disabled={creating || !canCreate}
               title="Create rule with the fields below"
             >
               {creating ? 'Creating…' : 'Create'}
-            </button>
+            </Button>
           </div>
           {cfg && (
             <div className="text-xs opacity-70">
@@ -221,9 +224,9 @@ function RulesPanelImpl({ month, refreshKey }: Props) {
             </div>
           )}
           <div className="flex items-center gap-2 text-xs whitespace-nowrap">
-            <button className="btn btn-ghost btn-sm" disabled={page===0} onClick={() => setPage(p=>Math.max(0,p-1))}>Prev</button>
+            <Button variant="pill-outline" size="sm" disabled={page===0} onClick={() => setPage(p=>Math.max(0,p-1))}>Prev</Button>
             <span className="opacity-70">{page*limit+1}–{Math.min((page+1)*limit, total)} of {total}</span>
-            <button className="btn btn-ghost btn-sm" disabled={(page+1)*limit>=total} onClick={() => setPage(p=>p+1)}>Next</button>
+            <Button variant="pill-outline" size="sm" disabled={(page+1)*limit>=total} onClick={() => setPage(p=>p+1)}>Next</Button>
           </div>
         </div>
   </header>
@@ -297,6 +300,9 @@ function RulesPanelImpl({ month, refreshKey }: Props) {
             const isBudget = ((rule as any).kind === 'budget' || String(rule.id).startsWith('budget:'));
             const category = (rule as any).category as string | undefined;
             const amountFromDesc = typeof (rule as any).amount === 'number' ? (rule as any).amount : parseAmountFromDescription((rule as any).description);
+            const thresholds: any = (rule as any)?.when?.thresholds;
+            const hasTh = thresholds && typeof thresholds === 'object' && Object.keys(thresholds).length > 0;
+            const thBadge = hasTh ? `min ${thresholds.minConfidence ?? '-'}${thresholds.budgetPercent != null ? ", "+thresholds.budgetPercent+"%" : ''}${thresholds.limit != null ? ", ≤ "+thresholds.limit : ''}` : null;
             return (
               <div key={rule.id} className="panel-tight md:p-5 lg:p-6 flex items-center justify-between">
                 <div className="min-w-0">
@@ -308,6 +314,9 @@ function RulesPanelImpl({ month, refreshKey }: Props) {
                     <span className={`text-xs px-2 py-0.5 rounded-full ${(rule.active ?? true) ? 'bg-emerald-600/10 text-emerald-600' : 'bg-zinc-600/10 text-zinc-500'}`}>
                       {(rule.active ?? true) ? 'Enabled' : 'Disabled'}
                     </span>
+                    {thBadge && (
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800/60 border border-slate-700">Thresholds: {thBadge}</span>
+                    )}
                   </div>
                   <div className="text-xs opacity-80 truncate">
                     {((rule as any).description) ? (
@@ -329,14 +338,15 @@ function RulesPanelImpl({ month, refreshKey }: Props) {
                           onChange={(e) => setEditAmount(e.target.value)}
                           className="w-28 rounded-md border border-border bg-card px-2 py-1 text-sm"
                         />
-                        <button className="rounded-md border border-border px-2 py-1 text-xs" onClick={() => saveBudgetInline(category)}>Save</button>
-                        <button className="rounded-md border border-border px-2 py-1 text-xs" onClick={() => setEditingId(null)}>Cancel</button>
+                        <Button variant="pill-success" size="sm" onClick={() => saveBudgetInline(category)}>Save</Button>
+                        <Button variant="pill-outline" size="sm" onClick={() => setEditingId(null)}>Cancel</Button>
                       </div>
                     ) : (
                       <div className="flex items-center gap-2">
                         <span className="text-sm opacity-80">Cap:&nbsp;{typeof amountFromDesc === 'number' ? `$${amountFromDesc.toFixed(2)}` : '—'}</span>
-                        <button
-                          className="rounded-md border border-border px-2 py-1 text-xs"
+                        <Button
+                          variant="pill-outline"
+                          size="sm"
                           onClick={() => {
                             setEditingId(rule.id);
                             setEditAmount(typeof amountFromDesc === 'number' ? String(amountFromDesc.toFixed(2)) : '');
@@ -344,16 +354,16 @@ function RulesPanelImpl({ month, refreshKey }: Props) {
                           title="Edit budget cap"
                         >
                           Edit
-                        </button>
-                        <button className="rounded-md border border-border px-2 py-1 text-xs" onClick={() => removeBudget(category)} title="Delete budget">
+                        </Button>
+                        <Button variant="pill-danger" size="sm" onClick={() => removeBudget(category)} title="Delete budget">
                           Clear
-                        </button>
+                        </Button>
                       </div>
                     )
                   ) : (
-                    <button onClick={() => remove({ id: rule.id, name: rule.display_name, enabled: rule.active ?? true, when: {}, then: { category: rule.category } })} className="text-xs px-2 py-1 rounded-lg border hover:bg-destructive/10 text-destructive">
+                    <Button variant="pill-danger" size="sm" onClick={() => remove({ id: rule.id, name: rule.display_name, enabled: rule.active ?? true, when: {}, then: { category: rule.category } })}>
                       Delete
-                    </button>
+                    </Button>
                   )}
                 </div>
               </div>

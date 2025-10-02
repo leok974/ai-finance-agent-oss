@@ -6,6 +6,7 @@ from app.db import get_db
 from app.orm_models import User
 from app.utils.auth import create_tokens, verify_password, hash_password, get_current_user, _ensure_roles, set_auth_cookies, clear_auth_cookies, decode_token
 from app.utils.csrf import issue_csrf_cookie, csrf_protect
+from sqlalchemy.exc import OperationalError
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -20,7 +21,10 @@ class RegisterBody(BaseModel):
 
 @router.post("/login")
 def login(body: LoginBody, resp: Response, db: Session = Depends(get_db)):
-    u = db.query(User).filter(User.email == body.email).first()
+    try:
+        u = db.query(User).filter(User.email == body.email).first()
+    except OperationalError as e:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Database unavailable") from e
     if not u or not verify_password(body.password, u.password_hash):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
     # Load roles
@@ -35,7 +39,9 @@ def register(body: RegisterBody, resp: Response, db: Session = Depends(get_db)):
     if db.query(User).filter(User.email == body.email).first():
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email already registered")
     u = User(email=body.email, password_hash=hash_password(body.password))
-    db.add(u); db.commit(); db.refresh(u)
+    db.add(u)
+    db.commit()
+    db.refresh(u)
     _ensure_roles(db, u, body.roles)
     roles = body.roles
     pair = create_tokens(u.email, roles)
@@ -76,3 +82,12 @@ def me(user: User = Depends(get_current_user)):
         "roles": [ur.role.name for ur in user.roles],
         "is_active": user.is_active,
     }
+
+@router.get("/status")
+def auth_status(user: User = Depends(get_current_user)):
+    """Lightweight auth canary endpoint.
+
+    Returns {ok: true} if the access token cookie (or bearer) is valid.
+    Useful for frontend bootstrapping and debugging cookie attribute issues.
+    """
+    return {"ok": True}

@@ -2,7 +2,9 @@ export function getInitials(input?: string | null): string {
   if (!input) return "You";
   const cleaned = input.trim().replace(/\s+/g, " ");
   const base = cleaned.includes("@") ? cleaned.split("@")[0] : cleaned;
-  const parts = base.split(" ").filter(Boolean);
+  // Treat common punctuation (dot, underscore, hyphen) as separators for initials purposes
+  const normalized = base.replace(/[._-]+/g, " ");
+  const parts = normalized.split(/\s+/).filter(Boolean);
   if (parts.length === 1) {
     const s = parts[0];
     return (s[0] || "Y").toUpperCase() + (s[1]?.toUpperCase() || "");

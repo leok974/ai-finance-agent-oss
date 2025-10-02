@@ -1,5 +1,8 @@
 from __future__ import annotations
-import os, json, math, datetime as dt
+import os
+import json
+import math
+from app.utils.time import utc_now
 from typing import Any, Dict, List, Optional
 from collections import Counter
 
@@ -180,7 +183,7 @@ def train_on_db(
             except Exception:
                 pass
 
-        ts_utc = dt.datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
+        ts_utc = utc_now().strftime("%Y%m%dT%H%M%SZ")
         model_path = os.path.join(MODELS_DIR, f"model_{ts_utc}.joblib")
         joblib.dump(pipe, model_path)
         try:

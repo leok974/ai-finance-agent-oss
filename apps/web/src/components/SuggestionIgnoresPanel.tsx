@@ -1,7 +1,8 @@
 import React from 'react';
 import Card from './Card';
 import { listSuggestionIgnores, removeSuggestionIgnore } from '@/lib/api';
-import { showToast } from '@/lib/toast-helpers';
+import { emitToastSuccess, emitToastError } from '@/lib/toast-helpers';
+import { t } from '@/lib/i18n';
 import { Skeleton } from '@/components/ui/skeleton';
 
 export default function SuggestionIgnoresPanel() {
@@ -56,9 +57,9 @@ export default function SuggestionIgnoresPanel() {
                 try {
                   const next = await removeSuggestionIgnore(r.merchant, r.category);
                   setRows(Array.isArray(next?.ignores) ? next.ignores : []);
-                  showToast?.(`Removed ignore for ${r.merchant} → ${r.category}`, { type: 'success' });
+                  emitToastSuccess(t('ui.toast.suggestion_ignore_removed_title', { merchant: r.merchant, category: r.category }));
                 } catch (e: any) {
-                  showToast?.(e?.message ?? 'Failed to remove', { type: 'error' });
+                  emitToastError(e?.message ?? t('ui.toast.suggestion_ignore_remove_failed_title'));
                 }
               }}
             >Remove</button>

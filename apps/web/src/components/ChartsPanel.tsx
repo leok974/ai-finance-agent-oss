@@ -1,9 +1,11 @@
 import React, { useEffect, useMemo, useState } from "react";
 import Card from "./Card";
 import ExportMenu from "./ExportMenu";
-import HelpBadge from "./HelpBadge";
+import CardHelpTooltip from "./CardHelpTooltip";
+import { getHelpBaseText } from '@/lib/helpBaseText';
 import CardHeaderRow from "./CardHeaderRow";
 import EmptyState from "./EmptyState";
+import { t } from '@/lib/i18n';
 import * as RC from "recharts";
 import {
   getMonthSummary,
@@ -100,7 +102,7 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
           setMonthsWindow(Number(months ?? 6));
           // Scroll to this panel's root
           document.getElementById('charts-panel')?.scrollIntoView?.({ behavior: 'smooth' });
-        } catch {}
+        } catch (_err) { /* intentionally empty: swallow to render empty-state */ }
       }
     }
     window.addEventListener('open-category-chart', onOpenChart as any);
@@ -155,15 +157,17 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
     <div id="charts-panel" className="grid gap-6 md:gap-7 grid-cols-1 lg:grid-cols-2">
       {empty && !error && (
         <div className="lg:col-span-2">
-          <EmptyState title="No transactions yet" note="Once you upload, charts will populate automatically." />
+          <EmptyState title={t('ui.empty.no_transactions_title')} note={t('ui.empty.charts_note')} />
         </div>
       )}
   <div className="chart-card" data-explain-key="cards.overview" data-month={resolvedMonth}>
   <Card className="border-0 bg-transparent shadow-none p-0">
         <CardHeaderRow
-          title={`Overview — ${resolvedMonth}`}
+          title={t('ui.charts.overview_title', { month: resolvedMonth })}
           helpKey="cards.overview"
           month={resolvedMonth}
+          helpCtx={{ summary, merchants, flows }}
+          helpBaseText={getHelpBaseText('cards.overview', { month: resolvedMonth })}
           actions={<ExportMenu month={resolvedMonth} />}
           className="mb-2"
         />
@@ -183,19 +187,19 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
         {!loading && !error && summary && (
           <div className="grid grid-cols-3 gap-4 text-sm">
             <div className="tile-no-border p-3">
-              <div className="text-gray-400">Total Spend</div>
+              <div className="text-gray-400">{t('ui.metrics.total_spend')}</div>
               <div className="mt-1 text-lg font-semibold text-rose-300">
                 {currency(summary.total_spend || 0)}
               </div>
             </div>
             <div className="tile-no-border p-3">
-              <div className="text-gray-400">Total Income</div>
+              <div className="text-gray-400">{t('ui.metrics.total_income')}</div>
               <div className="mt-1 text-lg font-semibold text-emerald-300">
                 {currency(summary.total_income || 0)}
               </div>
             </div>
             <div className="tile-no-border p-3">
-              <div className="text-gray-400">Net</div>
+              <div className="text-gray-400">{t('ui.metrics.net')}</div>
               <div className="mt-1 text-lg font-semibold text-indigo-300">
                 {currency(summary.net || 0)}
               </div>
@@ -209,8 +213,8 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
   <Card className="border-0 bg-transparent shadow-none p-0">
         <div className="flex items-center justify-between mb-2">
           <h3 className="chart-title flex items-center">
-            {`Top Categories — ${resolvedMonth}`}
-            <HelpBadge k="charts.top_categories" month={resolvedMonth} />
+            {t('ui.charts.top_categories_title', { month: resolvedMonth })}
+            <CardHelpTooltip cardId="charts.top_categories" month={resolvedMonth} ctx={{ data: categoriesData }} baseText={getHelpBaseText('charts.top_categories', { month: resolvedMonth })} />
           </h3>
         </div>
         {loading && (
@@ -223,7 +227,7 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
           </div>
         )}
         {!loading && categoriesData.length === 0 && (
-          <p className="text-sm text-gray-400">No category data.</p>
+          <p className="text-sm text-gray-400">{t('ui.charts.empty_categories')}</p>
         )}
         {!loading && categoriesData.length > 0 && (
           <div className="h-64">
@@ -234,11 +238,11 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
                 <YAxis
                   tick={{ fill: "var(--text-muted)" }}
                   stroke="var(--border-subtle)"
-                  label={{ value: "Spend", angle: -90, position: "insideLeft", fill: "var(--text-muted)" }}
+                  label={{ value: t('ui.charts.axis_spend'), angle: -90, position: "insideLeft", fill: "var(--text-muted)" }}
                 />
                 <Tooltip contentStyle={tooltipStyle} itemStyle={tooltipItemStyle} labelStyle={tooltipLabelStyle} />
-                <Legend content={<BarPaletteLegend label="Spend" />} />
-                <Bar dataKey="amount" name="Spend" activeBar={{ fillOpacity: 1, stroke: "#fff", strokeWidth: 1 }} fillOpacity={0.9}>
+                <Legend content={<BarPaletteLegend label={t('ui.charts.legend_spend')} />} />
+                <Bar dataKey="amount" name={t('ui.charts.legend_spend')} activeBar={{ fillOpacity: 1, stroke: "#fff", strokeWidth: 1 }} fillOpacity={0.9}>
                   {categoriesData.map((d: any, i: number) => (
                     <Cell key={i} fill={pickColor(Number(d?.amount ?? 0), maxCategory)} />
                   ))}
@@ -253,9 +257,11 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
   <div className="chart-card" data-explain-key="charts.month_merchants" data-month={resolvedMonth}>
   <Card className="border-0 bg-transparent shadow-none p-0">
         <CardHeaderRow
-          title={`Top Merchants — ${resolvedMonth}`}
+          title={t('ui.charts.merchants_title', { month: resolvedMonth })}
           helpKey="charts.month_merchants"
           month={resolvedMonth}
+          helpCtx={{ data: merchantsData }}
+          helpBaseText={getHelpBaseText('charts.month_merchants', { month: resolvedMonth })}
           className="mb-2"
         />
         {loading && (
@@ -268,7 +274,7 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
           </div>
         )}
         {!loading && merchantsData.length === 0 && (
-          <p className="text-sm text-gray-400">No merchant data.</p>
+          <p className="text-sm text-gray-400">{t('ui.charts.empty_merchants')}</p>
         )}
         {!loading && merchantsData.length > 0 && (
           <div className="h-64">
@@ -279,11 +285,11 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
                 <YAxis
                   tick={{ fill: "var(--text-muted)" }}
                   stroke="var(--border-subtle)"
-                  label={{ value: "Spend", angle: -90, position: "insideLeft", fill: "var(--text-muted)" }}
+                  label={{ value: t('ui.charts.axis_spend'), angle: -90, position: "insideLeft", fill: "var(--text-muted)" }}
                 />
                 <Tooltip contentStyle={tooltipStyle} itemStyle={tooltipItemStyle} labelStyle={tooltipLabelStyle} />
-                <Legend content={<BarPaletteLegend label="Spend" />} />
-                <Bar dataKey="amount" name="Spend" activeBar={{ fillOpacity: 1, stroke: "#fff", strokeWidth: 1 }} fillOpacity={0.9}>
+                <Legend content={<BarPaletteLegend label={t('ui.charts.legend_spend')} />} />
+                <Bar dataKey="amount" name={t('ui.charts.legend_spend')} activeBar={{ fillOpacity: 1, stroke: "#fff", strokeWidth: 1 }} fillOpacity={0.9}>
                   {merchantsData.map((d: any, i: number) => (
                     <Cell key={i} fill={pickColor(Number(d?.amount ?? 0), maxMerchant)} />
                   ))}
@@ -300,8 +306,8 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
   <Card className="border-0 bg-transparent shadow-none p-0">
         <div className="flex items-center justify-between mb-2">
           <h3 className="chart-title flex items-center">
-            {`Daily Flows — ${resolvedMonth}`}
-            <HelpBadge k="charts.daily_flows" month={resolvedMonth} />
+            {t('ui.charts.daily_flows_title', { month: resolvedMonth })}
+            <CardHelpTooltip cardId="charts.daily_flows" month={resolvedMonth} ctx={{ data: flowsData }} baseText={getHelpBaseText('charts.daily_flows', { month: resolvedMonth })} />
           </h3>
         </div>
         {loading && (
@@ -312,7 +318,7 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
           </div>
         )}
         {!loading && flowsData.length === 0 && (
-          <p className="text-sm text-gray-400">No flow data.</p>
+          <p className="text-sm text-gray-400">{t('ui.charts.empty_flows')}</p>
         )}
         {!loading && flowsData.length > 0 && (
           <div className="h-64">
@@ -323,13 +329,13 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
                 <YAxis
                   tick={{ fill: "var(--text-muted)" }}
                   stroke="var(--border-subtle)"
-                  label={{ value: "Amount", angle: -90, position: "insideLeft", fill: "var(--text-muted)" }}
+                  label={{ value: t('ui.charts.axis_amount'), angle: -90, position: "insideLeft", fill: "var(--text-muted)" }}
                 />
                 <Tooltip contentStyle={tooltipStyle} itemStyle={tooltipItemStyle} labelStyle={tooltipLabelStyle} />
                 <Legend wrapperStyle={legendTextStyle} />
-                <Line type="monotone" dataKey="in"  name="In"  stroke="#22c55e" strokeWidth={2} dot={false} />
-                <Line type="monotone" dataKey="out" name="Out" stroke="#ef4444" strokeWidth={2} dot={false} />
-                <Line type="monotone" dataKey="net" name="Net" stroke="#60a5fa" strokeWidth={2} dot={false} />
+                <Line type="monotone" dataKey="in"  name={t('ui.charts.line_in')}  stroke="#22c55e" strokeWidth={2} dot={false} />
+                <Line type="monotone" dataKey="out" name={t('ui.charts.line_out')} stroke="#ef4444" strokeWidth={2} dot={false} />
+                <Line type="monotone" dataKey="net" name={t('ui.charts.line_net')} stroke="#60a5fa" strokeWidth={2} dot={false} />
               </LineChart>
             </ResponsiveContainer>
           </div>
@@ -341,8 +347,8 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
   <Card className="border-0 bg-transparent shadow-none p-0">
         <div className="flex items-center justify-between mb-2">
           <h3 className="chart-title flex items-center">
-            {`Spending Trends — last ${monthsWindow} months`}
-            <HelpBadge k="charts.spending_trends" month={resolvedMonth} />
+            {t('ui.charts.spending_trends_title', { months: monthsWindow })}
+            <CardHelpTooltip cardId="charts.spending_trends" month={resolvedMonth} ctx={{ data: trendsData }} baseText={getHelpBaseText('charts.spending_trends', { monthsWindow })} />
           </h3>
         </div>
         {loading && (
@@ -353,7 +359,7 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
           </div>
         )}
         {!loading && trendsData.length === 0 && (
-          <p className="text-sm text-gray-400">No historical data.</p>
+          <p className="text-sm text-gray-400">{t('ui.charts.empty_trends')}</p>
         )}
         {!loading && trendsData.length > 0 && (
           <div className="h-64">
@@ -364,7 +370,7 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
                 <YAxis
                   tick={{ fill: "var(--text-muted)" }}
                   stroke="var(--border-subtle)"
-                  label={{ value: "Spend", angle: -90, position: "insideLeft", fill: "var(--text-muted)" }}
+                  label={{ value: t('ui.charts.axis_spend'), angle: -90, position: "insideLeft", fill: "var(--text-muted)" }}
                 />
                 <Tooltip contentStyle={tooltipStyle} itemStyle={tooltipItemStyle} labelStyle={tooltipLabelStyle} />
                 <Legend wrapperStyle={legendTextStyle} />

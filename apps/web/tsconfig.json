@@ -1,32 +1,21 @@
 {
-  "compilerOptions": {
-    "target": "ES2020",
-    "useDefineForClassFields": true,
-    "lib": [
-      "ES2020",
-      "DOM",
-      "DOM.Iterable"
-    ],
-    "module": "ESNext",
-    "skipLibCheck": true,
-    "jsx": "react-jsx",
-    "moduleResolution": "bundler",
-    "resolveJsonModule": true,
-    "isolatedModules": true,
-    "noEmit": true,
-    "types": [
-      "vite/client"
-    ],
-    "strict": true,
-    "esModuleInterop": true,
-    "baseUrl": ".",
-    "paths": {
-      "@/*": [
-        "src/*"
-      ]
-    }
-  },
-  "include": [
-    "src"
-  ]
+	"compilerOptions": {
+		"target": "ES2022",
+		"lib": ["ES2022", "DOM"],
+		"module": "ESNext",
+		"moduleResolution": "Bundler",
+		"jsx": "react-jsx",
+		"strict": true,
+		"noEmit": true,
+		"baseUrl": ".",
+		"paths": { "@/*": ["src/*"] },
+		"types": ["vite/client", "vitest", "node", "jsdom"]
+	},
+	"include": [
+		"src",
+		"scripts",
+		"vite-env.d.ts",
+		"vitest.setup.ts"
+	],
+	"exclude": ["dist", "node_modules"]
 }

@@ -5,9 +5,10 @@ import UnknownsPanel from "./components/UnknownsPanel";
 import SuggestionsPanel from "./components/SuggestionsPanel";
 // import RuleTesterPanel from "./components/RuleTesterPanel"; // rendered only inside DevDock
 import { AgentResultRenderer } from "./components/AgentResultRenderers";
-import { useOkErrToast } from "@/lib/toast-helpers";
+import { emitToastSuccess } from "@/lib/toast-helpers";
+import { t } from '@/lib/i18n';
 // import RulesPanel from "./components/RulesPanel";
-import { getAlerts, getMonthSummary, getMonthMerchants, getMonthFlows, agentTools, meta, getHealthz, api, resolveMonthFromCharts } from './lib/api'
+import { getAlerts, getMonthSummary, getMonthMerchants, getMonthFlows, getHealthz, api, agentTools, fetchLatestMonth } from './lib/api'
 import { flags } from "@/lib/flags";
 import AboutDrawer from './components/AboutDrawer';
 import RulesPanel from "./components/RulesPanel";
@@ -16,6 +17,7 @@ import { useChatDockStore } from "./stores/chatdock";
 import DevDock from "@/components/dev/DevDock";
 import PlannerDevPanel from "@/components/dev/PlannerDevPanel";
 import RuleTesterPanel from "@/components/RuleTesterPanel";
+import { isDevUIEnabled, setDevUIEnabled, useDevUI } from "@/state/useDevUI";
 import MLStatusCard from "@/components/MLStatusCard";
 import { ChatDockProvider } from "./context/ChatDockContext";
 import ChartsPanel from "./components/ChartsPanel";
@@ -23,6 +25,7 @@ import TopEmptyBanner from "./components/TopEmptyBanner";
 // import MLStatusCard from "./components/MLStatusCard"; // rendered only inside DevDock
 import NetActivityBlip from "@/components/NetActivityBlip";
 import LoginForm from "@/components/LoginForm";
+import AccountMenu from "@/components/AccountMenu";
 import { useAuth } from "@/state/auth";
 // import AgentChat from "./components/AgentChat"; // legacy chat bubble disabled
 import { setGlobalMonth } from "./state/month";
@@ -30,19 +33,27 @@ import { setGlobalMonth } from "./state/month";
 import RuleSuggestionsPersistentPanel from "@/components/RuleSuggestionsPersistentPanel";
 import InsightsAnomaliesCard from "./components/InsightsAnomaliesCard";
 import ErrorBoundary from "@/components/ErrorBoundary";
-import DevFab from "@/components/dev/DevFab";
 import DevBadge from "@/components/dev/DevBadge";
 import HelpMode from "@/components/HelpMode";
+import AppHelpMode from "./AppHelpMode";
 import HelpExplainListener from "@/components/HelpExplainListener";
+import { HelpPanelHost } from "@/features/help/HelpPanel";
 import ForecastCard from "@/components/ForecastCard";
+import TransactionsDrawer from "@/components/TransactionsDrawer";
+import Brand from "@/components/Brand";
+import TransactionsButton from "@/components/header/TransactionsButton";
+import MonthPicker from "@/components/header/MonthPicker";
+import DevMenu from "@/components/dev/DevMenu";
+import logoPng from "@/assets/ledgermind-lockup-1024.png";
+import { useLlmStore } from '@/state/llmStore';
 
 // Log frontend version info
 console.info("[Web] branch=", __WEB_BRANCH__, "commit=", __WEB_COMMIT__);
 
 
 const App: React.FC = () => {
-  const { ok } = useOkErrToast();
   const [devDockOpen, setDevDockOpen] = useState<boolean>(() => (import.meta as any).env?.VITE_DEV_UI === '1' || localStorage.getItem('DEV_DOCK') !== '0');
+  const devUI = useDevUI();
   const [month, setMonth] = useState<string>("");
   const [ready, setReady] = useState<boolean>(false);
   const [refreshKey, setRefreshKey] = useState<number>(0);
@@ -51,38 +62,51 @@ const App: React.FC = () => {
   const [alerts, setAlerts] = useState<any>(null)
   const [empty, setEmpty] = useState<boolean>(false)
   const [bannerDismissed, setBannerDismissed] = useState<boolean>(false)
+  const [txPanelOpen, setTxPanelOpen] = useState<boolean>(false)
   const booted = useRef(false)
   const [dbRev, setDbRev] = useState<string | null>(null);
   const [inSync, setInSync] = useState<boolean | undefined>(undefined);
 
-  // Quick keyboard toggle for Dev UI: Ctrl+Shift+D
+  // Keyboard toggles: Ctrl+Alt+D soft session toggle (no reload), Ctrl+Shift+D hard persistent toggle (reload)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       try {
-        if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === "d") {
-          const v = (localStorage.getItem("DEV_UI") === "1") ? "0" : "1";
-          localStorage.setItem("DEV_UI", v);
+        const keyD = e.key.toLowerCase() === 'd';
+        if (!keyD || !e.ctrlKey) return;
+        if (e.altKey && !e.shiftKey) {
+          // Soft toggle (session only)
+          const next = !isDevUIEnabled();
+          window.dispatchEvent(new CustomEvent('devui:soft', { detail: { value: next }}));
+          window.dispatchEvent(new CustomEvent('devui:changed', { detail: { value: next, soft: true }}));
+          try { emitToastSuccess?.(next ? t('ui.toast.dev_ui_soft_on') : t('ui.toast.dev_ui_soft_off')); } catch (_err) { /* intentionally empty: swallow to render empty-state */ }
+        } else if (e.shiftKey) {
+          // Hard persistent toggle
+          const next = !isDevUIEnabled();
+          setDevUIEnabled(next);
+          try { emitToastSuccess?.(next ? t('ui.toast.dev_ui_enabled') : t('ui.toast.dev_ui_disabled')); } catch (_err) { /* intentionally empty: swallow to render empty-state */ }
           location.reload();
         }
-      } catch {}
+      } catch (_err) { /* intentionally empty: swallow to render empty-state */ }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  // Initialize month once
-  async function resolveMonth(): Promise<string> {
-    // GET-only path compatible with older backend
-    const viaCharts = await resolveMonthFromCharts();
-    return viaCharts || "";
-  }
+  // Legacy month initialization via charts retained only as fallback inside fetchLatestMonth (POST now canonical)
 
   useEffect(() => {
     if (booted.current) return; // guard re-run in dev (StrictMode)
     booted.current = true;
     (async () => {
-      console.info("[boot] resolving month…");
-      const m = (await resolveMonth())
+      // Core readiness gate: fetch /ready (new canonical) to decide whether to defer heavier chart calls
+      try {
+        const statusResp = await fetch('/ready', { credentials: 'include' });
+        if (statusResp.ok) (window as any).__CORE_READY__ = true; else console.warn('[boot] readiness probe not OK');
+      } catch (e) {
+        console.warn('[boot] status probe failed', e);
+      }
+      console.info("[boot] resolving month (meta POST)…");
+      const m = (await fetchLatestMonth())
         ?? (() => {
              const now = new Date();
              return `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}`;
@@ -94,12 +118,17 @@ const App: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const { user, authReady } = useAuth();
+  const { user, authReady, logout } = useAuth();
   const authOk = !!user;
   // Load dashboard data whenever month changes (only when authenticated)
   useEffect(() => {
     if (!authOk || !month) return;
     console.info("[boot] loading dashboards for month", month);
+    const coreReady = (window as any).__CORE_READY__ === true;
+    if (!coreReady) {
+      console.info('[boot] skipping charts prefetch (core not ready)');
+      return;
+    }
     void Promise.allSettled([
       agentTools.chartsSummary({ month }),
       agentTools.chartsMerchants({ month, limit: 10 }),
@@ -115,12 +144,13 @@ const App: React.FC = () => {
       try {
         const h = await getHealthz();
         if (!alive) return;
-  const db = h?.db_engine || 'unknown-db';
-  const mig = h?.alembic_ok ?? h?.alembic?.in_sync ?? 'unknown';
-  const models = h?.models_ok ?? 'unknown';
+        const db = h?.db_engine || 'unknown-db';
+        const mig = h?.alembic_ok ?? h?.alembic?.in_sync ?? 'unknown';
+        // models_ok was formerly supplied by backend; prefer llmStore derived state now
+        const llmModelsOk = useLlmStore.getState().modelsOk;
         setDbRev((h as any)?.db_revision ?? (h as any)?.alembic?.db_revision ?? null);
         setInSync((h as any)?.alembic_ok ?? (h as any)?.alembic?.in_sync);
-        console.log(`[db] ${db} loaded | alembic_ok=${String(mig)} | models_ok=${String(models)}`);
+        console.log(`[db] ${db} loaded | alembic_ok=${String(mig)} | models_ok=${String(llmModelsOk)}`);
       } catch (e) {
         console.warn('[db] healthz failed:', e);
       }
@@ -134,7 +164,7 @@ const App: React.FC = () => {
     try {
       setInsights(await agentTools.insightsExpanded({ month, large_limit: 10 }))
       setAlerts(await getAlerts(month))
-    } catch {}
+    } catch (_err) { /* intentionally empty: swallow to render empty-state */ }
   })() }, [authOk, ready, month, refreshKey])
 
   // Probe backend emptiness (latest by default). If charts summary returns null or month:null, show banner.
@@ -150,10 +180,11 @@ const App: React.FC = () => {
 
   const onCsvUploaded = useCallback(() => {
     setRefreshKey((k) => k + 1);
-    ok("Transactions imported. Panels refreshed.", "CSV ingested");
-  }, [ok]);
+  emitToastSuccess(t('ui.toast.csv_ingested_title'), { description: t('ui.toast.csv_ingested_description') });
+  }, []);
 
-  
+  const refreshLlm = useLlmStore(s => s.refresh);
+  useEffect(() => { refreshLlm({ refreshModels: true }); }, [refreshLlm]);
 
   const showChatDock = useChatDockStore(s => s.visible);
 
@@ -161,7 +192,21 @@ const App: React.FC = () => {
   if (!ready || !authReady) return <div className="p-6 text-[color:var(--text-muted)]">Loading…</div>;
   if (!authOk) return (
     <div className="p-6">
-      <div className="max-w-md mx-auto"><LoginForm /></div>
+      <div className="max-w-md mx-auto">
+        <div className="mb-6 flex items-center justify-center">
+          <img
+            src={logoPng}
+            alt=""
+            width={40}
+            height={40}
+            decoding="async"
+            fetchPriority="high"
+            className="mr-2 h-10 w-10 rounded-[8px] ring-1 ring-white/10"
+          />
+          <span className="text-xl font-semibold">LedgerMind</span>
+        </div>
+        <LoginForm />
+      </div>
     </div>
   );
 
@@ -170,18 +215,20 @@ const App: React.FC = () => {
       <ChatDockProvider>
   <NetActivityBlip />
       <div className="min-h-screen bg-gray-50 text-gray-900 p-6 dark:bg-gray-950 dark:text-gray-100">
-        <HelpMode />
+  <HelpMode />
+  <AppHelpMode />
+  <HelpPanelHost />
   <HelpExplainListener />
   {/* Ensure this container is relative so ChatDock (absolute) positions within it */}
   <div className="relative">
           <div className="mx-auto max-w-6xl space-y-6">
-        <header className="flex items-center justify-between">
-          <h1 className="text-3xl font-bold">Finance Agent</h1>
+  <header className="flex items-center justify-between gap-3 min-h-24 md:min-h-28 lg:min-h-32 xl:min-h-36 2xl:min-h-40">
+          <Brand />
           <div className="flex items-center gap-3">
-            <LoginForm />
-            <AboutDrawer />
-            <input type="month" className="bg-neutral-900 border border-neutral-800 rounded px-3 py-2" value={month} onChange={e=>{ setMonth(e.target.value); setGlobalMonth(e.target.value); }} />
-            <a href="#rule-suggestions" className="btn btn-ghost btn-sm" title="Jump to persistent Rule Suggestions">Suggestions</a>
+            <AboutDrawer showButton={false} />
+            <TransactionsButton open={txPanelOpen} onOpen={() => setTxPanelOpen(true)} />
+            <MonthPicker value={month} onChange={(m)=>{ setMonth(m); setGlobalMonth(m); }} />
+            {flags.dev && <DevMenu />}
             {flags.dev && (
               <DevBadge
                 // show branch/commit if available via globals
@@ -189,12 +236,17 @@ const App: React.FC = () => {
                 commit={String((globalThis as any).__WEB_COMMIT__ ?? '')}
                 openDevDock={devDockOpen}
                 onToggleDevDock={() => {
-                  const next = !devDockOpen; setDevDockOpen(next); try { localStorage.setItem('DEV_DOCK', next ? '1' : '0'); } catch {}
+                  const next = !devDockOpen; setDevDockOpen(next); try { localStorage.setItem('DEV_DOCK', next ? '1' : '0'); } catch (_err) { /* intentionally empty: swallow to render empty-state */ }
                 }}
               />
             )}
+            {authOk && (
+              <AccountMenu email={user?.email} onLogout={logout} />
+            )}
           </div>
         </header>
+  {/* Global mount of RuleTesterPanel (portal overlay) gated by dev flag */}
+  {devUI && <RuleTesterPanel />}
 
         {!bannerDismissed && empty && (
           <TopEmptyBanner dbRev={dbRev ?? undefined} inSync={inSync} onDismiss={() => setBannerDismissed(true)} />
@@ -240,7 +292,7 @@ const App: React.FC = () => {
         <div className="section">
           <div className="grid gap-6 lg:grid-cols-2">
             <RulesPanel refreshKey={refreshKey} />
-            {flags.ruleTester ? <RuleTesterPanel /> : <div className="hidden lg:block" />}
+            {(devUI && flags.ruleTester) ? <RuleTesterPanel /> : <div className="hidden lg:block" />}
             {flags.mlSelftest ? (
               <div className="lg:col-span-2">
                 <MLStatusCard />
@@ -256,10 +308,11 @@ const App: React.FC = () => {
               {flags.planner && <PlannerDevPanel />}
             </DevDock>
           )}
-          {flags.dev && <DevFab />}
+          {/* DevFab & DevModeSwitch removed to reduce redundancy; dropdown + keyboard remain */}
         </div>
       </div>
   </div>
+      <TransactionsDrawer open={txPanelOpen} onClose={() => setTxPanelOpen(false)} />
   </ChatDockProvider>
     </MonthContext.Provider>
   );

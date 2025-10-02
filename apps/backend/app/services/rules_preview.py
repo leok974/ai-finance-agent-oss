@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
+from app.utils.time import utc_now
 from typing import Optional, Tuple, List, Dict, Any
 from sqlalchemy.orm import Session
 from sqlalchemy import or_, func
@@ -16,7 +17,7 @@ def _cutoff(window_days: Optional[int]) -> Optional[datetime]:
     except Exception:
         return None
     # Use naive UTC date for comparison against Transaction.date (a Date)
-    return datetime.utcnow() - timedelta(days=int(window_days))
+    return utc_now() - timedelta(days=int(window_days))
 
 
 def _q_base(db: Session, only_uncategorized: bool):

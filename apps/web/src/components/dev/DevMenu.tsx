@@ -5,13 +5,12 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Wrench, FileText, Bug, Link2, RefreshCw } from "lucide-react";
 import { agentPlanStatus } from "@/lib/api";
+import DevMenuItem from "../DevMenuItem";
 import React from "react";
 
 export default function DevMenu() {
   const isDev = import.meta.env.MODE !== "production";
-  if (!isDev) return null;
-
-  const apiBase = (import.meta as any).env?.VITE_API_BASE || "";
+  const apiBase: string = (import.meta as unknown as { env: Record<string, string | undefined> }).env?.VITE_API_BASE || "";
   const [throttle, setThrottle] = React.useState<{ rate_per_min: number; capacity: number; tokens: number } | null>(null);
   const [open, setOpen] = React.useState(false);
   const [bypass, setBypass] = React.useState<boolean>(() => localStorage.getItem("planner:bypass") === "1");
@@ -34,10 +33,12 @@ export default function DevMenu() {
     localStorage.setItem("planner:bypass", v ? "1" : "0");
   };
 
+  if (!isDev) return null;
+
   return (
   <DropdownMenu open={open} onOpenChange={setOpen}>
       <DropdownMenuTrigger asChild>
-        <Button className="gap-1" variant="secondary">
+  <Button variant="pill" size="sm" className="gap-1 px-3">
           <Wrench className="h-4 w-4" /> Dev
         </Button>
       </DropdownMenuTrigger>
@@ -48,6 +49,9 @@ export default function DevMenu() {
         <DropdownMenuItem onClick={() => (window.location.hash = "#dev-plan-apply") }>
           <FileText className="h-4 w-4 mr-2" /> Planner Apply Panel
         </DropdownMenuItem>
+
+        <DropdownMenuSeparator />
+        <DevMenuItem />
 
         <DropdownMenuSeparator />
 

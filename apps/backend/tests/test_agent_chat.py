@@ -294,9 +294,11 @@ def test_agent_chat_invalid_json():
     """Test handling of malformed JSON."""
     client = TestClient(app)
     # Send invalid JSON
-    r = client.post("/agent/chat", 
-                   data="invalid json",
-                   headers={"Content-Type": "application/json"})
+    r = client.post(
+        "/agent/chat",
+        content="invalid json",  # use content= to avoid httpx deprecated raw data warning
+        headers={"Content-Type": "application/json"},
+    )
     assert r.status_code == 422  # Unprocessable Entity
 
 

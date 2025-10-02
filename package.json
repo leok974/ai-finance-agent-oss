@@ -1,4 +1,14 @@
 {
+  "type": "module",
+  "scripts": {
+    "cf:purge": "node scripts/cf-purge.js --base=https://app.ledger-mind.org --dist=apps/web/dist --extra=/site.webmanifest,/favicon.ico",
+    "cf:purge:changed": "node scripts/cf-purge.js --base=https://app.ledger-mind.org --dist=apps/web/dist --onlyIfChanged=1",
+    "cf:purge:dry": "node scripts/cf-purge.js --base=https://app.ledger-mind.org --dist=apps/web/dist --onlyIfChanged=1 --dryRun=1",
+    "csp:hash": "node scripts/csp-hash-extract.mjs --html apps/web/dist/index.html --in deploy/nginx.conf --out deploy/nginx.conf.rendered --allow-empty",
+    "csp:check": "node scripts/csp-hash-extract.mjs --html apps/web/dist/index.html --in deploy/nginx.conf --out deploy/nginx.conf.rendered --allow-empty || exit 0",
+    "nginx:prep": "pnpm run csp:hash",
+    "lint:hooks": "pnpm -C apps/web run lint:hooks"
+  },
   "dependencies": {
     "@radix-ui/react-dropdown-menu": "^2.1.16",
     "lucide-react": "^0.542.0",

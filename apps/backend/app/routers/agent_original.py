@@ -52,7 +52,7 @@ def _enrich_context(db: Session, ctx: Optional[Dict[str, Any]], txn_id: Optional
             try:
                 summary_body = agent_tools_charts.SummaryBody(month=month)
                 summary_result = agent_tools_charts.charts_summary(summary_body, db)
-                ctx["summary"] = summary_result.dict()
+                ctx["summary"] = summary_result.model_dump()
             except Exception as e:
                 print(f"Error enriching summary: {e}")
                 
@@ -60,7 +60,7 @@ def _enrich_context(db: Session, ctx: Optional[Dict[str, Any]], txn_id: Optional
             try:
                 merchants_body = agent_tools_charts.MerchantsBody(month=month, top_n=10)
                 merchants_result = agent_tools_charts.charts_merchants(merchants_body, db)
-                ctx["top_merchants"] = [item.dict() for item in merchants_result.items]
+                ctx["top_merchants"] = [item.model_dump() for item in merchants_result.items]
             except Exception as e:
                 print(f"Error enriching merchants: {e}")
                 
@@ -68,14 +68,14 @@ def _enrich_context(db: Session, ctx: Optional[Dict[str, Any]], txn_id: Optional
             try:
                 insights_body = agent_tools_insights.ExpandedBody(month=month)
                 insights_result = agent_tools_insights.insights_expanded(insights_body, db)
-                ctx["insights"] = insights_result.dict()
+                ctx["insights"] = insights_result.model_dump()
             except Exception as e:
                 print(f"Error enriching insights: {e}")
     
     if "rules" not in ctx:
         try:
             rules_result = agent_tools_rules_crud.list_rules(db)
-            ctx["rules"] = [rule.dict() for rule in rules_result]
+            ctx["rules"] = [rule.model_dump() for rule in rules_result]
         except Exception as e:
             print(f"Error enriching rules: {e}")
             
@@ -84,7 +84,7 @@ def _enrich_context(db: Session, ctx: Optional[Dict[str, Any]], txn_id: Optional
             get_body = agent_tools_transactions.GetByIdsBody(txn_ids=[int(txn_id)])
             txn_result = agent_tools_transactions.get_by_ids(get_body, db)
             if txn_result.items:
-                ctx["txn"] = txn_result.items[0].dict()
+                ctx["txn"] = txn_result.items[0].model_dump()
         except Exception as e:
             print(f"Error enriching transaction: {e}")
 

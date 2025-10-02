@@ -1,6 +1,11 @@
-import React, { useMemo, useState } from 'react';
-import { testRule, saveTrainReclassify, type RuleInput } from '@/api';
-import { useToast } from '@/hooks/use-toast';
+import React, { useMemo, useState, useEffect } from 'react';
+import * as ReactDOM from 'react-dom';
+import { usePersistentFlag } from '@/lib/usePersistentFlag';
+import type { SeedDraft } from '@/lib/rulesSeed';
+import { testRule, saveTrainReclassify, saveRule, type RuleInput } from '@/api';
+import { ThresholdsSchema } from '@/lib/schemas';
+import { emitToastSuccess, emitToastError } from '@/lib/toast-helpers';
+import { t } from '@/lib/i18n';
 import { consumeRuleDraft, onOpenRuleTester } from '@/state/rulesDraft';
 import { getGlobalMonth, onGlobalMonthChange } from '@/state/month';
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -8,18 +13,28 @@ import { ToastAction } from "@/components/ui/toast";
 import { InfoDot } from './InfoDot';
 import { scrollToId } from "@/lib/scroll";
 
+declare global {
+  interface Window {
+    __openRuleTester?: (d?: any) => void;
+    __pendingRuleSeed?: any | null;
+  }
+}
+
 export default function RuleTesterPanel({ onChanged }: { onChanged?: () => void }) {
-  const { toast } = useToast();
+  // Legacy useToast removed in favor of unified emit helpers
   const [form, setForm] = useState<RuleInput>({
     name: '',
     enabled: true,
     when: { description_like: '' },
     then: { category: '' },
   });
+  const [open, setOpen] = useState<boolean>(false);
   const [month, setMonth] = useState<string>(getGlobalMonth() || ''); // "YYYY-MM"
   const [useCurrentMonth, setUseCurrentMonth] = useState<boolean>(true);
+  const [seededMonth, setSeededMonth] = useState<string | undefined>(undefined);
   const [testing, setTesting] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [retrainMode, setRetrainMode] = usePersistentFlag('retrainMode', false);
   const [result, setResult] = useState<null | { matched_count?: number; count?: number; sample: any[] }>(null);
 
   // Derived values for UX and payloads
@@ -37,8 +52,30 @@ export default function RuleTesterPanel({ onChanged }: { onChanged?: () => void 
   }, [form]);
 
   // Smooth scroll helper for CTA buttons (charts / unknowns)
-  React.useEffect(() => {
-    // On mount or when toggle changes, consume any pending draft
+  useEffect(() => {
+    // Establish global open function
+    window.__openRuleTester = (d?: SeedDraft) => {
+      if (d) {
+        setForm(f => ({
+          name: d.name ?? f.name,
+          enabled: true,
+          when: { ...(f.when || {}), description_like: d.when?.merchant || d.when?.description || (d.when as any)?.description_like || '' },
+          then: { ...(f.then || {}), category: d.then?.category || '' },
+        }));
+        if (d.month) setSeededMonth(d.month);
+      }
+      setOpen(true);
+    };
+    // Consume any queued seed that arrived pre-mount
+    if (window.__pendingRuleSeed) {
+      try { window.__openRuleTester?.(window.__pendingRuleSeed); } catch (_err) { /* intentionally empty: swallow to render empty-state */ }
+      window.__pendingRuleSeed = null;
+    }
+    return () => { delete window.__openRuleTester; };
+  }, []);
+
+  useEffect(() => {
+    // Draft system integration (existing logic preserved)
     const d = consumeRuleDraft();
     if (d) {
       setForm(f => ({
@@ -47,10 +84,8 @@ export default function RuleTesterPanel({ onChanged }: { onChanged?: () => void 
         when: { ...(f.when || {}), ...(d.when || {}) },
         then: { ...(f.then || {}), ...(d.then || {}) },
       }));
-      // If not following current month, honor draft's month
       if (!useCurrentMonth && (d as any).month) setMonth((d as any).month);
     }
-    // Subscribe to future open events
     const offDraft = onOpenRuleTester(() => {
       const nd = consumeRuleDraft();
       if (!nd) return;
@@ -62,12 +97,15 @@ export default function RuleTesterPanel({ onChanged }: { onChanged?: () => void 
       }));
       if (!useCurrentMonth && (nd as any).month) setMonth((nd as any).month);
     });
-    // Live sync with global month when toggle is ON
-    const offMonth = onGlobalMonthChange((m) => {
-      if (useCurrentMonth) setMonth(m || '');
-    });
-    return () => { offDraft(); offMonth(); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const offMonth = onGlobalMonthChange((m) => { if (useCurrentMonth) setMonth(m || ''); });
+    const onSeed = (e: Event) => {
+      const ce = e as CustomEvent<SeedDraft>;
+      const sd = ce?.detail;
+      if (!sd) return;
+      window.__openRuleTester?.(sd);
+    };
+    window.addEventListener('ruleTester:seed', onSeed as EventListener);
+    return () => { offDraft(); offMonth(); window.removeEventListener('ruleTester:seed', onSeed as EventListener); };
   }, [useCurrentMonth]);
 
   async function onTest(e: React.FormEvent) {
@@ -101,23 +139,14 @@ export default function RuleTesterPanel({ onChanged }: { onChanged?: () => void 
         matchCount = Number((r as any).matched_count ?? (r as any).count ?? (r as any).matches ?? (r as any).total) || 0;
       }
       const category = form.then?.category || '—';
-      toast({
-        title: 'Rule tested',
-        description:
-          matchCount > 0
-            ? `Matched ${matchCount} transaction${matchCount === 1 ? '' : 's'}. Will set category: “${category}”.`
-            : `No matches for the selected month. Category would be: “${category}”.`,
-        duration: 4000,
-        action: (
-          <div className="flex gap-2">
-            <ToastAction altText="View charts" onClick={() => scrollToId('charts-panel')}>
-              View charts
-            </ToastAction>
-            <ToastAction altText="View unknowns" onClick={() => scrollToId('unknowns-panel')}>
-              View unknowns
-            </ToastAction>
-          </div>
-        ),
+      emitToastSuccess(t('ui.toast.rule_tested_title'), {
+        description: matchCount > 0
+          ? t('ui.toast.rule_tested_matches_description', { count: matchCount, category })
+          : t('ui.toast.rule_tested_no_matches_description', { category }),
+        action: {
+          label: 'View charts',
+          onClick: () => scrollToId('charts-panel')
+        }
       });
       // Cache last test result summary in localStorage for quick badges elsewhere
       try {
@@ -126,89 +155,47 @@ export default function RuleTesterPanel({ onChanged }: { onChanged?: () => void 
   const ruleKey = (form.name?.trim()) || JSON.stringify(form.when || {});
   cache[ruleKey] = { matched_count: (r as any).matched_count ?? (r as any).count ?? 0, tested_at: new Date().toISOString() };
         localStorage.setItem(key, JSON.stringify(cache));
-      } catch {}
+      } catch (_err) { /* intentionally empty: swallow to render empty-state */ }
     } catch (e: any) {
-      toast({
-        title: 'Test failed',
-        description: e?.message ?? 'Could not validate the rule. Please check the inputs.',
-        variant: 'destructive',
-        duration: 3000,
-      });
+  emitToastError(t('ui.toast.rule_test_failed_title'), { description: e?.message ?? 'Could not validate the rule. Please check the inputs.' });
     } finally {
       setTesting(false);
     }
   }
 
-  async function onSaveTrainReclass() {
+  async function onUnifiedSave() {
+    if (!canSave || saving) return;
     setSaving(true);
     try {
       const like = String(form.when?.description_like || '').trim();
       const categoryVal = (form.then?.category || '').trim() || 'Uncategorized';
-      const derivedName = (form.name || '').trim() || `${like || 'Any'} → ${categoryVal}`;
-      const res = await saveTrainReclassify({
-        rule: {
-          name: derivedName,
-          when: { description_like: like },
-          then: { category: categoryVal },
-        },
-        month: useCurrentMonth ? getGlobalMonth() : month,
-      } as any);
-
-      // Infer how many transactions were reclassified (if API provides it)
-      const reclass = (res as any)?.reclass;
-      let reclassCount = 0;
-      if (Array.isArray(reclass)) reclassCount = reclass.length;
-      else if (reclass && typeof reclass === 'object') {
-        reclassCount = Number(
-          (reclass as any).updated ??
-          (reclass as any).applied ??
-          (reclass as any).reclassified ??
-          (reclass as any).count ??
-          (reclass as any).total
-        ) || 0;
-      } else {
-        reclassCount = Number((res as any)?.reclassified ?? 0) || 0;
-      }
-      const category = categoryVal;
-      const name = (res as any)?.display_name || derivedName;
-
-      toast({
-        title: 'Rule saved & model retrained',
-        description:
-          reclassCount > 0
-            ? `Applied “${name}”. Reclassified ${reclassCount} transaction${reclassCount === 1 ? '' : 's'} to “${category}”.`
-            : `Applied “${name}”. Category set to “${category}”. No transactions needed reclassification.`,
-        duration: 5000,
-        action: (
-          <div className="flex gap-2">
-            <ToastAction altText="View charts" onClick={() => scrollToId('charts-panel')}>
-              View charts
-            </ToastAction>
-            <ToastAction altText="View unknowns" onClick={() => scrollToId('unknowns-panel')}>
-              View unknowns
-            </ToastAction>
-          </div>
-        ),
-      });
-
-      // Cache id->name mapping using unified response
-      try {
-        const key = 'ruleIdNameMap';
-        const map = JSON.parse(localStorage.getItem(key) || '{}');
-        const rid = (res as any)?.rule_id;
-        if (rid) {
-          map[rid] = name;
-          localStorage.setItem(key, JSON.stringify(map));
+      const name = (form.name || '').trim() || `${like || 'Any'} → ${categoryVal}`;
+      let thresholds: any = undefined;
+      try { thresholds = ThresholdsSchema.parse((form as any)?.when?.thresholds || {}); } catch { thresholds = undefined; }
+      if (retrainMode) {
+        const res: any = await saveTrainReclassify({
+          rule: { name, when: { description_like: like }, then: { category: categoryVal } },
+          month: seededMonth ?? (useCurrentMonth ? getGlobalMonth() : month),
+        } as any);
+        let reclassCount = 0;
+        const reclass = (res as any)?.reclass;
+        if (Array.isArray(reclass)) reclassCount = reclass.length; else if (reclass && typeof reclass === 'object') {
+          reclassCount = Number((reclass as any).updated ?? (reclass as any).applied ?? (reclass as any).reclassified ?? (reclass as any).count ?? (reclass as any).total) || 0;
+        } else {
+          reclassCount = Number((res as any)?.reclassified ?? 0) || 0;
         }
-      } catch {}
+  emitToastSuccess(t('ui.toast.rule_saved_retrained_title'), { description: reclassCount > 0 ? t('ui.toast.rule_saved_retrained_description', { count: reclassCount, category: categoryVal }) : t('ui.toast.rule_saved_retrained_no_changes_description') });
+      } else {
+        const when: Record<string, any> = { description_like: like };
+        if (thresholds && Object.keys(thresholds).length) when.thresholds = thresholds;
+  const selectedMonth = (seededMonth ?? ((useCurrentMonth ? getGlobalMonth() : month) || undefined));
+  const res: any = await saveRule({ rule: { name, when, then: { category: categoryVal } }, month: selectedMonth }, { idempotencyKey: crypto.randomUUID() });
+  emitToastSuccess(t('ui.toast.rule_saved_title'), { description: t('ui.toast.rule_saved_description', { name: res?.display_name || name }) });
+      }
+      window.dispatchEvent(new CustomEvent('rules:refresh'));
       onChanged?.();
     } catch (e: any) {
-      toast({
-        title: 'Save / retrain / reclassify failed',
-        description: e?.message ?? 'Please check your rule inputs and try again.',
-        variant: 'destructive',
-      });
-      console.error(e);
+  emitToastError(t('ui.toast.rule_save_failed_title'), { description: e?.message || 'Unable to save rule' });
     } finally {
       setSaving(false);
     }
@@ -221,8 +208,11 @@ export default function RuleTesterPanel({ onChanged }: { onChanged?: () => void 
     setResult(null);
   }
 
-  return (
-  <div className="panel-tight md:p-5 lg:p-6" id="rule-tester-anchor">
+  if (!open) return null;
+  const panel = (
+    <div className="fixed inset-0 z-[9999]" id="rule-tester-anchor">
+      <div className="absolute inset-0 bg-black/50" onClick={() => setOpen(false)} />
+      <div className="absolute right-0 top-0 h-full w-full max-w-3xl bg-card border-l border-border shadow-2xl p-4 md:p-5 lg:p-6 overflow-auto">
       <div className="flex items-center justify-between mb-3">
         {/* left: title + tooltip (baseline aligned) */}
         <div className="flex items-baseline gap-2">
@@ -263,7 +253,7 @@ export default function RuleTesterPanel({ onChanged }: { onChanged?: () => void 
          </div>
        </div>
 
-      {/* Row 1: name / match / category (match made wider).
+    {/* Row 1: name / match / category (match made wider).
           On mobile, month controls appear below as a separate row. */}
       <form onSubmit={onTest} className="form-grid grid-cols-1 md:grid-cols-12">
         <div className="field col-span-12 md:col-span-3">
@@ -321,6 +311,43 @@ export default function RuleTesterPanel({ onChanged }: { onChanged?: () => void 
           />
         </div>
 
+        {/* Thresholds advanced inputs */}
+        <div className="field col-span-12 md:col-span-3">
+          <div className="field-label flex items-center gap-2">
+            <span>Thresholds</span>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="inline-block cursor-help">ⓘ</span>
+              </TooltipTrigger>
+              <TooltipContent>Optional advanced match thresholds (leave blank to ignore).</TooltipContent>
+            </Tooltip>
+          </div>
+          <div className="flex gap-2">
+            <input
+              className="field-input"
+              placeholder="minConfidence"
+              type="number"
+              step="0.01"
+              min={0}
+              max={1}
+              value={(form as any)?.when?.thresholds?.minConfidence ?? ''}
+              onChange={e => setForm(f => ({ ...f, when: { ...(f.when||{}), thresholds: { ...(f as any).when?.thresholds, minConfidence: e.target.value ? Number(e.target.value) : undefined } } }))}
+              title="Minimum confidence (0-1)"
+            />
+            <input
+              className="field-input"
+              placeholder="maxFalsePos"
+              type="number"
+              step="1"
+              min={0}
+              value={(form as any)?.when?.thresholds?.maxFalsePos ?? ''}
+              onChange={e => setForm(f => ({ ...f, when: { ...(f.when||{}), thresholds: { ...(f as any).when?.thresholds, maxFalsePos: e.target.value ? Number(e.target.value) : undefined } } }))}
+              title="Max false positives"
+            />
+          </div>
+          <div className="text-[10px] opacity-60 mt-1">Leave blank to skip thresholds.</div>
+        </div>
+
         {/* Row 2 (mobile-only): month + toggle (since top-right is hidden on mobile) */}
         <div className="col-span-12 grid grid-cols-12 gap-3 items-center md:hidden">
           <div className="field col-span-7 min-w-0">
@@ -347,8 +374,12 @@ export default function RuleTesterPanel({ onChanged }: { onChanged?: () => void 
           </label>
         </div>
 
-        {/* Row 3: Actions (all on one row on md+) */}
+    {/* Row 3: Actions (all on one row on md+) */}
         <div className="col-span-12 flex items-center justify-end gap-3 flex-wrap md:flex-nowrap">
+          <label className="flex items-center gap-2 text-xs px-3 py-2 rounded-lg border border-border cursor-pointer select-none bg-card">
+            <input type="checkbox" className="scale-110" checked={retrainMode} onChange={e=>setRetrainMode(e.target.checked)} />
+            <span className="whitespace-nowrap">Retrain + reclassify</span>
+          </label>
           <button
             type="submit"
             className={`btn hover:bg-accent w-full sm:w-auto shrink-0 ${!canTest ? 'opacity-60 cursor-not-allowed' : ''}`}
@@ -365,19 +396,23 @@ export default function RuleTesterPanel({ onChanged }: { onChanged?: () => void 
             Clear
           </button>
           <button
-            onClick={onSaveTrainReclass}
+            onClick={onUnifiedSave}
             type="button"
             className={`btn hover:bg-accent w-full sm:w-auto shrink-0 font-semibold ${!canSave ? 'opacity-60 cursor-not-allowed' : ''}`}
             disabled={saving || !canSave}
+            title={retrainMode ? 'Save rule, retrain model, and reclassify transactions' : 'Save rule only'}
           >
-            {saving ? 'Saving → Training → Reclassifying…' : 'Save → Retrain → Reclassify'}
+            {saving ? (retrainMode ? 'Saving + Retraining…' : 'Saving…') : (retrainMode ? 'Save + Retrain' : 'Save')}
           </button>
         </div>
       </form>
 
-      <div className="text-xs opacity-70 mt-1">
-        Saves this rule, retrains the model, and reclassifies transactions.
+      <div className="text-xs opacity-70 mt-1 space-y-0.5">
+        <div><strong>Test rule</strong> to preview matches for the selected month.</div>
+        <div><strong>Save</strong> stores the rule. Enable <em>Retrain + reclassify</em> to also retrain the model and reclassify existing transactions.</div>
+      </div>
       </div>
     </div>
   );
+  return ReactDOM.createPortal(panel, document.body);
 }

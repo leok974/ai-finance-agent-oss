@@ -15,19 +15,15 @@ vi.mock('@/api', async (importOriginal) => {
 import ExplainSignalDrawer from '@/components/ExplainSignalDrawer'
 import { getExplain, type ExplainResponse } from '@/api'
 
-const mockExplain: ExplainResponse = {
-  txn: { id: 999, date: '2025-08-01', merchant: 'Starbucks', amount: -4.5, category: 'Coffee' },
-  evidence: {
-    merchant_norm: 'starbucks',
-    similar: { total: 12, by_category: [{ category: 'Coffee', count: 12 }], recent_samples: [{ id: 1, amount: -4.5, date: '2025-08-01', category: 'Coffee' }] },
-    feedback: { merchant_feedback: [{ category: 'Coffee', positives: 12, negatives: 0 }] },
-    rule_match: null,
-  },
-  candidates: [{ source: 'history', category: 'Coffee', confidence: 0.9 }],
+const baseTxn = { id: 999, date: '2025-08-01', merchant: 'Starbucks', amount: -4.5, category: 'Coffee' };
+// Cast via unknown to satisfy minimal ExplainResponse requirements used by component
+const mockExplain = {
   rationale: 'We\u2019ve seen starbucks labeled as Coffee 12 time(s).',
-  llm_rationale: null,
   mode: 'deterministic',
-}
+  evidence: {
+    merchant_norm: 'starbucks'
+  }
+} as unknown as ExplainResponse;
 
 describe('ExplainSignalDrawer – integration (open/close)', () => {
   beforeEach(() => {
@@ -36,30 +32,30 @@ describe('ExplainSignalDrawer – integration (open/close)', () => {
   })
 
   it('mounts closed, renders when opened, unmounts when closed', async () => {
-    ;(getExplain as any).mockResolvedValue(mockExplain)
+  (getExplain as unknown as { mockResolvedValue: (v: unknown) => void }).mockResolvedValue(mockExplain)
     const onOpenChange = vi.fn()
 
-    const { rerender } = render(<ExplainSignalDrawer txnId={999} open={false} onOpenChange={onOpenChange} />)
+  const { rerender } = render(<ExplainSignalDrawer txnId={999} open={false} onOpenChange={onOpenChange} txn={baseTxn} />)
     expect(screen.queryByTestId('explain-drawer')).toBeNull()
 
-    rerender(<ExplainSignalDrawer txnId={999} open={true} onOpenChange={onOpenChange} />)
+  rerender(<ExplainSignalDrawer txnId={999} open={true} onOpenChange={onOpenChange} txn={baseTxn} />)
 
     await waitFor(() => expect(screen.getByTestId('explain-drawer')).toBeTruthy())
     // deterministic chip should render
     await screen.findByText(/Deterministic/i)
 
     // Close via prop
-    rerender(<ExplainSignalDrawer txnId={999} open={false} onOpenChange={onOpenChange} />)
+  rerender(<ExplainSignalDrawer txnId={999} open={false} onOpenChange={onOpenChange} txn={baseTxn} />)
     await waitFor(() => expect(screen.queryByTestId('explain-drawer')).toBeNull())
   })
 
   it('calls onOpenChange(false) when clicking the Close button', async () => {
-    ;(getExplain as any).mockResolvedValue(mockExplain)
+  (getExplain as unknown as { mockResolvedValue: (v: unknown) => void }).mockResolvedValue(mockExplain)
 
     const user = userEvent.setup()
     const onOpenChange = vi.fn()
 
-    render(<ExplainSignalDrawer txnId={999} open={true} onOpenChange={onOpenChange} />)
+  render(<ExplainSignalDrawer txnId={999} open={true} onOpenChange={onOpenChange} txn={baseTxn} />)
 
     await waitFor(() => expect(screen.getByTestId('explain-drawer')).toBeTruthy())
 

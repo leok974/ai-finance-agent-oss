@@ -1,14 +1,14 @@
 import React, { useCallback, useState } from "react";
 import { agentPlanPreview, agentPlanApply, downloadReportExcel, type PlannerPlanItem } from "@/lib/api";
 import { Button } from "@/components/ui/button";
-import { useOkErrToast } from "@/lib/toast-helpers";
+import { emitToastSuccess, emitToastError } from "@/lib/toast-helpers";
 
 export default function PlannerApplyPanel() {
   const [loading, setLoading] = useState(false);
   const [applying, setApplying] = useState(false);
   const [plan, setPlan] = useState<any | null>(null);
   const [selected, setSelected] = useState<Record<number, boolean>>({});
-  const { ok, err } = (useOkErrToast as any)?.() ?? { ok: console.log, err: console.error };
+  const ok = emitToastSuccess; const err = emitToastError;
 
   const preview = useCallback(async () => {
     setLoading(true);
@@ -17,7 +17,7 @@ export default function PlannerApplyPanel() {
       setPlan(p);
       setSelected({});
     } catch (e: any) {
-      err?.(e?.message || "Preview failed");
+  err(e?.message || "Preview failed");
     } finally {
       setLoading(false);
     }
@@ -35,12 +35,12 @@ export default function PlannerApplyPanel() {
     setApplying(true);
     try {
   const res: any = await agentPlanApply({ month: plan?.month ?? null, actions });
-  ok?.("Applied.");
+  ok("Applied.");
       if (wantsExport) {
         await handleApplyLocal({ res, month: plan?.month, selected: actions as any });
       }
     } catch (e: any) {
-      err?.(e?.message || "Apply failed");
+  err(e?.message || "Apply failed");
     } finally {
       setLoading(false);
       setApplying(false);
@@ -55,7 +55,7 @@ export default function PlannerApplyPanel() {
       a.href = url; a.download = filename; a.click();
       URL.revokeObjectURL(url);
     } catch (e: any) {
-      err?.(e?.message || "Download failed");
+  err(e?.message || "Download failed");
     }
   }, [err]);
 
@@ -63,7 +63,7 @@ export default function PlannerApplyPanel() {
     <div className="rounded-lg border p-3 space-y-3">
       <div className="flex items-center gap-2">
         <Button onClick={preview} disabled={loading}>{loading ? "Loading…" : "Preview Plan"}</Button>
-        <Button onClick={apply} variant="secondary" disabled={!plan || loading || applying}>
+  <Button onClick={apply} variant="pill-primary" disabled={!plan || loading || applying}>
           {applying ? "Applying…" : "Apply Selected"}
         </Button>
       </div>
@@ -80,7 +80,7 @@ export default function PlannerApplyPanel() {
                 <div className="text-xs opacity-70">{it.kind}</div>
                 {it.kind === "export_report" && (
                   <div className="pt-1">
-                    <Button variant="ghost" className="px-0 underline" onClick={() => download((it as any).month)}>Download Excel</Button>
+                    <Button variant="pill-ghost" className="px-0 underline" onClick={() => download((it as any).month)}>Download Excel</Button>
                   </div>
                 )}
               </label>

@@ -1,8 +1,30 @@
-import React from "react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
-import rehypeRaw from "rehype-raw";
-import rehypeSanitize from "rehype-sanitize";
+import React, { Suspense } from 'react';
+
+// Lazy chunk: markdown rendering + plugins loaded only when needed
+const LazyMarkdown = React.lazy(async () => {
+  const [reactMarkdownMod, remarkGfmMod, rehypeRawMod, rehypeSanitizeMod] = await Promise.all([
+    import('react-markdown'),
+    import('remark-gfm'),
+    import('rehype-raw'),
+    import('rehype-sanitize'),
+  ]);
+  const ReactMarkdown = reactMarkdownMod.default;
+  const remarkGfm = remarkGfmMod.default;
+  const rehypeRaw = rehypeRawMod.default;
+  const rehypeSanitize = rehypeSanitizeMod.default;
+  const MarkdownInner = ({ children }: { children: string }) => (
+    <ReactMarkdown
+      remarkPlugins={[remarkGfm]}
+      rehypePlugins={[
+        rehypeRaw,
+        [rehypeSanitize, sanitizeSchema],
+      ]}
+    >
+      {children}
+    </ReactMarkdown>
+  );
+  return { default: MarkdownInner };
+});
 
 // Allow only a safe subset of elements; include our Explain button control
 const sanitizeSchema = {
@@ -21,14 +43,8 @@ const sanitizeSchema = {
 
 export default function Markdown({ children }: { children: string }) {
   return (
-    <ReactMarkdown
-      remarkPlugins={[remarkGfm]}
-      rehypePlugins={[
-        rehypeRaw,
-        [rehypeSanitize, sanitizeSchema],
-      ]}
-    >
-      {children}
-    </ReactMarkdown>
+    <Suspense fallback={<div className="text-xs opacity-60">Rendering…</div>}>
+      <LazyMarkdown>{children}</LazyMarkdown>
+    </Suspense>
   );
 }

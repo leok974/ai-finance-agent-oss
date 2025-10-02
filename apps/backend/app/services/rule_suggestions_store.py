@@ -1,4 +1,4 @@
-from datetime import datetime
+from app.utils.time import utc_now
 from typing import List, Dict
 from sqlalchemy.orm import Session
 from sqlalchemy import and_
@@ -26,7 +26,7 @@ def list_persisted(db: Session) -> List[Dict]:
 
 def upsert_from_mined(db: Session, window_days: int, min_count: int, max_results: int) -> int:
     mined = mine_suggestions(db, window_days=window_days, min_count=min_count, max_results=max_results)
-    now = datetime.utcnow()
+    now = utc_now()
     updated = 0
     for s in mined:
         obj = db.query(RSP).filter(and_(RSP.merchant == s["merchant"], RSP.category == s["category"]))
@@ -59,8 +59,9 @@ def set_status(db: Session, sid: int, status: str) -> Dict:
     if not row:
         raise ValueError("not_found")
     row.status = status
-    row.updated_at = datetime.utcnow()
-    db.commit(); db.refresh(row)
+    row.updated_at = utc_now()
+    db.commit()
+    db.refresh(row)
     return to_dict(row)
 
 def clear_non_new(db: Session) -> int:

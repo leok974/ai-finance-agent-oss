@@ -1,7 +1,7 @@
 import React from "react";
 import Card from "./Card";
 import SuggestionIgnoresPanel from "./SuggestionIgnoresPanel";
-import { showToast } from "@/lib/toast-helpers";
+import { emitToastSuccess, emitToastError } from "@/lib/toast-helpers";
 import {
   listPersistedSuggestions,
   acceptSuggestion,
@@ -11,7 +11,10 @@ import {
   ignoreRuleSuggestion,
 } from "@/lib/api";
 import type { RuleSuggestion } from "@/types/rules";
-import HelpBadge from "./HelpBadge";
+import CardHelpTooltip from "./CardHelpTooltip";
+import { getHelpBaseText } from '@/lib/helpBaseText';
+import { Button } from "@/components/ui/button";
+import { t } from '@/lib/i18n';
 
 type RowModel =
   | ({ kind: "persisted"; id: number; status: "new" | "accepted" | "dismissed" } & Pick<RuleSuggestion, "merchant" | "category" | "count" | "window_days">)
@@ -46,7 +49,7 @@ export default function RuleSuggestionsPersistentPanel() {
         setRows(arr.map(s => ({ kind: "mined", ...s })));
       }
     } catch (e: any) {
-      setError(e?.message ?? "Failed to load suggestions");
+  setError(e?.message ?? "Failed to load suggestions");
       setRows([]);
     } finally {
       setLoading(false);
@@ -60,26 +63,29 @@ export default function RuleSuggestionsPersistentPanel() {
     <div>
       <header className="flex items-center gap-3 pb-1 mb-3 border-b border-border">
         <h3 className="text-base font-semibold flex items-center">
-          Rule Suggestions
-          <HelpBadge k="cards.rule_suggestions" className="ml-2" />
+          {t('ui.rule_suggestions.title')}
+          <CardHelpTooltip cardId="cards.rule_suggestions" ctx={{ rows }} baseText={getHelpBaseText('cards.rule_suggestions')} className="ml-2" />
         </h3>
         <div className="ml-auto flex items-end gap-2">
-          <button
-            className="btn btn-ghost btn-sm"
+          <Button
+            variant="pill-outline"
+            size="sm"
             onClick={() => setShowIgnores(v => !v)}
-            title="Show ignored pairs"
-          >{showIgnores ? 'Hide ignores' : 'Show ignores'}</button>
-          <button className="btn btn-ghost btn-sm" onClick={load} disabled={loading}>
-            {loading ? "Refreshing…" : "Refresh"}
-          </button>
+            title={t('ui.rule_suggestions.show_ignores')}
+          >
+            {showIgnores ? t('ui.rule_suggestions.hide_ignores') : t('ui.rule_suggestions.show_ignores')}
+          </Button>
+          <Button variant="pill-outline" size="sm" onClick={load} disabled={loading}>
+            {loading ? t('ui.rule_suggestions.refreshing') : t('ui.rule_suggestions.refresh')}
+          </Button>
         </div>
       </header>
 
-      {loading && <div className="text-sm opacity-70">Loading…</div>}
+  {loading && <div className="text-sm opacity-70">{t('ui.rule_suggestions.loading')}</div>}
       {error && <div className="text-sm text-red-500">{error}</div>}
 
       {!loading && !error && rows.length === 0 && (
-        <div className="px-3 py-6 text-center opacity-70">No suggestions right now.</div>
+        <div className="px-3 py-6 text-center opacity-70">{t('ui.rule_suggestions.none')}</div>
       )}
 
       <div className="space-y-2">
@@ -103,16 +109,16 @@ function SuggestionRow({ s, onChanged }: { s: RowModel; onChanged: () => void })
 
   const merchant = s.merchant ?? "—";
   const category = s.category ?? "—";
-  const meta = <div className="text-xs opacity-70">Seen {s.count ?? 0}× in last {s.window_days ?? 60} days</div>;
+  const meta = <div className="text-xs opacity-70">{t('ui.rule_suggestions.seen_meta', { count: s.count ?? 0, days: s.window_days ?? 60 })}</div>;
 
   async function doAccept() {
     if (s.kind !== "persisted") return;
     setBusy("accept");
     try {
       await acceptSuggestion(s.id);
-      showToast?.(`Accepted: ${merchant} → ${category}`, { type: "success" });
+         emitToastSuccess(t('ui.toast.rule_accepted', { merchant, category }));
     } catch (e:any) {
-      showToast?.(e?.message ?? "Failed to accept", { type: "error" });
+  emitToastError(e?.message ?? t('ui.toast.rule_accept_failed'));
     } finally { setBusy(null); onChanged(); }
   }
   async function doDismiss() {
@@ -120,9 +126,9 @@ function SuggestionRow({ s, onChanged }: { s: RowModel; onChanged: () => void })
     setBusy("dismiss");
     try {
       await dismissSuggestion(s.id);
-      showToast?.(`Dismissed: ${merchant} → ${category}`, { type: "success" });
+         emitToastSuccess(t('ui.toast.rule_dismissed', { merchant, category }));
     } catch (e:any) {
-      showToast?.(e?.message ?? "Failed to dismiss", { type: "error" });
+  emitToastError(e?.message ?? t('ui.toast.rule_dismiss_failed'));
     } finally { setBusy(null); onChanged(); }
   }
 
@@ -135,53 +141,47 @@ function SuggestionRow({ s, onChanged }: { s: RowModel; onChanged: () => void })
 
       {s.kind === "persisted" ? (
         <div className="flex items-center gap-2">
-          <button
-            className="rounded-md border border-border px-2 py-1 text-xs disabled:opacity-60"
-            disabled={busy === "accept"}
-            onClick={doAccept}
-          >
-            {busy === "accept" ? "Accepting…" : "Accept"}
-          </button>
-          <button
-            className="rounded-md border border-border px-2 py-1 text-xs disabled:opacity-60"
-            disabled={busy === "dismiss"}
-            onClick={doDismiss}
-          >
-            {busy === "dismiss" ? "Dismissing…" : "Dismiss"}
-          </button>
+          <Button variant="pill-success" size="sm" disabled={busy === "accept"} onClick={doAccept}>
+            {busy === "accept" ? t('ui.rule_suggestions.accepting') : t('ui.rule_suggestions.accept')}
+          </Button>
+          <Button variant="pill-danger" size="sm" disabled={busy === "dismiss"} onClick={doDismiss}>
+            {busy === "dismiss" ? t('ui.rule_suggestions.dismissing') : t('ui.rule_suggestions.dismiss')}
+          </Button>
         </div>
       ) : (
         <div className="flex items-center gap-2">
-          <button
-            className="rounded-md border border-border px-2 py-1 text-xs disabled:opacity-60"
+          <Button
+            variant="pill-primary"
+            size="sm"
             disabled={busy === "apply"}
             onClick={async () => {
               setBusy("apply");
               try {
                 await applyRuleSuggestion({ merchant, category });
-                showToast?.(`Rule added: ${merchant} → ${category}`, { type: "success" });
+                emitToastSuccess(t('ui.toast.rule_added', { merchant, category }));
               } catch (e:any) {
-                showToast?.(e?.message ?? "Failed to apply", { type: "error" });
+                emitToastError(e?.message ?? t('ui.toast.rule_apply_failed'));
               } finally { setBusy(null); onChanged(); }
             }}
           >
-            {busy === "apply" ? "Applying…" : "Apply"}
-          </button>
-          <button
-            className="rounded-md border border-border px-2 py-1 text-xs disabled:opacity-60"
+            {busy === "apply" ? t('ui.rule_suggestions.applying') : t('ui.rule_suggestions.apply')}
+          </Button>
+          <Button
+            variant="pill-outline"
+            size="sm"
             disabled={busy === "ignore"}
             onClick={async () => {
               setBusy("ignore");
               try {
                 await ignoreRuleSuggestion({ merchant, category });
-                showToast?.(`Ignored ${merchant} → ${category}`, { type: "success" });
+                  emitToastSuccess(t('ui.toast.rule_ignored', { merchant, category }));
               } catch (e:any) {
-                showToast?.(e?.message ?? "Failed to ignore", { type: "error" });
+                  emitToastError(e?.message ?? t('ui.toast.rule_ignore_failed'));
               } finally { setBusy(null); onChanged(); }
             }}
           >
-            {busy === "ignore" ? "Ignoring…" : "Ignore"}
-          </button>
+            {busy === "ignore" ? t('ui.rule_suggestions.ignoring') : t('ui.rule_suggestions.ignore')}
+          </Button>
         </div>
       )}
     </div>

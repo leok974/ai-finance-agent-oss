@@ -1,38 +1,91 @@
-# Python
+### General data & local artifacts
+data/
+_probe.csv
+segment_before.txt
+docker-compose.prod.yml.bak
+test.ps1
+
+### Cloudflare tunnel credentials & directory
+cloudflared/*.json
+cloudflared/
+
+### Environment / secrets (frontend & general)
+apps/web/.env.production
+apps/web/.env.local
+.env
+.env.local
+.env.dev.local
+
+### Keep placeholder files
+!.keep
+!secrets/.keep
+
+### Python
 __pycache__/
 *.pyc
 .venv/
-.env
 
-# Node
+### Node / JS build outputs
 node_modules/
 dist/
 .vite/
 .docusaurus/
 build/
 
-# OS
+### OS
 .DS_Store
 
-# Editor
+### Editor
 .idea/
 .vscode/
 
-# Local databases
+### Local databases
 *.db
 *.sqlite
 *.sqlite3
 *.db-wal
 *.db-shm
 
-# Env overrides
-apps/web/.env.local
-
-# ML models
+### ML / model artifacts
 *.joblib
 apps/backend/app/data/models/
+/models/
 
-# Reports/exports
+### Reports / exports
 reports/
 *.xlsx
 *.pdf
+
+### Let's Encrypt certs (local)
+ops/letsencrypt/
+
+### Secrets & credentials
+secrets/
+active-dek.json
+*.dek.json
+secrets/gcp-sa.json
+secrets/*.gcp-sa.json
+*.gcp-sa.json
+
+### pnpm cache and logs
+**/.pnpm-store/
+pnpm-debug.log
+
+### Coverage & test artifacts
+coverage/
+apps/web/coverage/
+*/coverage/
+*.coverage
+*.lcov
+lcov.info
+htmlcov/
+
+### Python caches (extra)
+.mypy_cache/
+.pytest_cache/
+*.py[cod]
+
+### Misc build/test temps
+*.log
+*.tmp
+*.swp

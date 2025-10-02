@@ -2,6 +2,7 @@ import os
 import re
 import pytest
 from datetime import date, datetime, timedelta
+from app.utils.time import utc_now
 
 from app.transactions import Transaction
 from app.orm_models import Feedback, RuleORM as Rule
@@ -31,7 +32,7 @@ def _mk_rule(db, pattern: str, target: str, category: str):
 
 
 def _mk_feedback(db, txn_id: int, label: str, source: str = "user_change"):
-    fb = Feedback(txn_id=txn_id, label=label, source=source, created_at=datetime.utcnow())
+    fb = Feedback(txn_id=txn_id, label=label, source=source, created_at=utc_now())
     db.add(fb)
     db.commit()
     return fb
@@ -93,8 +94,9 @@ def test_dev_allow_no_llm_skips_llm(client, db_session, monkeypatch):
 
 
 def test_llm_mode_with_mock(client, db_session, monkeypatch):
-    # Ensure DEV_ALLOW_NO_LLM disabled
+    # Force LLM via policy precedence (FORCE_LLM_TESTS)
     monkeypatch.delenv("DEV_ALLOW_NO_LLM", raising=False)
+    monkeypatch.setenv("FORCE_LLM_TESTS", "1")
 
     # Monkeypatch llm.call_local_llm to return a polished string containing target category
     class _DummyLLM:
@@ -117,3 +119,5 @@ def test_llm_mode_with_mock(client, db_session, monkeypatch):
     assert body["mode"] == "llm"
     assert body.get("llm_rationale")
     assert "Shopping" in body["llm_rationale"]
+    # cleanup force flag so later tests honoring DEV_ALLOW_NO_LLM behave correctly
+    monkeypatch.delenv("FORCE_LLM_TESTS", raising=False)

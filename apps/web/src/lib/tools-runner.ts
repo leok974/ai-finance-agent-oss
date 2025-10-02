@@ -23,11 +23,11 @@ export async function runToolWithRephrase<T>(
     }
   console.debug(`[tools] ${tool} → /agent/chat`, { prompt: (prompt || '').slice(0, 160) });
   const extra = (typeof buildRephraseMeta === 'function' ? (buildRephraseMeta() || {}) : {});
-  const llm = await agentRephrase(prompt, { mode: tool, ...extra });
+  const llm = await agentRephrase(prompt);
   console.debug(`[tools] ${tool} ← /agent/chat ok`, { model: llm?.model });
 
     // Surface mode/args/tool to the UI so ModeChip can render
-    appendAssistant(llm.reply ?? "", { model: llm.model, grounded: true, tool, mode: tool, ...extra });
+  appendAssistant(llm.reply ?? "", { model: llm.model, grounded: true, tool, mode: tool, ...extra });
   } catch (e: any) {
     console.error(`[tools] ${tool} failed`, e);
     appendAssistant(`Sorry, ${tool} failed: ${e?.message ?? e}`, { severity: "error", tool });

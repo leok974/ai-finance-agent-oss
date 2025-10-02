@@ -32,25 +32,31 @@ def create_rule(body: RuleIn, db: Session = Depends(get_db)):
         merchant=body.merchant, description=body.description,
         pattern=body.pattern, category=body.category, active=True if body.active is None else body.active
     )
-    db.add(row); db.commit(); db.refresh(row)
+    db.add(row)
+    db.commit()
+    db.refresh(row)
     return RuleOut(id=row.id, merchant=row.merchant, description=row.description,
                    pattern=row.pattern, category=row.category, active=row.active)
 
 @router.put("/{rule_id}", response_model=RuleOut, dependencies=[Depends(csrf_protect)])
 def update_rule(rule_id: int, body: RuleIn, db: Session = Depends(get_db)):
-    row = db.query(Rule).get(rule_id)
-    if not row: raise HTTPException(404, "Rule not found")
+    row = db.get(Rule, rule_id)
+    if not row:
+        raise HTTPException(404, "Rule not found")
     for f in ("merchant","description","pattern","category","active"):
         v = getattr(body, f)
         if v is not None or f in ("category","active"):
             setattr(row, f, v)
-    db.commit(); db.refresh(row)
+    db.commit()
+    db.refresh(row)
     return RuleOut(id=row.id, merchant=row.merchant, description=row.description,
                    pattern=row.pattern, category=row.category, active=row.active)
 
 @router.delete("/{rule_id}", dependencies=[Depends(csrf_protect)])
 def delete_rule(rule_id: int, db: Session = Depends(get_db)):
-    row = db.query(Rule).get(rule_id)
-    if not row: raise HTTPException(404, "Rule not found")
-    db.delete(row); db.commit()
+    row = db.get(Rule, rule_id)
+    if not row:
+        raise HTTPException(404, "Rule not found")
+    db.delete(row)
+    db.commit()
     return {"status":"ok","deleted":rule_id}

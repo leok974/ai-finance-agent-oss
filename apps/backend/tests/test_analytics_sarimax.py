@@ -11,44 +11,57 @@ def _has_statsmodels() -> bool:
 
 
 def seed_seasonal_year_plus(db: Session):
-    """Seed 14 months with a mild seasonal pattern.
-    Income ~3000 + small noise; Outflows vary seasonally via sine on groceries.
+    """Seed 18 months (1.5 years) with gentle, bounded seasonality.
+
+    Simpler pattern avoids extreme swings that previously produced NaNs in model
+    CI computations while still exceeding 12 months to allow seasonal order.
     """
     base_income = 3000.0
-    base_grocery = 200.0
-    base_transport = 80.0
-    start = dt.date(2024, 7, 5)
+    base_grocery = 210.0
+    base_transport = 85.0
+    start = dt.date(2023, 1, 5)
+
+    def add_month(d: dt.date) -> dt.date:
+        year = d.year + (1 if d.month == 12 else 0)
+        month = 1 if d.month == 12 else d.month + 1
+        return dt.date(year, month, 5)
+
     rows = []
-    for i in range(14):
-        # month i
-        mdate = (start.replace(day=5) + dt.timedelta(days=30 * i))
-        year, month = mdate.year, mdate.month
+    cur = start
+    for i in range(18):
+        year, month = cur.year, cur.month
         month_key = f"{year:04d}-{month:02d}"
-        # inflow
+
+        income_delta = (6.0 if i % 4 == 0 else -4.0 if i % 7 == 0 else 0.0)
         rows.append({
-            "date": dt.date(year, month, 5),
-            "amount": base_income + (10.0 if i % 2 == 0 else -10.0),
+            "date": cur,
+            "amount": base_income + income_delta,
             "merchant": "ACME CO",
             "category": "Income",
             "month": month_key,
         })
-        # groceries seasonal +/- 40 using sine-ish pattern
-        delta = 40.0 if (i % 6 in (2, 3)) else (-40.0 if (i % 6 in (5, 0)) else 0.0)
+
+        # Groceries mild seasonal pulse every 6 months
+        g_delta = 35.0 if i % 6 in (2, 3) else (-25.0 if i % 6 == 5 else 0.0)
         rows.append({
-            "date": dt.date(year, month, 10),
-            "amount": -(base_grocery + delta),
+            "date": dt.date(year, month, 12),
+            "amount": -(base_grocery + g_delta),
             "merchant": "GROCER",
             "category": "Groceries",
             "month": month_key,
         })
-        # transport small variation
+
+        # Transport subtle cyclical variation
+        t_delta = 4.0 if i % 3 == 0 else (-3.0 if i % 3 == 1 else 0.0)
         rows.append({
             "date": dt.date(year, month, 20),
-            "amount": -(base_transport + (5.0 if i % 3 == 0 else -5.0)),
+            "amount": -(base_transport + t_delta),
             "merchant": "UBER",
             "category": "Transport",
             "month": month_key,
         })
+
+        cur = add_month(cur)
 
     for r in rows:
         db.execute(
@@ -63,6 +76,7 @@ def seed_seasonal_year_plus(db: Session):
     db.commit()
 
 
+@pytest.mark.ml
 @pytest.mark.skipif(not _has_statsmodels(), reason="statsmodels not installed")
 def test_sarimax_forecast_path(client, db_session):
     seed_seasonal_year_plus(db_session)

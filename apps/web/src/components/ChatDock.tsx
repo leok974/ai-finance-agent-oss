@@ -1,10 +1,14 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import * as React from "react";
+import { stripToolNamespaces } from "@/utils/prettyToolName";
+import SaveRuleModal from '@/components/SaveRuleModal';
+const { useEffect, useMemo, useRef, useState } = React;
+import { wireAguiStream } from "@/lib/aguiStream";
 import RobotThinking from "@/components/ui/RobotThinking";
 import EnvAvatar from "@/components/EnvAvatar";
 import { useAuth } from "@/state/auth";
 import { createPortal } from "react-dom";
 import { ChevronUp, Wrench } from "lucide-react";
-import { agentTools, agentChat, getAgentModels, type AgentChatRequest, type AgentChatResponse, type AgentModelsResponse, type ChatMessage, txnsQuery, txnsQueryCsv, type TxnQueryResult, explainTxnForChat, agentRephrase, getMonthSummary, getMonthMerchants, getMonthFlows, getSpendingTrends, getBudgetCheck, analytics } from "../lib/api";
+import { agentTools, agentChat, getAgentModels, type AgentChatRequest, type AgentChatResponse, type AgentModelsResponse, type ChatMessage, txnsQueryCsv, txnsQuery, type TxnQueryResult, explainTxnForChat, agentRephrase, getMonthSummary, getMonthMerchants, getMonthFlows, getSpendingTrends, getBudgetCheck, analytics, transactionsNl, telemetry } from "../lib/api";
 import { fmtMonthSummary, fmtTopMerchants, fmtCashflow, fmtTrends } from "../lib/formatters";
 import { runToolWithRephrase } from "../lib/tools-runner";
 import { saveAs } from "../utils/save";
@@ -15,11 +19,18 @@ import Markdown from "./Markdown";
 import type { ToolKey, ToolSpec, ToolRunState } from "../types/agentTools";
 import { AgentResultRenderer } from "./AgentResultRenderers";
 import ErrorBoundary from "./ErrorBoundary";
+import { QuickChips, type ChipAction } from "./QuickChips";
 import { useMonth } from "../context/MonthContext";
 import { useChatDock } from "../context/ChatDockContext";
 import { exportThreadAsJSON, exportThreadAsMarkdown } from "../utils/chatExport";
 import { chatStore, type BasicMsg, snapshot as chatSnapshot, restoreFromSnapshot as chatRestoreFromSnapshot, discardSnapshot as chatDiscardSnapshot } from "../utils/chatStore";
 import runAndRephrase from "./agent-tools/runAndRephrase";
+import { registerChatHandlers } from "@/state/chat";
+import { DEFAULT_PLACEHOLDER, focusComposer, registerComposerControls, setComposer, setComposerPlaceholder as setComposerPlaceholderUI } from "@/state/chat/ui";
+import { handleTransactionsNL } from "./AgentTools";
+import FallbackBadge from "./FallbackBadge";
+// Minimal process env typing for test gating without pulling full @types/node
+declare const process: { env?: Record<string,string|undefined> } | undefined;
 // --- layout constants (right/bottom anchored) ---
 const MARGIN = 24;     // default bottom-right margin
 const BUBBLE = 48;     // bubble size (px)
@@ -66,10 +77,10 @@ const TOOL_GROUPS: Array<{ label: string; items: ToolSpec[] }> = [
   {
     label: "Charts",
     items: [
-      { key: "charts.summary",   label: "Charts: Summary",         path: "/agent/tools/charts/summary",          examplePayload: { month: undefined } },
-      { key: "charts.merchants", label: "Charts: Top Merchants",   path: "/agent/tools/charts/merchants",        examplePayload: { month: undefined, limit: 10 } },
-      { key: "charts.flows",     label: "Charts: Flows",           path: "/agent/tools/charts/flows",            examplePayload: { month: undefined } },
-      { key: "charts.trends",    label: "Charts: Spending Trends", path: "/agent/tools/charts/spending_trends",  examplePayload: { month: undefined, months_back: 6 } },
+  { key: "charts.summary",   label: "Charts: Summary",         path: "/agent/tools/charts/summary",          examplePayload: { month: undefined } },
+  { key: "charts.merchants", label: "Charts: Top Merchants",   path: "/agent/tools/charts/merchants",        examplePayload: { month: undefined, limit: 10 } },
+  { key: "charts.flows",     label: "Charts: Flows",           path: "/agent/tools/charts/flows",            examplePayload: { month: undefined } },
+  { key: "charts.trends",    label: "Charts: Spending Trends", path: "/agent/tools/charts/spending-trends",  examplePayload: { month: undefined, months_back: 6 } },
     ],
   },
   {
@@ -165,6 +176,27 @@ export default function ChatDock() {
   const [busy, setBusy] = React.useState(false);
   const [chatResp, setChatResp] = React.useState<AgentChatResponse | null>(null);
   const [input, setInput] = useState("");
+  const composerRef = React.useRef<HTMLTextAreaElement | null>(null);
+  const [composerPlaceholder, setComposerPlaceholderState] = useState(DEFAULT_PLACEHOLDER);
+  // AGUI streaming run state (moved earlier so handleSend can reference)
+  const [aguiTools, setAguiTools] = useState<Array<{ name: string; status: 'pending'|'active'|'done'|'error'; startedAt?: number; endedAt?: number }>>([]);
+  const aguiToolsRef = React.useRef<typeof aguiTools>(aguiTools);
+  React.useEffect(()=>{ aguiToolsRef.current = aguiTools; }, [aguiTools]);
+  // Track last what-if scenario text for rule saving
+  const lastWhatIfScenarioRef = useRef<string>("");
+  // Save Rule modal state (new component)
+  const [showSaveRuleModal, setShowSaveRuleModal] = useState(false);
+  const [saveRuleScenario, setSaveRuleScenario] = useState("");
+  // Test-only toggle to expose a deterministic Save Rule button in smoke tests
+  const forceSaveRuleButton = typeof window !== 'undefined' && (window as any).__FORCE_SAVE_RULE_BUTTON__ === true;
+  // Alias for last what-if scenario (if tracked elsewhere adjust accordingly)
+  const lastWhatIfScenario = lastWhatIfScenarioRef.current;
+  // Track if a what-if run happened this session
+  const hadWhatIfRunRef = useRef(false);
+  // Stricter: require a what-if run unless forced by test flag
+  const IS_TEST = typeof process !== 'undefined' && process.env?.NODE_ENV === 'test';
+  const canSaveRule = forceSaveRuleButton || (hadWhatIfRunRef.current && typeof lastWhatIfScenario === 'string' && lastWhatIfScenario.trim().length > 0);
+  const [aguiRunActive, setAguiRunActive] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const syncTimerRef = useRef<number | null>(null);
@@ -183,9 +215,21 @@ export default function ChatDock() {
   const undoActionRef = React.useRef<null | (() => void)>(null);
   const [restoredVisible, setRestoredVisible] = React.useState(false);
 
+  useEffect(() => {
+    return registerComposerControls({
+      setValue: (value: string) => setInput(value),
+      focus: () => composerRef.current?.focus(),
+      setPlaceholder: (value: string) => setComposerPlaceholderState(value),
+      getValue: () => composerRef.current?.value ?? "",
+    });
+  }, [setInput, setComposerPlaceholderState]);
+
   // --- feature flags to forcibly hide legacy UI ---
-  const ENABLE_TOPBAR_TOOL_BUTTONS = false;   // keep a single “Agent tools” toggle
+  const ENABLE_TOPBAR_TOOL_BUTTONS = false;   // keep a single "Agent tools" toggle
   const ENABLE_LEGACY_TOOL_FORM    = false;   // hide Payload/Result/Insert context/Run
+  const ENABLE_AGUI = ((): boolean => {
+    try { return String(import.meta.env.VITE_ENABLE_AGUI || '').trim() === '1'; } catch { return false; }
+  })();   // experimental AGUI integration
 
   // Live message stream (render from UI state, persist via chatStore)
   const [uiMessages, setUiMessages] = useState<Msg[]>([]);
@@ -243,7 +287,7 @@ export default function ChatDock() {
         window.setTimeout(() => setRestoredVisible(false), 4500);
       }
       sessionStorage.removeItem('chat:restored_at');
-    } catch {}
+    } catch (_err) { /* intentionally empty: swallow to render empty-state */ }
   }, []);
 
   // --- helpers for timestamps & day dividers ---
@@ -259,6 +303,34 @@ export default function ChatDock() {
 
   const { user } = useAuth();
   const userName = user?.email?.split("@")[0] ?? "You";
+
+  const appendAssistant = React.useCallback((text: string, meta?: any) => {
+    const ts = Date.now();
+    const metaPayload: Record<string, any> = { ...(meta ?? {}) };
+    if (!metaPayload.used_context && metaPayload.ctxMonth) {
+      metaPayload.used_context = { month: metaPayload.ctxMonth };
+    }
+    setUiMessages(cur => [...cur, { role: 'assistant', text, ts, meta: metaPayload }]);
+    chatStore.append({ role: 'assistant', content: text, createdAt: ts });
+    try {
+      const provider = metaPayload?.fallback;
+      if (provider) {
+        telemetry.track('chat_fallback_used', { provider: String(provider) });
+      }
+    } catch (_err) { /* intentionally empty: swallow to render empty-state */ }
+    try { chatDiscardSnapshot(); } catch { /* ignore */ }
+    setChatResp({
+      reply: text,
+      citations: metaPayload.citations || [],
+      used_context: metaPayload.used_context || { month: metaPayload.ctxMonth },
+      tool_trace: metaPayload.trace || metaPayload.tool_trace || [],
+      model: metaPayload.model || "",
+      mode: metaPayload.mode,
+      args: metaPayload.args,
+      suggestions: metaPayload.suggestions || [],
+      rephrased: Object.prototype.hasOwnProperty.call(metaPayload, 'rephrased') ? metaPayload.rephrased : undefined,
+    } as any);
+  }, [setUiMessages, setChatResp]);
 
   // Build rendered list with day dividers and per-message timestamps
   const renderedMessages = React.useMemo(() => {
@@ -278,13 +350,14 @@ export default function ChatDock() {
         );
       }
       const isUser = m.role === 'user';
-      const currentMeta = i === (uiMessages.length - 1) ? chatResp as any : undefined;
+      const meta = ((m as any).meta ?? (i === (uiMessages.length - 1) ? (chatResp as any) : undefined)) || {};
+      const isThinking = (m as any).thinking || (m as any).meta?.thinking;
       out.push(
         <div key={`${m.role}-${ts}-${i}`} className={`px-3 py-2 my-1 flex items-end gap-2 ${isUser ? 'justify-end' : 'justify-start'}`}>
           {!isUser && <EnvAvatar who="agent" className="size-7" />}
           <div className={`max-w-[72%] rounded-2xl px-3 py-2 text-sm leading-relaxed ${isUser ? 'bg-blue-600 text-white rounded-br-sm' : 'bg-slate-800 text-slate-100 rounded-bl-sm'}`}>
-            {(m as any).thinking ? (
-              <div className="py-1"><span className="sr-only">Thinking…</span><RobotThinking size={32} /></div>
+            {isThinking ? (
+              <div className="py-1"><span className="sr-only">Thinking.</span><RobotThinking size={32} /></div>
             ) : (
               m.role === 'assistant' ? <div className="chat-markdown"><Markdown>{m.text}</Markdown></div> : <>{m.text}</>
             )}
@@ -296,26 +369,75 @@ export default function ChatDock() {
       out.push(
         <div key={`${m.role}-${ts}-${i}-meta`} className="px-3">
           <div className="mt-2 text-xs opacity-70 flex items-center gap-2 flex-wrap">
-            {m.role === 'assistant' && (chatResp as any)?.citations?.length ? (
+            {m.role === 'assistant' && Array.isArray(meta.citations) && meta.citations.length ? (
               <>
                 <span>
-                  Used data: {(chatResp as any).citations.map((c: any) => c.count ? `${c.type} ${c.count}` : `${c.type}`).join(' · ')}
+                  Used data: {meta.citations.map((c: any) => c.count ? `${c.type} ${c.count}` : `${c.type}`).join(' | ')}
                 </span>
-                {(chatResp as any)?.used_context?.month ? <span>· month {(chatResp as any).used_context.month}</span> : null}
-                {(chatResp as any)?.model ? <span>· {(chatResp as any).model}</span> : null}
+                {meta.used_context?.month ? <span>- month {meta.used_context.month}</span> : null}
+                {meta.model ? <span>- {meta.model}</span> : null}
               </>
             ) : null}
-            {m.role === 'assistant' ? <ModeChip mode={(chatResp as any)?.mode} args={(chatResp as any)?.args} /> : null}
+            {m.role === 'assistant' && meta?.fallback ? (
+              <FallbackBadge provider={String(meta.fallback)} />
+            ) : null}
+            {m.role === 'assistant' && meta.intent_label ? (
+              <span className="intent-badge">{meta.intent_label}</span>
+            ) : null}
+            {m.role === 'assistant' ? <ModeChip mode={meta.mode} args={meta.args} /> : null}
             <span className="ml-auto text-neutral-400">{toTimeHM(ts)}</span>
           </div>
-          {m.role === 'assistant' && (chatResp as any)?.mode === 'analytics.forecast' ? (
-            <ForecastFollowUps month={(chatResp as any)?.used_context?.month} append={appendAssistant} setThinking={setBusy} />
+          {m.role === 'assistant' && meta.mode === 'analytics.forecast' ? (
+            <ForecastFollowUps month={meta.used_context?.month} append={appendAssistant} setThinking={setBusy} />
           ) : null}
+          {m.role === 'assistant' ? (() => {
+            const model = Array.isArray(meta.suggestionsLLM) ? meta.suggestionsLLM : [];
+            const gateway = Array.isArray(meta.suggestions) ? meta.suggestions : [];
+            const raw = [...model, ...gateway];
+            const seen = new Set<string>();
+            const chips = raw.filter((c: any) => {
+              if (!c || typeof c !== 'object') return false;
+              const label = String(c.label || c.query || c.value || '').trim();
+              if (!label) return false;
+              const key = (c.action || '') + '::' + label;
+              if (seen.has(key)) return false;
+              seen.add(key);
+              c.label = label;
+              return true;
+            });
+            if (!chips.length && !canSaveRule) return null;
+            return (
+              <div className="flex flex-wrap gap-2 mt-2 items-center">
+                {chips.map((chip: any) => (
+                  <button
+                    key={(chip.action || 'noop') + chip.label}
+                    type="button"
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`Suggestion: ${chip.label}`}
+                    className={`chip ${chip.source === 'gateway' ? 'chip-suggest-gw' : 'chip-suggest'}`}
+                    onKeyDown={(e)=>{ if (e.key==='Enter'||e.key===' ') { e.preventDefault(); handleSuggestionChip({ label: chip.label, action: chip.action || chip.label, source: chip.source }); } }}
+                    onClick={()=>handleSuggestionChip({ label: chip.label, action: chip.action || chip.label, source: chip.source })}
+                  >{chip.label}</button>
+                ))}
+                {canSaveRule && (
+                  <button
+                    type="button"
+                    aria-label="Save Rule…"
+                    className="chip ml-auto"
+                    onClick={() => { setSaveRuleScenario(lastWhatIfScenarioRef.current || ''); setShowSaveRuleModal(true); }}
+                  >
+                    Save Rule…
+                  </button>
+                )}
+              </div>
+            );
+          })() : null}
         </div>
       );
     });
     return out;
-  }, [uiMessages, userName, chatResp]);
+  }, [appendAssistant, setBusy, uiMessages, userName, chatResp]);
 
   // Event delegation for Explain buttons inside rendered markdown
   useEffect(() => {
@@ -356,30 +478,15 @@ export default function ChatDock() {
     }, 5000);
   }
 
-  function appendUser(text: string) {
+  const appendUser = React.useCallback((text: string) => {
     const ts = Date.now();
     setUiMessages(cur => [...cur, { role: 'user', text, ts }]); // optimistic UI
     chatStore.append({ role: 'user', content: text, createdAt: ts });
   // If a snapshot exists from a recent Clear, discard it once new chat starts
   try { chatDiscardSnapshot(); } catch { /* ignore */ }
-  }
+  }, [setUiMessages]);
 
-  function appendAssistant(text: string, meta?: any) {
-    const ts = Date.now();
-    setUiMessages(cur => [...cur, { role: 'assistant', text, ts }]); // optimistic UI
-    chatStore.append({ role: 'assistant', content: text, createdAt: ts });
-    try { chatDiscardSnapshot(); } catch { /* ignore */ }
-    // capture response meta for current tab rendering, including mode/args/tool_trace
-    setChatResp({
-      reply: text,
-      citations: meta?.citations || [],
-      used_context: { month: meta?.ctxMonth },
-      tool_trace: meta?.trace || meta?.tool_trace || [],
-      model: meta?.model || "",
-      mode: meta?.mode,
-      args: meta?.args,
-    } as any);
-  }
+  // (appendAssistant moved above first usage)
 
   // History toggle (reads directly from messages)
   const [historyOpen, setHistoryOpen] = useState<boolean>(false);
@@ -412,10 +519,10 @@ export default function ChatDock() {
           }));
           setUiMessages(mapped);
         } catch { /* ignore */ }
-  try { sessionStorage.setItem('chat:restored_at', String(Date.now())); } catch {}
+  try { sessionStorage.setItem('chat:restored_at', String(Date.now())); } catch (_err) { /* intentionally empty: swallow to render empty-state */ }
   setRestoredVisible(true);
   window.setTimeout(() => setRestoredVisible(false), 4500);
-        try { /* optional: clear snapshot explicitly if needed */ chatDiscardSnapshot(); } catch {}
+        try { /* optional: clear snapshot explicitly if needed */ chatDiscardSnapshot(); } catch (_err) { /* intentionally empty: swallow to render empty-state */ }
       }
       // close snackbar shortly after click
       setUndoClosing(true);
@@ -442,7 +549,7 @@ export default function ChatDock() {
     const rect = panelRef.current?.getBoundingClientRect();
     const w = rect?.width ?? (open ? PANEL_W_GUESS : BUBBLE);
     const h = rect?.height ?? (open ? PANEL_H_GUESS : BUBBLE);
-    setRb(prev => clampRB(prev, w, h));
+  setRb((prev: { right: number; bottom: number }) => clampRB(prev, w, h));
     };
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
@@ -460,7 +567,7 @@ export default function ChatDock() {
       const rect = panelRef.current?.getBoundingClientRect();
       const w = rect?.width ?? PANEL_W_GUESS;
       const h = rect?.height ?? PANEL_H_GUESS;
-      setRb(prev => clampRB(prev, w, h));
+  setRb((prev: { right: number; bottom: number }) => clampRB(prev, w, h));
     });
   }, [open]);
 
@@ -469,7 +576,7 @@ export default function ChatDock() {
     try {
       const saved = sessionStorage.getItem('fa.model');
       if (saved) setSelectedModel(saved);
-    } catch {}
+    } catch (_err) { /* intentionally empty: swallow to render empty-state */ }
   }, []);
 
   // Save when it changes (per-tab)
@@ -477,14 +584,14 @@ export default function ChatDock() {
     try {
       if (selectedModel) sessionStorage.setItem('fa.model', selectedModel);
       else sessionStorage.removeItem('fa.model');
-    } catch {}
+    } catch (_err) { /* intentionally empty: swallow to render empty-state */ }
   }, [selectedModel]);
 
   // handle keyboard
   React.useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape" && open) setOpen(false);
-      if (e.key.toLowerCase() === "k" && e.shiftKey && e.ctrlKey) { e.preventDefault(); setOpen(v => !v); }
+  if (e.key.toLowerCase() === "k" && e.shiftKey && e.ctrlKey) { e.preventDefault(); setOpen((v: boolean) => !v); }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -506,7 +613,7 @@ export default function ChatDock() {
       obj.month = m;
       const newText = JSON.stringify(obj, null, 2);
       setPayloadText(newText);
-      setPayloads(p => ({ ...p, [tool]: newText }));
+  setPayloads((p: Record<string, string>) => ({ ...p, [tool]: newText }));
     } catch { /* ignore bad json */ }
   }, [payloadText, tool]);
 
@@ -557,7 +664,7 @@ export default function ChatDock() {
         body = { ...body, month }; // snap to current MonthContext
         const newText = JSON.stringify(body, null, 2);
         setPayloadText(newText);
-        setPayloads(p => ({ ...p, [tool]: newText }));
+  setPayloads((p: Record<string, string>) => ({ ...p, [tool]: newText }));
       }
     }
 
@@ -592,14 +699,14 @@ export default function ChatDock() {
         const pretty = (function prettyFormat(toolKey: ToolKey, payload: any): string {
           try {
             if (toolKey === 'charts.summary' && payload) {
-              const m = payload?.month ? ` — ${payload.month}` : '';
+              const m = payload?.month ? ` - ${payload.month}` : '';
               const income = payload?.income ?? payload?.total_income ?? 0;
               const spend = payload?.spend ?? payload?.total_spend ?? 0;
               const net = payload?.net ?? (income - Math.abs(spend));
               return `Month summary${m}\n\n- Income: $${Number(income).toFixed(0)}\n- Spend: $${Math.abs(Number(spend)).toFixed(0)}\n- Net: $${Number(net).toFixed(0)}\n\nOne recommendation:`;
             }
             if (toolKey === 'charts.merchants' && Array.isArray(payload?.merchants)) {
-              const m = payload?.month ? ` — ${payload.month}` : '';
+              const m = payload?.month ? ` - ${payload.month}` : '';
               const lines = payload.merchants.slice(0, 5).map((it: any) => `- ${it.merchant}: $${Math.abs(Number(it.amount||0)).toFixed(0)}`);
               return `Top merchants${m}\n\n${lines.join('\n')}\n\nSummarize and suggest one action.`;
             }
@@ -608,7 +715,7 @@ export default function ChatDock() {
               return `Spending trends\n\n${lines.join('\n')}\n\nSummarize the trend in 3 bullets and one next step.`;
             }
             if (toolKey === 'insights.expanded' && payload) {
-              const m = payload?.month ? ` — ${payload.month}` : '';
+              const m = payload?.month ? ` - ${payload.month}` : '';
               const inc = payload?.summary?.income ?? 0;
               const spd = payload?.summary?.spend ?? 0;
               const unk = payload?.unknown_spend?.amount ? Math.abs(Number(payload.unknown_spend.amount)).toFixed(0) : null;
@@ -619,7 +726,7 @@ export default function ChatDock() {
               if (unk) bullets.push(`Unknown spend: $${unk}`);
               return `Expanded insights${m}\n\n- ${bullets.join('\n- ')}\n\nRephrase clearly with MoM highlights if present, then one actionable tip.`;
             }
-          } catch {}
+          } catch (_err) { /* intentionally empty: swallow to render empty-state */ }
           // Generic fallback: pretty JSON
           return `Rephrase this result for the user, concise and clear.\n\n${JSON.stringify(payload, null, 2)}`;
         })(tool, data);
@@ -637,16 +744,16 @@ export default function ChatDock() {
     }
   }, [tool, payloadText, month]);
 
-  // Lightweight tool palette → uses unified /agent/chat
+  // Lightweight tool palette -> uses unified /agent/chat
   // keep legacy helper name for response objects (internal use)
   const handleAgentResponse = React.useCallback((resp: AgentChatResponse) => {
     setChatResp(resp);
-    if (resp?.reply) appendAssistant(resp.reply, { citations: resp.citations, ctxMonth: resp.used_context?.month, trace: resp.tool_trace, model: resp.model });
-  }, []);
+  if (resp?.reply) appendAssistant(resp.reply, { citations: resp.citations, ctxMonth: resp.used_context?.month, trace: resp.tool_trace, model: resp.model, fallback: (resp as any).fallback });
+  }, [appendAssistant]);
 
   const appendAssistantFromText = React.useCallback((text: string, opts?: { meta?: any }) => {
     appendAssistant(text, opts?.meta);
-  }, []);
+  }, [appendAssistant]);
 
   React.useEffect(() => {
     // Register handlers so external callers (e.g., Explain buttons) can append into ChatDock
@@ -660,12 +767,77 @@ export default function ChatDock() {
     try { return (window as any).__FA_CONTEXT ?? null; } catch { return null; }
   };
 
-  // Composer send (optimistic append + context-aware)
+  // Composer send (optimistic append + context-aware) REPLACED to support AGUI SSE
+  function aguiLog(evt: string, data: any) { try { console.debug(`[agui] ${evt}`, data); } catch (_err) { /* intentionally empty: swallow to render empty-state */ } }
   const handleSend = React.useCallback(async (ev?: React.MouseEvent | React.KeyboardEvent) => {
     if (busy) return;
     const text = input.trim();
     if (!text) return;
+    if (ENABLE_AGUI) {
+      // Unified AGUI streaming via wireAguiStream
+      appendUser(text);
+      setInput("");
+      setComposerPlaceholderUI(DEFAULT_PLACEHOLDER);
+      focusComposer();
+      setBusy(true);
+      setAguiTools([]);
+      setAguiRunActive(true);
+      let aggregated = '';
+      aguiLog('agui.run', { from: 'text', month, q: text });
+      wireAguiStream({ q: text, month }, {
+        onStart(meta) { appendAssistant('...', { thinking: true }); if (meta?.intent) setIntentBadge(meta.intent); },
+        onIntent(intent) { setIntentBadge(intent); },
+        onToolStart(name) {
+          aguiLog('agui.tool', { name, status: 'start' });
+          setAguiTools(cur => {
+            const exists = cur.find(t => t.name === name);
+            if (exists) return cur.map(t => t.name === name ? { ...t, status: 'active', startedAt: t.startedAt || Date.now() } : t);
+            return [...cur, { name, status: 'active', startedAt: Date.now() }];
+          });
+        },
+        onToolEnd(name, ok) {
+          aguiLog('agui.tool', { name, status: 'end', ok });
+          setAguiTools(cur => cur.map(t => t.name === name ? { ...t, status: ok ? 'done' : 'error', endedAt: Date.now() } : t));
+        },
+        onChunk(chunk) { aggregated += chunk; },
+        onSuggestions(chips) {
+          const tagged = chips.map(c => ({ ...c, source: 'gateway' }));
+            aguiLog('agui.suggestions', { count: tagged.length, source: 'gateway' });
+          setUiMessages(cur => cur.map((m,i)=> {
+            const thinking = (m as any).thinking || (m as any).meta?.thinking;
+            return (i===cur.length-1 && m.role==='assistant' && thinking)
+              ? { ...m, meta: { ...(m.meta||{}), suggestions: tagged, thinking: true } }
+              : m;
+          }));
+        },
+        onMeta(meta) {
+          if (meta && meta.fallback) {
+            setUiMessages(cur => cur.map((m,i) => {
+              const thinking = (m as any).thinking || (m as any).meta?.thinking;
+              return (i===cur.length-1 && m.role==='assistant' && thinking)
+                ? { ...m, meta: { ...(m.meta||{}), fallback: String(meta.fallback), thinking: true } }
+                : m;
+            }));
+          }
+        },
+        onFinish() {
+          const snapshot = aguiToolsRef.current || aguiTools;
+          const errors = snapshot.filter(t => t.status === 'error').map(t => t.name);
+          if (errors.length) {
+            const pretty = errors.map(stripToolNamespaces);
+            aggregated += `\n\n⚠️ Skipped: ${pretty.join(', ')} (unavailable). I used everything else.`;
+          }
+          setBusy(false); setAguiRunActive(false); appendAssistant(aggregated || '(no content)');
+        },
+        onError() {
+          setBusy(false); setAguiRunActive(false); appendAssistant('(stream error – fallback)');
+        }
+      });
+      return;
+    }
     setInput("");
+    setComposerPlaceholderUI(DEFAULT_PLACEHOLDER);
+    focusComposer();
     appendUser(text);
     setBusy(true);
     try {
@@ -675,15 +847,15 @@ export default function ChatDock() {
         context: getContext(ev as any),
         ...(selectedModel ? { model: selectedModel } : {})
       };
-  const resp = await agentChat(req);
-  handleAgentResponse(resp);
-  syncFromStoreDebounced(120);
+      const resp = await agentChat(req);
+      handleAgentResponse(resp);
+      syncFromStoreDebounced(120);
     } catch (e: any) {
       appendAssistant(`Send failed: ${e?.message ?? String(e)}`);
     } finally {
       setBusy(false);
     }
-  }, [busy, input, selectedModel, handleAgentResponse]);
+  }, [busy, input, selectedModel, handleAgentResponse, month, appendUser, appendAssistant]);
 
   const onComposerKeyDown = React.useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); handleSend(e); return; }
@@ -693,6 +865,7 @@ export default function ChatDock() {
   // --- ONE-CLICK TOOL RUNNERS (top bar) ---
   const runMonthSummary = React.useCallback(async (_ev?: React.MouseEvent) => {
     if (busy) return;
+  if (startAguiRun('overview', AGUI_ACTIONS['overview'].prompt, month)) return;
     setBusy(true);
     try {
       appendUser('Summarize my spending this month in 4 bullets and one action.');
@@ -718,6 +891,7 @@ export default function ChatDock() {
 
   const runFindSubscriptions = React.useCallback(async (_ev?: React.MouseEvent) => {
     if (busy) return;
+  if (startAguiRun('subscriptions', AGUI_ACTIONS['subscriptions'].prompt, month)) return;
     setBusy(true);
     try {
       appendUser('Identify recurring subscriptions this month and suggest which I could cancel.');
@@ -738,6 +912,7 @@ export default function ChatDock() {
   // Additional one-click runners shown in the tools tray
   const runTopMerchants = React.useCallback(async (_ev?: React.MouseEvent) => {
     if (busy) return;
+  if (startAguiRun('merchants', AGUI_ACTIONS['merchants'].prompt, month)) return;
     setBusy(true);
     try {
       appendUser('Show top merchants for the current month.');
@@ -756,6 +931,7 @@ export default function ChatDock() {
 
   const runCashflow = React.useCallback(async (_ev?: React.MouseEvent) => {
     if (busy) return;
+  if (startAguiRun('cashflow', AGUI_ACTIONS['cashflow'].prompt, month)) return;
     setBusy(true);
     try {
       appendUser('Show my cashflow (inflows vs outflows).');
@@ -774,6 +950,7 @@ export default function ChatDock() {
 
   const runTrends = React.useCallback(async (_ev?: React.MouseEvent) => {
     if (busy) return;
+  if (startAguiRun('overview', AGUI_ACTIONS['trends'].prompt, month)) return;
     setBusy(true);
     try {
       appendUser('Show my spending trends.');
@@ -802,6 +979,7 @@ export default function ChatDock() {
 
   const runInsightsSummary = React.useCallback(async (_ev?: React.MouseEvent) => {
     if (busy) return;
+  if (startAguiRun('overview', AGUI_ACTIONS['insights-summary'].prompt, month)) return;
     setBusy(true);
     try {
       appendUser('Summarize key insights for this month.');
@@ -819,6 +997,7 @@ export default function ChatDock() {
 
   const runInsightsExpanded = React.useCallback(async (_ev?: React.MouseEvent) => {
     if (busy) return;
+  if (startAguiRun('overview', AGUI_ACTIONS['insights-expanded'].prompt, month)) return;
     setBusy(true);
     try {
       appendUser('Expand insights (month-over-month + anomalies).');
@@ -836,6 +1015,7 @@ export default function ChatDock() {
 
   const runBudgetCheck = React.useCallback(async (_ev?: React.MouseEvent) => {
     if (busy) return;
+  if (startAguiRun('budget', AGUI_ACTIONS['budget'].prompt, month)) return;
     setBusy(true);
     try {
       appendUser('Check my budget status for this month.');
@@ -855,6 +1035,7 @@ export default function ChatDock() {
   // ---------- Analytics quick buttons ----------
   const runAnalyticsKpis = React.useCallback(async (_ev?: React.MouseEvent) => {
     if (busy) return;
+  if (startAguiRun('kpis', AGUI_ACTIONS['kpis'].prompt, month)) return;
     setBusy(true);
     try {
       appendUser('Show KPIs for this month.');
@@ -872,6 +1053,7 @@ export default function ChatDock() {
 
   const runAnalyticsForecast = React.useCallback(async (_ev?: React.MouseEvent) => {
     if (busy) return;
+  // forecast not a dedicated branch yet; legacy path
     setBusy(true);
     try {
       appendUser('Forecast my next 3 months cashflow.');
@@ -889,6 +1071,7 @@ export default function ChatDock() {
 
   const runAnalyticsAnomalies = React.useCallback(async (_ev?: React.MouseEvent) => {
     if (busy) return;
+  // anomalies not a dedicated branch yet; legacy path
     setBusy(true);
     try {
       appendUser('Find anomalies this month.');
@@ -906,6 +1089,7 @@ export default function ChatDock() {
 
   const runAnalyticsRecurring = React.useCallback(async (_ev?: React.MouseEvent) => {
     if (busy) return;
+  if (startAguiRun('subscriptions', AGUI_ACTIONS['recurring'].prompt, month)) return;
     setBusy(true);
     try {
       appendUser('Detect recurring charges.');
@@ -923,6 +1107,7 @@ export default function ChatDock() {
 
   const runAnalyticsBudgetSuggest = React.useCallback(async (_ev?: React.MouseEvent) => {
     if (busy) return;
+  if (startAguiRun('budget', AGUI_ACTIONS['budget-suggest'].prompt, month)) return;
     setBusy(true);
     try {
       appendUser('Suggest budget targets.');
@@ -938,12 +1123,236 @@ export default function ChatDock() {
     } finally { setBusy(false); }
   }, [busy, month, appendAssistant, selectedModel]);
 
+  const callTransactionsNl = React.useCallback(async (payload?: Record<string, any>) => {
+    if (busy) return null;
+
+    const data = payload ?? {};
+    const query = typeof data.query === 'string' ? data.query.trim() : '';
+    const filters = data.filters;
+
+    if (query) {
+      appendUser(query);
+    }
+
+    setComposer('');
+    setComposerPlaceholderUI(DEFAULT_PLACEHOLDER);
+    focusComposer();
+
+    try {
+      setBusy(true);
+      const response = await transactionsNl(data);
+      const meta = (response as any)?.meta ?? {};
+      const suggestions = Array.isArray(meta.suggestions) ? meta.suggestions : undefined;
+      const metaPayload: Record<string, any> = { ...meta, rephrased: response.rephrased };
+      if (suggestions !== undefined) metaPayload.suggestions = suggestions;
+      appendAssistant(response.reply, metaPayload);
+
+      const filtersForLast: any = meta.filters ?? filters ?? null;
+      if (filtersForLast) {
+        lastNlqRef.current = {
+          q: query || (typeof meta.query === 'string' ? meta.query : query),
+          filters: filtersForLast,
+          flow: filtersForLast?.flow,
+          intent: (meta.result && (meta.result as any)?.intent) || meta.intent || undefined,
+        };
+      } else if (query) {
+        lastNlqRef.current = {
+          q: query,
+          filters: {},
+          intent: (meta.result && (meta.result as any)?.intent) || meta.intent || undefined,
+        };
+      }
+
+      return response;
+    } catch (err: any) {
+      const message = err?.message ? String(err.message) : String(err ?? 'Unknown error');
+      appendAssistant(`**transactions.nl failed:** ${message}`);
+      throw err;
+    } finally {
+      setBusy(false);
+      syncFromStoreDebounced(120);
+    }
+  }, [appendAssistant, appendUser, busy, focusComposer, setBusy, setComposer, setComposerPlaceholderUI, syncFromStoreDebounced, transactionsNl]);
+
+  // Insert AGUI feature flag and streaming helper near top-level utility section
+  // (legacy runAguiStream removed in favor of wireAguiStream)
+
+  // Central mapping of AGUI actions to prompts + forced gateway mode
+  const AGUI_ACTIONS: Record<string, { prompt: string; mode: string }> = {
+    'overview':         { prompt: 'Give me this month’s overview summary.', mode: 'overview' },
+    'subscriptions':    { prompt: 'Identify recurring subscriptions this month and suggest which I could cancel.', mode: 'subscriptions' },
+    'merchants':        { prompt: 'Show top merchants for the current month.', mode: 'merchants' },
+    'cashflow':         { prompt: 'Show my cashflow breakdown for this month.', mode: 'cashflow' },
+    'trends':           { prompt: 'Show spending trends for this month versus prior month.', mode: 'overview' },
+    'insights-summary': { prompt: 'Summarize key insights for this month.', mode: 'overview' },
+    'insights-expanded':{ prompt: 'Give me expanded insights for this month (last 60 days if needed).', mode: 'overview' },
+    'budget':           { prompt: 'Check my budget status for this month.', mode: 'budget' },
+    'kpis':             { prompt: 'Show KPIs for this month.', mode: 'kpis' },
+    'forecast':         { prompt: 'Forecast next month’s spending.', mode: 'forecast' },
+    'anomalies':        { prompt: 'Show anomalies or unusual transactions for this month.', mode: 'anomalies' },
+    'recurring':        { prompt: 'List recurring charges this month.', mode: 'subscriptions' },
+    'budget-suggest':   { prompt: 'Suggest budget targets for this month.', mode: 'budget' },
+    'what-if':          { prompt: 'What if I reduce dining by 20% next month?', mode: 'what-if' },
+    'alerts':           { prompt: 'Show my alerts for this month.', mode: 'alerts' },
+    'search-txns':      { prompt: 'Search transactions matching my last query.', mode: 'txns' },
+  };
+
+  // Intent label mapping for badge display
+  const INTENT_LABELS: Record<string,string> = {
+    overview:'Overview', merchants:'Merchants', kpis:'KPIs', subscriptions:'Subscriptions',
+    alerts:'Alerts', anomalies:'Anomalies', budget:'Budget', cashflow:'Cashflow',
+    forecast:'Forecast', 'what-if':'What-if', txns:'Transactions', chat:'Chat'
+  };
+
+  // Minimal badge injection: attach to last assistant thinking bubble meta
+  function setIntentBadge(intent?: string) {
+    if (!intent) return;
+    const label = INTENT_LABELS[intent] || intent;
+    setUiMessages(cur => cur.map((m, i) => {
+      const thinking = (m as any).thinking || (m as any).meta?.thinking;
+      if (i === cur.length - 1 && m.role === 'assistant' && thinking) {
+        return { ...m, meta: { ...(m.meta||{}), intent_label: label, intent, thinking: true }, thinking: (m as any).thinking };
+      }
+      return m;
+    }));
+  }
+
+  // Start an AGUI streaming run forcing a branch via mode; returns true if started
+  function startAguiRun(mode: string, prompt: string, monthCtx?: string | null) {
+    if (!ENABLE_AGUI) return false;
+    appendUser(prompt);
+    setBusy(true);
+    setAguiTools([]);
+    setAguiRunActive(true);
+    let aggregated = '';
+  if (mode === 'what-if') { lastWhatIfScenarioRef.current = prompt; hadWhatIfRunRef.current = true; }
+    aguiLog('agui.run', { from: 'button', mode, month: monthCtx, q: prompt });
+    wireAguiStream({ q: prompt, month: monthCtx || undefined, mode }, {
+      onStart(meta) { appendAssistant('...', { thinking: true }); if (meta?.intent) setIntentBadge(meta.intent); },
+      onIntent(intent) { setIntentBadge(intent); },
+      onToolStart(name) {
+        aguiLog('agui.tool', { name, status: 'start' });
+        setAguiTools(cur => {
+          const exists = cur.find(t => t.name === name);
+          if (exists) return cur.map(t => t.name === name ? { ...t, status: 'active', startedAt: t.startedAt || Date.now() } : t);
+          return [...cur, { name, status: 'active', startedAt: Date.now() }];
+        });
+      },
+      onToolEnd(name, ok) {
+        aguiLog('agui.tool', { name, status: 'end', ok });
+        setAguiTools(cur => cur.map(t => t.name === name ? { ...t, status: ok ? 'done' : 'error', endedAt: Date.now() } : t));
+      },
+      onChunk(txt) { aggregated += txt; },
+      onSuggestions(chips) {
+        const tagged = chips.map(c => ({ ...c, source: 'gateway' }));
+        aguiLog('agui.suggestions', { count: tagged.length, source: 'gateway' });
+        setUiMessages(cur => cur.map((m,i)=> {
+          const thinking = (m as any).thinking || (m as any).meta?.thinking;
+          return (i===cur.length-1 && m.role==='assistant' && thinking)
+            ? { ...m, meta: { ...(m.meta||{}), suggestions: tagged, thinking: true } }
+            : m;
+        }));
+      },
+      onFinish() {
+        const snapshot = aguiToolsRef.current || aguiTools;
+        const errors = snapshot.filter(t => t.status === 'error').map(t => t.name);
+        if (errors.length) {
+          const pretty = errors.map(stripToolNamespaces);
+            aggregated += `\n\n⚠️ Skipped: ${pretty.join(', ')} (unavailable). I used everything else.`;
+        }
+        // Emit additional gateway suggestions based on last run context (KPI & Merchants heuristics)
+        try {
+          const extra: any[] = [];
+          // If a forecast was run, suggest budgeting and saving rule directly
+          if (/forecast/i.test(aggregated)) {
+            extra.push({ label: 'Apply this forecast budget', action: 'apply_budget' });
+            extra.push({ label: 'Save as rule', action: 'save_rule' });
+          }
+          // If merchants mentioned (simple keyword scan), suggest merchant spend insights
+          if (/merchant|store|shop/i.test(aggregated)) {
+            extra.push({ label: 'Show top merchants', action: 'top_merchants' });
+            extra.push({ label: 'Merchant spend trend', action: 'merchant_trend' });
+          }
+          if (extra.length) {
+            setUiMessages(cur => cur.map((m,i)=> {
+              const isLast = i===cur.length-1;
+              if (!isLast || m.role !== 'assistant') return m;
+              const meta = (m as any).meta || {};
+              const existing = Array.isArray(meta.suggestions) ? meta.suggestions : [];
+              // de-dupe by action+label
+              const seen = new Set(existing.map((c:any)=> (c.action||'')+'::'+c.label));
+              const merged = [...existing];
+              for (const e of extra) {
+                const key = (e.action||'')+'::'+e.label;
+                if (seen.has(key)) continue;
+                seen.add(key);
+                merged.push({ ...e, source: 'gateway' });
+              }
+              return { ...m, meta: { ...meta, suggestions: merged } };
+            }));
+          }
+        } catch (err) { /* non-fatal */ }
+        setBusy(false); setAguiRunActive(false); appendAssistant(aggregated || '(no content)');
+      },
+  onError() { setBusy(false); setAguiRunActive(false); appendAssistant('(stream error – fallback)'); }
+    });
+    return true;
+  }
+
+  useEffect(() => {
+    return registerChatHandlers({
+      pushAssistant: ({ reply, rephrased, suggestions, meta }) => {
+        const metaPayload: Record<string, any> = { ...(meta ?? {}) };
+        if (typeof rephrased !== 'undefined') metaPayload.rephrased = rephrased;
+        if (Array.isArray(suggestions)) metaPayload.suggestionsLLM = suggestions.map(s => ({ ...(typeof s==='object'?s:{ label: s }), source: 'model', label: (s as any)?.label || (s as any)?.query || (typeof s==='string'? s : '') }));
+        appendAssistant(reply, metaPayload);
+      },
+      pushUser: appendUser,
+      callTool: async (tool, payload) => {
+        if (tool === 'transactions.nl') {
+          return callTransactionsNl(payload);
+        }
+        throw new Error(`Unsupported chat tool: ${tool}`);
+      },
+    });
+  }, [appendAssistant, appendUser, callTransactionsNl]);
+
+  // Legacy inline submit removed; new SaveRuleModal handles validation + save
+  function handleSuggestionChip(chip: { label: string; action: string; source?: string }) {
+    const normLabel = chip.label.trim().toLowerCase();
+    if (/^save\s+as\s+rule$/.test(normLabel) || /save\s+rule/.test(normLabel)) {
+      setSaveRuleScenario(lastWhatIfScenarioRef.current || chip.label || '');
+      setShowSaveRuleModal(true);
+      return;
+    }
+    const currentMonth = month;
+    switch (chip.action) {
+      case 'budget_from_forecast':
+        startAguiRun('budget', 'Suggest a budget using the forecast', currentMonth);
+        break;
+      case 'compare_prev':
+        startAguiRun('overview', 'Compare this month’s forecast with last month', currentMonth);
+        break;
+      case 'apply_budget':
+        startAguiRun('budget', 'Apply this what-if scenario to my budget', currentMonth);
+        break;
+      case 'save_rule':
+        setSaveRuleScenario(lastWhatIfScenarioRef.current || chip.label || '');
+        setShowSaveRuleModal(true);
+        break;
+      default:
+        // Fallback: just re-run with the chip label as a query
+        startAguiRun('overview', chip.label, currentMonth);
+    }
+  }
+
   const runAnalyticsWhatIf = React.useCallback(async () => {
     if (busy) return;
     const cat = window.prompt('Category to cut? e.g., "Dining out"', 'Dining out');
     if (!cat) return;
     const pctStr = window.prompt('Cut percent (0-100)', '20');
     const pct = Math.max(0, Math.min(100, Number(pctStr || 0)));
+  // what-if not a dedicated branch; legacy path (could map to overview)
     setBusy(true);
     try {
       appendUser(`What if I cut ${cat} by ${pct}%?`);
@@ -961,6 +1370,7 @@ export default function ChatDock() {
 
   const runAlerts = React.useCallback(async (ev?: React.MouseEvent) => {
     if (busy) return;
+  if (startAguiRun('alerts', AGUI_ACTIONS['alerts'].prompt, month)) return;
     setBusy(true);
     try {
       appendUser('Show my alerts.');
@@ -970,7 +1380,7 @@ export default function ChatDock() {
         context: getContext(ev),
         ...(selectedModel ? { model: selectedModel } : {})
       };
-  console.debug('[chat] alerts → /agent/chat', { preview: req.messages[0]?.content?.slice(0, 80) });
+  console.debug('[chat] alerts -> /agent/chat', { preview: req.messages[0]?.content?.slice(0, 80) });
   const resp = await agentChat(req);
   console.debug('[chat] alerts ← ok', { model: resp?.model });
       handleAgentResponse(resp);
@@ -1001,7 +1411,7 @@ export default function ChatDock() {
         isAutoRunning.current = true;
         insertContext(); // Update payload with current month
         await run(); // Run the tool
-        setLastRunForTool(prev => ({ ...prev, [tool]: month }));
+  setLastRunForTool((prev: Record<string, string | undefined>) => ({ ...prev, [tool]: month }));
       } catch (e) {
         console.error("Auto insertContext/run failed:", e);
       } finally {
@@ -1064,6 +1474,7 @@ export default function ChatDock() {
   style={{ right: rb.right, bottom: rb.bottom, position: 'fixed' as const }}
   data-chatdock-root
     >
+  <style>{`.intent-badge{display:inline-flex;align-items:center;gap:.35rem;padding:.15rem .45rem;border-radius:9999px;border:1px solid rgba(120,120,120,.35);font-size:.6rem;letter-spacing:.5px;text-transform:uppercase;background:rgba(255,255,255,0.06);} .chip{display:inline-flex;align-items:center;padding:.25rem .6rem;border-radius:9999px;border:1px solid rgba(120,120,120,.35);font-size:.7rem;line-height:1;font-weight:500;cursor:pointer;user-select:none} .chip-suggest{background:rgba(59,130,246,.10);} .chip-suggest-gw{background:rgba(16,185,129,.12);} .chip:focus{outline:2px solid currentColor;outline-offset:1px}`}</style>
       <div
         className="flex items-center justify-between mb-2 select-none border-b border-border pb-1"
         style={{ cursor: "grab" }}
@@ -1087,7 +1498,7 @@ export default function ChatDock() {
               const normalized = (uiMessages || []).map(m => ({ role: m.role, content: m.text, createdAt: m.ts }));
               const firstUser = (uiMessages || []).find(m => m.role === 'user');
               const trimmed = (firstUser?.text || '').split('\n')[0].slice(0, 40).trim();
-              const title = trimmed ? `finance-agent-chat—${trimmed.replace(/\s+/g, '_')}` : 'finance-agent-chat';
+              const title = trimmed ? `finance-agent-chat-${trimmed.replace(/\s+/g, '_')}` : 'finance-agent-chat';
               exportThreadAsJSON(title, normalized);
             }}
             className="text-xs px-2 py-1 border rounded-md hover:bg-muted"
@@ -1102,7 +1513,7 @@ export default function ChatDock() {
               const normalized = (uiMessages || []).map(m => ({ role: m.role, content: m.text, createdAt: m.ts }));
               const firstUser = (uiMessages || []).find(m => m.role === 'user');
               const trimmed = (firstUser?.text || '').split('\n')[0].slice(0, 40).trim();
-              const title = trimmed ? `finance-agent-chat—${trimmed.replace(/\s+/g, '_')}` : 'finance-agent-chat';
+              const title = trimmed ? `finance-agent-chat-${trimmed.replace(/\s+/g, '_')}` : 'finance-agent-chat';
               exportThreadAsMarkdown(title, normalized);
             }}
             className="text-xs px-2 py-1 border rounded-md hover:bg-muted"
@@ -1156,7 +1567,7 @@ export default function ChatDock() {
       {modelsInfo ? (
             <button
               onPointerDown={(e) => e.stopPropagation()}
-              onClick={(e) => { e.stopPropagation(); setShowAdvanced(v=>!v); }}
+              onClick={(e) => { e.stopPropagation(); setShowAdvanced((v: boolean)=>!v); }}
               className="px-2 py-1 rounded-lg bg-neutral-800 text-neutral-200 border border-neutral-700 hover:bg-neutral-700"
         title="Models"
             >
@@ -1182,8 +1593,8 @@ export default function ChatDock() {
               value={selectedModel}
               onChange={(e) => setSelectedModel(e.target.value)}
             >
-              <option value="">{`Default — ${modelsInfo.provider}: ${modelsInfo.default}`}</option>
-              {modelsInfo.models?.map(m => (
+              <option value="">{`Default - ${modelsInfo.provider}: ${modelsInfo.default}`}</option>
+              {modelsInfo.models?.map((m: any) => (
                 <option key={m.id} value={m.id}>{m.id}</option>
               ))}
             </select>
@@ -1210,45 +1621,18 @@ export default function ChatDock() {
             <button type="button" onClick={(e) => runAlerts(e as any)} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50">Alerts</button>
             {/* Analytics quick buttons */}
             <button type="button" onClick={(e) => runAnalyticsKpis(e as any)} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50">KPIs</button>
-            <button type="button" onClick={(e) => runAnalyticsForecast(e as any)} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50">Forecast</button>
+            <button type="button" onClick={(e) => { if(!busy){ startAguiRun('forecast', 'Forecast next month’s spending.', month); } }} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50">Forecast</button>
             <button type="button" onClick={(e) => runAnalyticsAnomalies(e as any)} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50">Anomalies</button>
             <button type="button" onClick={(e) => runAnalyticsRecurring(e as any)} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50">Recurring</button>
             <button type="button" onClick={(e) => runAnalyticsBudgetSuggest(e as any)} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50">Budget suggest</button>
-            <button type="button" onClick={() => runAnalyticsWhatIf()} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50">What if…</button>
+            <button type="button" onClick={() => runAnalyticsWhatIf()} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50">What if...</button>
             {/* Legacy non-NL search removed */}
             <button
               type="button"
-              onClick={async (e) => {
-                e.preventDefault();
-                if (busy) return;
-                const tips = "Tips: MTD, YTD, WTD, last N months/weeks/days, since YYYY-MM-DD";
-                const q = window.prompt(
-                  `Ask about your transactions:\n- "Starbucks last month over $10"\n- "top 5 merchants MTD"\n- "how much on groceries in July?"\n\n${tips}`
-                );
-                if (!q) return;
-                const flowChoice = window.prompt('Flow filter? Type one of: "expenses", "income", "all" (or leave blank for all)');
-                const flow = (flowChoice === "expenses" || flowChoice === "income" || flowChoice === "all") ? flowChoice : undefined;
-                await runToolWithRephrase(
-                  'transactions.nl_query',
-                  async () => {
-                    const res = await txnsQuery(q, { flow, page: 1, page_size: 50 });
-                    // Persist for CSV export and paging (use resolved filters)
-                    lastNlqRef.current = { q, flow, filters: (res as any)?.filters ?? {}, intent: (res as any)?.intent };
-                    return res as any;
-                  },
-                  (res: any) => {
-                    let text = formatTxnQueryResult(q, res);
-                    if ((res as any)?.intent === 'list') {
-                      text += "\n\nTip: Use the 'Export CSV (last NL query)' button to download these rows.";
-                    }
-                    return text;
-                  },
-                  (msg, meta) => appendAssistant(msg, { ...meta, ctxMonth: month }),
-                  (on) => setBusy(on)
-                );
-              }}
+              onClick={() => { void handleTransactionsNL(); }}
               disabled={busy}
               className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50"
+              title="Search transactions (NL) — Try: “Starbucks this month”, “Delta in Aug 2025”, “transactions > $50 last 90 days”. Pro tips: MTD, YTD, last N days/weeks/months, since YYYY-MM-DD."
             >
               Search transactions (NL)
             </button>
@@ -1271,6 +1655,7 @@ export default function ChatDock() {
                     ...(flow ? { flow } as any : {})
                   });
                   saveAs(blob, filename || "txns_query.csv");
+                 
                   appendAssistant(`Exported CSV for last NL query: ${q}`);
                 } catch (err: any) {
                   appendAssistant(`**CSV export failed:** ${err?.message || String(err)}`);
@@ -1376,7 +1761,7 @@ export default function ChatDock() {
       {historyOpen && (
         <div className="px-3 py-2 border-b bg-muted/5">
           <div className="flex items-center justify-between mb-2">
-            <div className="text-xs opacity-70">This tab’s recent messages</div>
+            <div className="text-xs opacity-70">This tab's recent messages</div>
             <button
               className="text-xs px-2 py-1 border rounded-md hover:bg-muted"
               onClick={handleClearHistory}
@@ -1404,14 +1789,41 @@ export default function ChatDock() {
         </div>
       )}
 
-  {/* Inline quick tools removed — use top-bar buttons only to prevent duplication */}
-
       {/* Messages list (scrollable) with day dividers & timestamps */}
-  <div className="flex-1 overflow-auto chat-scroll" ref={listRef}>
+      {aguiRunActive || aguiTools.length ? (
+        <div className={["px-3", aguiRunActive ? "" : "agui-ribbon-fade"].join(" ")}> 
+          <div className="agui-ribbon">
+            {aguiTools.map(t => {
+              const baseClass = t.status === 'active' ? 'agui-chip-active' : t.status === 'done' ? 'agui-chip-done' : t.status === 'error' ? 'agui-chip-error' : 'agui-chip-pending';
+              return (
+                <span key={t.name} className={baseClass} title={t.status}>
+                  {t.status === 'active' && <span className="agui-dot agui-dot-pulse" />}
+                  {t.status !== 'active' && <span className="agui-dot" />}
+                  {t.name.replace('charts.', 'charts/').replace('analytics.', 'analytics/').replace('agent.', 'agent/')}
+                </span>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
+      <div className="flex-1 overflow-auto chat-scroll" ref={listRef}>
         {renderedMessages}
         {busy && (
           <div className="px-3 py-2">
             <RobotThinking size={64} />
+          </div>
+        )}
+        {/* Fallback chip lane when no assistant messages yet */}
+  {IS_TEST && canSaveRule && !uiMessages.some(m => m.role === 'assistant') && (
+          <div className="flex flex-wrap gap-2 mt-2 px-3">
+            <button
+              type="button"
+              aria-label="Save Rule…"
+              className="chip ml-auto"
+              onClick={() => { setSaveRuleScenario(lastWhatIfScenarioRef.current || ''); setShowSaveRuleModal(true); }}
+            >
+              Save Rule…
+            </button>
           </div>
         )}
         <div id="chatdock-scroll-anchor" ref={bottomRef} />
@@ -1447,14 +1859,39 @@ export default function ChatDock() {
         </div>
       )}
 
-      {/* Composer — textarea with Enter to send, Shift+Enter newline */}
+      <SaveRuleModal
+        open={showSaveRuleModal}
+        onOpenChange={setShowSaveRuleModal}
+        month={month}
+        scenario={saveRuleScenario}
+        defaultCategory={(() => {
+          // Heuristic: attempt to extract category in quotes from scenario text e.g. "Dining out"
+          const src = saveRuleScenario || '';
+            const q = src.match(/"([^"]{2,40})"/);
+            if (q) return q[1];
+            // fallback: look for single word after 'cut' or 'reduce'
+            const m = src.match(/(?:cut|reduce)\s+([A-Za-z][A-Za-z\s]{2,30})/i);
+            if (m) return m[1].trim();
+            return '';
+        })()}
+      />
+
+
+      {/* Composer - textarea with Enter to send, Shift+Enter newline */}
       <div className="p-3 border-t bg-background sticky bottom-0 z-10 flex items-end gap-2">
         <textarea
+          id="chat-composer"
+          ref={composerRef}
           rows={1}
-          placeholder={'Ask the agent…'}
+          placeholder={composerPlaceholder}
           className="flex-1 resize-none px-3 py-2 rounded-md border bg-background text-sm"
           value={input}
-          onChange={(e) => setInput(e.target.value)}
+          onChange={(e) => {
+            if (composerPlaceholder !== DEFAULT_PLACEHOLDER) {
+              setComposerPlaceholderUI(DEFAULT_PLACEHOLDER);
+            }
+            setInput(e.target.value);
+          }}
           onKeyDown={onComposerKeyDown}
           disabled={busy}
         />
@@ -1464,7 +1901,7 @@ export default function ChatDock() {
           onClick={(e) => handleSend(e)}
           title="Send (Enter). Shift+Enter = newline. Hold Alt to omit context."
         >
-          {busy ? '…' : 'Send'}
+          {busy ? '...' : 'Send'}
         </button>
       </div>
     </div>
@@ -1479,7 +1916,7 @@ export default function ChatDock() {
 // Helper: format NL transaction query result for chat rendering
 // --- helper to inject a compact table (markdown + inline HTML for buttons)
 function tableForListWithExplain(rows: any[]): string {
-  if (!rows?.length) return "_No matches — try a narrower range or a specific merchant (e.g., `Starbucks last month`)._";
+  if (!rows?.length) return "_No matches - try a narrower range or a specific merchant (e.g., `Starbucks last month`)._";
   const head = `| Date | Merchant | Category | Amount | Action |\n|---|---|---|---:|---|`;
   const body = rows.map((r: any) => {
     const amt = `$${Math.abs(Number(r.amount || 0)).toFixed(2)}`;
@@ -1491,36 +1928,41 @@ function tableForListWithExplain(rows: any[]): string {
 
 function hintsBlock(hints?: string[]): string {
   if (!hints?.length) return "";
-  const items = hints.map(h => `- \`${h}\``).join("\n");
-  return `> 💡 **Try:**\n${items}\n`;
+  const items = hints.map((h) => `- \`${h}\``).join("\n");
+  return `> **Try:**\n${items}\n`;
 }
 
 function formatTxnQueryResult(q: string, res: TxnQueryResult & { meta?: any }): string {
+  const meta = (res as any)?.meta || {};
   const f: any = (res as any).filters || {};
-  const windowStr = f.start && f.end ? `\n• Range: ${f.start} → ${f.end}` : "";
-  const hintStr = hintsBlock((res as any)?.meta?.hints);
-  if (res.intent === "sum") return `**NL Query:** ${q}${windowStr}\n**Total (abs):** $${res.result.total_abs.toFixed(2)}\n${hintStr}`;
-  if (res.intent === "count") return `**NL Query:** ${q}${windowStr}\n**Count:** ${res.result.count}\n${hintStr}`;
+  const windowStr = f.start && f.end ? `\n- Range: ${f.start} -> ${f.end}` : "";
+  const hintStr = hintsBlock(meta?.hints);
+  const metaMessage = typeof meta?.message === 'string' && meta.message.trim().length ? `${meta.message.trim()}\n\n` : '';
+  if (res.intent === "sum") {
+    return `${metaMessage}**NL Query:** ${q}${windowStr}\n**Total (abs):** $${res.result.total_abs.toFixed(2)}\n${hintStr}`;
+  }
+  if (res.intent === "count") {
+    return `${metaMessage}**NL Query:** ${q}${windowStr}\n**Count:** ${res.result.count}\n${hintStr}`;
+  }
   if (res.intent === "top_merchants") {
-    const lines = res.result.map((r, i) => `${i + 1}. ${r.merchant ?? "(Unknown)"} — $${r.spend.toFixed(2)}`).join("\n");
-    return `**NL Query:** ${q}${windowStr}\n**Top merchants:**\n${lines}\n${hintStr}`;
+    const lines = res.result.map((r, i) => `${i + 1}. ${r.merchant ?? "(Unknown)"} - $${r.spend.toFixed(2)}`).join("\n");
+    return `${metaMessage}**NL Query:** ${q}${windowStr}\n**Top merchants:**\n${lines}\n${hintStr}`;
   }
   if (res.intent === "top_categories") {
-    const lines = res.result.map((r, i) => `${i + 1}. ${r.category ?? "(Uncategorized)"} — $${r.spend.toFixed(2)}`).join("\n");
-    return `**NL Query:** ${q}${windowStr}\n**Top categories:**\n${lines}\n${hintStr}`;
+    const lines = res.result.map((r, i) => `${i + 1}. ${r.category ?? "(Uncategorized)"} - $${r.spend.toFixed(2)}`).join("\n");
+    return `${metaMessage}**NL Query:** ${q}${windowStr}\n**Top categories:**\n${lines}\n${hintStr}`;
   }
   if (res.intent === "average") {
-    return `**NL Query:** ${q}${windowStr}\n**Average (abs):** $${res.result.average_abs.toFixed(2)}\n${hintStr}`;
+    return `${metaMessage}**NL Query:** ${q}${windowStr}\n**Average (abs):** $${res.result.average_abs.toFixed(2)}\n${hintStr}`;
   }
   if (res.intent === "by_day" || res.intent === "by_week" || res.intent === "by_month") {
     const label = res.intent.replace("by_", "By ");
-    const lines = (res.result as any[]).map((p: any) => `• ${p.bucket}: $${Number(p.spend || 0).toFixed(2)}`).join("\n");
-    return `**NL Query:** ${q}${windowStr}\n**${label}:**\n${lines}\n${hintStr}`;
+    const lines = (res.result as any[]).map((p: any) => `- ${p.bucket}: $${Number(p.spend || 0).toFixed(2)}`).join("\n");
+    return `${metaMessage}**NL Query:** ${q}${windowStr}\n**${label}:**\n${lines}\n${hintStr}`;
   }
-  // list
   const items = Array.isArray((res as any).result) ? (res as any).result : [];
   const table = tableForListWithExplain(items);
-  return `**NL Query:** ${q}${windowStr}\n${table}\n\n_Use "Export CSV (NL Result)" in tools to download rows._\n${hintStr}`;
+  return `${metaMessage}**NL Query:** ${q}${windowStr}\n${table}\n\n_Use "Export CSV (NL Result)" in tools to download rows._\n${hintStr}`;
 }
 
 // Small UI chip to show grounded mode/args (e.g., Forecast horizon)
@@ -1528,38 +1970,33 @@ export function ModeChip({ mode, args }: { mode?: string; args?: any }) {
   if (!mode) return null;
   const norm = String(mode);
   const pretty = (() => {
-    // Analytics
     if (norm === "analytics.forecast") {
       const h = Math.max(1, Math.min(12, Number(args?.horizon || 3)));
-      return `Analytics · Forecast (${h}m)`;
+      return `Analytics | Forecast (${h}m)`;
     }
-    if (norm === "analytics.kpis") return "Analytics · KPIs";
-    if (norm === "analytics.anomalies") return "Analytics · Anomalies";
-    if (norm === "analytics.recurring") return "Analytics · Recurring";
-    if (norm === "analytics.subscriptions") return "Analytics · Subscriptions";
-    if (norm === "analytics.budget_suggest") return "Analytics · Budget suggest";
-    if (norm === "analytics.whatif") return "Analytics · What-if";
-    // Charts
-    if (norm === "charts.summary") return "Charts · Summary";
-    if (norm === "charts.flows") return "Charts · Flows";
-    if (norm === "charts.merchants") return "Charts · Merchants";
-    if (norm === "charts.categories") return "Charts · Categories";
-    if (norm === "charts.category") return "Charts · Category";
-    // Transactions (NL)
-    if (norm === "nl_txns") return "Transactions · NL";
-    // Budgets & Reports & Insights
-    if (norm === "budgets.recommendations") return "Budgets · Recommendations";
-    if (norm === "budgets.temp") return "Budgets · Temp";
-    if (norm === "report.link") return "Report · Link";
-    if (norm === "insights.anomalies") return "Insights · Anomalies";
-    if (norm === "insights.anomalies.ignore") return "Insights · Ignore Anomalies";
-    // Fallback
+    if (norm === "analytics.kpis") return "Analytics | KPIs";
+    if (norm === "analytics.anomalies") return "Analytics | Anomalies";
+    if (norm === "analytics.recurring") return "Analytics | Recurring";
+    if (norm === "analytics.subscriptions") return "Analytics | Subscriptions";
+    if (norm === "analytics.budget_suggest") return "Analytics | Budget suggest";
+    if (norm === "analytics.whatif") return "Analytics | What-if";
+    if (norm === "charts.summary") return "Charts | Summary";
+    if (norm === "charts.flows") return "Charts | Flows";
+    if (norm === "charts.merchants") return "Charts | Merchants";
+    if (norm === "charts.categories") return "Charts | Categories";
+    if (norm === "charts.category") return "Charts | Category";
+    if (norm === "nl_txns") return "Transactions | NL";
+    if (norm === "budgets.recommendations") return "Budgets | Recommendations";
+    if (norm === "budgets.temp") return "Budgets | Temp";
+    if (norm === "report.link") return "Report | Link";
+    if (norm === "insights.anomalies") return "Insights | Anomalies";
+    if (norm === "insights.anomalies.ignore") return "Insights | Ignore anomalies";
     return norm
-      .replace("analytics.", "Analytics · ")
-      .replace("charts.", "Charts · ")
-      .replace("insights.", "Insights · ")
-      .replace("budgets.", "Budgets · ")
-      .replace("report.", "Report · ")
+      .replace("analytics.", "Analytics | ")
+      .replace("charts.", "Charts | ")
+      .replace("insights.", "Insights | ")
+      .replace("budgets.", "Budgets | ")
+      .replace("report.", "Report | ")
       .replace("_", " ");
   })();
   return (
@@ -1569,7 +2006,6 @@ export function ModeChip({ mode, args }: { mode?: string; args?: any }) {
   );
 }
 
-// Inline follow-ups under forecast reply
 export function ForecastFollowUps({ month, append, setThinking }: { month?: string; append: (msg: string, meta?: any) => void; setThinking: (b: boolean) => void; }) {
   if (!month) return null;
   return (

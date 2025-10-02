@@ -3,7 +3,9 @@ import Card from "./Card";
 import BudgetRecommendationsPanel from "./BudgetRecommendationsPanel";
 import { getBudgetCheck } from "../lib/api";
 import EmptyState from "./EmptyState";
-import HelpBadge from "./HelpBadge";
+import CardHelpTooltip from "./CardHelpTooltip";
+import { getHelpBaseText } from '@/lib/helpBaseText';
+import { t } from '@/lib/i18n';
 
 interface Props {
   /** Optional. If omitted, backend uses latest month. */
@@ -42,20 +44,20 @@ const BudgetsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
 
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-      <Card title={`Budgets — ${resolvedMonth}`}>
+  <Card title={t('ui.cards.budgets_title', { month: resolvedMonth })}>
         <div className="flex items-center justify-between mb-2">
           <h3 className="text-base font-semibold flex items-center">
-            Budgets — {resolvedMonth}
-            <HelpBadge k="cards.budgets" className="ml-2" />
+            {t('ui.cards.budgets_title', { month: resolvedMonth })}
+            <CardHelpTooltip cardId="cards.budgets" ctx={{ data }} baseText={getHelpBaseText('cards.budgets', { month: resolvedMonth })} className="ml-2" />
           </h3>
         </div>
-        {loading && <p className="text-sm text-gray-400">Loading budgets…</p>}
+        {loading && <p className="text-sm text-gray-400">{t('cards.budgets.base', { month: resolvedMonth })}</p>}
         {error && !empty && <p className="text-sm text-rose-300">Error: {error}</p>}
         {empty && !error && (
-          <EmptyState title="No budgets to show" note="Upload a CSV and/or add budget rules to see this panel." />
+          <EmptyState title={t('ui.empty.no_budgets_title')} note={t('ui.empty.no_budgets_note')} />
         )}
         {!loading && !error && !empty && items.length === 0 && (
-          <p className="text-sm text-gray-400">No budget rules yet.</p>
+          <p className="text-sm text-gray-400">{t('ui.empty.no_budgets_title')}</p>
         )}
         {!loading && !error && !empty && items.length > 0 && (
           <div className="space-y-2 text-sm">

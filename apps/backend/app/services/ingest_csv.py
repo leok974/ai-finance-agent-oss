@@ -1,5 +1,6 @@
-import csv, io, datetime as dt
-from typing import Iterable
+import csv
+import io
+import datetime as dt
 from sqlalchemy.orm import Session
 from app.orm_models import Transaction
 

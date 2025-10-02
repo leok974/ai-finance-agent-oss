@@ -1,4 +1,4 @@
-from app.db import sessionmaker, engine, SessionLocal
+from app.db import SessionLocal
 from app.orm_models import User
 from app.utils.auth import hash_password, _ensure_roles
 
@@ -24,7 +24,9 @@ def main():
         u = db.query(User).filter(User.email == email).first()
         if not u:
             u = User(email=email, password_hash=hash_password(pw))
-            db.add(u); db.commit(); db.refresh(u)
+            db.add(u)
+            db.commit()
+            db.refresh(u)
         _ensure_roles(db, u, ["admin", "analyst", "user"])
         print(f"Seeded admin: {email} / {pw}")
 

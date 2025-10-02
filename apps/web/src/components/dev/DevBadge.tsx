@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react"
-import { GitBranch, Check, Rocket, ShieldCheck, Settings2, Wrench } from "lucide-react"
+import { useDevUISoftStatus } from "@/state/useDevUI";
+import { GitBranch, Check, Rocket, ShieldCheck, Settings2, Wrench, Info } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -9,12 +10,15 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { getHealthz, type Healthz } from "@/lib/api"
+import Pill from "@/components/ui/pill"
 
 type Flags = {
   dev: boolean
   ruleTester: boolean
   mlSelftest: boolean
   planner: boolean
+  helpRephrase: boolean
 }
 
 function read(key: string, fallback = "0") {
@@ -32,7 +36,9 @@ type Props = {
 }
 
 export default function DevBadge({ branch, commit, openDevDock, onToggleDevDock }: Props) {
-  const [flags, setFlags] = useState<Flags>({ dev: true, ruleTester: true, mlSelftest: true, planner: true })
+  const [flags, setFlags] = useState<Flags>({ dev: true, ruleTester: true, mlSelftest: true, planner: true, helpRephrase: true })
+  const [open, setOpen] = useState(false)
+  const [health, setHealth] = useState<Healthz | null>(null)
 
   useEffect(() => {
     setFlags({
@@ -40,6 +46,7 @@ export default function DevBadge({ branch, commit, openDevDock, onToggleDevDock 
       ruleTester: read("FEATURE_RULE_TESTER", "1"),
       mlSelftest: read("FEATURE_ML_SELFTEST", "1"),
       planner: read("FEATURE_PLANNER", "1"),
+      helpRephrase: read("HELP_REPHRASE", (import.meta.env.VITE_HELP_REPHRASE_DEFAULT ?? '1')),
     })
   }, [])
 
@@ -50,20 +57,55 @@ export default function DevBadge({ branch, commit, openDevDock, onToggleDevDock 
 
   const reload = () => window.location.reload()
 
+  const softStatus = useDevUISoftStatus();
+
+  // Fetch health when menu opens
+  useEffect(() => {
+    let alive = true
+    if (!open) return
+    ;(async () => {
+      try {
+        const h = await getHealthz()
+        if (!alive) return
+        setHealth(h)
+      } catch {
+        if (!alive) return
+        setHealth(null)
+      }
+    })()
+    return () => { alive = false }
+  }, [open])
+
+  const inSyncRaw = (health as any)?.alembic_ok ?? (health as any)?.alembic?.in_sync ?? null
+  const inSync: boolean | null = inSyncRaw === true ? true : inSyncRaw === false ? false : null
+
   return (
-    <DropdownMenu>
+    <DropdownMenu open={open} onOpenChange={setOpen}>
       <DropdownMenuTrigger asChild>
         <Button
-          variant="secondary"
+          variant="pill-outline"
           className="h-7 gap-1 rounded-full border-white/15 bg-white/5 px-2 py-0 text-xs"
           title={branch ? `branch: ${branch}${commit ? ` @ ${commit.slice(0,7)}` : ''}` : undefined}
         >
           <GitBranch className="h-3.5 w-3.5" />
-          <span>DEV</span>
+          <span>{softStatus.soft ? 'DEV (soft)' : 'DEV'}</span>
         </Button>
       </DropdownMenuTrigger>
 
       <DropdownMenuContent align="end" className="min-w-[220px]">
+        <DropdownMenuItem onClick={() => { try { window.dispatchEvent(new Event('about:open')) } catch (_err) { /* intentionally empty: swallow to render empty-state */ } }}>
+          <Info className="mr-2 h-4 w-4" />
+          <span className="flex-1">About (Health)</span>
+          <Pill
+            tone={inSync === true ? 'accent' : inSync === false ? 'default' : 'muted'}
+            size="xs"
+            className={inSync === false ? 'bg-amber-500/10 border-amber-500/30 text-amber-300' : ''}
+          >
+            {inSync === true ? 'DB ok' : inSync === false ? 'DB out' : 'Unknown'}
+          </Pill>
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+
         {onToggleDevDock && (
           <DropdownMenuItem onClick={onToggleDevDock}>
             <Wrench className="mr-2 h-4 w-4" />
@@ -93,6 +135,12 @@ export default function DevBadge({ branch, commit, openDevDock, onToggleDevDock 
           onCheckedChange={(v) => { toggle("planner", "FEATURE_PLANNER")(!!v); reload() }}
         >
           Planner DevTool
+        </DropdownMenuCheckboxItem>
+        <DropdownMenuCheckboxItem
+          checked={flags.helpRephrase}
+          onCheckedChange={(v) => { toggle("helpRephrase", "HELP_REPHRASE")(!!v); /* no reload needed */ setFlags(s=>({...s, helpRephrase: !!v})); }}
+        >
+          Help Rephrase
         </DropdownMenuCheckboxItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem onClick={() => window.open("/docs", "_blank")}>

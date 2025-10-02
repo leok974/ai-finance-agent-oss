@@ -6,7 +6,7 @@ export function getGlobalMonth(): string | '' {
 }
 
 export function setGlobalMonth(m: string) {
-  try { localStorage.setItem(KEY, m); } catch {}
+  try { localStorage.setItem(KEY, m); } catch (_err) { /* intentionally empty: swallow to render empty-state */ }
   window.dispatchEvent(new CustomEvent(EVT, { detail: { month: m } }));
 }
 

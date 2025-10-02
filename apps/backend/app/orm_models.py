@@ -1,8 +1,23 @@
-from sqlalchemy import String, Integer, Float, Date, DateTime, Text, UniqueConstraint, func, Numeric, ForeignKey, Boolean, Index, JSON
+from sqlalchemy import String, Integer, Float, Date, DateTime, Text, UniqueConstraint, func, Numeric, ForeignKey, Boolean, Index, JSON, LargeBinary
 from sqlalchemy.orm import Mapped, mapped_column, relationship, synonym, validates
+from sqlalchemy.ext.hybrid import hybrid_property
+from app.core.crypto_state import get_dek_for_label, get_write_label
+# Guard cryptography import so hermetic tests (no compiled wheels) still load ORM.
+try:  # allow hermetic tests without cryptography
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM  # type: ignore
+except Exception:  # pragma: no cover
+    class AESGCM:  # minimal encrypt/decrypt passthrough (NOT secure – test only)
+        def __init__(self, key: bytes):
+            self._k = key
+        def encrypt(self, nonce: bytes, data: bytes, aad):  # noqa: D401
+            return data  # no-op
+        def decrypt(self, nonce: bytes, data: bytes, aad):
+            return data  # no-op
+import os
 from app.db import Base
 from datetime import datetime, date
 from app.utils.text import canonicalize_merchant
+AAD = b"txn:v1"
 
 class Transaction(Base):
     __tablename__ = "transactions"
@@ -19,6 +34,92 @@ class Transaction(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
     # NEW: SQL-side canonical merchant (indexed)
     merchant_canonical: Mapped[str | None] = mapped_column(String(256), index=True, nullable=True)
+    # NEW: Soft-delete and edit/relationship metadata
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    note: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    split_parent_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    transfer_group: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    # Encrypted fields (envelope)
+    merchant_raw_enc: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    merchant_raw_nonce: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    description_enc: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    description_nonce: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    note_enc: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    note_nonce: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    enc_label: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
+
+    # ---- Encrypted views (no schema change) ----
+    @hybrid_property
+    def description_text(self) -> str | None:
+        if not self.description_enc or not self.description_nonce:
+            return None
+        label = self.enc_label or "active"
+        dek = get_dek_for_label(label)
+        pt = AESGCM(dek).decrypt(self.description_nonce, self.description_enc, AAD)
+        return pt.decode("utf-8")
+
+    @description_text.setter
+    def description_text(self, value: str | None):
+        if value is None:
+            self.description_enc = None
+            self.description_nonce = None
+            self.enc_label = None
+            return
+        label = get_write_label()
+        dek = get_dek_for_label(label)
+        nonce = os.urandom(12)
+        ct = AESGCM(dek).encrypt(nonce, value.encode("utf-8"), AAD)
+        self.description_enc = ct
+        self.description_nonce = nonce
+        self.enc_label = label
+
+    @hybrid_property
+    def merchant_raw_text(self) -> str | None:
+        if not self.merchant_raw_enc or not self.merchant_raw_nonce:
+            return None
+        label = self.enc_label or "active"
+        dek = get_dek_for_label(label)
+        pt = AESGCM(dek).decrypt(self.merchant_raw_nonce, self.merchant_raw_enc, AAD)
+        return pt.decode("utf-8")
+
+    @merchant_raw_text.setter
+    def merchant_raw_text(self, value: str | None):
+        if value is None:
+            self.merchant_raw_enc = None
+            self.merchant_raw_nonce = None
+            # don't clear enc_label here; description/note may still be set
+            return
+        label = get_write_label()
+        dek = get_dek_for_label(label)
+        nonce = os.urandom(12)
+        ct = AESGCM(dek).encrypt(nonce, value.encode("utf-8"), AAD)
+        self.merchant_raw_enc = ct
+        self.merchant_raw_nonce = nonce
+        self.enc_label = label
+
+    @hybrid_property
+    def note_text(self) -> str | None:
+        if not self.note_enc or not self.note_nonce:
+            return None
+        label = self.enc_label or "active"
+        dek = get_dek_for_label(label)
+        pt = AESGCM(dek).decrypt(self.note_nonce, self.note_enc, AAD)
+        return pt.decode("utf-8")
+
+    @note_text.setter
+    def note_text(self, value: str | None):
+        if value is None:
+            self.note_enc = None
+            self.note_nonce = None
+            # don't clear enc_label here; description/merchant may still be set
+            return
+        label = get_write_label()
+        dek = get_dek_for_label(label)
+        nonce = os.urandom(12)
+        ct = AESGCM(dek).encrypt(nonce, value.encode("utf-8"), AAD)
+        self.note_enc = ct
+        self.note_nonce = nonce
+        self.enc_label = label
 
     __table_args__ = (
         UniqueConstraint("date", "amount", "description", name="uq_txn_dedup"),
@@ -145,6 +246,23 @@ class RuleSuggestion(Base):
         Index("ix_rule_suggestions_unique_pair", "merchant_norm", "category", unique=True),
     )
 
+# --- NEW: EncryptionKey (wrapped DEKs) -----------------------------------
+class EncryptionKey(Base):
+    __tablename__ = "encryption_keys"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    label: Mapped[str] = mapped_column(String(32), unique=True, index=True, nullable=False)
+    dek_wrapped: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    # Nullable when DEK is wrapped by KMS (nonce not used)
+    dek_wrap_nonce: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+# --- NEW: EncryptionSettings (broadcast current write label) -------------
+class EncryptionSettings(Base):
+    __tablename__ = "encryption_settings"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    write_label: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
 # --- NEW: Budget -------------------------------------------------------------
 class Budget(Base):
     __tablename__ = "budgets"
@@ -254,4 +372,23 @@ class OAuthAccount(Base):
     email: Mapped[str | None] = mapped_column(String(255), nullable=True)
     __table_args__ = (
         UniqueConstraint("provider", "provider_user_id", name="uq_oauth_provider_user"),
+    )
+
+# --- NEW: HelpCache (DB-backed help/describe caching for ETag + persistence) ---
+class HelpCache(Base):
+    __tablename__ = "help_cache"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    # Unique logical cache key (panel|mode|month|filters_hash|r=flag)
+    cache_key: Mapped[str] = mapped_column(String(512), nullable=False, unique=True, index=True)
+    # Strong ETag (hash/version) surfaced to clients for 304 negotiation
+    etag: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    # JSON payload (text, rephrased flag, model/provider meta, fallback_reason etc.)
+    payload: Mapped[dict] = mapped_column(JSON, nullable=False)
+    # Expiry timestamp (UTC). Rows may be lazily pruned.
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+    __table_args__ = (
+        # Composite index to accelerate eviction scans (optional but helpful)
+        Index("ix_help_cache_expires_key", "expires_at", "cache_key"),
     )

@@ -1,84 +1,108 @@
-from typing import List, Dict, Any
+"""Deterministic tests for /charts/month_summary in onboarding / in-memory mode.
+
+These tests isolate a brand-new in-memory SQLite DB per test module so that
+DB fallback logic never interferes with validating the in-memory path or
+the empty-state contract.
+"""
+
 from fastapi.testclient import TestClient
+import pytest
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 
-# Import the running app
-from app.main import app  # noqa
-
-
-def _set_txns(items: List[Dict[str, Any]]):
-    """Helper to overwrite in-memory txns safely."""
-    app.state.txns = list(items)
-
-
-def test_month_summary_empty_returns_400_or_null_month():
-    """
-    Contract: When there are no transactions loaded,
-      /charts/month_summary MUST either:
-        - return 400 {"detail":"No transactions loaded"}
-        - OR return 200 {"month": null, totals all 0}
-    so the frontend can show onboarding instead of crashing.
-    """
-    # Save & clear
-    original_txns = getattr(app.state, "txns", [])
-    _set_txns([])
-
-    try:
-        client = TestClient(app)
-        r = client.get("/charts/month_summary")
-        if r.status_code == 400:
-            data = r.json()
-            assert "detail" in data
-            assert "No transactions loaded" in data["detail"]
-        else:
-            # Allow an alternative "empty payload" behavior
-            assert r.status_code == 200
-            data = r.json()
-            assert data.get("month") in (None, "", "null")
-            assert data.get("total_spend", 0) == 0
-            assert data.get("total_income", 0) == 0
-            assert data.get("net", 0) == 0
-            # categories should be list (possibly empty)
-            assert isinstance(data.get("categories", []), list)
-    finally:
-        # Restore
-        _set_txns(original_txns)
+from app.main import app
+from app.utils.auth import get_current_user
+import app.db as app_db
+from app.db import Base, get_db
 
 
-def test_month_summary_with_data_defaults_to_latest_month_and_computes_totals():
-    """
-    Contract: With transactions present and no `month` query,
-    endpoint defaults to the latest YYYY-MM and computes totals.
-    """
-    original_txns = getattr(app.state, "txns", [])
-    # Craft small dataset spanning two months
+@pytest.fixture()
+def isolated_db(monkeypatch):
+    engine = create_engine(
+        "sqlite+pysqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+        future=True,
+    )
+    Base.metadata.create_all(engine)
+    SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, future=True)
+
+    def _override_get_db():
+        db = SessionLocal()
+        try:
+            yield db
+        finally:
+            db.close()
+
+    # Patch global engine/session for any direct imports
+    monkeypatch.setattr(app_db, "engine", engine, raising=False)
+    monkeypatch.setattr(app_db, "SessionLocal", SessionLocal, raising=False)
+    app.dependency_overrides[get_db] = _override_get_db
+    yield
+    app.dependency_overrides.pop(get_db, None)
+    Base.metadata.drop_all(engine)
+
+
+@pytest.fixture()
+def client(isolated_db):  # explicit override chain per test here
+    app.dependency_overrides[get_current_user] = lambda: object()
+    with TestClient(app) as c:
+        yield c
+    app.dependency_overrides.pop(get_current_user, None)
+
+
+def test_month_summary_empty_returns_null_payload(client):
+    # Ensure in-memory is empty
+    app.state.txns = []
+    r = client.get("/charts/month_summary")
+    assert r.status_code == 200  # With no DB rows & no in-memory, we return null/zero payload
+    data = r.json()
+    assert data.get("month") in (None, "", "null")
+    assert data.get("total_spend") in (0, 0.0)
+    assert data.get("total_income") in (0, 0.0)
+    assert data.get("net") in (0, 0.0)
+
+
+def test_month_summary_with_inmemory_defaults_to_latest(client):
     sample = [
-        # Older month
-        {"id": 1, "date": "2025-07-30", "amount": 100.00, "merchant": "ACME", "description": "Rebate", "category": "Income"},
-        # Latest month
-        {"id": 2, "date": "2025-08-02", "amount": 82.45, "merchant": "Stripe", "description": "Payout", "category": "Income"},
-        {"id": 3, "date": "2025-08-05", "amount": -30.00, "merchant": "Grocer", "description": "Food", "category": "Groceries"},
-        {"id": 4, "date": "2025-08-07", "amount": -12.50, "merchant": "Chipotle", "description": "Burrito", "category": "Dining"},
+        {"id": 1, "date": "2099-10-30", "amount": 100.00, "merchant": "ACME", "description": "Rebate", "category": "Income"},
+        {"id": 2, "date": "2099-11-02", "amount": 82.45, "merchant": "Stripe", "description": "Payout", "category": "Income"},
+        {"id": 3, "date": "2099-11-05", "amount": -30.00, "merchant": "Grocer", "description": "Food", "category": "Groceries"},
+        {"id": 4, "date": "2099-11-07", "amount": -12.50, "merchant": "Chipotle", "description": "Burrito", "category": "Dining"},
     ]
-    _set_txns(sample)
+    app.state.txns = list(sample)
+    r = client.get("/charts/month_summary")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["month"] == "2099-11"  # latest month from sample
+    assert round(float(data["total_income"]), 2) == 82.45
+    assert round(float(data["total_spend"]), 2) == 42.5
+    assert round(float(data["net"]), 2) == round(82.45 - 42.5, 2)
+    cats = {c["name"]: c["amount"] for c in data.get("categories", [])}
+    assert round(cats.get("Groceries", 0.0), 2) == 30.0
+    assert round(cats.get("Dining", 0.0), 2) == 12.5
 
-    try:
-        client = TestClient(app)
-        r = client.get("/charts/month_summary")
-        assert r.status_code == 200
-        data = r.json()
 
-        # Should choose latest month automatically
-        assert data["month"] == "2025-08"
+def test_month_summary_no_leakage_after_clearing(client):
+    populated = [
+        {"id": 10, "date": "2099-12-01", "amount": 500.0, "merchant": "Stripe", "category": "Income"},
+        {"id": 11, "date": "2099-12-03", "amount": -42.0, "merchant": "Market", "category": "Groceries"},
+    ]
+    app.state.txns = list(populated)
+    r1 = client.get("/charts/month_summary")
+    assert r1.status_code == 200
+    d1 = r1.json()
+    assert d1.get("month") == "2099-12"
+    assert d1.get("total_income") == 500.0
+    assert d1.get("total_spend") == 42.0
 
-        # Totals: expenses are negative numbers summed by abs()
-        # income = 82.45 ; spend = 30 + 12.5 = 42.5 ; net = 82.45 - 42.5 = 39.95
-        assert round(float(data["total_income"]), 2) == 82.45
-        assert round(float(data["total_spend"]), 2) == 42.5
-        assert round(float(data["net"]), 2) == round(82.45 - 42.5, 2)
-
-        # Categories should include Groceries & Dining with amounts
-        cats = {c["name"]: c["amount"] for c in data.get("categories", [])}
-        assert round(cats.get("Groceries", 0.0), 2) == 30.0
-        assert round(cats.get("Dining", 0.0), 2) == 12.5
-    finally:
-        _set_txns(original_txns)
+    # Clear and re-query
+    app.state.txns = []
+    r2 = client.get("/charts/month_summary")
+    assert r2.status_code == 200
+    d2 = r2.json()
+    assert d2.get("month") in (None, "", "null")
+    assert d2.get("total_income") in (0, 0.0)
+    assert d2.get("total_spend") in (0, 0.0)
+    assert d2.get("net") in (0, 0.0)

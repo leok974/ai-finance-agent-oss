@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { useAuth } from "@/state/auth";
+import { Button } from "@/components/ui/button";
 
 const LoginForm: React.FC = () => {
   const { user, login, register, logout } = useAuth();
@@ -13,7 +14,7 @@ const LoginForm: React.FC = () => {
     return (
       <div className="flex items-center gap-2 text-sm">
         <span className="opacity-80">{user.email}</span>
-        <button className="btn btn-ghost btn-xs" onClick={logout}>Logout</button>
+  <Button variant="pill-outline" onClick={logout}>Logout</Button>
       </div>
     );
   }
@@ -50,29 +51,29 @@ const LoginForm: React.FC = () => {
         value={password}
         onChange={(e) => setPassword(e.target.value)}
       />
-      <button className="btn btn-primary btn-xs" type="submit" disabled={loading}>
+      <Button variant="pill-primary" type="submit" disabled={loading}>
         {loading ? (mode === "login" ? "…" : "…") : mode === "login" ? "Login" : "Register"}
-      </button>
-      <button type="button" className="btn btn-ghost btn-xs" onClick={() => setMode(mode === "login" ? "register" : "login")}>
+      </Button>
+      <Button type="button" variant="pill-outline" onClick={() => setMode(mode === "login" ? "register" : "login")}>
         {mode === "login" ? "Register" : "Login"}
-      </button>
+      </Button>
       {error && <span className="text-red-500 text-xs ml-2">{error}</span>}
       {/* OAuth buttons */}
       <div className="flex items-center gap-1 ml-2">
-        <button type="button" className="btn btn-ghost btn-xs"
+        <Button type="button" variant="pill-outline"
           onClick={() => {
             const base = (import.meta as any)?.env?.VITE_API_BASE || "";
             window.location.href = `${base}/auth/github/start`;
           }}>
           GitHub
-        </button>
-        <button type="button" className="btn btn-ghost btn-xs"
+        </Button>
+        <Button type="button" variant="pill-outline"
           onClick={() => {
             const base = (import.meta as any)?.env?.VITE_API_BASE || "";
             window.location.href = `${base}/auth/google/start`;
           }}>
           Google
-        </button>
+        </Button>
       </div>
     </form>
   );

@@ -2,7 +2,8 @@ import * as React from "react";
 import Card from "./Card";
 import { getAnomalies, type Anomaly } from "@/lib/api";
 import { useMonth } from "@/context/MonthContext";
-import HelpBadge from "./HelpBadge";
+import CardHelpTooltip from "./CardHelpTooltip";
+import { getHelpBaseText } from '@/lib/helpBaseText';
 
 export default function InsightsAnomaliesCard() {
   const [loading, setLoading] = React.useState(false);
@@ -31,10 +32,16 @@ export default function InsightsAnomaliesCard() {
   }, [selectedMonth]);
 
   return (
-    <div className="panel-no-border p-3 md:p-4" data-explain-key="cards.insights" data-month={month || undefined}>
+    <div
+      className="panel-no-border p-3 md:p-4 help-spot"
+      data-explain-key="cards.insights"
+      data-help-key="anomalies.month"
+      data-month={month || undefined}
+      data-help-id={month || undefined}
+    >
       <Card className="border-0 bg-transparent shadow-none p-0">
       <div className="flex items-center justify-between mb-2">
-        <h3 className="text-lg font-semibold flex items-center">⚠ Unusual this month <HelpBadge k="cards.insights" className="ml-2" /></h3>
+  <h3 className="text-lg font-semibold flex items-center">⚠ Unusual this month <CardHelpTooltip cardId="cards.insights" month={month || undefined} ctx={{ data }} baseText={getHelpBaseText('cards.insights', { month: month || undefined })} className="ml-2" /></h3>
         {month && <span className="text-xs opacity-70">{month}</span>}
       </div>
 

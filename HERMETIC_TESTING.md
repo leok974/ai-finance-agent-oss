@@ -137,6 +137,89 @@ python -m pytest tests/test_agent_chat.py -v
 python validate_hermetic.py
 ```
 
+### Fast Targeted Runs via PowerShell Runner (-Pattern)
+
+The hermetic PowerShell runner `apps/backend/scripts/test.ps1` now supports a `-Pattern` parameter that maps to `pytest -k` expressions for quick, surgical iterations.
+
+Usage examples (run from repo root or anywhere):
+
+```powershell
+# Run any test whose name contains 'onboarding' or 'db_fallback'
+apps/backend/scripts/test.ps1 -Pattern "onboarding,db_fallback"
+
+# Require ALL tokens (logical AND) instead of OR using -PatternAll
+apps/backend/scripts/test.ps1 -Pattern "agent,redirect" -PatternAll
+
+# Add extra pytest args (will merge with -Pattern derived -k)
+apps/backend/scripts/test.ps1 -Pattern "context" -PytestArgs "-vv --maxfail=1"
+```
+
+Rules & Notes:
+1. Tokens are split on commas or whitespace.
+2. Default semantics: OR. Use `-PatternAll` to require all tokens (AND).
+3. Tokens are wrapped in single quotes in the generated `-k` expression to avoid precedence surprises.
+4. If you pass your own `-PytestArgs` that already include `-k`, the script still appends the pattern-driven one—avoid mixing two `-k` clauses.
+5. Quiet mode `-q` is added automatically unless you supply another verbosity flag (`-v`, `-vv`, etc.).
+
+Generated example:
+`-Pattern "onboarding,db_fallback"` -> `pytest -k 'onboarding' or 'db_fallback' -q`
+
+This keeps iteration loops tight without editing file names or using long `pytest -k` manually.
+
+### Dev Dependency Caching
+
+The PowerShell runner now caches the dev dependency install step to avoid redundant `pip install` calls on every invocation.
+
+Mechanism:
+1. Compute SHA256 over the contents of `requirements-dev.txt` + the active Python version (major.minor.micro).
+2. Store the first 32 hex chars in `apps/backend/.cache/requirements-dev.hash`.
+3. Skip reinstall if the hash matches on the next run.
+
+Force reinstall:
+```powershell
+apps/backend/scripts/test.ps1 -ForceDeps
+```
+
+When it runs you will see one of:
+- `[deps] Installing dev dependencies (hash miss or forced)` (cache miss / forced)
+- `[deps] Cache hit (requirements-dev unchanged for Python X.Y.Z)` (cache hit)
+
+Edge Cases / Notes:
+- If Python patch version changes (e.g., 3.13.0 → 3.13.1) the cache is invalidated automatically.
+- Deleting the `.cache/requirements-dev.hash` file triggers a reinstall.
+- Use `-ForceDeps` after manually altering the virtual environment (e.g., `pip uninstall` experimentation) to reconcile.
+
+### Explicit File Targeting (-Files)
+
+For even faster iteration skip discovery of the whole tree and point directly at one or more test files:
+
+```powershell
+# Single file
+apps/backend/scripts/test.ps1 -Files tests/test_onboarding_empty_state.py
+
+# Multiple (comma or space separated) + pattern AND filtering
+apps/backend/scripts/test.ps1 -Files "tests/test_onboarding_empty_state.py,tests/test_month_summary_db_fallback.py" -Pattern onboarding -PatternAll
+```
+
+Behavior:
+1. `-Files` tokens are resolved relative to `apps/backend` if not absolute.
+2. They are appended to the pytest invocation after any `-k` expression.
+3. Can be combined with `-Pattern` / `-PatternAll` (pytest will first limit collection to those files then apply `-k`).
+4. Empty / missing files are ignored silently (could be hardened later if desired).
+
+### Virtualenv Guard
+
+If the expected interpreter path (`.venv/Script/python.exe`) is missing you now see a clear message:
+```
+[venv] Python not found at expected path: .venv/\Scripts/\python.exe
+[venv] Activating existing .venv...
+```
+or fallback notice:
+```
+[venv] Falling back to system python: C:\Python313\python.exe
+```
+and a hard error if no interpreter is found.
+
 ## ⚡ **Performance & Reliability**
 
 ### Benefits:
@@ -181,3 +264,68 @@ All tests now pass with:
 - ✅ Complete coverage of all features
 
 The agent chat system is now production-ready with comprehensive, fast, and reliable test coverage! 🎉
+
+## 🔗 Integration Marker (`@pytest.mark.integration`)
+
+While most hermetic tests isolate a single endpoint with mocks, we introduced an `integration` marker for lightweight, end‑to‑end flows that exercise multiple real routes together without external services.
+
+### Current Example
+- `test_unknowns_categorize_pipeline` — verifies the ingest → unknown detection → categorize → disappearance lifecycle.
+
+### When to Use
+- You need to confirm a minimal cross-endpoint contract (e.g., create → mutate → query) still holds.
+- Pure unit or single-endpoint tests would miss state transitions spanning multiple routers or DB side‑effects.
+
+### When NOT to Use
+- Long‑running analytics / forecasting / ML experiments (use `ml` or `slow`).
+- Anything requiring external APIs or network (keep hermetic discipline).
+
+### Running Only Integration Flows
+```bash
+pytest -m integration -q
+```
+
+### Adding a New Integration Test
+1. Keep it under ~200 lines and <1s runtime.
+2. Avoid sleeps / polling loops—interact directly with the DB if needed for setup.
+3. Prefer explicit assertions on final state rather than repeating unit assertions already covered elsewhere.
+4. Tag with:
+```python
+@pytest.mark.integration
+def test_new_flow(...):
+    ...
+```
+
+### Philosophy
+Small, surgical integration tests provide confidence that core lifecycle invariants still hold—without devolving into slow, brittle full‑stack suites.
+
+## 🧹 Legacy ML Test Removal & Forecast Hardening (Sept 2025)
+
+### Removed Legacy Files
+The following legacy `/ml/*` endpoint tests were fully skipped and have now been deleted to reduce noise and maintenance overhead:
+- `tests/test_ml_unknown_regression_canary.py`
+- `tests/test_ml_unknown_excluded.py`
+- `tests/test_ml_unknown_filtering_ingest.py`
+
+**Rationale**:
+- The `/ml/*` endpoints they targeted were replaced by `/agent/tools/*` flows.
+- File‑level `pytestmark = skip(...)` meant the code inside never executed (dead weight).
+- Canary + exclusion logic is superseded by newer categorization and integration tests (see `test_unknowns_categorize_pipeline`).
+
+### SARIMAX Forecast Test Stabilization
+Changes applied to keep the forecasting path deterministic and warning‑light:
+- Added explicit `DateTimeIndex` with `freq=MS` for net series to avoid frequency inference warnings.
+- Implemented dynamic seasonal disable when history length < full seasonal period.
+- Added NaN/Inf sanitation + minimal jitter if the raw SARIMAX forecast degenerates to a constant (avoids falling back silently to EMA while still signaling variability).
+- Simplified and bounded synthetic seed data to 18 months with mild seasonality (earlier 36/24 month variants created unnecessary parameter estimation churn & warnings).
+
+### Current Warning Posture
+- Remaining statsmodels warnings are filtered in `pytest.ini` (targeted patterns only) to keep actionable application warnings visible.
+- Total warning count stabilized (post‑cleanup) without masking potential future regressions in application code.
+
+### Guidance Going Forward
+- Prefer adding focused integration tests (tagged `@pytest.mark.integration`) over re‑introducing broad legacy ML suites.
+- When adding new statistical or ML tests, keep seeds small, explicit, and deterministic; clamp or sanitize model outputs before JSON serialization.
+- Treat any newly unfiltered statsmodels warning as a prompt to either (a) stabilize input data, or (b) deliberately filter with justification in `pytest.ini`.
+
+---

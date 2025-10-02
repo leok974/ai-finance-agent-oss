@@ -1,6 +1,7 @@
 import * as React from "react";
 import { createPortal } from "react-dom";
 import { useExplain } from "@/hooks/useExplain";
+import HelpLayer from "@/features/help/HelpLayer";
 
 export default function HelpMode() {
   const [on, setOn] = React.useState(false);
@@ -11,20 +12,11 @@ export default function HelpMode() {
   React.useEffect(() => {
     const keyHandler = (e: KeyboardEvent) => { if (e.key === "?") setOn(v => !v); };
     const toggle = () => setOn(v => !v);
-    const explainEvt = (e: Event) => {
-      const detail = (e as CustomEvent).detail || {};
-  const key = detail.key as string | undefined;
-  const month = detail.month as string | undefined;
-      if (!key) return;
-  explainApi.explain(key, { month, withContext: true });
-    };
     window.addEventListener("keydown", keyHandler);
     window.addEventListener("help-mode:toggle", toggle as any);
-    window.addEventListener("help-mode:explain", explainEvt as any);
     return () => {
       window.removeEventListener("keydown", keyHandler);
       window.removeEventListener("help-mode:toggle", toggle as any);
-      window.removeEventListener("help-mode:explain", explainEvt as any);
     };
   }, []);
 
@@ -38,29 +30,7 @@ export default function HelpMode() {
     }
   }, [on]);
 
-  React.useEffect(() => {
-    if (!on) return;
-    // Add halo classes
-    const nodes = Array.from(document.querySelectorAll("[data-explain-key]")) as HTMLElement[];
-    nodes.forEach((el) => el.classList.add("ring-2","ring-blue-400","rounded-lg","relative"));
-    // Click-to-explain: delegate at document level
-    const onClick = (e: MouseEvent) => {
-      const t = e.target as HTMLElement | null;
-      const el = t?.closest?.("[data-explain-key]") as HTMLElement | null;
-      if (!el || !document.body.contains(el)) return;
-      const key = el.getAttribute("data-explain-key") || "";
-      const monthAttr = el.getAttribute("data-month") || undefined;
-      window.dispatchEvent(new CustomEvent("help-mode:explain", { detail: { key, month: monthAttr } }));
-      e.preventDefault();
-      e.stopPropagation();
-    };
-    document.addEventListener("click", onClick, true);
-    return () => {
-      // cleanup
-      nodes.forEach((el) => el.classList.remove("ring-2","ring-blue-400","rounded-lg","relative"));
-      document.removeEventListener("click", onClick, true);
-    };
-  }, [on]);
+  // Click handling is now provided by AppHelpMode/useHelpMode.
 
   React.useEffect(() => {
     if (on) {
@@ -73,10 +43,10 @@ export default function HelpMode() {
 
   return createPortal(
     <div className="fixed inset-0 z-[60] pointer-events-none" aria-hidden={false}>
-      <div className="absolute inset-0 bg-background/50 backdrop-blur-sm" />
+      <HelpLayer active={on} />
       <div
         ref={dialogRef}
-        className="pointer-events-auto fixed bottom-4 right-4 rounded-xl border bg-background p-3 shadow-xl"
+        className="pointer-events-auto fixed bottom-4 right-4 rounded-xl border bg-background p-3 shadow-xl z-[9600]"
         role="dialog"
         aria-modal="true"
         tabIndex={-1}

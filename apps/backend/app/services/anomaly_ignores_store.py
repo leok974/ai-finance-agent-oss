@@ -17,5 +17,6 @@ def remove_ignore(db: Session, category: str) -> List[str]:
     cat = category.strip()
     row = db.query(AnomalyIgnore).filter(AnomalyIgnore.category == cat).one_or_none()
     if row:
-        db.delete(row); db.commit()
+        db.delete(row)
+        db.commit()
     return list_ignores(db)

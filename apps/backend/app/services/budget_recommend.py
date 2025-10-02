@@ -2,10 +2,10 @@
 from __future__ import annotations
 from collections import defaultdict
 from datetime import date
-from typing import Dict, List, Tuple, Any, Iterable, Optional
+from typing import Dict, List, Tuple, Any, Optional
 
 from sqlalchemy.orm import Session
-from sqlalchemy import func, and_, extract
+from sqlalchemy import func, and_
 
 # Reuse your existing ORM model import path
 from app.orm_models import Transaction  # adjust import if your project differs

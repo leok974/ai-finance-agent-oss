@@ -1,5 +1,5 @@
-from fastapi import APIRouter, Depends, Query, HTTPException
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, Depends, Query, HTTPException, Request
+from pydantic import BaseModel, Field, ConfigDict
 from sqlalchemy.orm import Session
 
 from app.db import get_db
@@ -13,28 +13,52 @@ from app.services.charts_data import (
 from app.services.charts_data import get_category_timeseries
 from app.utils.auth import get_current_user
 
-router = APIRouter()
+router = APIRouter(prefix="/charts", tags=["charts"])
 
 
 @router.get("/month_summary", dependencies=[Depends(get_current_user)])
-def month_summary(month: str | None = Query(None, pattern=r"^\d{4}-\d{2}$"), db: Session = Depends(get_db)):
-    if not month:
-        # No explicit month: prefer legacy in-memory behavior for compatibility with onboarding
-        try:
-            from app.main import app as _app
+def month_summary(
+    month: str | None = Query(None, pattern=r"^\d{4}-\d{2}$"),
+    db: Session = Depends(get_db),
+    request: Request = None,  # type: ignore[assignment]
+):
+    """Month financial summary.
+
+    Behavior matrix:
+    - Explicit ?month=YYYY-MM  -> always DB-backed summary for that month (raises if not found upstream).
+    - No month param & in-memory txns populated -> derive latest from in-memory (onboarding / quick preview path).
+    - No month param & in-memory empty:
+         * If DB has any txn months -> fallback to DB latest summary
+         * Else -> return null/zero payload for onboarding UI.
+    """
+    if month:
+        return srv_get_month_summary(db, month)
+
+    # No explicit month: inspect in-memory first
+    latest_mem: str | None = None
+    month_payload = {"month": None, "total_spend": 0.0, "total_income": 0.0, "net": 0.0, "categories": []}
+    try:  # in-memory path (never raises outward)
+        # Prefer request.app.state if available so tests mutating app.state.txns
+        # after import are reflected. Fall back to late import if request absent.
+        if request is not None:
+            txns = getattr(request.app.state, "txns", None)
+        else:
+            from app.main import app as _app  # fallback
             txns = getattr(_app.state, "txns", None)
-            if txns:
-                # compute latest month from in-memory txns
-                dates = [t.get("date", "") for t in txns if isinstance(t, dict) and t.get("date")]
-                if not dates:
-                    return {"month": None, "total_spend": 0.0, "total_income": 0.0, "net": 0.0, "categories": []}
-                latest = max(dates)[:7]
-                # filter to that month and compute aggregates
-                month_txns = [t for t in txns if isinstance(t, dict) and str(t.get("date", "")).startswith(latest)]
+        if txns:
+            dates = [t.get("date", "") for t in txns if isinstance(t, dict) and t.get("date")]
+            if dates:
+                latest_mem = max(dates)[:7]
+                # Aggregate only that month
                 spend = 0.0
                 income = 0.0
                 cats: dict[str, float] = {}
-                for t in month_txns:
+                for t in txns:
+                    if not isinstance(t, dict):
+                        continue
+                    d = str(t.get("date", ""))
+                    if not d.startswith(latest_mem):
+                        continue
                     amt = float(t.get("amount", 0) or 0)
                     cat = (t.get("category") or "Unknown")
                     if amt < 0:
@@ -44,21 +68,27 @@ def month_summary(month: str | None = Query(None, pattern=r"^\d{4}-\d{2}$"), db:
                     elif amt > 0:
                         income += amt
                 categories = [{"name": k, "amount": round(v, 2)} for k, v in cats.items()]
-                return {
-                    "month": latest,
+                month_payload = {
+                    "month": latest_mem,
                     "total_spend": round(spend, 2),
                     "total_income": round(income, 2),
                     "net": round(income - spend, 2),
                     "categories": categories,
                 }
-            else:
-                # No in-memory txns -> return empty payload (even if DB has rows) to satisfy onboarding flow
-                return {"month": None, "total_spend": 0.0, "total_income": 0.0, "net": 0.0, "categories": []}
-        except Exception:
-            return {"month": None, "total_spend": 0.0, "total_income": 0.0, "net": 0.0, "categories": []}
-    # Explicit month provided -> use DB-backed summary
-    m = month
-    return srv_get_month_summary(db, m)
+    except Exception:
+        pass  # fall through to DB / empty fallback
+
+    if latest_mem is not None:
+        return month_payload
+
+    # In-memory empty: try DB latest
+    try:
+        latest_db = latest_month_str(db)
+    except Exception:
+        latest_db = None
+    if latest_db:
+        return srv_get_month_summary(db, latest_db)
+    return month_payload
 
 
 @router.get("/month_merchants")
@@ -87,22 +117,26 @@ def spending_trends(months: int = Query(6, ge=1, le=24), db: Session = Depends(g
 
 
 class CategoryPoint(BaseModel):
-    month: str = Field(..., description='Month key "YYYY-MM"', example="2025-09")
+    month: str = Field(..., description='Month key "YYYY-MM"', json_schema_extra={"examples":["2025-09"]})
     amount: float = Field(..., description="Total expense magnitude for this month")
 
 
 class CategorySeriesResp(BaseModel):
-    category: str = Field(..., description="Category name", example="Groceries")
-    months: int = Field(..., ge=1, le=36, description="Lookback window in months", example=6)
+    category: str = Field(..., description="Category name", json_schema_extra={"examples":["Groceries"]})
+    months: int = Field(..., ge=1, le=36, description="Lookback window in months", json_schema_extra={"examples":[6]})
     series: list[CategoryPoint] = Field(default_factory=list, description="Time series")
 
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "examples": [{
-                "category":"Groceries","months":6,
-                "series":[{"month":"2025-04","amount":420.0},{"month":"2025-05","amount":390.0}]
+                "category": "Groceries", "months": 6,
+                "series": [
+                    {"month": "2025-04", "amount": 420.0},
+                    {"month": "2025-05", "amount": 390.0}
+                ]
             }]
         }
+    )
 
 
 @router.get(
@@ -111,8 +145,8 @@ class CategorySeriesResp(BaseModel):
     summary="Category time series (expenses only)"
 )
 def chart_category(
-    category: str = Query(..., min_length=1, description="Category to chart", example="Groceries"),
-    months: int = Query(6, ge=1, le=36, description="Months of history to include", example=6),
+    category: str = Query(..., min_length=1, description="Category to chart"),
+    months: int = Query(6, ge=1, le=36, description="Months of history to include"),
     db: Session = Depends(get_db),
 ):
     """
