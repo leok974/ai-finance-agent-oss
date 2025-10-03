@@ -62,6 +62,7 @@ services:
       PRIMARY_MODEL_TAG: "gpt-oss:20b"
       BACKEND_BRANCH: ${BACKEND_BRANCH:-unknown}
       BACKEND_COMMIT: ${BACKEND_COMMIT:-unknown}
+      SUGGESTIONS_ENABLED: "1"
     depends_on:
       postgres:
         condition: service_healthy
@@ -100,7 +101,6 @@ services:
       - "127.0.0.1:80:80"
       - "127.0.0.1:443:443"
     user: "101:101"
-    read_only: true
     cap_drop: ["ALL"]
     security_opt:
       - no-new-privileges:true
@@ -154,10 +154,12 @@ services:
   ollama:
     image: ollama/ollama:latest
     restart: unless-stopped
-    # Enable NVIDIA GPU acceleration (requires Docker Desktop GPU support enabled)
+    # Docker Desktop reliable GPU passthrough
     gpus: all
     environment:
       - OLLAMA_KEEP_ALIVE=5m
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
     ports:
       - "11434:11434"
     volumes:
