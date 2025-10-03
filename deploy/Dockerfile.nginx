@@ -57,5 +57,6 @@ RUN rm -f /etc/nginx/conf.d/default.conf 2>/dev/null || true
 COPY ./deploy/docker-entrypoint.d /docker-entrypoint.d
 COPY ./nginx/entrypoint.d/10-csp-render.sh /docker-entrypoint.d/10-csp-render.sh
 COPY ./nginx/entrypoint.d/99-run.sh /docker-entrypoint.d/99-run.sh
+COPY ./nginx/conf.d/security-headers.conf /etc/nginx/conf.d/security-headers.conf
 RUN chmod +x /docker-entrypoint.d/*.sh
 # Runtime CSP hashing only (no build-time pre-render)
