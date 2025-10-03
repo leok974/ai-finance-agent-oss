@@ -1,0 +1,16 @@
+services:
+  ollama:
+    environment:
+      OLLAMA_KEEP_ALIVE: 5m
+    networks:
+      - shared-ollama
+
+  nginx:
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=16m,uid=101,gid=101,mode=1777
+      # existing tmpfs mounts for cache/run already defined in base prod file
+
+networks:
+  shared-ollama:
+    external: true
