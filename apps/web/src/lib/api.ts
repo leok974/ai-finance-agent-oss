@@ -56,9 +56,10 @@ function monthsBack(anchor: string, count: number): string[] {
 
 // Resolve latest month directly from new meta endpoint
 export async function resolveMonth(): Promise<string> {
+  // Canonical POST; server still provides GET compat temporarily
   try {
-    const r: any = await http('/agent/tools/meta/latest_month');
-    return r?.month || '';
+    const r: any = await fetchJSON('/agent/tools/meta/latest_month', { method: 'POST', body: JSON.stringify({}) });
+    return r?.month ?? r?.latest_month ?? '';
   } catch { return ''; }
 }
 export const resolveMonthFromCharts = resolveMonth; // alias for backward references
@@ -98,6 +99,13 @@ function withAuthHeaders(headers?: HeadersInit): HeadersInit {
   }
   base["Authorization"] = `Bearer ${at}`;
   return base;
+}
+
+const RATE_LIMIT_MAX_RETRIES = 4;
+const RATE_LIMIT_BACKOFF_BASE_MS = 500;
+
+function sleep(ms: number) {
+  return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 // ---------------------------
@@ -172,22 +180,47 @@ export const apiGet = async <T = any>(path: string): Promise<T> => http<T>(path)
 
 export async function apiPost<T = any>(path: string, body?: any, init?: RequestInit): Promise<T> {
   const url = API_BASE ? `${API_BASE}${path}` : path;
-  const headers = withAuthHeaders({ 'Content-Type': 'application/json', ...(init?.headers || {}) as any });
-  let res = await fetch(url, withCreds({
-    ...init,
-    method: 'POST',
-    headers,
-    body: body === undefined ? undefined : JSON.stringify(body),
-  }));
-  if (res.status === 401) {
-    try { await fetch(`${API_BASE || ''}/auth/refresh`, withCreds({ method: 'POST' })); } catch (_err) { /* intentionally empty: swallow to render empty-state */ }
+  const baseHeaders: HeadersInit = { 'Content-Type': 'application/json', ...(init?.headers || {}) as any };
+  const payload = body === undefined ? undefined : JSON.stringify(body);
+
+  let res: Response | undefined;
+  let refreshed = false;
+  let rateAttempt = 0;
+  let shouldRetry = true;
+
+  while (shouldRetry) {
+    shouldRetry = false;
+    const headers = withAuthHeaders(baseHeaders);
     res = await fetch(url, withCreds({
       ...init,
       method: 'POST',
       headers,
-      body: body === undefined ? undefined : JSON.stringify(body),
+      body: payload,
     }));
+
+    if (res.status === 401 && !refreshed) {
+      refreshed = true;
+      try { await fetch(`${API_BASE || ''}/auth/refresh`, withCreds({ method: 'POST' })); } catch (_err) { /* intentionally empty: swallow to render empty-state */ }
+      shouldRetry = true;
+      continue;
+    }
+
+    if (res.status === 429) {
+      if (rateAttempt >= RATE_LIMIT_MAX_RETRIES) {
+        break;
+      }
+      const wait = RATE_LIMIT_BACKOFF_BASE_MS * Math.pow(2, rateAttempt);
+      rateAttempt += 1;
+      await sleep(wait);
+      shouldRetry = true;
+      continue;
+    }
   }
+
+  if (!res) {
+    throw new Error('Unexpected empty response from apiPost');
+  }
+
   if (!res.ok) {
     const text = await res.text().catch(() => '');
     // Provide helpful message in dev (includes backend detail)
@@ -224,7 +257,7 @@ export type Healthz = {
 };
 
 export async function getHealthz(): Promise<Healthz> {
-  return http<Healthz>('/healthz');
+  return fetchJSON<Healthz>('healthz');
 }
 
 export type MetaInfo = {
@@ -248,7 +281,7 @@ export type MetaInfo = {
 };
 
 export async function getMetaInfo(): Promise<MetaInfo> {
-  return http<MetaInfo>('/meta/info');
+  return fetchJSON<MetaInfo>('meta/info');
 }
 
 // LLM health
@@ -259,7 +292,7 @@ export type LlmHealth = {
 };
 
 export async function getLlmHealth(): Promise<LlmHealth> {
-  return http<LlmHealth>('/llm/health');
+  return fetchJSON<LlmHealth>('llm/health');
 }
 
 // mapper: rename keys (camelCase -> snake_case) and allow snake_case passthrough
@@ -312,17 +345,30 @@ export async function getMonthFlows(month?: string): Promise<MonthFlowsResp | nu
   return postChart<MonthFlowsResp>('flows', { month });
 }
 
+export async function loadSpendingTrends(monthsArr: string[]) {
+  // Prefer dashed slug; fallback to underscore until backend alias widely deployed
+  try {
+    return await fetchJSON('agent/tools/charts/spending-trends', { method: 'POST', body: JSON.stringify({ months: monthsArr }) });
+  } catch {
+    return fetchJSON('agent/tools/charts/spending_trends', { method: 'POST', body: JSON.stringify({ months: monthsArr }) });
+  }
+}
+
 export async function getSpendingTrends(windowMonths = 6, anchorMonth?: string) {
-  let month = anchorMonth || await resolveMonth();
+  const month = anchorMonth || await resolveMonth();
   if (!month) return { trends: [] } as any;
   const monthsArr = monthsBack(month, windowMonths);
-  return postChart<any>('spending_trends', { months: monthsArr });
+  return loadSpendingTrends(monthsArr);
 }
 
 // ---------- Analytics (agent tools) ----------
 export const analytics = {
+  // Use fetchJSON with root passthrough paths to avoid /api redirects
   kpis: (month?: string, lookback_months = 6) =>
-    apiPost(`/agent/tools/analytics/kpis`, { month, lookback_months }),
+    fetchJSON(`agent/tools/analytics/kpis`, {
+      method: 'POST',
+      body: JSON.stringify({ month, lookback_months }),
+    }),
   forecast: (
     month?: string,
     horizon = 3,
@@ -331,31 +377,50 @@ export const analytics = {
     const body: any = { month, horizon };
     if (opts?.model) body.model = opts.model;
     if (opts?.ciLevel && opts.ciLevel > 0) body.alpha = 1 - opts.ciLevel; // 0.8 -> alpha 0.2
-    return apiPost(`/agent/tools/analytics/forecast/cashflow`, body);
+    return fetchJSON(`agent/tools/analytics/forecast/cashflow`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
   },
   anomalies: (month?: string, lookback_months = 6) =>
-    apiPost(`/agent/tools/analytics/anomalies`, { month, lookback_months }),
+    fetchJSON(`agent/tools/analytics/anomalies`, {
+      method: 'POST',
+      body: JSON.stringify({ month, lookback_months }),
+    }),
   recurring: (month?: string, lookback_months = 6) =>
-    apiPost(`/agent/tools/analytics/recurring`, { month, lookback_months }),
+    fetchJSON(`agent/tools/analytics/recurring`, {
+      method: 'POST',
+      body: JSON.stringify({ month, lookback_months }),
+    }),
   subscriptions: (month?: string, lookback_months = 6) =>
-    apiPost(`/agent/tools/analytics/subscriptions`, { month, lookback_months }),
+    fetchJSON(`agent/tools/analytics/subscriptions`, {
+      method: 'POST',
+      body: JSON.stringify({ month, lookback_months }),
+    }),
   budgetSuggest: (month?: string, lookback_months = 6) =>
-    apiPost(`/agent/tools/analytics/budget/suggest`, { month, lookback_months }),
-  whatif: (payload: any) => apiPost(`/agent/tools/analytics/whatif`, payload),
+    fetchJSON(`agent/tools/analytics/budget/suggest`, {
+      method: 'POST',
+      body: JSON.stringify({ month, lookback_months }),
+    }),
+  whatif: (payload: any) =>
+    fetchJSON(`agent/tools/analytics/whatif`, {
+      method: 'POST',
+      body: JSON.stringify(payload ?? {}),
+    }),
 };
 
 // ---------- Telemetry ----------
 export const telemetry = {
   helpOpen: (payload: { key: string; path: string; ts: number }) =>
-    apiPost(`/analytics/help_open`, payload),
+    fetchJSON(`analytics/help_open`, { method: 'POST', body: JSON.stringify(payload) }),
   track: (event: string, props?: Record<string, any>) =>
-    apiPost(`/analytics/track`, { event, props, ts: Date.now() }).catch(() => {}),
+    fetchJSON(`analytics/track`, { method: 'POST', body: JSON.stringify({ event, props, ts: Date.now() }) }).catch(() => {}),
 };
 
 // ---------- UI Help ----------
 export const uiHelp = {
   describe: (key: string, month?: string, withContext = false) =>
-    apiPost(`/agent/tools/help/ui/describe`, { key, month, with_context: withContext }),
+    fetchJSON(`agent/tools/help/ui/describe`, { method: 'POST', body: JSON.stringify({ key, month, with_context: withContext }) }),
 };
 
 // Unified describe (new panel help) endpoint
@@ -410,13 +475,16 @@ export async function describe(
 
 // ---------- Budgets ----------
 export const budgetCheck = (month?: string) => {
-  const qs = month ? `?month=${encodeURIComponent(month)}` : "";
-  return fetchJSON('budget/check', { query: month ? { month } : undefined });
+  // Migrate to agent/tools path; accept either a month string or full input object
+  const payload = typeof month === 'object' && month !== null ? month : (month ? { month } : {});
+  return fetchJSON('agent/tools/budget/check', { method: 'POST', body: JSON.stringify(payload) });
 }
 export const getBudgetCheck = (month?: string) => {
-  const qs = month ? `?month=${encodeURIComponent(month)}` : "";
-  return fetchJSON('budget/check', { query: month ? { month } : undefined });
+  const payload = typeof month === 'object' && month !== null ? month : (month ? { month } : {});
+  return fetchJSON('agent/tools/budget/check', { method: 'POST', body: JSON.stringify(payload) });
 }
+
+// (No agent/tools budget apply/delete endpoints; keep existing /budget/* helpers below.)
 
 // ---------- Unknowns / Suggestions ----------
 export async function getUnknowns(month?: string) {
@@ -435,9 +503,14 @@ export type RuleSuggestConfig = {
   min_positive: number;
   window_days: number | null;
 };
-// Suggestions permanently disabled: export guarded stub so any legacy import fails fast in dev
+// Suggestions permanently disabled: make this a silent no-op instead of throwing to avoid crashes in stray imports
+export const SUGGESTIONS_ENABLED = !!FEATURES.suggestions;
 export const fetchRuleSuggestConfig = () => {
-  if (!FEATURES.suggestions) throw new Error('Rule suggestions disabled');
+  if (!SUGGESTIONS_ENABLED) {
+    // eslint-disable-next-line no-console
+    console.warn('Rule suggestions disabled');
+    return Promise.resolve<RuleSuggestConfig | null>(null);
+  }
   return http<RuleSuggestConfig>(`/rules/suggestions/config`);
 };
 
@@ -574,6 +647,24 @@ export async function createRule(body: RuleInput): Promise<RuleCreateResponse> {
 
 // ---------- ML ----------
 export const mlSuggest = (month: string, limit=100, topk=3) => http(`/ml/suggest${q({ month, limit, topk })}`)
+
+// Agent-tools rules wrappers aligned to backend
+export async function rulesList() {
+  return fetchJSON('agent/tools/rules'); // GET
+}
+export async function rulesCreate(body: { merchant?: string|null; description?: string|null; pattern?: string|null; category: string; active?: boolean }) {
+  return fetchJSON('agent/tools/rules', { method: 'POST', body: JSON.stringify(body) });
+}
+export async function rulesDeleteId(ruleId: number) {
+  return fetchJSON(`agent/tools/rules/${ruleId}`, { method: 'DELETE' });
+}
+export async function rulesTest(input: { pattern: string; target: 'merchant'|'description'; category: string; month: string; limit?: number }) {
+  return fetchJSON('agent/tools/rules/test', { method: 'POST', body: JSON.stringify(input) });
+}
+export async function rulesApply(input: { pattern: string; target: 'merchant'|'description'; category: string; month: string; limit?: number }) {
+  return fetchJSON('agent/tools/rules/apply', { method: 'POST', body: JSON.stringify(input) });
+}
+// Suggestions accept/ignore remain under /rules/suggestions* endpoints; keep existing helpers below.
 
 // ---------- Rule Suggestions (persistent) ----------
 export type PersistedRuleSuggestion = {
@@ -839,9 +930,8 @@ export type TransactionsNlResponse = {
 export const transactionsNl = async (
   payload: TransactionsNlRequest = {}
 ): Promise<TransactionsNlResponse> => {
-  return http<TransactionsNlResponse>("/transactions/nl", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
+  return fetchJSON<TransactionsNlResponse>('transactions/nl', {
+    method: 'POST',
     body: JSON.stringify(payload ?? {}),
   });
 };
@@ -861,9 +951,8 @@ export async function txnsQuery(
   q: string,
   opts?: { start?: string; end?: string; limit?: number; page?: number; page_size?: number; flow?: 'expenses'|'income'|'all' }
 ): Promise<TxnQueryResult> {
-  return http<TxnQueryResult>("/agent/txns_query", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
+  return fetchJSON<TxnQueryResult>('agent/txns_query', {
+    method: 'POST',
     body: JSON.stringify({ q, ...opts }),
   });
 }
@@ -884,6 +973,9 @@ export async function txnsQueryCsv(
   const filename = parseDispositionFilename(res.headers.get('Content-Disposition')) || 'txns_query.csv';
   return { blob, filename };
 }
+
+// --- Legacy suggestions / insights (removed) ---
+// Calls intentionally neutralized. Use SUGGESTIONS_ENABLED + legacy guard helper instead.
 
 // ---------- Budget Recommendations ----------
 export type BudgetRecommendation = {
@@ -1029,12 +1121,23 @@ export const getAnomalies = (params?: { months?: number; min?: number; threshold
   return http<{ month: string | null; anomalies: Anomaly[] }>(`/insights/anomalies${qs ? `?${qs}` : ''}`);
 };
 
+// Agent-tools analytics wrapper (duplicates getAnomalies as POST variant)
+export async function insightsAnomalies(input: any) {
+  return fetchJSON('agent/tools/analytics/anomalies', { method: 'POST', body: JSON.stringify(input ?? {}) });
+}
+// Subscriptions live under analytics router
+export async function whatIf(input: any) {
+  return fetchJSON('agent/tools/analytics/whatif', { method: 'POST', body: JSON.stringify(input ?? {}) });
+}
+
 // Remove a category from the anomalies ignore list
 export const unignoreAnomaly = (category: string) =>
   http<{ ignored: string[] }>(`/insights/anomalies/ignore/${encodeURIComponent(category)}`, { method: "DELETE" });
 
 // ---- Planner helpers expected by Dev panel ----
 export type AgentPlanAction = { kind: string; [k: string]: any };
+
+// Transactions agent-tools endpoints are search/categorize/get_by_ids; keep existing HTTP helpers for edit flows.
 export type PlannerPlanItem = {
   kind: 'categorize_unknowns' | 'seed_rule' | 'budget_limit' | 'export_report' | string;
   title?: string;
@@ -1123,23 +1226,25 @@ export async function fetchModels(refresh = false): Promise<AgentModelsResponse 
 // Lightweight agentTools wrapper (reintroduced)
 export const agentTools = {
   // Charts
-  chartsSummary: (body: any, signal?: AbortSignal) => http('/agent/tools/charts/summary', { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' }, signal }),
-  chartsMerchants: (body: any, signal?: AbortSignal) => http('/agent/tools/charts/merchants', { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' }, signal }),
-  chartsFlows: (body: any, signal?: AbortSignal) => http('/agent/tools/charts/flows', { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' }, signal }),
-  chartsSpendingTrends: (body: any, signal?: AbortSignal) => http('/agent/tools/charts/spending-trends', { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' }, signal }),
+  chartsSummary: (body: any, signal?: AbortSignal) => fetchJSON('agent/tools/charts/summary', { method: 'POST', body: JSON.stringify(body), signal }),
+  chartsMerchants: (body: any, signal?: AbortSignal) => fetchJSON('agent/tools/charts/merchants', { method: 'POST', body: JSON.stringify(body), signal }),
+  chartsFlows: (body: any, signal?: AbortSignal) => fetchJSON('agent/tools/charts/flows', { method: 'POST', body: JSON.stringify(body), signal }),
+  chartsSpendingTrends: (body: any, signal?: AbortSignal) => fetchJSON('agent/tools/charts/spending-trends', { method: 'POST', body: JSON.stringify(body), signal }),
+  // Suggestions (returns { items, meta? })
+  suggestionsWithMeta: (body: any, signal?: AbortSignal) => fetchJSON('agent/tools/suggestions', { method: 'POST', body: JSON.stringify(body), signal }),
   // Insights
-  insightsExpanded: (body: any, signal?: AbortSignal) => http('/agent/tools/insights/expanded', { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' }, signal }),
+  insightsExpanded: (body: any, signal?: AbortSignal) => fetchJSON('agent/tools/insights/expanded', { method: 'POST', body: JSON.stringify(body), signal }),
   // Transactions
-  searchTransactions: (body: any, signal?: AbortSignal) => http('/agent/tools/transactions/search', { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' }, signal }),
-  categorizeTransactions: (body: any, signal?: AbortSignal) => http('/agent/tools/transactions/categorize', { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' }, signal }),
-  getTransactionsByIds: (body: any, signal?: AbortSignal) => http('/agent/tools/transactions/get_by_ids', { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' }, signal }),
+  searchTransactions: (body: any, signal?: AbortSignal) => fetchJSON('agent/tools/transactions/search', { method: 'POST', body: JSON.stringify(body), signal }),
+  categorizeTransactions: (body: any, signal?: AbortSignal) => fetchJSON('agent/tools/transactions/categorize', { method: 'POST', body: JSON.stringify(body), signal }),
+  getTransactionsByIds: (body: any, signal?: AbortSignal) => fetchJSON('agent/tools/transactions/get_by_ids', { method: 'POST', body: JSON.stringify(body), signal }),
   // Budget
-  budgetSummary: (body: any, signal?: AbortSignal) => http('/agent/tools/budget/summary', { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' }, signal }),
-  budgetCheck: (body: any, signal?: AbortSignal) => http('/agent/tools/budget/check', { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' }, signal }),
+  budgetSummary: (body: any, signal?: AbortSignal) => fetchJSON('agent/tools/budget/summary', { method: 'POST', body: JSON.stringify(body), signal }),
+  budgetCheck: (body: any, signal?: AbortSignal) => fetchJSON('agent/tools/budget/check', { method: 'POST', body: JSON.stringify(body), signal }),
   // Rules
-  rulesTest: (body: any, signal?: AbortSignal) => http('/agent/tools/rules/test', { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' }, signal }),
-  rulesApply: (body: any, signal?: AbortSignal) => http('/agent/tools/rules/apply', { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' }, signal }),
-  rulesApplyAll: (body: any, signal?: AbortSignal) => http('/agent/tools/rules/apply_all', { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' }, signal }),
+  rulesTest: (body: any, signal?: AbortSignal) => fetchJSON('agent/tools/rules/test', { method: 'POST', body: JSON.stringify(body), signal }),
+  rulesApply: (body: any, signal?: AbortSignal) => fetchJSON('agent/tools/rules/apply', { method: 'POST', body: JSON.stringify(body), signal }),
+  rulesApplyAll: (body: any, signal?: AbortSignal) => fetchJSON('agent/tools/rules/apply_all', { method: 'POST', body: JSON.stringify(body), signal }),
 };
 
 // ---- Legacy / compatibility helpers expected by components ----
