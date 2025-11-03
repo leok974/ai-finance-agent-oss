@@ -3,13 +3,22 @@ import {
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent,
   DropdownMenuItem, DropdownMenuSeparator, DropdownMenuCheckboxItem
 } from "@/components/ui/dropdown-menu";
-import { Wrench, FileText, Bug, Link2, RefreshCw } from "lucide-react";
+import { Wrench, FileText, Bug, Link2, RefreshCw, Settings } from "lucide-react";
 import { agentPlanStatus } from "@/lib/api";
 import DevMenuItem from "../DevMenuItem";
 import React from "react";
+import { useIsAdmin } from "@/state/auth";
 
-export default function DevMenu() {
+interface DevMenuProps {
+  adminRulesOpen?: boolean;
+  onToggleAdminRules?: () => void;
+  adminKnowledgeOpen?: boolean;
+  onToggleAdminKnowledge?: () => void;
+}
+
+export default function DevMenu({ adminRulesOpen, onToggleAdminRules, adminKnowledgeOpen, onToggleAdminKnowledge }: DevMenuProps) {
   const isDev = import.meta.env.MODE !== "production";
+  const isAdmin = useIsAdmin();
   const apiBase: string = (import.meta as unknown as { env: Record<string, string | undefined> }).env?.VITE_API_BASE || "";
   const [throttle, setThrottle] = React.useState<{ rate_per_min: number; capacity: number; tokens: number } | null>(null);
   const [open, setOpen] = React.useState(false);
@@ -51,6 +60,30 @@ export default function DevMenu() {
         </DropdownMenuItem>
 
         <DropdownMenuSeparator />
+
+        {isAdmin && (
+          <>
+            {onToggleAdminRules && (
+              <DropdownMenuCheckboxItem
+                checked={adminRulesOpen}
+                onCheckedChange={onToggleAdminRules}
+                data-testid="nav-admin-rules"
+              >
+                <Settings className="h-4 w-4 mr-2" /> Admin: Category Rules
+              </DropdownMenuCheckboxItem>
+            )}
+            {onToggleAdminKnowledge && (
+              <DropdownMenuCheckboxItem
+                checked={adminKnowledgeOpen}
+                onCheckedChange={onToggleAdminKnowledge}
+              >
+                <Settings className="h-4 w-4 mr-2" /> Admin: Knowledge (RAG)
+              </DropdownMenuCheckboxItem>
+            )}
+            <DropdownMenuSeparator />
+          </>
+        )}
+
         <DevMenuItem />
 
         <DropdownMenuSeparator />

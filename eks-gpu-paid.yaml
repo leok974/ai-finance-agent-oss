@@ -1,0 +1,29 @@
+apiVersion: eksctl.io/v1alpha5
+kind: ClusterConfig
+
+metadata:
+  name: ledgermind-gpu
+  region: us-west-2
+
+managedNodeGroups:
+  - name: gpu-workers-paid
+    instanceType: g5.xlarge
+    desiredCapacity: 1
+    minSize: 0
+    maxSize: 1
+    volumeSize: 100
+    volumeType: gp3
+    labels:
+      role: gpu
+      nvidia.com/gpu: "true"
+    tags:
+      k8s.io/cluster-autoscaler/enabled: "true"
+      k8s.io/cluster-autoscaler/ledgermind-gpu: "owned"
+    taints:
+      - key: nvidia.com/gpu
+        value: "true"
+        effect: NoSchedule
+    iam:
+      withAddonPolicies:
+        autoScaler: true
+        cloudWatch: true

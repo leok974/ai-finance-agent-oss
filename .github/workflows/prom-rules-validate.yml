@@ -1,0 +1,30 @@
+name: Prometheus Rules Validate
+
+on:
+  pull_request:
+    paths:
+      - 'prometheus/rules/*.yml'
+      - '.github/workflows/prom-rules-validate.yml'
+  push:
+    branches: [ main, Polish-clean-history ]
+    paths:
+      - 'prometheus/rules/*.yml'
+
+jobs:
+  promtool:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Install promtool
+        run: |
+          set -euo pipefail
+          curl -sL https://github.com/prometheus/prometheus/releases/latest/download/prometheus-*-linux-amd64.tar.gz -o prom.tar.gz
+          mkdir -p prom
+          tar -xzf prom.tar.gz -C prom --strip-components=1
+          echo "prom/bin path: $(ls prom)" || true
+      - name: Validate rules
+        run: |
+          set -euo pipefail
+          ./prom/promtool check rules prometheus/rules/*.yml

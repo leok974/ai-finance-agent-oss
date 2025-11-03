@@ -1,0 +1,27 @@
+groups:
+- name: csp_alerts
+  rules:
+  - alert: CSPNoRecentEdgePush
+    expr: time() - edge_metrics_last_push_seconds > 1800
+    for: 10m
+    labels:
+      severity: warning
+    annotations:
+      summary: "No edge metrics push in 30m"
+      description: "Probe may be stalled or endpoint failing."
+  - alert: CSPPolicyChanged
+    expr: changes(edge_csp_policy_sha_current[1h]) > 0
+    for: 0m
+    labels:
+      severity: info
+    annotations:
+      summary: "CSP policy hash changed in last hour"
+      description: "Confirm intentional change vs drift."
+  - alert: CSPCurrentShaInvariantBroken
+    expr: count(edge_csp_policy_sha == 1) != 1
+    for: 5m
+    labels:
+      severity: critical
+    annotations:
+      summary: "Edge CSP SHA invariant broken"
+      description: "There should be exactly one active hash series at any time."

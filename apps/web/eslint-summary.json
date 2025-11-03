@@ -1,0 +1,56 @@
+{
+  "errors": 59,
+  "warnings": 846,
+  "topRules": [
+    {
+      "rule": "@typescript-eslint/no-explicit-any",
+      "level": "warn",
+      "count": 689
+    },
+    {
+      "rule": "@typescript-eslint/no-unused-vars",
+      "level": "warn",
+      "count": 103
+    },
+    {
+      "rule": "no-empty",
+      "level": "error",
+      "count": 41
+    },
+    {
+      "rule": "react-hooks/exhaustive-deps",
+      "level": "warn",
+      "count": 30
+    },
+    {
+      "rule": "react-refresh/only-export-components",
+      "level": "warn",
+      "count": 12
+    },
+    {
+      "rule": "react-hooks/rules-of-hooks",
+      "level": "warn",
+      "count": 8
+    },
+    {
+      "rule": "no-useless-escape",
+      "level": "error",
+      "count": 5
+    },
+    {
+      "rule": "@typescript-eslint/ban-ts-comment",
+      "level": "error",
+      "count": 4
+    },
+    {
+      "rule": "no-extra-semi",
+      "level": "error",
+      "count": 3
+    },
+    {
+      "rule": "@typescript-eslint/ban-types",
+      "level": "error",
+      "count": 3
+    }
+  ]
+}

@@ -1,0 +1,48 @@
+name: CSP Placeholder Guard
+
+on:
+  push:
+    branches: [ main, Polish-clean-history ]
+  pull_request:
+    branches: [ main, Polish-clean-history ]
+
+jobs:
+  csp-guard:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+
+      - name: Install PNPM
+        run: corepack enable && corepack prepare pnpm@latest --activate
+
+      - name: Install deps (web only minimal)
+        run: pnpm -C apps/web install --frozen-lockfile || pnpm -C apps/web install
+
+      - name: Build web (for index.html)
+        run: pnpm -C apps/web build
+
+      - name: Render CSP
+        run: pnpm run csp:hash
+
+      - name: Fail if placeholder remains in rendered
+        shell: bash
+        run: |
+          if grep -R "__INLINE_SCRIPT_HASHES__" deploy/nginx.conf.rendered; then
+            echo "CSP placeholder still present after render." >&2
+            exit 1
+          fi
+          echo "CSP placeholder successfully removed."
+
+      - name: Upload hash manifest (artifact)
+        uses: actions/upload-artifact@v4
+        with:
+            name: csp-inline-script-hashes
+            path: .github/csp/inline-script-hashes.json
+            if-no-files-found: warn

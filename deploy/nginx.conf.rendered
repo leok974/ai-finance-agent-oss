@@ -1,0 +1,423 @@
+events {}
+
+http {
+    # Map shim header to simple tag for JSON logging
+    map $sent_http_x_api_shim $api_shim_tag { default "-"; "rules" "rules"; }
+
+    # Limit upload body size to protect against accidental huge CSV ingest uploads.
+    # Adjust (10m) if product requirements change; tolerant ingest smoke tests accept 413 as capacity signal.
+    client_max_body_size 10m;
+
+    # JSON access log format including shim indicator
+    log_format main_json escape=json '{"time":"$time_iso8601","remote_addr":"$remote_addr","method":"$request_method","path":"$request_uri","status":$status,"shim":"$api_shim_tag","upstream_status":"$upstream_status","request_time":$request_time}';
+
+    # Standard MIME types (ensures .js served as application/javascript etc.)
+    include       /etc/nginx/mime.types;
+    default_type  application/octet-stream;  # removed custom types block (avoided duplicates)
+    log_format main '$remote_addr - $remote_user [$time_local] "$request" $status $body_bytes_sent ' \
+                                    'rt=$request_time urt=$upstream_response_time ua="$http_user_agent"';
+    access_log /var/cache/nginx/access.log main_json;
+    error_log /var/log/nginx/error.log warn;
+
+    sendfile on;
+    keepalive_timeout 65s;
+    server_tokens off;
+
+    # Compression (only for text-based content)
+    gzip on;
+    gzip_comp_level 5;
+    gzip_types text/plain text/css application/javascript application/json application/xml+rss image/svg+xml;
+    gzip_min_length 512;
+
+    # Security headers (edge-level; web container stays minimal)
+    map $http_upgrade $upgrade_header { default upgrade; '' close; }
+    # Unified Upgrade/Connection mapping for WebSockets & SSE
+    map $http_upgrade $connection_upgrade { default upgrade; '' close; }
+
+    # Docker embedded DNS for dynamic container IP resolution
+    resolver 127.0.0.11 valid=30s ipv6=off;
+
+    # Indirection variables allow nginx to start even if name not yet resolvable at master process init
+    map $host $backend_upstream { default backend:8000; }
+    map $host $agui_upstream { default agui:3030; }
+
+    # Basic rate limit zones (10 requests per minute per IP for auth endpoints)
+    limit_req_zone $binary_remote_addr zone=authzone:10m rate=10r/m;
+
+    server {
+        listen 80;
+        # Dynamic DNS resolution tweak: ensure we re-resolve backend service periodically (Docker embedded DNS)
+        resolver 127.0.0.11 ipv6=off valid=10s;
+        resolver_timeout 5s;
+
+        # --- Canonical host redirect (serve only app.ledger-mind.org) -----------------
+        if ($host ~* ^(ledger-mind\.org|www\.ledger-mind\.org)$) {
+            return 308 https://app.ledger-mind.org$request_uri;
+        }
+
+        # --- Global security headers --------------------------------------------------
+        # Strong HSTS (1 year) + preload; adjust max-age or remove preload before submitting to hstspreload.org
+    # (Optional) HSTS already enforced at Cloudflare edge; omit to reduce duplicate headers
+    # add_header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload" always;
+        # Hide upstream duplicates so we emit a single canonical set
+        proxy_hide_header X-Content-Type-Options;
+        proxy_hide_header Referrer-Policy;
+        proxy_hide_header Permissions-Policy;
+        proxy_hide_header Content-Security-Policy;
+        proxy_hide_header X-Frame-Options;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+        # --- Security headers (edge) ---
+        add_header X-Frame-Options "DENY" always;                 # belt & suspenders (CSP frame-ancestors already protects)
+        add_header X-XSS-Protection "0" always;                    # legacy header intentionally disabled
+        add_header Permissions-Policy "camera=(), microphone=(), geolocation=(), usb=(), payment=()" always;
+        # add_header Strict-Transport-Security "max-age=15552000; includeSubDomains; preload" always;  # enable in prod TLS only
+        # Consolidated CSP (single-line for simpler log parsing & healthchecks)
+        # Notes:
+        # - style-src retains 'unsafe-inline' due to Tailwind runtime style injections / potential inline theming.
+        # - connect-src limited to self (covers https://app.ledger-mind.org and wss://app.ledger-mind.org with scheme upgrades).
+        # - frame-ancestors 'none' prevents clickjacking; base-uri 'self' restricts <base> tag injection.
+        # Revised CSP (multi-line for clarity; preserved 'always')
+    # Unified global CSP (matches HTML locations) so assets and API responses share identical policy surface
+    add_header Content-Security-Policy "default-src 'self'; script-src 'self' ; style-src 'self'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https://api.openai.com; object-src 'none'; frame-src 'none'; form-action 'self'; base-uri 'self'; frame-ancestors 'none'; upgrade-insecure-requests; report-to csp" always;
+    # Global CSP reporting group definition (mirrors per-HTML additions; centralizes for API responses too)
+    add_header Report-To '{"group":"csp","max_age":10886400,"endpoints":[{"url":"https://app.ledger-mind.org/api/csp-report"}]}' always;
+    # Modern reporting endpoint (fallback for emerging user agents supporting Reporting-Endpoints); relative path safe behind same-origin
+    add_header Reporting-Endpoints "csp=\"/api/csp-report\"" always;
+    # Build-stamped config version (replaced during render)
+    add_header X-Config-Version "f4319d81ffebeab2f1f200def43d1ad17e626afa050627c1f45c891884adc352" always;
+
+    # (Debug header & duplicate simplified CSP removed after CSP promotion)
+
+        # ---- Legacy endpoints (compat / deprecation stubs) ----
+        # (suggestions persistent stub removed to allow dynamic suggestions endpoint)
+        location ^~ /api/insights/ {
+            add_header X-Compat-Note "insights removed" always;
+            return 204;
+        }
+        # ---- end legacy stubs ----
+
+        # Legacy auth path redirect (ensure clients hitting /auth/* get /api/auth/*)
+        location ^~ /auth/ {
+            return 308 /api$uri$is_args$args;
+        }
+
+        # Explicit auth mapping (ensure prefix strip works reliably on all methods)
+        location ^~ /api/auth/ {
+            # CORS preflight dedicated fast-path
+            if ($request_method = OPTIONS) {
+                add_header Access-Control-Allow-Origin $http_origin always;
+                add_header Access-Control-Allow-Methods "GET,POST,OPTIONS" always;
+                add_header Access-Control-Allow-Headers "Content-Type, Authorization" always;
+                add_header Access-Control-Max-Age 86400 always;
+                return 204;
+            }
+            limit_req zone=authzone burst=5 nodelay;
+            # Rewrite /api/auth/... -> /auth/...
+            rewrite ^/api/auth/(.*)$ /auth/$1 break;
+            proxy_pass http://$backend_upstream;
+            proxy_set_header Host              $host;
+            proxy_set_header X-Forwarded-Host  $host;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_set_header X-Forwarded-Port  $server_port;
+            proxy_set_header X-Real-IP         $remote_addr;
+            proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+            proxy_http_version 1.1;
+            proxy_set_header Connection "";
+        }
+
+        # --- Exact API health endpoints (map /api/* to root health paths) ---------------
+        # We explicitly map /api/healthz -> /healthz (backend only exposes root path)
+        # and /api/ready -> /ready while leaving other /api/* routes untouched below.
+        # Host header forced to backend for safer allowlist matching when internal curls omit Host.
+        # Boring, fully-normalized health endpoints to satisfy Cloudflared
+        # /api/healthz: disable compression & chunking, force identity encoding, buffered
+        location = /api/healthz {
+            proxy_http_version 1.1;
+            proxy_set_header Host              $host;
+            proxy_set_header X-Real-IP         $remote_addr;
+            proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            gzip off;
+            chunked_transfer_encoding off;
+            proxy_set_header Accept-Encoding identity;
+            proxy_buffering on;
+            proxy_request_buffering on;
+            proxy_read_timeout 10s;
+            proxy_pass http://backend:8000/healthz;  # explicit root backend path
+        }
+
+
+        # Ready endpoint stays normalized but allows normal identity content
+        location = /api/ready {
+            proxy_http_version 1.1;
+            proxy_set_header Host              $host;
+            proxy_set_header X-Real-IP         $remote_addr;
+            proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_buffering on;
+            proxy_request_buffering on;
+            proxy_read_timeout 30s;
+            proxy_pass http://backend:8000/ready;
+        }
+
+        # Back-compat metrics mapping (temporary). Prefer direct /metrics
+        location = /api/metrics { return 307 /metrics; }
+
+        # --- Compat aliases to quiet legacy probes (remove after 2025-12-31) ---
+        # Old status → new canonical JSON health
+        location = /api/status {
+            add_header X-Compat-Alias "api_status_to_api_healthz" always;
+            return 307 /api/healthz;
+        }
+        # Old LLM health under /api → canonical healthz (adjust if /llm/health added later)
+        location = /api/llm/health {
+            add_header X-Compat-Alias "api_llm_health_to_api_healthz" always;
+            return 307 /api/healthz;
+        }
+
+        # Back-compat liveness mappings (frontend or probes hitting /api/live or /api/_up)
+        location = /api/live {
+            proxy_http_version 1.1;
+            proxy_set_header Host backend;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_set_header Upgrade           $http_upgrade;
+            proxy_set_header Connection        $connection_upgrade;
+            proxy_buffering off;
+            proxy_pass http://backend:8000/live;
+        }
+
+        location = /api/_up { return 204; access_log off; }
+
+        # (Removed obsolete /api/(charts|rules|suggestions) shim & underscore rewrites; frontend now calls root paths)
+
+
+        location /api/ {
+            if ($request_method = OPTIONS) {
+                add_header Access-Control-Allow-Origin $http_origin always;
+                add_header Access-Control-Allow-Methods "GET,POST,PUT,PATCH,DELETE,OPTIONS" always;
+                add_header Access-Control-Allow-Headers "Content-Type, Authorization" always;
+                add_header Access-Control-Max-Age 86400 always;
+                return 204;
+            }
+            proxy_pass http://$backend_upstream;  # preserve /api/ prefix for backend
+            proxy_set_header Host              $host;
+            proxy_set_header X-Forwarded-Host  $host;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_set_header X-Forwarded-Port  $server_port;
+            proxy_set_header X-Real-IP         $remote_addr;
+            proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+            proxy_redirect off;
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade           $http_upgrade;
+            proxy_set_header Connection        $connection_upgrade;
+            proxy_buffering off;
+            proxy_pass_header X-LLM-Path;
+        }
+
+        # Modern root (non-/api) analytics & other agent endpoints
+        location ^~ /agent/ {
+            # Using variable induces dynamic resolution each connection (vs one-time at config parse)
+            set $dyn_backend http://backend:8000;
+            proxy_pass $dyn_backend;
+            proxy_set_header Host               $host;
+            proxy_set_header X-Forwarded-Host   $host;
+            proxy_set_header X-Forwarded-Proto  $scheme;
+            proxy_set_header X-Forwarded-Port   $server_port;
+            proxy_set_header X-Real-IP          $remote_addr;
+            proxy_set_header X-Forwarded-For    $proxy_add_x_forwarded_for;
+            proxy_http_version 1.1;
+            proxy_set_header Connection "";
+            proxy_connect_timeout   5s;
+            proxy_read_timeout      30s;
+            proxy_send_timeout      30s;
+            proxy_next_upstream     error timeout http_502 http_503 http_504;
+            proxy_next_upstream_tries 3;
+        }
+
+        # --- Hotfix legacy bundle rewrites (/api/agent|/api/ingest -> root paths) ---
+        # If an old frontend bundle still issues /api/agent/* or /api/ingest/* calls, rewrite
+        # to the canonical root endpoints to avoid 404s while we finish cache purge.
+        location ~ ^/api/(agent/.*)$  { return 307 /$1; }
+        location ~ ^/api/(ingest/.*)$ { return 307 /$1; }
+
+        # Health & version
+        location = /_up { return 204; access_log off; }
+        location = /_version {
+            # Serve the baked version.json directly via alias
+            default_type application/json;
+            alias /usr/share/nginx/html/version.json;
+            add_header Cache-Control "no-store";
+        }
+        # Backend dynamic version endpoint (build metadata)
+        location = /version {
+            proxy_pass http://$backend_upstream/version;
+            proxy_set_header Host              $host;
+            proxy_set_header X-Forwarded-Host  $host;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_set_header X-Forwarded-Port  $server_port;
+            proxy_set_header X-Real-IP         $remote_addr;
+            proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+            proxy_http_version 1.1;
+            proxy_set_header Connection "";
+        }
+
+        # Prometheus / fallback metrics exposition (text/plain). Without this block, /metrics was
+        # falling through to SPA fallback and serving index.html. This forwards directly to backend
+        # instrumentation (either prometheus_fastapi_instrumentator or fallback router).
+        location = /metrics {
+            proxy_pass http://$backend_upstream/metrics;
+            proxy_set_header Host              $host;
+            proxy_set_header X-Forwarded-Host  $host;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_set_header X-Forwarded-Port  $server_port;
+            proxy_set_header X-Real-IP         $remote_addr;
+            proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+            proxy_http_version 1.1;
+            proxy_set_header Connection "";
+        }
+
+        # Additional backend paths (outside canonical /api/ prefix) – kept for backward compatibility
+    location ~* ^/(agent|ingest|llm|analytics|charts|txns|transactions|unknowns|overview|summary|expanded|merchants|spending_trends|dashboard|models|rules|ml|stats|report|docs|openapi\.json|healthz|ready|metrics) {
+            proxy_pass http://$backend_upstream$request_uri;
+            proxy_set_header Host $host;
+            proxy_set_header X-Forwarded-Host  $host;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_set_header X-Forwarded-Port  $server_port;
+            proxy_set_header X-Real-IP         $remote_addr;
+            proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+            proxy_pass_header X-LLM-Path;
+            proxy_http_version 1.1;
+            proxy_set_header Connection "";
+        }
+
+        # AG UI SSE stream
+        location ^~ /agui/ {
+            proxy_pass http://$agui_upstream;
+            proxy_set_header Host $host;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade           $http_upgrade;
+            proxy_set_header Connection        $connection_upgrade;
+            proxy_read_timeout 3600s;
+            proxy_send_timeout 3600s;
+            proxy_buffering off;
+            add_header X-Accel-Buffering no;
+        }
+
+        # Static assets (fingerprinted). Single consolidated matcher avoids fallback collisions.
+        location ^~ /assets/ {
+            root /usr/share/nginx/html;
+            try_files $uri =404;
+            access_log off;
+            expires 1y;
+            add_header Cache-Control "public, max-age=31536000, immutable";
+        }
+
+        # Explicit JS / MJS safeguard outside /assets if any top-level bundles emitted
+        location ~* ^/.+\.(?:m?js)$ {
+            root /usr/share/nginx/html;
+            try_files $uri =404;
+            access_log off;
+            expires 1y;
+            add_header Cache-Control "public, max-age=31536000, immutable";
+            default_type application/javascript;
+        }
+
+        # Common static (fonts/images/etc.) at root (favicon, icons)
+        location ~* ^/.+\.(?:css|map|woff2?|ttf|svg|png|jpg|jpeg|gif|webp|ico)$ {
+            root /usr/share/nginx/html;
+            try_files $uri =404;
+            access_log off;
+            expires 1y;
+            add_header Cache-Control "public, max-age=31536000, immutable";
+        }
+
+        # Web App Manifest with correct MIME & modest cache
+        location = /site.webmanifest {
+            root /usr/share/nginx/html;
+            try_files $uri =404;
+            default_type application/manifest+json;
+            add_header Content-Type application/manifest+json;
+            expires 1h;
+            add_header Cache-Control "public, max-age=3600";
+        }
+
+        # Build metadata (web) – always no-store so tests see current deployed image
+        location = /build.json {
+            root /usr/share/nginx/html;
+            try_files $uri =404;
+            default_type application/json;
+            add_header Content-Type application/json;
+            add_header Cache-Control "no-store, must-revalidate";
+        }
+
+        # WASM (if any emitted outside /assets)
+        location ~* ^/.+\.wasm$ {
+            root /usr/share/nginx/html;
+            try_files $uri =404;
+            access_log off;
+            expires 1y;
+            add_header Cache-Control "public, max-age=31536000, immutable";
+            default_type application/wasm;
+        }
+
+        # Explicit index.html (avoid caching + ensure no SPA fallback recursion)
+        location = /index.html {
+            root /usr/share/nginx/html;
+            try_files $uri =404;
+            add_header Cache-Control "no-store" always;
+            # Promoted enforced CSP (transitional: retains 'unsafe-inline' for styles, now includes former report-only directives + reporting)
+                        add_header Content-Security-Policy "default-src 'self'; script-src 'self' ; style-src 'self'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https://api.openai.com; object-src 'none'; frame-src 'none'; form-action 'self'; base-uri 'self'; frame-ancestors 'none'; upgrade-insecure-requests; report-to csp" always;
+            # Retain Report-To so violation telemetry continues post-promotion
+            add_header Report-To '{"group":"csp","max_age":10886400,"endpoints":[{"url":"https://app.ledger-mind.org/api/csp-report"}]}' always;
+            add_header X-Config-Version "f4319d81ffebeab2f1f200def43d1ad17e626afa050627c1f45c891884adc352" always;
+        }
+
+        # SPA fallback
+        # --- Unified Help endpoint passthroughs (exact paths) ------------------
+        # Direct /help for existing frontend fetch('/help') usage
+        location = /help {
+            proxy_pass http://$backend_upstream/help;
+            proxy_set_header Host              $host;
+            proxy_set_header X-Forwarded-Host  $host;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_set_header X-Forwarded-Port  $server_port;
+            proxy_set_header X-Real-IP         $remote_addr;
+            proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+            proxy_pass_header X-LLM-Path;
+            proxy_http_version 1.1;
+            proxy_set_header Connection "";
+        }
+        # Future-safe alias under canonical /api prefix
+        location = /api/help {
+            proxy_pass http://$backend_upstream/help;
+            proxy_set_header Host              $host;
+            proxy_set_header X-Forwarded-Host  $host;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_set_header X-Forwarded-Port  $server_port;
+            proxy_set_header X-Real-IP         $remote_addr;
+            proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+            proxy_pass_header X-LLM-Path;
+            proxy_http_version 1.1;
+            proxy_set_header Connection "";
+        }
+
+        # SPA fallback: serve static file when path not found; only HTML falls back
+        location / {
+            root /usr/share/nginx/html;
+            try_files $uri /index.html;
+            add_header Cache-Control "no-store" always;
+            # Promoted enforced CSP (transitional) for SPA fallback
+                        add_header Content-Security-Policy "default-src 'self'; script-src 'self' ; style-src 'self'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https://api.openai.com; object-src 'none'; frame-src 'none'; form-action 'self'; base-uri 'self'; frame-ancestors 'none'; upgrade-insecure-requests; report-to csp" always;
+            add_header Report-To '{"group":"csp","max_age":10886400,"endpoints":[{"url":"https://app.ledger-mind.org/api/csp-report"}]}' always;
+            add_header X-Config-Version "f4319d81ffebeab2f1f200def43d1ad17e626afa050627c1f45c891884adc352" always;
+        }
+
+        # Legacy selective per-HTML headers were consolidated into global block above.
+    }
+}

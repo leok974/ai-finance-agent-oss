@@ -31,27 +31,45 @@ def issue_csrf_cookie(response: Response, max_age_seconds: int = 60 * 60 * 8) ->
 _SAFE = {"GET", "HEAD", "OPTIONS"}
 
 
-def csrf_protect(request: Request, x_csrf_token: Optional[str] = Header(default=None, alias="X-CSRF-Token")):
+def csrf_protect(
+    request: Request,
+    x_csrf_token: Optional[str] = Header(default=None, alias="X-CSRF-Token"),
+):
     """Minimal double-submit-cookie CSRF protection.
 
     - Only enforced for unsafe methods (POST/PUT/PATCH/DELETE)
     - Allows specific auth routes which cannot have CSRF pre-login
     """
-    # Test/dev bypass: allow disabling CSRF for hermetic tests
-    if os.getenv("DEV_ALLOW_NO_CSRF") in ("1", "true", "True", 1, True) or is_test():
-        return
+    # Test/dev bypass: allow disabling CSRF for hermetic tests, EXCEPT always enforce for /auth/refresh
+    path = (request.url.path or "").lower()
+    if path.startswith("/auth/refresh"):
+        # Always enforce CSRF on refresh to prevent fixation/CSRF bypass in tests and dev
+        pass
+    else:
+        if (
+            os.getenv("DEV_ALLOW_NO_CSRF") in ("1", "true", "True", 1, True)
+            or is_test()
+        ):
+            return
 
     method = request.method.upper()
     if method in _SAFE:
         return
 
     # Allowlist pre-login auth endpoints and health (no CSRF cookie present yet)
+    # At this point, either we're enforcing globally or we're on a sensitive path (refresh)
     path = request.url.path or ""
-    if path.startswith("/auth/login") or path.startswith("/auth/register") or \
-       path.startswith("/auth/github/") or path.startswith("/auth/google/") or \
-       path in ("/health", "/healthz", "/ping"):
+    if (
+        path.startswith("/auth/login")
+        or path.startswith("/auth/register")
+        or path.startswith("/auth/github/")
+        or path.startswith("/auth/google/")
+        or path in ("/health", "/healthz", "/ping")
+    ):
         return
 
     cookie = request.cookies.get("csrf_token")
     if not cookie or not x_csrf_token or x_csrf_token != cookie:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="CSRF check failed")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="CSRF check failed"
+        )

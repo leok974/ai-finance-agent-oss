@@ -5,6 +5,13 @@ FROM node:20-alpine AS webbuild
 ARG WEB_BRANCH=unknown
 ARG WEB_COMMIT=unknown
 ARG WEB_BUILD_ID=not_set
+ARG VITE_SUGGESTIONS_ENABLED=0
+ARG VITE_ANALYTICS_ENABLED=0
+ARG VITE_GIT_BRANCH=unknown
+ARG VITE_GIT_COMMIT=unknown
+ARG GIT_BRANCH=unknown
+ARG GIT_COMMIT=unknown
+ARG BUILD_ID=not_set
 WORKDIR /w
 # Copy only manifest files first for dependency install.
 COPY apps/web/package.json apps/web/pnpm-lock.yaml* ./apps/web/
@@ -27,13 +34,23 @@ COPY apps/web/scripts ./scripts
 # Expose build metadata to the Vite build via env and a JSON stamp consumed by the app
 ENV WEB_BRANCH=${WEB_BRANCH} \
 	WEB_COMMIT=${WEB_COMMIT} \
-	WEB_BUILD_ID=${WEB_BUILD_ID}
+	WEB_BUILD_ID=${WEB_BUILD_ID} \
+	RESPECT_EXISTING_STAMP=1 \
+	VITE_SUGGESTIONS_ENABLED=${VITE_SUGGESTIONS_ENABLED} \
+	VITE_ANALYTICS_ENABLED=${VITE_ANALYTICS_ENABLED} \
+	VITE_GIT_BRANCH=${VITE_GIT_BRANCH} \
+	VITE_GIT_COMMIT=${VITE_GIT_COMMIT} \
+	GIT_BRANCH=${GIT_BRANCH} \
+	GIT_COMMIT=${GIT_COMMIT} \
+	BUILD_ID=${BUILD_ID}
 
 # Create a build-stamp file (must occur after src copied so it lands inside src/) then build
-RUN echo '{"branch":"'"${WEB_BRANCH}"'","commit":"'"${WEB_COMMIT}"'","buildId":"'"${WEB_BUILD_ID}"'"}' > src/build-stamp.json \
+# If a build-stamp already exists (from repo or host build), keep it; otherwise generate one
+RUN if [ -f src/build-stamp.json ]; then echo "[webbuild] using existing src/build-stamp.json"; else node scripts/build-stamp.mjs; fi \
  && pnpm build \
  && mkdir -p dist \
- && cp src/build-stamp.json dist/build.json
+ && cp src/build-stamp.json dist/build.json \
+ && node -e "const fs=require('fs');const s=JSON.parse(fs.readFileSync('src/build-stamp.json','utf8'));const v={commit:s.commit,built_at:s.ts,build_id:s.buildId,branch:s.branch};fs.writeFileSync('dist/version.json',JSON.stringify(v,null,2));"
 
 FROM nginx:1.27-alpine
 ARG EDGE_GIT_COMMIT=unknown
@@ -45,8 +62,7 @@ RUN apk add --no-cache openssl
 # Dist assets
 COPY --from=webbuild /w/apps/web/dist /usr/share/nginx/html
 
-# Version metadata
-RUN mkdir -p /usr/share/nginx/html && echo "{\n  \"commit\": \"$EDGE_GIT_COMMIT\",\n  \"built_at\": \"$EDGE_BUILD_TIME\"\n}" > /usr/share/nginx/html/version.json
+# Version metadata is generated from the web build stamp and included in dist/version.json
 
 # Copy single authoritative nginx.conf (rendered variant deprecated to avoid drift)
 COPY ./deploy/nginx.conf /etc/nginx/nginx.conf
@@ -55,7 +71,7 @@ RUN rm -f /etc/nginx/conf.d/default.conf 2>/dev/null || true
 
 # Fast-fail asset integrity assertion (runs automatically via nginx official entrypoint)
 COPY ./deploy/docker-entrypoint.d /docker-entrypoint.d
-COPY ./nginx/entrypoint.d/10-csp-render.sh /docker-entrypoint.d/10-csp-render.sh
+COPY ./nginx/entrypoint.d/10-csp-inline-hashes.sh /docker-entrypoint.d/10-csp-inline-hashes.sh
 COPY ./nginx/entrypoint.d/99-run.sh /docker-entrypoint.d/99-run.sh
 COPY ./nginx/conf.d/security-headers.conf /etc/nginx/conf.d/security-headers.conf
 RUN chmod +x /docker-entrypoint.d/*.sh

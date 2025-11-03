@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { ensureLoggedIn } from './utils/auth';
+import { ingestUrl } from './utils/env';
 import { ensureSuggestionsPanelOrSkip } from '../utils/panel';
 
 test('CSV upload works (no 422)', async ({ request }) => {
@@ -8,7 +9,7 @@ test('CSV upload works (no 422)', async ({ request }) => {
     '2025-10-01,-12.34,Acme,Coffee',
   ].join('\n');
 
-  const resp = await request.post('/ingest?replace=false', {
+  const resp = await request.post(`${ingestUrl()}?replace=false`, {
     multipart: {
       file: {
         name: 'sample.csv',
@@ -26,7 +27,7 @@ test('CSV upload works (no 422)', async ({ request }) => {
 });
 
 test('CSV upload (malformed) returns clear client error or is rejected', async ({ request }) => {
-  const resp = await request.post('/ingest?replace=false', {
+  const resp = await request.post(`${ingestUrl()}?replace=false`, {
     multipart: {
       file: {
         name: 'bad.csv',
@@ -60,7 +61,7 @@ test('CSV upload (too large) returns 413 Request Entity Too Large', async ({ req
   const approxRows = Math.ceil((12 * 1024 * 1024) / row.length);
   const bigCsv = header + row.repeat(approxRows);
 
-  const resp = await request.post('/ingest?replace=false', {
+  const resp = await request.post(`${ingestUrl()}?replace=false`, {
     multipart: {
       file: {
         name: 'big.csv',
@@ -79,7 +80,7 @@ test('upload triggers suggestions fetch (card visible)', async ({ page }) => {
   await page.goto('/', { waitUntil: 'networkidle' });
 
   // Upload a tiny CSV via API in the same authenticated context so cookies are preserved
-  const up = await page.request.post('/ingest?replace=false', {
+  const up = await page.request.post(`${ingestUrl()}?replace=false`, {
     multipart: {
       file: {
         name: 'mini.csv',

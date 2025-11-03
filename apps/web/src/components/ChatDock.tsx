@@ -8,7 +8,7 @@ import EnvAvatar from "@/components/EnvAvatar";
 import { useAuth } from "@/state/auth";
 import { createPortal } from "react-dom";
 import { ChevronUp, Wrench } from "lucide-react";
-import { agentTools, agentChat, getAgentModels, type AgentChatRequest, type AgentChatResponse, type AgentModelsResponse, type ChatMessage, txnsQueryCsv, txnsQuery, type TxnQueryResult, explainTxnForChat, agentRephrase, getMonthSummary, getMonthMerchants, getMonthFlows, getSpendingTrends, getBudgetCheck, analytics, transactionsNl, telemetry } from "../lib/api";
+import { agentTools, agentChat, type AgentChatRequest, type AgentChatResponse, type TxnQueryResult, explainTxnForChat, agentRephrase, analytics, transactionsNl, telemetry, txnsQueryCsv, txnsQuery } from "../lib/api";
 import { fmtMonthSummary, fmtTopMerchants, fmtCashflow, fmtTrends } from "../lib/formatters";
 import { runToolWithRephrase } from "../lib/tools-runner";
 import { saveAs } from "../utils/save";
@@ -29,6 +29,8 @@ import { registerChatHandlers } from "@/state/chat";
 import { DEFAULT_PLACEHOLDER, focusComposer, registerComposerControls, setComposer, setComposerPlaceholder as setComposerPlaceholderUI } from "@/state/chat/ui";
 import { handleTransactionsNL } from "./AgentTools";
 import FallbackBadge from "./FallbackBadge";
+import { useShowDevTools } from "@/state/auth";
+import { RagToolChips } from "./RagToolChips";
 // Minimal process env typing for test gating without pulling full @types/node
 declare const process: { env?: Record<string,string|undefined> } | undefined;
 // --- layout constants (right/bottom anchored) ---
@@ -170,9 +172,7 @@ export default function ChatDock() {
   const lastClickAtRef = React.useRef<number>(0);
   const [monthReady, setMonthReady] = React.useState<boolean>(false);
   // unified chat state
-  const [modelsInfo, setModelsInfo] = React.useState<AgentModelsResponse | null>(null);
-  const [showAdvanced, setShowAdvanced] = React.useState(false);
-  const [selectedModel, setSelectedModel] = React.useState<string>(""); // empty => server default
+  // Model selection removed - use Dev menu model override instead
   const [busy, setBusy] = React.useState(false);
   const [chatResp, setChatResp] = React.useState<AgentChatResponse | null>(null);
   const [input, setInput] = useState("");
@@ -214,6 +214,9 @@ export default function ChatDock() {
   const [undoMsg, setUndoMsg] = React.useState<string>("Cleared");
   const undoActionRef = React.useRef<null | (() => void)>(null);
   const [restoredVisible, setRestoredVisible] = React.useState(false);
+
+  // Dev tools visibility check (PIN-gated)
+  const showDevTools = useShowDevTools();
 
   useEffect(() => {
     return registerComposerControls({
@@ -535,7 +538,7 @@ export default function ChatDock() {
   }, []);
 
   // no-op cleanup needed for new snackbar timers (scoped to showUndo)
-  
+
   // Auto-run state for debounced month changes
   const isAutoRunning = useRef(false);
   const debounceTimer = useRef<number | null>(null);
@@ -554,10 +557,7 @@ export default function ChatDock() {
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, [open]);
-  // fetch models (best-effort)
-  React.useEffect(() => { (async () => {
-    try { const info = await getAgentModels(); setModelsInfo(info || null); } catch { /* ignore */ }
-  })(); }, []);
+  // Model fetching and persistence removed - handled by Dev menu's useDev store
 
   // When opening the panel, immediately clamp rb to the actual panel size
   useEffect(() => {
@@ -570,22 +570,6 @@ export default function ChatDock() {
   setRb((prev: { right: number; bottom: number }) => clampRB(prev, w, h));
     });
   }, [open]);
-
-  // Load saved model (per-tab)
-  useEffect(() => {
-    try {
-      const saved = sessionStorage.getItem('fa.model');
-      if (saved) setSelectedModel(saved);
-    } catch (_err) { /* intentionally empty: swallow to render empty-state */ }
-  }, []);
-
-  // Save when it changes (per-tab)
-  useEffect(() => {
-    try {
-      if (selectedModel) sessionStorage.setItem('fa.model', selectedModel);
-      else sessionStorage.removeItem('fa.model');
-    } catch (_err) { /* intentionally empty: swallow to render empty-state */ }
-  }, [selectedModel]);
 
   // handle keyboard
   React.useEffect(() => {
@@ -811,11 +795,12 @@ export default function ChatDock() {
           }));
         },
         onMeta(meta) {
-          if (meta && meta.fallback) {
+          const fb = (meta as { fallback?: unknown } | null | undefined)?.fallback;
+          if (typeof fb !== 'undefined' && fb !== null) {
             setUiMessages(cur => cur.map((m,i) => {
               const thinking = (m as any).thinking || (m as any).meta?.thinking;
               return (i===cur.length-1 && m.role==='assistant' && thinking)
-                ? { ...m, meta: { ...(m.meta||{}), fallback: String(meta.fallback), thinking: true } }
+                ? { ...m, meta: { ...(m.meta||{}), fallback: String(fb), thinking: true } }
                 : m;
             }));
           }
@@ -844,8 +829,7 @@ export default function ChatDock() {
       const req: AgentChatRequest = {
         messages: [{ role: 'user', content: text }],
         intent: 'general',
-        context: getContext(ev as any),
-        ...(selectedModel ? { model: selectedModel } : {})
+        context: getContext(ev as any)
       };
       const resp = await agentChat(req);
       handleAgentResponse(resp);
@@ -855,7 +839,7 @@ export default function ChatDock() {
     } finally {
       setBusy(false);
     }
-  }, [busy, input, selectedModel, handleAgentResponse, month, appendUser, appendAssistant]);
+  }, [busy, input, handleAgentResponse, month, appendUser, appendAssistant]);
 
   const onComposerKeyDown = React.useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); handleSend(e); return; }
@@ -883,7 +867,7 @@ export default function ChatDock() {
         },
   (msg, meta) => appendAssistant(msg, { ...meta, ctxMonth: month }),
   (on) => setBusy(on),
-  () => ({ context: getContext(), ...(selectedModel ? { model: selectedModel } : {}) })
+  () => ({ context: getContext() })
       );
       syncFromStoreDebounced(120);
     } finally { setBusy(false); }
@@ -901,13 +885,13 @@ export default function ChatDock() {
         (raw: any) => `Identify likely subscriptions for ${month} and which to cancel, with reasons:\n\n${JSON.stringify(raw)}`,
         (msg, meta) => appendAssistant(msg, { ...meta, ctxMonth: month }),
         (on) => setBusy(on),
-        () => ({ context: getContext(), ...(selectedModel ? { model: selectedModel } : {}) })
+        () => ({ context: getContext() })
       );
       syncFromStoreDebounced(120);
     } finally {
       setBusy(false);
     }
-  }, [busy, month, appendAssistant, selectedModel]);
+  }, [busy, month, appendAssistant]);
 
   // Additional one-click runners shown in the tools tray
   const runTopMerchants = React.useCallback(async (_ev?: React.MouseEvent) => {
@@ -923,7 +907,7 @@ export default function ChatDock() {
         (raw: any) => fmtTopMerchants(month || '', raw?.merchants || raw || []),
   (msg, meta) => appendAssistant(msg, { ...meta, ctxMonth: month }),
   (on) => setBusy(on),
-  () => ({ context: getContext(), ...(selectedModel ? { model: selectedModel } : {}) })
+  () => ({ context: getContext() })
       );
       syncFromStoreDebounced(120);
     } finally { setBusy(false); }
@@ -942,7 +926,7 @@ export default function ChatDock() {
         (raw) => fmtCashflow(month || '', raw as any),
   (msg, meta) => appendAssistant(msg, { ...meta, ctxMonth: month }),
   (on) => setBusy(on),
-  () => ({ context: getContext(), ...(selectedModel ? { model: selectedModel } : {}) })
+  () => ({ context: getContext() })
       );
       syncFromStoreDebounced(120);
     } finally { setBusy(false); }
@@ -961,7 +945,7 @@ export default function ChatDock() {
   (raw: any) => fmtTrends(raw?.trends || raw?.series || raw || []),
   (msg, meta) => appendAssistant(msg, { ...meta, ctxMonth: month }),
   (on) => setBusy(on),
-  () => ({ context: getContext(), ...(selectedModel ? { model: selectedModel } : {}) })
+  () => ({ context: getContext() })
       );
       syncFromStoreDebounced(120);
     } finally { setBusy(false); }
@@ -989,7 +973,7 @@ export default function ChatDock() {
         (raw) => `Turn these insights for ${month} into a friendly paragraph with one recommendation: ${JSON.stringify(raw)}`,
   (msg, meta) => appendAssistant(msg, { ...meta, ctxMonth: month }),
   (on) => setBusy(on),
-  () => ({ context: getContext(), ...(selectedModel ? { model: selectedModel } : {}) })
+  () => ({ context: getContext() })
       );
       syncFromStore();
     } finally { setBusy(false); }
@@ -1007,7 +991,7 @@ export default function ChatDock() {
         (raw) => `Expand insights for ${month} with MoM and anomalies: ${JSON.stringify(raw)}`,
   (msg, meta) => appendAssistant(msg, { ...meta, ctxMonth: month }),
   (on) => setBusy(on),
-  () => ({ context: getContext(), ...(selectedModel ? { model: selectedModel } : {}) })
+  () => ({ context: getContext() })
       );
       syncFromStore();
     } finally { setBusy(false); }
@@ -1026,7 +1010,7 @@ export default function ChatDock() {
         (raw) => `Summarize this budget status for ${month}: ${JSON.stringify(raw)}`,
   (msg, meta) => appendAssistant(msg, { ...meta, ctxMonth: month }),
   (on) => setBusy(on),
-  () => ({ context: getContext(), ...(selectedModel ? { model: selectedModel } : {}) })
+  () => ({ context: getContext() })
       );
       syncFromStore();
     } finally { setBusy(false); }
@@ -1045,11 +1029,11 @@ export default function ChatDock() {
         (raw: any) => `Summarize these KPIs for ${month} in 3 bullets and one suggestion:\n\n${JSON.stringify(raw)}`,
         (msg, meta) => appendAssistant(msg, { ...meta, ctxMonth: month }),
         (on) => setBusy(on),
-        () => ({ context: getContext(), ...(selectedModel ? { model: selectedModel } : {}) })
+        () => ({ context: getContext() })
       );
       syncFromStoreDebounced(120);
     } finally { setBusy(false); }
-  }, [busy, month, appendAssistant, selectedModel]);
+  }, [busy, month, appendAssistant]);
 
   const runAnalyticsForecast = React.useCallback(async (_ev?: React.MouseEvent) => {
     if (busy) return;
@@ -1063,11 +1047,11 @@ export default function ChatDock() {
         (raw: any) => `Explain this cashflow forecast for ${month} and what it means:\n\n${JSON.stringify(raw)}`,
         (msg, meta) => appendAssistant(msg, { ...meta, ctxMonth: month }),
         (on) => setBusy(on),
-        () => ({ context: getContext(), ...(selectedModel ? { model: selectedModel } : {}) })
+        () => ({ context: getContext() })
       );
       syncFromStoreDebounced(120);
     } finally { setBusy(false); }
-  }, [busy, month, appendAssistant, selectedModel]);
+  }, [busy, month, appendAssistant]);
 
   const runAnalyticsAnomalies = React.useCallback(async (_ev?: React.MouseEvent) => {
     if (busy) return;
@@ -1081,11 +1065,11 @@ export default function ChatDock() {
         (raw: any) => `List any spending anomalies for ${month} and suggest actions:\n\n${JSON.stringify(raw)}`,
         (msg, meta) => appendAssistant(msg, { ...meta, ctxMonth: month }),
         (on) => setBusy(on),
-        () => ({ context: getContext(), ...(selectedModel ? { model: selectedModel } : {}) })
+        () => ({ context: getContext() })
       );
       syncFromStoreDebounced(120);
     } finally { setBusy(false); }
-  }, [busy, month, appendAssistant, selectedModel]);
+  }, [busy, month, appendAssistant]);
 
   const runAnalyticsRecurring = React.useCallback(async (_ev?: React.MouseEvent) => {
     if (busy) return;
@@ -1099,11 +1083,11 @@ export default function ChatDock() {
         (raw: any) => `Summarize recurring charges for ${month}, with likely subscriptions highlighted:\n\n${JSON.stringify(raw)}`,
         (msg, meta) => appendAssistant(msg, { ...meta, ctxMonth: month }),
         (on) => setBusy(on),
-        () => ({ context: getContext(), ...(selectedModel ? { model: selectedModel } : {}) })
+        () => ({ context: getContext() })
       );
       syncFromStoreDebounced(120);
     } finally { setBusy(false); }
-  }, [busy, month, appendAssistant, selectedModel]);
+  }, [busy, month, appendAssistant]);
 
   const runAnalyticsBudgetSuggest = React.useCallback(async (_ev?: React.MouseEvent) => {
     if (busy) return;
@@ -1117,11 +1101,11 @@ export default function ChatDock() {
         (raw: any) => `Propose budget targets for ${month} from these stats, in a short list:\n\n${JSON.stringify(raw)}`,
         (msg, meta) => appendAssistant(msg, { ...meta, ctxMonth: month }),
         (on) => setBusy(on),
-        () => ({ context: getContext(), ...(selectedModel ? { model: selectedModel } : {}) })
+        () => ({ context: getContext() })
       );
       syncFromStoreDebounced(120);
     } finally { setBusy(false); }
-  }, [busy, month, appendAssistant, selectedModel]);
+  }, [busy, month, appendAssistant]);
 
   const callTransactionsNl = React.useCallback(async (payload?: Record<string, any>) => {
     if (busy) return null;
@@ -1362,11 +1346,11 @@ export default function ChatDock() {
         (raw: any) => `Explain this what-if simulation for ${month} (cut ${cat} by ${pct}%):\n\n${JSON.stringify(raw)}`,
         (msg, meta) => appendAssistant(msg, { ...meta, ctxMonth: month }),
         (on) => setBusy(on),
-        () => ({ context: getContext(), ...(selectedModel ? { model: selectedModel } : {}) })
+        () => ({ context: getContext() })
       );
       syncFromStoreDebounced(120);
     } finally { setBusy(false); }
-  }, [busy, month, appendAssistant, selectedModel]);
+  }, [busy, month, appendAssistant]);
 
   const runAlerts = React.useCallback(async (ev?: React.MouseEvent) => {
     if (busy) return;
@@ -1377,15 +1361,14 @@ export default function ChatDock() {
       const req: AgentChatRequest = {
         messages: [{ role: 'user', content: 'List my alerts for the selected month.' }],
         intent: 'general',
-        context: getContext(ev),
-        ...(selectedModel ? { model: selectedModel } : {})
+        context: getContext(ev)
       };
   console.debug('[chat] alerts -> /agent/chat', { preview: req.messages[0]?.content?.slice(0, 80) });
   const resp = await agentChat(req);
   console.debug('[chat] alerts ← ok', { model: resp?.model });
       handleAgentResponse(resp);
     } finally { setBusy(false); }
-  }, [busy, selectedModel, handleAgentResponse]);
+  }, [busy, handleAgentResponse]);
 
   // Removed legacy non-NL search tool in favor of NL query
 
@@ -1401,12 +1384,12 @@ export default function ChatDock() {
     if (debounceTimer.current) {
       window.clearTimeout(debounceTimer.current);
     }
-    
+
     debounceTimer.current = window.setTimeout(async () => {
       if (isAutoRunning.current) return;
       if (runningRef.current) return; // Already running from manual click
       if (lastRunForTool[tool] === month) return; // Already ran for this month/tool combo
-      
+
       try {
         isAutoRunning.current = true;
         insertContext(); // Update payload with current month
@@ -1564,16 +1547,7 @@ export default function ChatDock() {
             {showTools ? <ChevronUp size={14}/> : <Wrench size={14}/>}
             {showTools ? 'Hide tools' : 'Agent Tools'}
           </button>
-      {modelsInfo ? (
-            <button
-              onPointerDown={(e) => e.stopPropagation()}
-              onClick={(e) => { e.stopPropagation(); setShowAdvanced((v: boolean)=>!v); }}
-              className="px-2 py-1 rounded-lg bg-neutral-800 text-neutral-200 border border-neutral-700 hover:bg-neutral-700"
-        title="Models"
-            >
-        {showAdvanced ? 'Hide models' : 'Models'}
-            </button>
-          ) : null}
+          {/* Model selection removed - use Dev menu instead */}
           <button
             onPointerDown={(e) => e.stopPropagation()}
             onClick={(e) => { e.stopPropagation(); setOpen(false); }}
@@ -1585,25 +1559,7 @@ export default function ChatDock() {
         </div>
       </div>
 
-      {showAdvanced && modelsInfo && (
-        <div className="mb-2 p-2 rounded-lg border border-neutral-800 bg-neutral-800/40">
-          <div className="flex items-center gap-2">
-            <select
-              className="px-2 py-1 text-sm rounded-md bg-neutral-800 border border-neutral-700 text-neutral-100"
-              value={selectedModel}
-              onChange={(e) => setSelectedModel(e.target.value)}
-            >
-              <option value="">{`Default - ${modelsInfo.provider}: ${modelsInfo.default}`}</option>
-              {modelsInfo.models?.map((m: any) => (
-                <option key={m.id} value={m.id}>{m.id}</option>
-              ))}
-            </select>
-          </div>
-          <div className="text-[11px] mt-1 opacity-60">
-            Leave blank to use the server default. This selection applies only in this tab.
-          </div>
-        </div>
-      )}
+      {/* Advanced model selection panel removed - use Dev menu instead */}
 
       {/* Agent tools tray (all tools live here; one-click) */}
       {showTools && (
@@ -1655,7 +1611,7 @@ export default function ChatDock() {
                     ...(flow ? { flow } as any : {})
                   });
                   saveAs(blob, filename || "txns_query.csv");
-                 
+
                   appendAssistant(`Exported CSV for last NL query: ${q}`);
                 } catch (err: any) {
                   appendAssistant(`**CSV export failed:** ${err?.message || String(err)}`);
@@ -1757,6 +1713,13 @@ export default function ChatDock() {
         </div>
       )}
 
+      {/* RAG dev tools (PIN-gated) */}
+      {showDevTools && (
+        <div data-testid="rag-chips" className="px-3 py-2 border-b bg-muted/10">
+          <RagToolChips onReply={(msg) => appendAssistant(msg)} />
+        </div>
+      )}
+
       {/* Collapsible History panel */}
       {historyOpen && (
         <div className="px-3 py-2 border-b bg-muted/5">
@@ -1791,7 +1754,7 @@ export default function ChatDock() {
 
       {/* Messages list (scrollable) with day dividers & timestamps */}
       {aguiRunActive || aguiTools.length ? (
-        <div className={["px-3", aguiRunActive ? "" : "agui-ribbon-fade"].join(" ")}> 
+        <div className={["px-3", aguiRunActive ? "" : "agui-ribbon-fade"].join(" ")}>
           <div className="agui-ribbon">
             {aguiTools.map(t => {
               const baseClass = t.status === 'active' ? 'agui-chip-active' : t.status === 'done' ? 'agui-chip-done' : t.status === 'error' ? 'agui-chip-error' : 'agui-chip-pending';

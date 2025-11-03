@@ -1,13 +1,21 @@
-import { RuleSuggestion as MinedRuleSuggestionStrict, isRuleSuggestionArray } from "@/types/rules";
-import { fetchJSON, fetchAuth, dashSlug } from '@/lib/http';
+import type { RuleSuggestion as MinedRuleSuggestionStrict } from "@/types/rules";
+import { isRuleSuggestionArray } from "@/types/rules";
+import { fetchJSON } from '@/lib/http';
 import { FEATURES } from '@/config/featureFlags';
+import { useDev } from '@/state/dev';
 
 // Resolve API base from env, with a dev fallback when running Vite on port 5173
-const rawApiBase = (import.meta as any).env?.VITE_API_BASE;
+const rawApiBase = (import.meta as { env?: Record<string, string> }).env?.VITE_API_BASE;
 export const API_BASE = ((rawApiBase ?? '/api') as string).replace(/\/+$/, '') || '/api';
 
 export function apiUrl(path: string): string {
   return `${API_BASE}${path.startsWith('/') ? path : `/${path}`}`;
+}
+
+// Small helper: inject `model` if override is set
+function withModel<T extends Record<string, unknown>>(body: T): T {
+  const m = useDev.getState().modelOverride;
+  return m ? ({ ...body, model: m } as T) : body;
 }
 
 function cookieGet(name: string): string | null {
@@ -19,7 +27,7 @@ function cookieGet(name: string): string | null {
   }
 }
 
-export async function api<T = any>(path: string, options: RequestInit = {}): Promise<T> {
+export async function api<T = unknown>(path: string, options: RequestInit = {}): Promise<T> {
   const url = apiUrl(path);
   const method = (options.method || "GET").toString().toUpperCase();
   const headers = new Headers(options.headers || {});
@@ -58,7 +66,7 @@ function monthsBack(anchor: string, count: number): string[] {
 export async function resolveMonth(): Promise<string> {
   // Canonical POST; server still provides GET compat temporarily
   try {
-    const r: any = await fetchJSON('/agent/tools/meta/latest_month', { method: 'POST', body: JSON.stringify({}) });
+    const r: { month?: string; latest_month?: string } = await fetchJSON('/agent/tools/meta/latest_month', { method: 'POST', body: JSON.stringify({}) });
     return r?.month ?? r?.latest_month ?? '';
   } catch { return ''; }
 }
@@ -111,39 +119,40 @@ function sleep(ms: number) {
 // ---------------------------
 // Global fetch guards
 // ---------------------------
-type CacheEntry = { t: number; p: Promise<any> };
-const CACHE_TTL_MS = 5000; // 5s shared cache across panels
-const responseCache = new Map<string, CacheEntry>();
-const inflight = new Map<string, Promise<any>>();
+// Note: These utilities are currently unused but kept for potential future rate limiting
+// type CacheEntry = { t: number; p: Promise<unknown> };
+// const CACHE_TTL_MS = 5000; // 5s shared cache across panels
+// const responseCache = new Map<string, CacheEntry>();
+// const inflight = new Map<string, Promise<unknown>>();
 
 // Simple request limiter (queue) to prevent stampedes
-const MAX_CONCURRENCY = 4;
-let active = 0;
-const reqQueue: Array<() => void> = [];
-function runOrQueue(fn: () => void) {
-  if (active < MAX_CONCURRENCY) {
-    active++;
-    fn();
-  } else {
-    reqQueue.push(fn);
-  }
-}
-function done() {
-  active = Math.max(0, active - 1);
-  const next = reqQueue.shift();
-  if (next) {
-    active++;
-    next();
-  }
-}
+// const MAX_CONCURRENCY = 4;
+// let active = 0;
+// const reqQueue: Array<() => void> = [];
+// function runOrQueue(fn: () => void) {
+//   if (active < MAX_CONCURRENCY) {
+//     active++;
+//     fn();
+//   } else {
+//     reqQueue.push(fn);
+//   }
+// }
+// function done() {
+//   active = Math.max(0, active - 1);
+//   const next = reqQueue.shift();
+//   if (next) {
+//     active++;
+//     next();
+//   }
+// }
 
-function keyFromInit(url: string, init?: RequestInit) {
-  const method = (init?.method || "GET").toUpperCase();
-  const body = typeof init?.body === "string" ? (init!.body as string) : "";
-  return `${method} ${url} ${body}`;
-}
+// function keyFromInit(url: string, init?: RequestInit) {
+//   const method = (init?.method || "GET").toUpperCase();
+//   const body = typeof init?.body === "string" ? (init!.body as string) : "";
+//   return `${method} ${url} ${body}`;
+// }
 
-function q(params: Record<string, any>) {
+function q(params: Record<string, string | number | boolean | null | undefined>) {
   const usp = new URLSearchParams()
   Object.entries(params).forEach(([k, v]) => {
     if (v === undefined || v === null || v === '') return
@@ -154,10 +163,10 @@ function q(params: Record<string, any>) {
 }
 
 // Core HTTP: do not loop on 401. One shot; caller handles auth state.
-export async function http<T=any>(path: string, init?: RequestInit): Promise<T> {
+export async function http<T=unknown>(path: string, init?: RequestInit): Promise<T> {
   const url = apiUrl(path);
   const doFetch = async () => {
-  const headers = withAuthHeaders({ 'Content-Type': 'application/json', ...(init?.headers || {}) as any });
+  const headers = withAuthHeaders({ 'Content-Type': 'application/json', ...(init?.headers || {}) as Record<string, string> });
   return fetch(url, withCreds({ ...init, headers }));
   };
   let res = await doFetch();
@@ -172,15 +181,42 @@ export async function http<T=any>(path: string, init?: RequestInit): Promise<T> 
     throw new Error(`${res.status} ${res.statusText}${snippet}`);
   }
   const ct = res.headers.get('content-type') || '';
-  return ct.includes('application/json') ? res.json() : (await res.text() as any);
+  return ct.includes('application/json') ? res.json() : (await res.text() as unknown as T);
+}
+
+// ---------------------------
+// RAG (Admin-only UI consumers)
+// ---------------------------
+export async function ragIngest(urls: string[], force = false) {
+  return fetchJSON<{ ok: boolean; results: Array<{ url: string; status: string; chunks?: number }> }>(
+    'agent/rag/ingest',
+    { method: 'POST', body: JSON.stringify({ urls, force }) }
+  );
+}
+
+export async function ragQuery(queryStr: string, k = 8, rerank = true) {
+  return fetchJSON<{ q: string; hits: Array<{ url: string; score: number; content: string }> }>(
+    'agent/rag/query',
+    { method: 'POST', body: JSON.stringify({ q: queryStr, k, rerank }) }
+  );
+}
+
+export async function ragIngestFiles(files: File[], vendor?: string) {
+  const fd = new FormData();
+  if (vendor) fd.set('vendor', vendor);
+  for (const f of files) fd.append('files', f);
+  return fetchJSON<{ ok: boolean; results: Array<{ file: string; status: string; chunks?: number; reason?: string }> }>(
+    'agent/rag/ingest/files',
+    { method: 'POST', body: fd }
+  );
 }
 
 // Convenience GET wrapper
-export const apiGet = async <T = any>(path: string): Promise<T> => http<T>(path);
+export const apiGet = async <T = unknown>(path: string): Promise<T> => http<T>(path);
 
-export async function apiPost<T = any>(path: string, body?: any, init?: RequestInit): Promise<T> {
+export async function apiPost<T = unknown>(path: string, body?: unknown, init?: RequestInit): Promise<T> {
   const url = API_BASE ? `${API_BASE}${path}` : path;
-  const baseHeaders: HeadersInit = { 'Content-Type': 'application/json', ...(init?.headers || {}) as any };
+  const baseHeaders: HeadersInit = { 'Content-Type': 'application/json', ...(init?.headers || {}) as Record<string, string> };
   const payload = body === undefined ? undefined : JSON.stringify(body);
 
   let res: Response | undefined;
@@ -227,16 +263,17 @@ export async function apiPost<T = any>(path: string, body?: any, init?: RequestI
     throw new Error(`${res.status} ${res.statusText} ${text}`.trim());
   }
   const ct = res.headers.get('content-type') || '';
-  return ct.includes('application/json') ? res.json() : (await res.text() as any);
+  return ct.includes('application/json') ? res.json() : (await res.text() as unknown as T);
 }
 
 // ---- Suggestions normalizer (array-shape resilience) ----
-export function normalizeSuggestions(payload: any): MinedRuleSuggestionStrict[] {
+export function normalizeSuggestions(payload: unknown): MinedRuleSuggestionStrict[] {
   if (isRuleSuggestionArray(payload)) return payload;
   if (payload && typeof payload === "object") {
-    if (isRuleSuggestionArray((payload as any).suggestions)) return (payload as any).suggestions;
-    if (isRuleSuggestionArray((payload as any).items)) return (payload as any).items;
-    const vals = Object.values(payload);
+    const obj = payload as Record<string, unknown>;
+    if (isRuleSuggestionArray(obj.suggestions)) return obj.suggestions;
+    if (isRuleSuggestionArray(obj.items)) return obj.items;
+    const vals = Object.values(obj);
     if (isRuleSuggestionArray(vals)) return vals;
   }
   return [];
@@ -296,14 +333,15 @@ export async function getLlmHealth(): Promise<LlmHealth> {
 }
 
 // mapper: rename keys (camelCase -> snake_case) and allow snake_case passthrough
-const mapKeys = <T extends object>(src: any, pairs: Record<string, string>) => {
-  const o: any = {};
-  for (const [from, to] of Object.entries(pairs)) {
-    if (src && src[from] !== undefined) o[to] = src[from];
-    if (src && src[to]   !== undefined) o[to] = src[to]; // allow snake too
-  }
-  return o as T;
-};
+// Currently unused but preserved for potential future use
+// const mapKeys = <T extends object>(src: Record<string, unknown>, pairs: Record<string, string>) => {
+//   const o: Record<string, unknown> = {};
+//   for (const [from, to] of Object.entries(pairs)) {
+//     if (src && src[from] !== undefined) o[to] = src[from];
+//     if (src && src[to]   !== undefined) o[to] = src[to]; // allow snake too
+//   }
+//   return o as T;
+// };
 
 // ---------- Insights / Alerts ----------
 // Use robust fetchJson; keep optional month for backward-compat callers
@@ -321,7 +359,7 @@ export interface MonthSummaryResp { month: string | null; categories?: Array<{ c
 export interface MonthMerchantsResp { month?: string | null; merchants?: Array<{ name: string; amount: number }>; }
 export interface MonthFlowsResp { month?: string | null; series?: Array<{ name: string; value: number; month?: string }>; }
 
-async function postChart<T>(endpoint: string, body: any): Promise<T | null> {
+async function postChart<T>(endpoint: string, body: unknown): Promise<T | null> {
   try {
     return await fetchJSON<T>(`agent/tools/charts/${endpoint}`, { method: 'POST', body: JSON.stringify(body) });
   } catch (e) {
@@ -356,7 +394,7 @@ export async function loadSpendingTrends(monthsArr: string[]) {
 
 export async function getSpendingTrends(windowMonths = 6, anchorMonth?: string) {
   const month = anchorMonth || await resolveMonth();
-  if (!month) return { trends: [] } as any;
+  if (!month) return { trends: [] };
   const monthsArr = monthsBack(month, windowMonths);
   return loadSpendingTrends(monthsArr);
 }
@@ -374,7 +412,7 @@ export const analytics = {
     horizon = 3,
     opts?: { model?: "auto" | "ema" | "sarimax"; ciLevel?: 0 | 0.8 | 0.9 | 0.95 }
   ) => {
-    const body: any = { month, horizon };
+    const body: Record<string, unknown> = { month, horizon };
     if (opts?.model) body.model = opts.model;
     if (opts?.ciLevel && opts.ciLevel > 0) body.alpha = 1 - opts.ciLevel; // 0.8 -> alpha 0.2
     return fetchJSON(`agent/tools/analytics/forecast/cashflow`, {
@@ -402,7 +440,7 @@ export const analytics = {
       method: 'POST',
       body: JSON.stringify({ month, lookback_months }),
     }),
-  whatif: (payload: any) =>
+  whatif: (payload: { scenario?: string; adjustments?: Record<string, unknown> }) =>
     fetchJSON(`agent/tools/analytics/whatif`, {
       method: 'POST',
       body: JSON.stringify(payload ?? {}),
@@ -413,7 +451,7 @@ export const analytics = {
 export const telemetry = {
   helpOpen: (payload: { key: string; path: string; ts: number }) =>
     fetchJSON(`analytics/help_open`, { method: 'POST', body: JSON.stringify(payload) }),
-  track: (event: string, props?: Record<string, any>) =>
+  track: (event: string, props?: Record<string, string | number | boolean>) =>
     fetchJSON(`analytics/track`, { method: 'POST', body: JSON.stringify({ event, props, ts: Date.now() }) }).catch(() => {}),
 };
 
@@ -422,6 +460,15 @@ export const uiHelp = {
   describe: (key: string, month?: string, withContext = false) =>
     fetchJSON(`agent/tools/help/ui/describe`, { method: 'POST', body: JSON.stringify({ key, month, with_context: withContext }) }),
 };
+
+// ---------- Agent Describe ----------
+export async function agentDescribe(key: string, body: Record<string, unknown> = {}, opts?: { rephrase?: boolean }) {
+  const qs = opts?.rephrase ? '?rephrase=1' : '';
+  return fetchJSON(`agent/describe/${encodeURIComponent(key)}${qs}`, {
+    method: 'POST',
+    body: JSON.stringify(withModel({ ...body, stream: false })),
+  });
+}
 
 // Unified describe (new panel help) endpoint
 export type DescribeResponse = {
@@ -437,7 +484,7 @@ export type DescribeResponse = {
 
 export async function describe(
   panelId: string,
-  body: any,
+  body: Record<string, unknown>,
   opts?: { mode?: 'learn' | 'explain'; rephrase?: boolean; signal?: AbortSignal }
 ): Promise<DescribeResponse> {
   const basePayload = body && typeof body === 'object' ? body : {};
@@ -488,12 +535,10 @@ export const getBudgetCheck = (month?: string) => {
 
 // ---------- Unknowns / Suggestions ----------
 export async function getUnknowns(month?: string) {
-  const qs = month ? `?month=${encodeURIComponent(month)}` : "";
   return fetchJSON('txns/unknowns', { query: month ? { month } : undefined });
 }
 
 export async function getSuggestions(month?: string) {
-  const qs = month ? `?month=${encodeURIComponent(month)}` : "";
   return fetchJSON('ml/suggest', { query: month ? { month } : undefined });
 }
 
@@ -515,7 +560,52 @@ export const fetchRuleSuggestConfig = () => {
 };
 
 // If you have explain/categorize helpers, keep them as-is
-export const categorizeTxn = (id: number, category: string) => http(`/txns/${id}/categorize`, { method: 'POST', body: JSON.stringify({ category }) })
+export const categorizeTxn = (id: number, category: string) => http(`/txns/${id}/categorize`, {
+  method: 'POST',
+  body: JSON.stringify({ category, category_slug: category })
+})
+
+// Aliases for SuggestionPill component API
+export const applyCategory = (id: number, category_slug: string) => categorizeTxn(id, category_slug);
+export const promoteRule = (merchant_canonical: string, category_slug: string, priority = 50) =>
+  promoteCategorizeRule({ merchant_canonical, category_slug, priority });
+export const rejectSuggestion = (merchant_canonical: string, category_slug: string) =>
+  rejectCategorizeSuggestion({ merchant_canonical, category_slug });
+
+export const undoRejectSuggestion = (merchant_canonical: string, category_slug: string) =>
+  fetchJSON<{ ok: boolean; deleted?: number }>('agent/tools/categorize/feedback/undo', {
+    method: 'POST',
+    body: JSON.stringify({ merchant_canonical, category_slug }),
+  });
+
+// ---- Categorize suggestions (agent tools) ----
+export type CategorizeSuggestion = { category_slug: string; score: number; why?: string[] };
+export async function suggestForTxn(txnId: number) {
+  return fetchJSON<{ txn: number; suggestions: CategorizeSuggestion[] }>('agent/tools/categorize/suggest', {
+    method: 'POST',
+    body: JSON.stringify({ txn_id: txnId }),
+  });
+}
+export async function suggestForTxnBatch(txnIds: number[]) {
+  return fetchJSON<{ items: Array<{ txn: number; suggestions: CategorizeSuggestion[] }> }>('agent/tools/categorize/suggest/batch', {
+    method: 'POST',
+    body: JSON.stringify({ txn_ids: txnIds }),
+  });
+}
+export async function promoteCategorizeRule(input: { category_slug: string; pattern?: string; merchant_canonical?: string; priority?: number; enabled?: boolean }) {
+  return fetchJSON<{ ok: boolean; ack: string }>('agent/tools/categorize/promote', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+// Don't suggest this (feedback)
+export async function rejectCategorizeSuggestion(input: { merchant_canonical: string; category_slug: string }) {
+  return fetchJSON<{ ok: boolean }>('agent/tools/categorize/feedback', {
+    method: 'POST',
+    body: JSON.stringify({ ...input, action: 'reject' })
+  });
+}
 
 // ---- ML feedback (incremental learning) ----
 // New ML feedback shape aligned to backend
@@ -536,7 +626,7 @@ export async function mlFeedback(body: FeedbackIn) {
   );
 }
 // Legacy helper retained as no-op wrapper if still referenced elsewhere
-export async function sendFeedback(txnId: number, label: string, source: string = "user_change", notes?: string) {
+export async function sendFeedback(txnId: number, label: string, _source: string = "user_change", _notes?: string) {
   try {
     await mlFeedback({ txn_id: txnId, category: label, action: 'accept' });
   } catch {
@@ -576,7 +666,7 @@ export type RuleTestResult = {
 
 // Unified test payload/response for POST /rules/test
 export type RuleTestPayload = { rule: RuleInput; month?: string };
-export type RuleTestResponse = { count: number; sample: any[]; month?: string };
+export type RuleTestResponse = { count: number; sample: Array<Record<string, unknown>>; month?: string };
 
 /**
  * Test a rule against transactions for a month (YYYY-MM).
@@ -584,7 +674,7 @@ export type RuleTestResponse = { count: number; sample: any[]; month?: string };
  * Also tolerates legacy shapes and normalizes to { count, sample }.
  */
 export async function testRule(payload: RuleTestPayload): Promise<RuleTestResponse> {
-  const res = await http<any>(`/rules/test`, {
+  const res = await http<Record<string, unknown>>(`/rules/test`, {
     method: 'POST',
     body: JSON.stringify(payload),
   });
@@ -593,9 +683,9 @@ export async function testRule(payload: RuleTestPayload): Promise<RuleTestRespon
     return { count: res.length, sample: res };
   }
   if (res && typeof res === 'object') {
-    const count = Number((res as any).count ?? (res as any).matched_count ?? (res as any).total ?? (res as any).matches ?? 0) || 0;
-    const sample = Array.isArray((res as any).sample) ? (res as any).sample : [];
-    const month = (res as any).month;
+    const count = Number(res.count ?? res.matched_count ?? res.total ?? res.matches ?? 0) || 0;
+    const sample = Array.isArray(res.sample) ? res.sample : [];
+    const month = typeof res.month === 'string' ? res.month : undefined;
     return { count, sample, month };
   }
   return { count: 0, sample: [] };
@@ -629,7 +719,7 @@ export async function createRule(body: RuleInput): Promise<RuleCreateResponse> {
       const data = await r.json();
       if (data?.detail) {
         const text = Array.isArray(data.detail)
-          ? data.detail.map((d: any) => d?.msg || JSON.stringify(d)).join('; ')
+          ? data.detail.map((d: unknown) => (d && typeof d === 'object' && 'msg' in d) ? (d as { msg: string }).msg : JSON.stringify(d)).join('; ')
           : JSON.stringify(data.detail);
         msg += ` — ${text}`;
       }
@@ -677,7 +767,7 @@ export type PersistedRuleSuggestion = {
   created_at: string | null;
 };
 export async function listRuleSuggestions(params: { merchant_norm?: string; category?: string; limit?: number; offset?: number } = {}) {
-  const qs = q(params as any);
+  const qs = q(params as Record<string, string | number | boolean | undefined>);
   return http<PersistedRuleSuggestion[]>(`/rules/suggestions${qs}`);
 }
 export const acceptRuleSuggestion = (id: number) => http<{ ok: boolean; rule_id: number }>(`/rules/suggestions/${id}/accept`, { method: 'POST' });
@@ -749,7 +839,7 @@ export const listRuleSuggestionsPersistent = async (params?: { windowDays?: numb
   if (params?.windowDays) p.set("window_days", String(params.windowDays));
   if (params?.minCount) p.set("min_count", String(params.minCount));
   if (params?.maxResults) p.set("max_results", String(params.maxResults));
-  const res = await http<any>(`/rules/suggestions${p.toString() ? `?${p.toString()}` : ''}`);
+  const res = await http<unknown>(`/rules/suggestions${p.toString() ? `?${p.toString()}` : ''}`);
   return { suggestions: normalizeSuggestions(res) };
 };
 
@@ -766,8 +856,8 @@ export type PersistedSuggestion = {
 export const listPersistedSuggestions = async (): Promise<PersistedSuggestion[]> => {
   try {
     const res = await http<{ suggestions: PersistedSuggestion[] }>("/rules/suggestions/persistent");
-    return Array.isArray((res as any)?.suggestions) ? (res as any).suggestions : [];
-  } catch (e: any) {
+    return Array.isArray(res?.suggestions) ? res.suggestions : [];
+  } catch {
     // Fallback on 404 or any error
     return [];
   }
@@ -801,7 +891,7 @@ export async function reclassifyAll(month?: string): Promise<{
   month?: string;
   applied?: number;
   skipped?: number;
-  details?: any;
+  details?: unknown;
   updated?: number;
 }> {
   return http(`/txns/reclassify${month ? `?month=${encodeURIComponent(month)}` : ''}`,
@@ -828,7 +918,7 @@ export async function saveTrainReclassify(
 export type ChatMessage = { role: "system" | "user" | "assistant"; content: string };
 export type AgentChatRequest = {
   messages: { role: 'system'|'user'|'assistant', content: string }[];
-  context?: any;
+  context?: unknown;
   intent?: 'general'|'explain_txn'|'budget_help'|'rule_seed';
   txn_id?: string | null;
   model?: string;
@@ -840,10 +930,10 @@ export type AgentChatResponse = {
   reply: string;
   summary?: string;
   rephrased?: string | null;
-  nlq?: any;
+  nlq?: unknown;
   citations: { type: string; id?: string; count?: number }[];
   used_context: { month?: string };
-  tool_trace: any[];
+  tool_trace: Array<Record<string, unknown>>;
   model: string;
 };
 export async function agentChat(
@@ -867,8 +957,8 @@ export async function agentChat(
   return fetchJSON<AgentChatResponse>('agent/chat', {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(request),
-  } as any);
+    body: JSON.stringify(withModel(request)),
+  });
 }
 
 // ---------- Agent status ----------
@@ -918,13 +1008,13 @@ export async function downloadReportPdf(month?: string, opts?: { start?: string;
 // ---------- Natural-language Transactions Query ----------
 export type TransactionsNlRequest = {
   query?: string;
-  filters?: Record<string, any>;
+  filters?: Record<string, unknown>;
 };
 
 export type TransactionsNlResponse = {
   reply: string;
   rephrased?: boolean;
-  meta: Record<string, any>;
+  meta: Record<string, unknown>;
 };
 
 export const transactionsNl = async (
@@ -937,36 +1027,36 @@ export const transactionsNl = async (
 };
 
 export type TxnQueryResult =
-  | { intent: "sum"; filters: any; result: { total_abs: number }; meta?: any }
-  | { intent: "count"; filters: any; result: { count: number }; meta?: any }
-  | { intent: "top_merchants"; filters: any; result: { merchant: string; spend: number }[]; meta?: any }
-  | { intent: "top_categories"; filters: any; result: { category: string; spend: number }[]; meta?: any }
-  | { intent: "average"; filters: any; result: { average_abs: number }; meta?: any }
-  | { intent: "by_day"; filters: any; result: { bucket: string; spend: number }[]; meta?: any }
-  | { intent: "by_week"; filters: any; result: { bucket: string; spend: number }[]; meta?: any }
-  | { intent: "by_month"; filters: any; result: { bucket: string; spend: number }[]; meta?: any }
-  | { intent: "list"; filters: any; result: any[]; meta?: any };
+  | { intent: "sum"; filters: Record<string, unknown>; result: { total_abs: number }; meta?: Record<string, unknown> }
+  | { intent: "count"; filters: Record<string, unknown>; result: { count: number }; meta?: Record<string, unknown> }
+  | { intent: "top_merchants"; filters: Record<string, unknown>; result: { merchant: string; spend: number }[]; meta?: Record<string, unknown> }
+  | { intent: "top_categories"; filters: Record<string, unknown>; result: { category: string; spend: number }[]; meta?: Record<string, unknown> }
+  | { intent: "average"; filters: Record<string, unknown>; result: { average_abs: number }; meta?: Record<string, unknown> }
+  | { intent: "by_day"; filters: Record<string, unknown>; result: { bucket: string; spend: number }[]; meta?: Record<string, unknown> }
+  | { intent: "by_week"; filters: Record<string, unknown>; result: { bucket: string; spend: number }[]; meta?: Record<string, unknown> }
+  | { intent: "by_month"; filters: Record<string, unknown>; result: { bucket: string; spend: number }[]; meta?: Record<string, unknown> }
+  | { intent: "list"; filters: Record<string, unknown>; result: Array<Record<string, unknown>>; meta?: Record<string, unknown> };
 
 export async function txnsQuery(
-  q: string,
+  query: string,
   opts?: { start?: string; end?: string; limit?: number; page?: number; page_size?: number; flow?: 'expenses'|'income'|'all' }
 ): Promise<TxnQueryResult> {
   return fetchJSON<TxnQueryResult>('agent/txns_query', {
     method: 'POST',
-    body: JSON.stringify({ q, ...opts }),
+    body: JSON.stringify({ q: query, ...opts }),
   });
 }
 
 // Download CSV for an NL transactions query. Server forces list intent and caps size.
 export async function txnsQueryCsv(
-  q: string,
+  query: string,
   opts?: { start?: string; end?: string; page_size?: number; flow?: 'expenses'|'income'|'all' }
 ): Promise<{ blob: Blob; filename: string }> {
   const url = apiUrl('/agent/txns_query/csv');
   const res = await fetch(url, withCreds({
     method: 'POST',
     headers: withAuthHeaders({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify({ q, ...opts }),
+    body: JSON.stringify({ q: query, ...opts }),
   }));
   if (!res.ok) throw new Error(`CSV export failed: ${res.status} ${res.statusText}`);
   const blob = await res.blob();
@@ -1031,18 +1121,18 @@ export async function listTxns(params: {
     usp.set(k, String(v));
   }
   const qs = usp.toString();
-  return http<{ items: any[]; total: number; limit: number; offset: number }>(`/txns/edit${qs ? `?${qs}` : ""}`);
+  return http<{ items: Array<Record<string, unknown>>; total: number; limit: number; offset: number }>(`/txns/edit${qs ? `?${qs}` : ""}`);
 }
 
 export function getTxn(id: number) {
   return http(`/txns/edit/${id}`);
 }
 
-export function patchTxn(id: number, patch: any) {
+export function patchTxn(id: number, patch: Record<string, unknown>) {
   return http(`/txns/edit/${id}`, { method: "PATCH", body: JSON.stringify(patch) });
 }
 
-export function bulkPatchTxns(ids: number[], patch: any) {
+export function bulkPatchTxns(ids: number[], patch: Record<string, unknown>) {
   return http(`/txns/edit/bulk`, { method: "POST", body: JSON.stringify({ ids, patch }) });
 }
 
@@ -1122,11 +1212,11 @@ export const getAnomalies = (params?: { months?: number; min?: number; threshold
 };
 
 // Agent-tools analytics wrapper (duplicates getAnomalies as POST variant)
-export async function insightsAnomalies(input: any) {
+export async function insightsAnomalies(input: Record<string, unknown>) {
   return fetchJSON('agent/tools/analytics/anomalies', { method: 'POST', body: JSON.stringify(input ?? {}) });
 }
 // Subscriptions live under analytics router
-export async function whatIf(input: any) {
+export async function whatIf(input: Record<string, unknown>) {
   return fetchJSON('agent/tools/analytics/whatif', { method: 'POST', body: JSON.stringify(input ?? {}) });
 }
 
@@ -1135,7 +1225,7 @@ export const unignoreAnomaly = (category: string) =>
   http<{ ignored: string[] }>(`/insights/anomalies/ignore/${encodeURIComponent(category)}`, { method: "DELETE" });
 
 // ---- Planner helpers expected by Dev panel ----
-export type AgentPlanAction = { kind: string; [k: string]: any };
+export type AgentPlanAction = { kind: string; [k: string]: unknown };
 
 // Transactions agent-tools endpoints are search/categorize/get_by_ids; keep existing HTTP helpers for edit flows.
 export type PlannerPlanItem = {
@@ -1145,7 +1235,7 @@ export type PlannerPlanItem = {
   category?: string;
   limit?: number;
   impact?: string | number;
-  [k: string]: any;
+  [k: string]: unknown;
 };
 
 export async function agentPlanPreview(body: {
@@ -1173,9 +1263,9 @@ export async function agentPlanApply(body: {
 export async function agentPlanStatus() {
   try {
     return await api("/agent/plan/status");
-  } catch (e: any) {
+  } catch (e) {
     // If 404 or route missing, return a benign default without throwing
-    const msg = String(e?.message || e || "");
+    const msg = String((e && typeof e === 'object' && 'message' in e) ? e.message : e || "");
     if (/\b404\b/.test(msg) || /Not Found/i.test(msg)) {
       return { mode: "deterministic", steps: 0, throttle: null, available: false };
     }
@@ -1186,7 +1276,7 @@ export async function agentPlanStatus() {
 
 // ---- Save Rule endpoint helper ----
 export type SaveRulePayload = {
-  rule?: { name?: string; when?: Record<string, any>; then?: { category?: string } };
+  rule?: { name?: string; when?: Record<string, unknown>; then?: { category?: string } };
   scenario?: string;
   month?: string;
   backfill?: boolean;
@@ -1223,28 +1313,150 @@ export async function fetchModels(refresh = false): Promise<AgentModelsResponse 
   return { ...d, models_ok: primaryOk || fallbackOk };
 }
 
-// Lightweight agentTools wrapper (reintroduced)
+// ============================================================================
+// Chart Data Types & Normalization (future-proof mappers)
+// ============================================================================
+// Backend may return different field names across versions:
+// - {total_outflows, total_inflows} OR {spend, income}
+// - {items, top_merchants, merchants}
+// - {by_category, categories}
+// - {daily, points, series}
+// These normalizers ensure consistent shape regardless of backend response format
+
+export type ChartsSummary = { spend: number; income: number; net: number };
+export type ChartsMerchants = { merchant: string; amount: number }[];
+export type ChartsCategories = { category: string; spend: number }[];
+// Note: ChartsFlows type represents the daily time series from summary endpoint
+// For flow/Sankey data, see the flows endpoint which returns edges
+export type ChartsFlows = { date: string; in: number; out: number; net: number }[];
+
+// Type for the actual flows endpoint (Sankey/network data)
+export type ChartsFlowsData = {
+  month?: string;
+  inflow: Array<{ name: string; amount: number }>;
+  outflow: Array<{ name: string; amount: number }>;
+};
+
+const normSummary = (r: unknown): ChartsSummary => {
+  const data = r as Record<string, unknown>;
+  const spend = (data?.total_outflows ?? data?.spend ?? 0) as number;
+  const income = (data?.total_inflows ?? data?.income ?? 0) as number;
+  return {
+    spend,
+    income,
+    net: (data?.net ?? (income - spend)) as number,
+  };
+};
+
+const normMerchants = (r: unknown): ChartsMerchants => {
+  const data = r as Record<string, unknown>;
+  const items = (data?.items ?? data?.top_merchants ?? data?.merchants ?? []) as Array<Record<string, unknown>>;
+  return items.map((m) => ({
+    merchant: (m.merchant ?? m.name ?? m.title ?? 'Unknown') as string,
+    amount: Math.abs((m.spend ?? m.amount ?? 0) as number),
+  }));
+};
+
+const normCategories = (r: unknown): ChartsCategories => {
+  const data = r as Record<string, unknown>;
+  const items = (data?.items ?? data?.by_category ?? data?.categories ?? []) as Array<Record<string, unknown>>;
+  return items.map((c) => ({
+    category: (c.category ?? c.name ?? 'Unknown') as string,
+    spend: Math.abs((c.spend ?? c.amount ?? 0) as number),
+  }));
+};
+
+const normFlows = (r: unknown): ChartsFlowsData => {
+  const data = r as Record<string, unknown>;
+  const month = data?.month as string | undefined;
+
+  // Backend returns edges array with {source, target, amount}
+  // Transform to inflow/outflow arrays for UI
+  const edges = (data?.edges ?? []) as Array<Record<string, unknown>>;
+
+  const inflowMap = new Map<string, number>();
+  const outflowMap = new Map<string, number>();
+
+  for (const edge of edges) {
+    const source = (edge.source ?? 'Unknown') as string;
+    const target = (edge.target ?? 'Unknown') as string;
+    const amount = Math.abs((edge.amount ?? 0) as number);
+
+    // Accumulate by source (inflow) and target (outflow)
+    if (source !== 'Unknown') {
+      inflowMap.set(source, (inflowMap.get(source) ?? 0) + amount);
+    }
+    outflowMap.set(target, (outflowMap.get(target) ?? 0) + amount);
+  }
+
+  return {
+    month,
+    inflow: Array.from(inflowMap.entries()).map(([name, amount]) => ({ name, amount })),
+    outflow: Array.from(outflowMap.entries()).map(([name, amount]) => ({ name, amount })),
+  };
+};
+
+// ============================================================================
+// Chart API Functions (with normalization)
+// ============================================================================
+
+export async function chartsSummary(month: string): Promise<ChartsSummary> {
+  const res = await fetchJSON('agent/tools/charts/summary', {
+    method: 'POST',
+    body: JSON.stringify({ month })
+  });
+  return normSummary(res);
+}
+
+export async function chartsMerchants(month: string, limit = 10): Promise<ChartsMerchants> {
+  const res = await fetchJSON('agent/tools/charts/merchants', {
+    method: 'POST',
+    body: JSON.stringify({ month, limit })
+  });
+  return normMerchants(res);
+}
+
+export async function chartsCategories(month: string, limit = 10): Promise<ChartsCategories> {
+  // Note: currently using summary endpoint; switch to dedicated endpoint if available
+  const res = await fetchJSON('agent/tools/charts/summary', {
+    method: 'POST',
+    body: JSON.stringify({ month, top_n: limit })
+  });
+  return normCategories(res);
+}
+
+export async function chartsFlows(month: string): Promise<ChartsFlowsData> {
+  const res = await fetchJSON('agent/tools/charts/flows', {
+    method: 'POST',
+    body: JSON.stringify({ month })
+  });
+  return normFlows(res);
+}
+
+// ============================================================================
+// Legacy agentTools wrapper (kept for backward compatibility)
+// ============================================================================
 export const agentTools = {
-  // Charts
-  chartsSummary: (body: any, signal?: AbortSignal) => fetchJSON('agent/tools/charts/summary', { method: 'POST', body: JSON.stringify(body), signal }),
-  chartsMerchants: (body: any, signal?: AbortSignal) => fetchJSON('agent/tools/charts/merchants', { method: 'POST', body: JSON.stringify(body), signal }),
-  chartsFlows: (body: any, signal?: AbortSignal) => fetchJSON('agent/tools/charts/flows', { method: 'POST', body: JSON.stringify(body), signal }),
-  chartsSpendingTrends: (body: any, signal?: AbortSignal) => fetchJSON('agent/tools/charts/spending-trends', { method: 'POST', body: JSON.stringify(body), signal }),
+  // Charts (legacy wrapper - prefer direct functions above for type safety)
+  chartsSummary: (body: Record<string, unknown>, signal?: AbortSignal) => fetchJSON('agent/tools/charts/summary', { method: 'POST', body: JSON.stringify(body), signal }),
+  chartsMerchants: (body: Record<string, unknown>, signal?: AbortSignal) => fetchJSON('agent/tools/charts/merchants', { method: 'POST', body: JSON.stringify(body), signal }),
+  chartsFlows: (body: Record<string, unknown>, signal?: AbortSignal) => fetchJSON('agent/tools/charts/flows', { method: 'POST', body: JSON.stringify(body), signal }),
+  chartsSpendingTrends: (body: Record<string, unknown>, signal?: AbortSignal) => fetchJSON('agent/tools/charts/spending-trends', { method: 'POST', body: JSON.stringify(body), signal }),
   // Suggestions (returns { items, meta? })
-  suggestionsWithMeta: (body: any, signal?: AbortSignal) => fetchJSON('agent/tools/suggestions', { method: 'POST', body: JSON.stringify(body), signal }),
+  suggestionsWithMeta: (body: Record<string, unknown>, signal?: AbortSignal) => fetchJSON('agent/tools/suggestions', { method: 'POST', body: JSON.stringify(body), signal }),
   // Insights
-  insightsExpanded: (body: any, signal?: AbortSignal) => fetchJSON('agent/tools/insights/expanded', { method: 'POST', body: JSON.stringify(body), signal }),
+  insightsExpanded: (body: Record<string, unknown>, signal?: AbortSignal) => fetchJSON('agent/tools/insights/expanded', { method: 'POST', body: JSON.stringify(body), signal }),
   // Transactions
-  searchTransactions: (body: any, signal?: AbortSignal) => fetchJSON('agent/tools/transactions/search', { method: 'POST', body: JSON.stringify(body), signal }),
-  categorizeTransactions: (body: any, signal?: AbortSignal) => fetchJSON('agent/tools/transactions/categorize', { method: 'POST', body: JSON.stringify(body), signal }),
-  getTransactionsByIds: (body: any, signal?: AbortSignal) => fetchJSON('agent/tools/transactions/get_by_ids', { method: 'POST', body: JSON.stringify(body), signal }),
+  searchTransactions: (body: Record<string, unknown>, signal?: AbortSignal) => fetchJSON('agent/tools/transactions/search', { method: 'POST', body: JSON.stringify(body), signal }),
+  categorizeTransactions: (body: Record<string, unknown>, signal?: AbortSignal) => fetchJSON('agent/tools/transactions/categorize', { method: 'POST', body: JSON.stringify(body), signal }),
+  getTransactionsByIds: (body: Record<string, unknown>, signal?: AbortSignal) => fetchJSON('agent/tools/transactions/get_by_ids', { method: 'POST', body: JSON.stringify(body), signal }),
   // Budget
-  budgetSummary: (body: any, signal?: AbortSignal) => fetchJSON('agent/tools/budget/summary', { method: 'POST', body: JSON.stringify(body), signal }),
-  budgetCheck: (body: any, signal?: AbortSignal) => fetchJSON('agent/tools/budget/check', { method: 'POST', body: JSON.stringify(body), signal }),
+  budgetSummary: (body: Record<string, unknown>, signal?: AbortSignal) => fetchJSON('agent/tools/budget/summary', { method: 'POST', body: JSON.stringify(body), signal }),
+  budgetCheck: (body: Record<string, unknown>, signal?: AbortSignal) => fetchJSON('agent/tools/budget/check', { method: 'POST', body: JSON.stringify(body), signal }),
   // Rules
-  rulesTest: (body: any, signal?: AbortSignal) => fetchJSON('agent/tools/rules/test', { method: 'POST', body: JSON.stringify(body), signal }),
-  rulesApply: (body: any, signal?: AbortSignal) => fetchJSON('agent/tools/rules/apply', { method: 'POST', body: JSON.stringify(body), signal }),
-  rulesApplyAll: (body: any, signal?: AbortSignal) => fetchJSON('agent/tools/rules/apply_all', { method: 'POST', body: JSON.stringify(body), signal }),
+  rulesTest: (body: Record<string, unknown>, signal?: AbortSignal) => fetchJSON('agent/tools/rules/test', { method: 'POST', body: JSON.stringify(body), signal }),
+  rulesApply: (body: Record<string, unknown>, signal?: AbortSignal) => fetchJSON('agent/tools/rules/apply', { method: 'POST', body: JSON.stringify(body), signal }),
+  rulesApplyAll: (body: Record<string, unknown>, signal?: AbortSignal) => fetchJSON('agent/tools/rules/apply_all', { method: 'POST', body: JSON.stringify(body), signal }),
 };
 
 // ---- Legacy / compatibility helpers expected by components ----
@@ -1253,12 +1465,12 @@ export async function getAgentModels(refresh = false) { return fetchModels(refre
 // Explain endpoint wrappers
 export type ExplainResponse = {
   reply: string;
-  meta?: any;
+  meta?: Record<string, unknown>;
   model?: string;
   llm_rationale?: string;
   rationale?: string;
   mode?: string;
-  evidence?: any;
+  evidence?: unknown;
 };
 export async function getExplain(txnId: number | string, opts?: { use_llm?: boolean }) {
   const use = opts?.use_llm ? '?use_llm=1' : '';
@@ -1269,7 +1481,7 @@ export async function explainTxnForChat(txnId: number | string) {
 }
 
 // Rephrase (fallback implementation uses /agent/chat with a system prompt if dedicated endpoint absent)
-export async function agentRephrase(text: string, _opts?: any): Promise<{ reply: string; model?: string }> {
+export async function agentRephrase(text: string, _opts?: Record<string, unknown>): Promise<{ reply: string; model?: string }> {
   try {
     // Try a hypothetical fast endpoint first (ignore failure)
     const r = await fetch(apiUrl('/agent/rephrase'), withCreds({
@@ -1278,7 +1490,7 @@ export async function agentRephrase(text: string, _opts?: any): Promise<{ reply:
       body: JSON.stringify({ text })
     }));
     if (r.ok) {
-      const d: any = await r.json();
+      const d = await r.json() as { reply?: string; text?: string; model?: string };
       return { reply: d.reply || d.text || '', model: d.model };
     }
   } catch { /* swallow */ }
@@ -1324,4 +1536,50 @@ export async function fetchLatestMonth(): Promise<string | null> {
   const r = await fetchJSON('agent/tools/meta/latest_month', { method: 'POST' }) as { month?: string | null };
   return r.month ?? null;
   } catch { return null; }
+}
+
+// ============================================================================
+// Category Rules Admin API
+// ============================================================================
+
+export type CategoryRule = {
+  id: number;
+  pattern: string;
+  category_slug: string;
+  priority: number;
+  enabled: boolean;
+};
+
+export async function listCatRules(): Promise<CategoryRule[]> {
+  const r = await fetchJSON('agent/tools/categorize/rules', { method: 'GET' });
+  return r as CategoryRule[];
+}
+
+export async function patchCatRule(
+  id: number,
+  body: Partial<{ pattern: string; category_slug: string; priority: number; enabled: boolean }>
+): Promise<{ ok: boolean; rule: CategoryRule }> {
+  const r = await fetchJSON(`agent/tools/categorize/rules/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(body),
+  });
+  return r as { ok: boolean; rule: CategoryRule };
+}
+
+export async function deleteCatRule(id: number): Promise<{ ok: boolean }> {
+  const r = await fetchJSON(`agent/tools/categorize/rules/${id}`, {
+    method: 'DELETE',
+  });
+  return r as { ok: boolean };
+}
+
+export async function testCatRule(
+  pattern: string,
+  samples: string[]
+): Promise<{ ok: boolean; error?: string; matches: string[]; misses: string[] }> {
+  const r = await fetchJSON('agent/tools/categorize/rules/test', {
+    method: 'POST',
+    body: JSON.stringify({ pattern, samples }),
+  });
+  return r as { ok: boolean; error?: string; matches: string[]; misses: string[] };
 }

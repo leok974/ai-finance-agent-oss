@@ -15,6 +15,10 @@ services:
       timeout: 3s
       retries: 5
     restart: unless-stopped
+    networks:
+      shared-ollama:
+        aliases:
+          - postgres
 
   backend:
     build:
@@ -23,7 +27,11 @@ services:
         GIT_BRANCH: ${GIT_BRANCH:-unknown}
         GIT_COMMIT: ${GIT_COMMIT:-unknown}
         BUILD_TIME: ${BUILD_TIME:-unknown}
+    env_file:
+      - ./secrets/backend.env
     environment:
+      UVICORN_WORKERS: "1"
+      LOG_LEVEL: "info"
       ENV: "prod"
       DEBUG: "0"
       APP_ENV: "prod"
@@ -63,6 +71,15 @@ services:
       BACKEND_BRANCH: ${BACKEND_BRANCH:-unknown}
       BACKEND_COMMIT: ${BACKEND_COMMIT:-unknown}
       SUGGESTIONS_ENABLED: "1"
+    entrypoint: []
+    command: >
+      python -m uvicorn app.main:app
+      --host 0.0.0.0
+      --port 8000
+      --workers ${UVICORN_WORKERS:-1}
+      --proxy-headers
+      --forwarded-allow-ips="*"
+      --log-level ${LOG_LEVEL:-info}
     depends_on:
       postgres:
         condition: service_healthy
@@ -71,15 +88,21 @@ services:
     secrets:
       - backend_db_url
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request,sys;hdr={'Host':'backend'};\nfor u in ('http://127.0.0.1:8000/live','http://127.0.0.1:8000/healthz'):\n  try:\n    req=urllib.request.Request(u,headers=hdr);\n    with urllib.request.urlopen(req,timeout=2) as r:\n      if r.getcode()==200: sys.exit(0)\n  except Exception: pass\nsys.exit(1)"]
+      test:
+        - "CMD"
+        - "python"
+        - "-c"
+        - "import sys,urllib.request; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/ready').getcode()==200 else 1)"
       interval: 10s
       timeout: 3s
       retries: 10
-      start_period: 60s
+      start_period: 10s
     restart: unless-stopped
     volumes:
       # Mount the actual service account JSON file (not the directory) so GOOGLE_APPLICATION_CREDENTIALS points to a file
       - ./secrets/gcp-sa.json/ledgermind-backend-sa.json:/secrets/gcp-sa.json:ro
+    networks:
+      - shared-ollama
 
   nginx:
     build:
@@ -88,6 +111,16 @@ services:
       args:
         EDGE_GIT_COMMIT: ${GIT_COMMIT:-unknown}
         EDGE_BUILD_TIME: ${BUILD_TIME:-unknown}
+        WEB_BRANCH: ${VITE_GIT_BRANCH:-unknown}
+        WEB_COMMIT: ${VITE_GIT_COMMIT:-unknown}
+        WEB_BUILD_ID: ${WEB_BUILD_ID:-not_set}
+        VITE_SUGGESTIONS_ENABLED: ${VITE_SUGGESTIONS_ENABLED:-1}
+        VITE_ANALYTICS_ENABLED: ${VITE_ANALYTICS_ENABLED:-0}
+        VITE_GIT_BRANCH: ${VITE_GIT_BRANCH:-unknown}
+        VITE_GIT_COMMIT: ${VITE_GIT_COMMIT:-unknown}
+        GIT_BRANCH: ${VITE_GIT_BRANCH:-unknown}
+        GIT_COMMIT: ${VITE_GIT_COMMIT:-unknown}
+        BUILD_ID: ${BUILD_ID:-not_set}
     image: ai-finance-agent-oss-clean-nginx:latest
     depends_on:
       backend:
@@ -101,12 +134,15 @@ services:
       - "127.0.0.1:80:80"
       - "127.0.0.1:443:443"
     user: "101:101"
-    cap_drop: ["ALL"]
+    read_only: true
+    tmpfs:
+      - /var/run:rw,noexec,nosuid,nodev,size=16m,uid=101,gid=101,mode=0755
+      - /var/cache/nginx:rw,noexec,nosuid,nodev,size=64m,uid=101,gid=101,mode=0755
+      - /tmp:rw,noexec,nosuid,nodev,size=32m,uid=101,gid=101,mode=1777
     security_opt:
       - no-new-privileges:true
-    tmpfs:
-      - /var/cache/nginx:rw,noexec,nosuid,nodev,size=64m,uid=101,gid=101,mode=0755
-      - /var/run:rw,noexec,nosuid,nodev,size=16m,uid=101,gid=101,mode=0755
+    cap_drop:
+      - ALL
     healthcheck:
       test: ["CMD-SHELL","wget -q -O /dev/null http://127.0.0.1:80/_up || exit 1"]
       interval: 10s
@@ -114,6 +150,8 @@ services:
       retries: 10
       start_period: 20s
     restart: unless-stopped
+    networks:
+      - shared-ollama
 
 
   certbot:
@@ -147,8 +185,23 @@ services:
     ports:
       - "2000:2000" # expose metrics for strict verification
     depends_on:
-      - nginx
+      nginx:
+        condition: service_healthy
+    # Note: healthcheck disabled - cloudflared image lacks shell/wget/curl
+    # Tunnel status visible via metrics at localhost:2000/metrics (cloudflared_tunnel_ha_connections)
     restart: unless-stopped
+    networks:
+      - shared-ollama
+
+  cf-health:
+    image: curlimages/curl:8.10.1
+    command: sh -lc "while :; do curl -sf http://cloudflared:2000/metrics | grep -q cloudflared_tunnel_ha_connections || exit 1; sleep 30; done"
+    depends_on:
+      cloudflared:
+        condition: service_started
+    restart: unless-stopped
+    networks:
+      - shared-ollama
 
   # Local models runtime (pull & serve models via Ollama API)
   ollama:
@@ -165,6 +218,8 @@ services:
     volumes:
       # Persist large model downloads across container recreations
       - ollama-models:/root/.ollama
+    networks:
+      - shared-ollama
 
   # Sidecar to present 127.0.0.1:11434 inside backend netns, forwarding to ollama service
 
@@ -184,6 +239,12 @@ services:
       timeout: 3s
       retries: 10
       start_period: 20s
+    networks:
+      - shared-ollama
+
+networks:
+  shared-ollama:
+    external: true
 
 volumes:
   pgdata:
@@ -200,4 +261,3 @@ secrets:
     file: ./secrets/db_password.txt
   backend_db_url:
     file: ./secrets/backend_database_url.txt
-

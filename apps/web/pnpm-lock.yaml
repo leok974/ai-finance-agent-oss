@@ -81,6 +81,9 @@ importers:
         specifier: ^5.0.8
         version: 5.0.8(@types/react@18.3.24)(react@18.3.1)
     devDependencies:
+      '@axe-core/playwright':
+        specifier: ^4.10.2
+        version: 4.10.2(playwright-core@1.55.1)
       '@playwright/test':
         specifier: ^1.47.2
         version: 1.55.1
@@ -120,6 +123,9 @@ importers:
       autoprefixer:
         specifier: ^10.4.20
         version: 10.4.21(postcss@8.5.6)
+      cross-env:
+        specifier: ^7.0.3
+        version: 7.0.3
       eslint:
         specifier: ^8.57.0
         version: 8.57.1
@@ -187,6 +193,11 @@ packages:
 
   '@asamuzakjp/css-color@3.2.0':
     resolution: {integrity: sha512-K1A6z8tS3XsmCMM86xoWdn7Fkdn9m6RSVtocUrJYIwZnFVkng/PvkEoWtOWmP+Scc6saYWHWZYbndEEXxl24jw==}
+
+  '@axe-core/playwright@4.10.2':
+    resolution: {integrity: sha512-6/b5BJjG6hDaRNtgzLIfKr5DfwyiLHO4+ByTLB0cJgWSM8Ll7KqtdblIS6bEkwSF642/Ex91vNqIl3GLXGlceg==}
+    peerDependencies:
+      playwright-core: '>= 1.0.0'
 
   '@babel/code-frame@7.27.1':
     resolution: {integrity: sha512-cjQ7ZlQ0Mv3b47hABuTevyTuYN4i+loJKGeV9flcCgIK37cCXRh+L1bd3iBHlynerhQ7BhCkn2BPbQUL+rGqFg==}
@@ -1761,6 +1772,10 @@ packages:
     peerDependencies:
       postcss: ^8.1.0
 
+  axe-core@4.10.3:
+    resolution: {integrity: sha512-Xm7bpRXnDSX2YE2YFfBk2FnF0ep6tmG7xPh8iHee8MIcrgq762Nkce856dYtJYLkuIoYZvGfTs/PbZhideTcEg==}
+    engines: {node: '>=4'}
+
   bail@2.0.2:
     resolution: {integrity: sha512-0xO6mYd7JB2YesxDKplafRpsiOzPt9V02ddPCLbY1xYGPOX24NTyN50qnUxgCPcSoYMhKpAuBTjQoRZCAkUDRw==}
 
@@ -1889,6 +1904,11 @@ packages:
   cookie@0.7.2:
     resolution: {integrity: sha512-yki5XnKuf750l50uGTllt6kKILY4nQ1eNIQatoXEByZ5dWgnKqbnqmTrBE5B4N7lrMJKQ2ytWMiTO2o0v6Ew/w==}
     engines: {node: '>= 0.6'}
+
+  cross-env@7.0.3:
+    resolution: {integrity: sha512-+/HKd6EgcQCJGh2PSjZuUitQBQynKor4wrFbRg4DtAgS1aWO+gU52xpH7M9ScGgXSYmAVS9bIJ8EzuaGw0oNAw==}
+    engines: {node: '>=10.14', npm: '>=6', yarn: '>=1'}
+    hasBin: true
 
   cross-spawn@7.0.6:
     resolution: {integrity: sha512-uV2QOWP2nWzsy2aMp8aRibhi9dlzF5Hgh5SHaB9OiTGEyDTiJJyx0uy51QXdyWbtAHNua4XJzUKca3OzKUd3vA==}
@@ -3757,6 +3777,11 @@ snapshots:
       '@csstools/css-tokenizer': 3.0.4
       lru-cache: 10.4.3
 
+  '@axe-core/playwright@4.10.2(playwright-core@1.55.1)':
+    dependencies:
+      axe-core: 4.10.3
+      playwright-core: 1.55.1
+
   '@babel/code-frame@7.27.1':
     dependencies:
       '@babel/helper-validator-identifier': 7.27.1
@@ -5262,6 +5287,8 @@ snapshots:
       postcss: 8.5.6
       postcss-value-parser: 4.2.0
 
+  axe-core@4.10.3: {}
+
   bail@2.0.2: {}
 
   balanced-match@1.0.2: {}
@@ -5384,6 +5411,10 @@ snapshots:
   convert-source-map@2.0.0: {}
 
   cookie@0.7.2: {}
+
+  cross-env@7.0.3:
+    dependencies:
+      cross-spawn: 7.0.6
 
   cross-spawn@7.0.6:
     dependencies:

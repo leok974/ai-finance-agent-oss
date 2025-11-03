@@ -1,0 +1,12 @@
+eslint_errors_total 59
+eslint_warnings_total 846
+eslint_by_rule_total{rule="@typescript-eslint/no-explicit-any",level="warn"} 689
+eslint_by_rule_total{rule="@typescript-eslint/no-unused-vars",level="warn"} 103
+eslint_by_rule_total{rule="no-empty",level="error"} 41
+eslint_by_rule_total{rule="react-hooks/exhaustive-deps",level="warn"} 30
+eslint_by_rule_total{rule="react-refresh/only-export-components",level="warn"} 12
+eslint_by_rule_total{rule="react-hooks/rules-of-hooks",level="warn"} 8
+eslint_by_rule_total{rule="no-useless-escape",level="error"} 5
+eslint_by_rule_total{rule="@typescript-eslint/ban-ts-comment",level="error"} 4
+eslint_by_rule_total{rule="no-extra-semi",level="error"} 3
+eslint_by_rule_total{rule="@typescript-eslint/ban-types",level="error"} 3

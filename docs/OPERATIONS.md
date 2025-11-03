@@ -94,6 +94,13 @@ Large models (e.g., `gpt-oss:20b`) can require several seconds on first access a
 * In the first warm window (default 60s from process start) a read timeout triggers one retry (300–700ms backoff).
 * If the retry also times out, the API returns `503` with JSON `{"error":"model_warming","hint":"Model is starting; please retry."}` instead of a generic 500.
 * Subsequent successful calls mark the model warm and normal (fast) behavior resumes.
+* A compose-side warmup job now calls `/agent/warmup` after each deploy. The endpoint performs a lightweight generation using `DEFAULT_LLM_MODEL` (unless a `model` query is supplied), returns `{ ok, warmed, took_ms, fallback }`, and clears cached fallback state between attempts. Ops can re-trigger manually:
+
+	```powershell
+	Invoke-RestMethod http://backend:8000/agent/warmup | Format-List
+	```
+
+* Ollama containers ship with `OLLAMA_KEEP_ALIVE=5m` and `OMP_NUM_THREADS=8` so the GPU process remains resident across idle windows.
 
 Timeout / retry knobs (env vars):
 | Variable | Default | Purpose |
@@ -122,10 +129,26 @@ docker compose top ollama
 ```
 Then consider increasing `LLM_READ_TIMEOUT` or verifying host resource pressure (CPU / memory).
 
+### 7.2 First-Chunk Latency Guardrail
+* The Playwright suite includes **Agent streaming first chunk**, which exercises `/agui/chat` via native `EventSource` and asserts the first content chunk lands within `AGENT_FIRST_CHUNK_BUDGET_MS` (default `1500`). Override the ceiling for experiments:
+
+	```powershell
+	$env:AGENT_FIRST_CHUNK_BUDGET_MS = 1800
+	pnpm -C apps/web test:pw --grep "Agent streaming first chunk"
+	```
+
+* After Playwright finishes, summarize latency and fallback data via:
+
+	```powershell
+	pwsh -File scripts/summarize-first-chunk.ps1
+	```
+
+	Use `-AsJson` to emit machine-readable output (handy for CI artifact promotion).
+
 ## 8. Performance Tips
 | Issue | Suggestion |
 |-------|------------|
-| Slow explain responses | Warm Ollama model; ensure no container restarts | 
+| Slow explain responses | Warm Ollama model; ensure no container restarts |
 | High CPU backend | Profile endpoints; disable debug logging |
 | Large DB growth | Prune old raw ingestion artifacts; archive monthly snapshots |
 
@@ -146,7 +169,7 @@ Then consider increasing `LLM_READ_TIMEOUT` or verifying host resource pressure 
 | Idea | Value |
 |------|-------|
 | Scheduled smoke test via cron + alert | Early detection of outages |
-| Log aggregation (Loki/ELK) | Centralized search | 
+| Log aggregation (Loki/ELK) | Centralized search |
 | Metrics + dashboards (Prometheus/Grafana) | Trend visibility |
 
 Cross-refs: [VERIFY_PROD](VERIFY_PROD.md) · [SMOKE_TESTS](SMOKE_TESTS.md) · [SECURITY](SECURITY.md) · [CRYPTO_SETUP](CRYPTO_SETUP.md)
@@ -190,4 +213,3 @@ Make / Scripts:
 * `make stop` — tear down current stack.
 
 Guideline: Avoid mounting the entire `./apps/web` source into the nginx runtime container. Instead, rebuild the image to update static assets.
-

@@ -1,6 +1,6 @@
 # AI Finance Agent (gpt-oss:20b)
 
-![Coverage](docs/badges/coverage.svg) 
+![Coverage](docs/badges/coverage.svg)
 ![Ingest smoke](https://img.shields.io/github/actions/workflow/status/leok974/ai-finance-agent-oss/ingest-smoke.yml?label=ingest%20smoke)
 
 > Production-ready personal finance + LLM agent stack (FastAPI + React + Ollama/OpenAI) with KMS-backed encryption, Cloudflare tunnel ingress, and hardened nginx edge.
@@ -123,6 +123,20 @@ Typical remediation hints:
 - Tunnel metrics absent → check `cloudflared` container health / credentials and that metrics port is exposed (`--metrics 0.0.0.0:2000`).
 - High latency warnings → investigate network path (Cloudflare status, local ISP) or container CPU throttling.
 
+### Provider-aware latency rollup
+
+Generate a quick provider breakdown (primary vs fallback) from recent edge verification output:
+
+```powershell
+pnpm run report:latency
+```
+
+Flags:
+
+- `--input` – glob of JSON results (defaults to `edge-verify.json`)
+- `--format=prometheus` – emit Prometheus-style metrics for scraping
+- `--rollup` – merge multiple files before percentile math
+
 Integrate into CI for a post-deploy gate:
 ```yaml
 - name: Extended edge verification
@@ -131,33 +145,28 @@ Integrate into CI for a post-deploy gate:
 
 Future enhancements (not yet implemented): streaming token rate metrics, per-model warm cache probe, optional auth flow.
 
-## CSP pipeline (nginx hash rendering)
+## CSP pipeline (runtime hashing)
 
-We keep nginx’s `script-src` strict while still allowing future inline scripts if needed.
+We removed the build‑time CSP hash extraction step. Instead, the nginx container computes inline script hashes when it starts:
 
-**How it works**
+How it works:
+1. `deploy/nginx.conf` includes `script-src 'self' __INLINE_SCRIPT_HASHES__`.
+2. Entry script `/docker-entrypoint.d/10-csp-render.sh` scans `index.html` for inline `<script>` tags without `src`.
+3. For each block, it generates a `sha256-...` hash and substitutes the placeholder. If no inline scripts exist, it simply removes the placeholder (leaving `script-src 'self'`).
 
-- `deploy/nginx.conf` contains `script-src 'self' __INLINE_SCRIPT_HASHES__` (placeholder).
-- `apps/web/dist/index.html` is scanned for inline `<script>` blocks.
-- A rendered config `deploy/nginx.conf.rendered` replaces the placeholder with `'sha256-…'` hashes (or nothing if zero inline scripts).
+Operational notes:
+- No `pnpm run csp:hash` step is required anymore.
+- Adding or removing inline scripts only requires an nginx container restart to refresh hashes.
+- Prefer moving logic into external JS modules to avoid needing hashes at all.
 
-**Commands**
-
+Redeploy & verify:
 ```bash
-# Render CSP (OK when zero inline scripts)
-pnpm run csp:hash
-
-# Local prod-like
-docker --context desktop-linux compose -f docker-compose.prod.yml -f docker-compose.prod.override.yml build nginx
-docker --context desktop-linux compose -f docker-compose.prod.yml -f docker-compose.prod.override.yml up -d nginx
+pnpm -C apps/web build
+docker compose -f docker-compose.prod.yml -f docker-compose.prod.override.yml build nginx
+docker compose -f docker-compose.prod.yml -f docker-compose.prod.override.yml up -d nginx
+curl -sI http://127.0.0.1/ | grep -i content-security-policy
 ```
-
-**Verification**
-
-```bash
-curl -sI http://127.0.0.1:8080/ | grep -i content-security-policy
-# Expect: script-src 'self' (no __INLINE_SCRIPT_HASHES__ literal)
-```
+If inline scripts exist you’ll see one or more `sha256-` entries under `script-src`. If not, only `'self'` appears.
 
 **CI guard**
 
@@ -280,6 +289,77 @@ rule_files:
 ```
 
 > See `docs/observability-contract.md` for metric/header invariants and resilient test patterns (avoid brittle formatting assumptions).
+
+## E2E Testing
+
+### Running E2E Tests Locally
+
+The E2E suite uses Playwright to test the full stack (backend + frontend). Tests run against a dedicated SQLite database (`test_e2e.db`) that's automatically cleaned before each run for deterministic results.
+
+**Two-Terminal Workflow** (manual control):
+
+```powershell
+# Terminal A: Start backend + dev server
+./scripts/dev.ps1 -NoOllama
+
+# Terminal B: Run tests
+pnpm -C apps/web run test:fast:dev
+```
+
+**One-Shot Auto Runner** (spawns backend + vite automatically):
+
+```powershell
+pnpm -C apps/web run test:fast:auto
+```
+
+The auto-runner:
+- Deletes `apps/backend/data/test_e2e.db` for a clean slate
+- Spawns backend with `ALLOW_DEV_ROUTES=1` (enables `/api/dev/seed-user`, `/api/dev/seed-unknowns`)
+- Spawns Vite dev server with `VITE_SUGGESTIONS_ENABLED=1`, `VITE_UNKNOWNS_ENABLED=1`
+- Waits for both to be ready, then runs Playwright tests
+- Cleans up processes after tests complete
+
+**Key Features:**
+- **Direct Backend Routing:** Tests hit FastAPI directly (port 8000) instead of going through Vite proxy
+- **Serialized Execution:** Dev mode runs with `workers: 1` to avoid SQLite lock contention
+- **Flake Guards:** CI retries tests once with traces captured on first retry
+- **Graceful Degradation:** Tests skip when UI features are unavailable (e.g., suggestions panel missing)
+
+### CI Integration
+
+E2E tests run automatically in CI via `.github/workflows/e2e-dev.yml`. The workflow:
+- Installs dependencies (pnpm, Python, Playwright browsers)
+- Runs tests with `CI=true` (enables retries and trace capture)
+- Uploads Playwright reports and traces as artifacts on failure
+
+## Fast Playwright (Chromium-only local runs)
+
+We provide fast, Chromium-only Playwright runs locally with higher parallelism and a no-webServer pattern (you prestart the app):
+
+- Install browsers:
+
+```powershell
+pnpm run pw:install
+```
+
+- Fast run (defaults to BASE_URL=http://127.0.0.1:8080; override via env):
+
+```powershell
+pnpm run pw:fast
+```
+
+- PowerShell helper with shard switches:
+
+```powershell
+./scripts/run-playwright.ps1 -BaseUrl http://127.0.0.1:8080
+./scripts/run-playwright.ps1 -BaseUrl http://127.0.0.1:5173 -Shard1
+```
+
+Environment knobs:
+
+- `BASE_URL`: target base URL (nginx/edge: 8080; vite dev: 5173)
+- `PW_WORKERS`: override concurrency (default 24)
+- `PW_SKIP_WS=1`: skip Playwright-managed webServer (default in pw:fast)
 
 Badge exposure: coverage/status JSON lives on the `status-badge` branch; see section below for enabling coverage badge.
 

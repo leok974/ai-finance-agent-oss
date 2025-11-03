@@ -1,5 +1,13 @@
 import React, { useCallback, useRef, useState } from "react";
-import { uploadCsv, fetchLatestMonth, agentTools } from "../lib/api"; // uses your existing helpers
+import {
+  uploadCsv,
+  fetchLatestMonth,
+  agentTools,
+  chartsSummary,
+  chartsMerchants,
+  chartsCategories,
+  chartsFlows
+} from "../lib/api"; // uses your existing helpers
 import { emitToastSuccess, emitToastError } from "@/lib/toast-helpers";
 import { t } from '@/lib/i18n';
 import { ToastAction } from "@/components/ui/toast";
@@ -75,25 +83,30 @@ const UploadCsv: React.FC<UploadCsvProps> = ({ onUploaded, defaultReplace = true
   }, []);
 
   // After a successful upload, snap to latest month and refetch key dashboards
-  const handleUploadSuccess = useCallback(async () => {
+  const handleUploadSuccess = useCallback(async (uploadData?: Record<string, unknown>) => {
     try {
-      const latest = await fetchLatestMonth();
+      // Prefer detected_month from upload response over fetchLatestMonth call
+      const detectedMonth = uploadData?.detected_month as string | undefined;
+      const latest = detectedMonth || await fetchLatestMonth();
+
       // Only update month if we got a meaningful result that's different from current
-      // Avoid overwriting a carefully resolved month from boot unless truly necessary
       if (latest && latest !== month && latest.length >= 7) {
-        console.debug("[upload] updating month from", month, "to", latest);
+        // Update to detected month from CSV
         setMonth(latest);
       }
 
-      // Use the resolved month (prefer current context month over latest)
-      const resolved = month || latest;
+      // Use the resolved month (prefer detected over current context month)
+      const resolved = detectedMonth || month || latest;
       if (resolved) {
-        // fire-and-forget to avoid blocking UI
+        // Fire-and-forget to avoid blocking UI
+        // Use new normalized chart functions for consistent data shape
         void Promise.allSettled([
-          agentTools.chartsSummary({ month: resolved }),
-          agentTools.chartsMerchants({ month: resolved, limit: 10 }),
-          agentTools.chartsFlows({ month: resolved }),
+          chartsSummary(resolved),
+          chartsMerchants(resolved, 10),
+          chartsCategories(resolved, 10),
+          chartsFlows(resolved),
           agentTools.chartsSpendingTrends({ month: resolved, months_back: 6 }),
+          agentTools.suggestionsWithMeta({ month: resolved, window_months: 3, min_support: 3, min_share: 0.6, limit: 10 }),
         ]);
       }
     } catch {
@@ -111,25 +124,23 @@ const UploadCsv: React.FC<UploadCsvProps> = ({ onUploaded, defaultReplace = true
       const r: UploadResult = { ok: true, data, message: "CSV ingested successfully." };
       setResult(r);
       onUploaded?.(r);
-  // snap month + refetch dashboards (non-blocking)
-  void handleUploadSuccess();
+      // snap month + refetch dashboards (non-blocking), pass the upload data
+      void handleUploadSuccess(data as Record<string, unknown>);
       // Success toast with dual CTAs
-  emitToastSuccess(t('ui.toast.import_complete_title'), { description: t('ui.toast.import_complete_description') });
+      emitToastSuccess(t('ui.toast.import_complete_title'), { description: t('ui.toast.import_complete_description') });
       // optional: reset file after success
       // reset();
-    } catch (err: any) {
+    } catch (err: unknown) {
       const message =
-        err?.message ??
+        (err as Error)?.message ??
         (typeof err === "string" ? err : "Upload failed. Check server logs for details.");
-      const status = err?.status ?? undefined;
+      const status = (err as { status?: number })?.status ?? undefined;
       const r: UploadResult = { ok: false, status, message };
       setResult(r);
     } finally {
       setBusy(false);
     }
-  }, [file, replace, onUploaded, handleUploadSuccess]);
-
-  const disabled = busy || !file;
+  }, [file, replace, onUploaded, handleUploadSuccess]);  const disabled = busy || !file;
 
   return (
     <div className={`w-full ${className ?? ""}`}>
@@ -164,6 +175,7 @@ const UploadCsv: React.FC<UploadCsvProps> = ({ onUploaded, defaultReplace = true
             ${dragOver ? "border-indigo-400 bg-indigo-500/10" : "border-border hover:bg-background/40"}`}
         >
           <input
+            data-testid="uploadcsv-input"
             ref={inputRef}
             type="file"
             accept=".csv,text/csv"
@@ -193,6 +205,7 @@ const UploadCsv: React.FC<UploadCsvProps> = ({ onUploaded, defaultReplace = true
 
         <div className="mt-4 flex items-center justify-end">
           <Button
+            data-testid="uploadcsv-submit"
             variant="pill"
             onClick={doUpload}
             disabled={disabled}

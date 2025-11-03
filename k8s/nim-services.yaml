@@ -1,0 +1,111 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nim-llm
+  namespace: nim
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: nim-llm } }
+  template:
+    metadata:
+      labels: { app: nim-llm }
+    spec:
+      imagePullSecrets:
+        - name: ngc-regcred
+      tolerations:
+        - key: nvidia.com/gpu
+          operator: Exists
+          effect: NoSchedule
+      containers:
+        - name: server
+          # NVIDIA NIM for Llama 3.1 Nemotron Nano 8B
+          image: nvcr.io/nim/meta/llama-3.1-nemotron-nano-8b-instruct:latest
+          ports: [{ containerPort: 8000, name: http }]
+          env:
+            - name: NGC_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: ngc-api-secret
+                  key: NGC_API_KEY
+            - name: NIM_CACHE_PATH
+              value: /opt/nim/.cache
+          resources:
+            limits:
+              nvidia.com/gpu: 1
+              memory: 16Gi
+            requests:
+              nvidia.com/gpu: 1
+              memory: 12Gi
+          volumeMounts:
+            - name: cache
+              mountPath: /opt/nim/.cache
+      volumes:
+        - name: cache
+          emptyDir:
+            sizeLimit: 50Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nim-llm-svc
+  namespace: nim
+spec:
+  selector: { app: nim-llm }
+  ports:
+    - name: http
+      port: 8000
+      targetPort: 8000
+  type: ClusterIP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nim-embed
+  namespace: nim
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: nim-embed } }
+  template:
+    metadata:
+      labels: { app: nim-embed }
+    spec:
+      imagePullSecrets:
+        - name: ngc-regcred
+      containers:
+        - name: server
+          # NVIDIA NIM Embedding - nv-embed-v2
+          image: nvcr.io/nim/nvidia/nv-embedqa-e5-v5:latest
+          ports: [{ containerPort: 8000, name: http }]
+          env:
+            - name: NGC_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: ngc-api-secret
+                  key: NGC_API_KEY
+            - name: NIM_CACHE_PATH
+              value: /opt/nim/.cache
+          resources:
+            limits:
+              memory: 8Gi
+            requests:
+              memory: 6Gi
+          volumeMounts:
+            - name: cache
+              mountPath: /opt/nim/.cache
+      volumes:
+        - name: cache
+          emptyDir:
+            sizeLimit: 30Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nim-embed-svc
+  namespace: nim
+spec:
+  selector: { app: nim-embed }
+  ports:
+    - name: http
+      port: 8000
+      targetPort: 8000
+  type: ClusterIP

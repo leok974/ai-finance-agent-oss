@@ -1,6 +1,6 @@
-from typing import List, Dict, Any, Optional, Literal
+from typing import List, Dict, Optional, Literal
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel, Field, conint, confloat
+from pydantic import BaseModel, Field, conint
 from sqlalchemy import func, case, desc, asc
 from sqlalchemy.orm import Session
 
@@ -10,6 +10,7 @@ from app.transactions import Transaction
 router = APIRouter(prefix="/agent/tools/charts", tags=["agent-tools:charts"])
 
 # ---------- Pydantic Schemas ----------
+
 
 class MonthParam(BaseModel):
     month: str = Field(..., description="YYYY-MM")
@@ -66,7 +67,9 @@ class FlowsResp(BaseModel):
 
 
 class TrendsBody(BaseModel):
-    months: Optional[List[str]] = Field(None, description="Explicit YYYY-MM list; if absent, we infer from data.")
+    months: Optional[List[str]] = Field(
+        None, description="Explicit YYYY-MM list; if absent, we infer from data."
+    )
     window: conint(ge=1, le=24) = 6
     order: Literal["asc", "desc"] = "asc"  # chronological order
 
@@ -85,18 +88,28 @@ class TrendsResp(BaseModel):
 
 # ---------- Helpers ----------
 
+
 def _unknown_cat():
-    return (Transaction.category.is_(None)) | (func.trim(Transaction.category) == "") | (func.lower(Transaction.category) == "unknown")
+    return (
+        (Transaction.category.is_(None))
+        | (func.trim(Transaction.category) == "")
+        | (func.lower(Transaction.category) == "unknown")
+    )
+
 
 def _abs_outflow_sum():
     # Sum of negative amounts, returned as positive spend
-    return func.sum(func.abs(case((Transaction.amount < 0, Transaction.amount), else_=0.0)))
+    return func.sum(
+        func.abs(case((Transaction.amount < 0, Transaction.amount), else_=0.0))
+    )
+
 
 def _inflow_sum():
     return func.sum(case((Transaction.amount > 0, Transaction.amount), else_=0.0))
 
 
 # ---------- Endpoints ----------
+
 
 @router.post("/summary", response_model=SummaryResp)
 def charts_summary(body: SummaryBody, db: Session = Depends(get_db)) -> SummaryResp:
@@ -132,7 +145,9 @@ def charts_summary(body: SummaryBody, db: Session = Depends(get_db)) -> SummaryR
             inflow = float(r.inflow or 0.0)
             outflow = float(r.outflow or 0.0)
             net_day = float(r.net_raw or 0.0)
-            daily.append(SummaryPoint(date=str(r.d), inflow=inflow, outflow=outflow, net=net_day))
+            daily.append(
+                SummaryPoint(date=str(r.d), inflow=inflow, outflow=outflow, net=net_day)
+            )
 
     return SummaryResp(
         month=body.month,
@@ -144,10 +159,14 @@ def charts_summary(body: SummaryBody, db: Session = Depends(get_db)) -> SummaryR
 
 
 @router.post("/merchants", response_model=MerchantsResp)
-def charts_merchants(body: MerchantsBody, db: Session = Depends(get_db)) -> MerchantsResp:
+def charts_merchants(
+    body: MerchantsBody, db: Session = Depends(get_db)
+) -> MerchantsResp:
     q = (
         db.query(
-            func.coalesce(func.nullif(Transaction.merchant, ""), "Unknown").label("merchant"),
+            func.coalesce(func.nullif(Transaction.merchant, ""), "Unknown").label(
+                "merchant"
+            ),
             _abs_outflow_sum().label("spend"),
             func.sum(case((Transaction.amount != 0, 1), else_=0)).label("txns"),
         )
@@ -157,7 +176,11 @@ def charts_merchants(body: MerchantsBody, db: Session = Depends(get_db)) -> Merc
         .limit(body.top_n)
     )
     items = [
-        MerchantItem(merchant=row.merchant, spend=float(row.spend or 0.0), txns=int(row.txns or 0))
+        MerchantItem(
+            merchant=row.merchant,
+            spend=float(row.spend or 0.0),
+            txns=int(row.txns or 0),
+        )
         for row in q.all()
         if (row.spend or 0.0) > 0
     ]
@@ -173,8 +196,12 @@ def charts_flows(body: FlowsBody, db: Session = Depends(get_db)) -> FlowsResp:
     """
     rows = (
         db.query(
-            func.coalesce(func.nullif(Transaction.category, ""), "Unknown").label("category"),
-            func.coalesce(func.nullif(Transaction.merchant, ""), "Unknown").label("merchant"),
+            func.coalesce(func.nullif(Transaction.category, ""), "Unknown").label(
+                "category"
+            ),
+            func.coalesce(func.nullif(Transaction.merchant, ""), "Unknown").label(
+                "merchant"
+            ),
             _abs_outflow_sum().label("spend"),
         )
         .filter(Transaction.month == body.month)
@@ -194,8 +221,18 @@ def charts_flows(body: FlowsBody, db: Session = Depends(get_db)) -> FlowsResp:
         by_merchant[r.merchant] = by_merchant.get(r.merchant, 0.0) + spend
         by_category[r.category] = by_category.get(r.category, 0.0) + spend
 
-    top_merchs = {m for m, _ in sorted(by_merchant.items(), key=lambda kv: kv[1], reverse=True)[: body.top_merchants]}
-    top_cats = {c for c, _ in sorted(by_category.items(), key=lambda kv: kv[1], reverse=True)[: body.top_categories]}
+    top_merchs = {
+        m
+        for m, _ in sorted(by_merchant.items(), key=lambda kv: kv[1], reverse=True)[
+            : body.top_merchants
+        ]
+    }
+    top_cats = {
+        c
+        for c, _ in sorted(by_category.items(), key=lambda kv: kv[1], reverse=True)[
+            : body.top_categories
+        ]
+    }
 
     edges: List[FlowEdge] = []
     for r in rows:
@@ -208,14 +245,23 @@ def charts_flows(body: FlowsBody, db: Session = Depends(get_db)) -> FlowsResp:
     return FlowsResp(month=body.month, edges=edges)
 
 
-@router.post("/spending_trends", response_model=TrendsResp)
-def charts_spending_trends(body: TrendsBody, db: Session = Depends(get_db)) -> TrendsResp:
+@router.post("/spending_trends", response_model=TrendsResp)  # legacy underscore
+@router.post("/spending-trends", response_model=TrendsResp)  # canonical dashed
+async def spending_trends_post(
+    body: TrendsBody, db: Session = Depends(get_db)
+) -> TrendsResp:
     # Determine which months to include
     months: List[str]
     if body.months:
         months = list(dict.fromkeys(body.months))  # dedupe keep order
     else:
-        rows = db.query(Transaction.month).group_by(Transaction.month).order_by(desc(Transaction.month)).limit(body.window).all()
+        rows = (
+            db.query(Transaction.month)
+            .group_by(Transaction.month)
+            .order_by(desc(Transaction.month))
+            .limit(body.window)
+            .all()
+        )
         months = [r[0] for r in rows]
         months.sort(reverse=False if body.order == "asc" else True)
 
@@ -241,6 +287,25 @@ def charts_spending_trends(body: TrendsBody, db: Session = Depends(get_db)) -> T
 
     # Return in requested order; missing months default to zeros
     ordered = months if body.order == "asc" else list(reversed(months))
-    series = [series_map.get(m, TrendPoint(month=m, inflow=0.0, outflow=0.0, net=0.0)) for m in ordered]
+    series = [
+        series_map.get(m, TrendPoint(month=m, inflow=0.0, outflow=0.0, net=0.0))
+        for m in ordered
+    ]
 
     return TrendsResp(months=ordered, series=series)
+
+
+@router.get("/spending_trends", include_in_schema=False, response_model=TrendsResp)
+@router.get("/spending-trends", include_in_schema=False, response_model=TrendsResp)
+async def spending_trends_get_compat(
+    months: Optional[str] = None,
+    window: int = 6,
+    order: Literal["asc", "desc"] = "asc",
+    db: Session = Depends(get_db),
+) -> TrendsResp:
+    body = TrendsBody(
+        months=[m for m in (months or "").split(",") if m] or None,
+        window=window,
+        order=order,
+    )
+    return await spending_trends_post(body, db)

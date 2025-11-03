@@ -1,0 +1,84 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: default
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: backend
+  template:
+    metadata:
+      labels:
+        app: backend
+    spec:
+      containers:
+        - name: backend
+          image: finance-agent-backend:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8000
+              name: http
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: backend-secrets
+                  key: database-url
+            - name: NIM_LLM_URL
+              value: "http://nim-llm-service:8000/v1"
+            - name: NIM_EMBED_URL
+              value: "http://nim-embed-service:8001/v1"
+            - name: NIM_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: nim-secrets
+                  key: ngc-api-key
+            - name: NIM_LLM_MODEL
+              value: "meta/llama-3.1-nemotron-nano-8b-v1"
+            - name: NIM_EMBED_MODEL
+              value: "nvidia/nv-embed-v2"
+            - name: DEFAULT_LLM_PROVIDER
+              value: "nim"
+            - name: EMBED_PROVIDER
+              value: "nim"
+            - name: EMBED_DIM
+              value: "768"
+            - name: APP_ENV
+              value: "production"
+            - name: ALLOWED_ORIGINS
+              value: "*"
+          resources:
+            requests:
+              memory: 512Mi
+              cpu: 250m
+            limits:
+              memory: 1Gi
+              cpu: 1000m
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8000
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend-service
+  namespace: default
+spec:
+  selector:
+    app: backend
+  ports:
+    - protocol: TCP
+      port: 8000
+      targetPort: 8000
+  type: ClusterIP

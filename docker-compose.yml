@@ -1,6 +1,8 @@
+name: ai-finance
+
 services:
   postgres:
-    image: postgres:15
+    image: pgvector/pgvector:pg15
     ports:
       - "5432:5432"
     environment:
@@ -10,6 +12,11 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
     restart: unless-stopped
+    networks:
+      default:
+      infra_net:
+        aliases:
+          - ai-finance-db.int
 
   backend:
     build: ./apps/backend
@@ -17,12 +24,45 @@ services:
       - "8000:8000"
     environment:
       DATABASE_URL: "postgresql+psycopg://myuser:${POSTGRES_PASSWORD}@postgres:5432/finance"
-      CORS_ALLOW_ORIGINS: "http://127.0.0.1:5173"
+      OLLAMA_HOST: "http://ollama:11434"
+      CORS_ALLOW_ORIGINS: "http://127.0.0.1:5173,https://ledger-mind.org,https://app.ledger-mind.org,https://www.ledger-mind.org,https://assistant.ledger-mind.org,https://siteagents.app,https://www.siteagents.app"
       ENCRYPTION_ENABLED: "1"
       GCP_KMS_KEY: "projects/ledgermind-03445-3l/locations/us-east1/keyRings/ledgermind/cryptoKeys/kek"
       GCP_KMS_AAD: "app=ledgermind,env=dev"
       GOOGLE_APPLICATION_CREDENTIALS: "/secrets/gcp-sa.json"
       APP_ENV: "dev"
+      ALLOW_DEV_ROUTES: "1"
+      # Dev superuser PIN unlock configuration (dev environment only)
+      DEV_SUPERUSER_EMAIL: "leoklemet.pa@gmail.com"
+      DEV_SUPERUSER_PIN: "01324821"
+      DEV_TOOLS_ENABLED: "1"
+      # LLM Configuration
+      DEFAULT_LLM_PROVIDER: "ollama"
+      DEFAULT_LLM_MODEL: "llama3:latest"
+      OLLAMA_BASE_URL: "http://ollama:11434"
+      OPENAI_BASE_URL: "http://ollama:11434/v1"
+      OPENAI_API_KEY: "ollama"
+      LLM_ALLOW_IN_DEV: "1"
+      DEV_ALLOW_NO_LLM: "0"
+      LLM_TIMEOUT_S: "60"
+      PRIMARY_TIMEOUT_S: "60"
+      OPENAI_TIMEOUT_S: "60"
+      # Cookie configuration for cross-domain (assistant.ledger-mind.org)
+      COOKIE_DOMAIN: ".ledger-mind.org"
+      COOKIE_SECURE: "1"
+      COOKIE_SAMESITE: "lax"
+      # SiteAgent Features
+      SITEAGENT_DEV_COOKIE_KEY: "${SITEAGENT_DEV_COOKIE_KEY:-dev-secret-change-me}"
+      # SEO Intelligence Loop
+      SEO_LLM_ENABLED: "1"
+      ANALYTICS_ENABLED: "1"
+      # Content Automation
+      SITE_BASE_URL: "https://assistant.ledger-mind.org"
+      ALLOW_LINK_APPLY: "1"
+      ALLOW_OG_GENERATE: "1"
+      ALLOW_MEDIA_OPTIMIZE: "1"
+      # RAG/Knowledge
+      RAG_DB: "/app/data/rag.sqlite"
     depends_on:
       - postgres
     volumes:
@@ -42,6 +82,13 @@ services:
         reservations:
           cpus: "0.25"
           memory: "512M"
+    networks:
+      default:
+      infra_net:
+        aliases:
+          - ai-finance-api.int      # LedgerMind API (existing)
+          - api.ai-finance.int      # LedgerMind API alternate (existing)
+          - siteagent-api.int       # SiteAgent API (added Oct 11, 2025)
 
   web:
     build:
@@ -63,6 +110,33 @@ services:
     # Production-style: serve static assets only (no pnpm/vite inside nginx runtime image)
     command: null
     restart: unless-stopped
+    networks:
+      - default
+
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx-simple.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - backend
+      - web
+    restart: unless-stopped
+    networks:
+      default:
+      infra_net:
+        aliases:
+          - ai-finance.int          # LedgerMind UI (existing)
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:80/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+networks:
+  infra_net:
+    external: true
 
 volumes:
   pgdata:

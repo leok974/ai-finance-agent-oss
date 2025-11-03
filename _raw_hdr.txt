@@ -1,0 +1,17 @@
+HTTP/1.1 200 OK
+Date: Wed, 01 Oct 2025 01:19:48 GMT
+Content-Type: text/html
+Transfer-Encoding: chunked
+Connection: keep-alive
+Cache-Control: no-store
+Report-To: {"group":"cf-nel","max_age":604800,"endpoints":[{"url":"https://a.nel.cloudflare.com/report/v4?s=w6Vx%2FuW0XZKV6YyBAUslj9P%2BdEcOj55OfiaMsWrU64uf6TMYXeGjpjMOOj57%2F9eVrHJCDhGTGLHEVLvbTJkzu8M8gAr%2BmLeOjJpE0wl2eY1BCLiYCSpvioF1GLoA9Q0%3D"}]}
+content-security-policy: default-src 'self'; connect-src 'self' https://api.openai.com; img-src 'self' data: blob:; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; frame-ancestors 'none'; base-uri 'self'; upgrade-insecure-requests
+content-security-policy-report-only: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https://api.openai.com; object-src 'none'; frame-src 'none'; form-action 'self'; base-uri 'self'; upgrade-insecure-requests
+Nel: {"report_to":"cf-nel","success_fraction":0.0,"max_age":604800}
+last-modified: Wed, 01 Oct 2025 01:05:18 GMT
+Server: cloudflare
+x-csp-debug: origin-nginx v2
+cf-cache-status: DYNAMIC
+vary: accept-encoding
+CF-RAY: 987822498c996e25-IAD
+alt-svc: h3=":443"; ma=86400

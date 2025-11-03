@@ -8,7 +8,7 @@ from sqlalchemy.orm import sessionmaker, Session, declarative_base
 
 DATABASE_URL: str = os.getenv(
     "DATABASE_URL",
-    "sqlite:///./app/data/dev.sqlite3",  # local fallback for convenience
+    "sqlite:////data/dev.sqlite3",  # persistent storage mounted at /data
 )
 
 # SQLite needs a special connect arg; Postgres does not.
@@ -23,6 +23,7 @@ engine = create_engine(
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 Base = declarative_base()
+
 
 def get_db() -> Generator[Session, None, None]:
     """

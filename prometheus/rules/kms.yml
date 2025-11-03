@@ -1,0 +1,117 @@
+groups:
+- name: kms_crypto
+  rules:
+  # Critical: Crypto mode not using KMS
+  - alert: KMSCryptoModeNotKMS
+    expr: |
+      up{job="backend"} == 1
+      and
+      (
+        crypto_mode != 1
+        or absent(crypto_mode)
+      )
+    for: 5m
+    labels:
+      severity: critical
+    annotations:
+      summary: "Backend crypto mode is not KMS"
+      description: |
+        Backend is running but crypto_mode is not 'kms'.
+        This indicates a security regression or KMS initialization failure.
+        Check: docker exec ai-finance-backend-1 python -m app.cli crypto-status
+        Expected: mode=kms
+
+  # Critical: Crypto not ready
+  - alert: KMSCryptoNotReady
+    expr: |
+      up{job="backend"} == 1
+      and
+      (
+        crypto_ready != 1
+        or absent(crypto_ready)
+      )
+    for: 5m
+    labels:
+      severity: critical
+    annotations:
+      summary: "Backend crypto system not ready"
+      description: |
+        Backend is running but crypto_ready is not True.
+        This prevents secure operations on encrypted data.
+        Check: curl http://localhost:8000/healthz | jq .crypto_ready
+        Expected: true
+
+  # Warning: KMS mode flapping
+  - alert: KMSCryptoModeFlapping
+    expr: |
+      changes(crypto_mode[1h]) > 2
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "Crypto mode flapping detected"
+      description: |
+        Crypto mode has changed more than 2 times in the last hour.
+        This indicates instability in KMS connectivity or configuration.
+        Check backend logs for KMS errors or IAM permission issues.
+
+  # Warning: High rate of crypto errors
+  - alert: KMSHighCryptoErrorRate
+    expr: |
+      rate(crypto_errors_total[5m]) > 0.1
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "High rate of crypto errors"
+      description: |
+        Backend is experiencing {{ $value | humanize }} crypto errors per second.
+        Check logs for:
+          - "Decryption failed"
+          - "403 Permission denied"
+          - "AAD mismatch"
+        See: docs/KMS_OPERATIONS.md#troubleshooting
+
+  # Info: Backend restarted (expect brief crypto unavailability)
+  - alert: KMSBackendRestarted
+    expr: |
+      changes(crypto_init_timestamp[5m]) > 0
+    for: 0m
+    labels:
+      severity: info
+    annotations:
+      summary: "Backend restarted (crypto re-initializing)"
+      description: |
+        Backend has restarted. Crypto initialization may take 5-10 seconds.
+        Brief "crypto not ready" alerts during this window are expected.
+        If crypto_ready doesn't return to true within 2 minutes, investigate.
+
+  # Warning: KMS latency high
+  - alert: KMSHighLatency
+    expr: |
+      histogram_quantile(0.95, rate(kms_operation_duration_seconds_bucket[5m])) > 1.0
+    for: 10m
+    labels:
+      severity: warning
+    annotations:
+      summary: "High KMS operation latency"
+      description: |
+        95th percentile KMS operation latency is {{ $value }}s (threshold: 1s).
+        This may indicate GCP KMS service degradation or network issues.
+        Check: GCP Cloud KMS service status
+        Region: us-east1
+
+  # Critical: No health checks succeeding
+  - alert: KMSHealthChecksFailing
+    expr: |
+      (time() - healthz_last_success_timestamp_seconds) > 300
+    for: 2m
+    labels:
+      severity: critical
+    annotations:
+      summary: "Health checks failing for 5+ minutes"
+      description: |
+        Backend health endpoint hasn't returned success in over 5 minutes.
+        This may indicate backend crash, network partition, or container restart loop.
+        Check: docker ps | grep backend
+        Check: docker logs ai-finance-backend-1 --tail 100

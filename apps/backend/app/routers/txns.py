@@ -21,8 +21,10 @@ from app.orm_models import (
 )
 from app.services.rules_apply import apply_all_active_rules, latest_month_from_data
 from app.utils.csrf import csrf_protect
+from app.orm_models import MerchantCategoryHint
 
 router = APIRouter()
+
 
 def month_of(date_str: str) -> str:
     if not date_str:
@@ -35,8 +37,11 @@ def month_of(date_str: str) -> str:
         # Fallback to string slicing for malformed dates
         return date_str[:7] if len(date_str) >= 7 else ""
 
+
 @router.get("/unknowns")
-def get_unknowns(month: Optional[str] = None, db: Session = Depends(get_db)) -> Dict[str, Any]:
+def get_unknowns(
+    month: Optional[str] = None, db: Session = Depends(get_db)
+) -> Dict[str, Any]:
     """
     Return unknown (uncategorized) transactions for the given month using DB ids.
     If `month` is omitted, try to default from DB; fall back to in-memory state.
@@ -51,9 +56,9 @@ def get_unknowns(month: Optional[str] = None, db: Session = Depends(get_db)) -> 
                 month = m
         if month:
             unlabeled = (
-                (Transaction.category.is_(None)) |
-                (func.trim(Transaction.category) == "") |
-                (func.lower(Transaction.category) == "unknown")
+                (Transaction.category.is_(None))
+                | (func.trim(Transaction.category) == "")
+                | (func.lower(Transaction.category) == "unknown")
             )
             rows = (
                 db.query(Transaction)
@@ -84,6 +89,7 @@ def get_unknowns(month: Optional[str] = None, db: Session = Depends(get_db)) -> 
 
     # Fallback: in-memory list if DB path not available
     from ..main import app
+
     items = getattr(app.state, "txns", [])
     if not items:
         return {"month": None, "unknowns": []}
@@ -92,8 +98,11 @@ def get_unknowns(month: Optional[str] = None, db: Session = Depends(get_db)) -> 
         if not month:
             return {"month": None, "unknowns": []}
     month_items = [t for t in items if month_of(t.get("date", "")) == month]
-    unknowns = [Txn(**t) for t in month_items if (t.get("category") or "Unknown") == "Unknown"]
+    unknowns = [
+        Txn(**t) for t in month_items if (t.get("category") or "Unknown") == "Unknown"
+    ]
     return {"month": month, "unknowns": unknowns}
+
 
 @router.post("/{txn_id}/categorize", dependencies=[Depends(csrf_protect)])
 def categorize(txn_id: int, req: CategorizeRequest, db: Session = Depends(get_db)):
@@ -101,12 +110,38 @@ def categorize(txn_id: int, req: CategorizeRequest, db: Session = Depends(get_db
     tdb = db.get(Transaction, txn_id)
     if tdb:
         tdb.category = req.category
+        # Upsert a user hint so future suggestions learn from the user's choice
+        try:
+            mc = (getattr(tdb, "merchant_canonical", None) or "").strip().lower()
+            if mc:
+                hint = (
+                    db.query(MerchantCategoryHint)
+                    .filter_by(merchant_canonical=mc, category_slug=req.category)
+                    .one_or_none()
+                )
+                if hint:
+                    hint.source = "user"
+                    hint.confidence = max(float(hint.confidence or 0.0), 0.9)
+                else:
+                    db.add(
+                        MerchantCategoryHint(
+                            merchant_canonical=mc,
+                            category_slug=req.category,
+                            source="user",
+                            confidence=0.9,
+                        )
+                    )
+        except Exception:
+            # Non-fatal; categorization should still succeed
+            pass
         db.commit()
         db.refresh(tdb)
         # Feedback logging (best-effort): raw SQL to ensure training signal is captured
         try:
             db.execute(
-                text("insert into feedback (txn_id, label, source, notes) values (:tid, :label, 'user_change', '')"),
+                text(
+                    "insert into feedback (txn_id, label, source, notes) values (:tid, :label, 'user_change', '')"
+                ),
                 {"tid": tdb.id, "label": req.category},
             )
             db.commit()
@@ -114,6 +149,7 @@ def categorize(txn_id: int, req: CategorizeRequest, db: Session = Depends(get_db
             pass
     # Also update in-memory for compatibility
     from ..main import app
+
     for t in getattr(app.state, "txns", []):
         if t["id"] == txn_id:
             t["category"] = req.category
@@ -126,6 +162,7 @@ def categorize(txn_id: int, req: CategorizeRequest, db: Session = Depends(get_db
         return {"ok": True, "txn": to_txn_dict(tdb)}
     raise HTTPException(status_code=404, detail="Transaction not found")
 
+
 @router.post("/categorize", dependencies=[Depends(csrf_protect)])
 def categorize_body(req: Dict[str, Any]):
     """
@@ -137,6 +174,7 @@ def categorize_body(req: Dict[str, Any]):
     if txn_id is None or not category:
         raise HTTPException(status_code=422, detail="Provide 'id' and 'category'")
     return categorize(int(txn_id), CategorizeRequest(category=category))
+
 
 # --- Backward compatibility routes ---
 @router.get("/unknown")
@@ -219,7 +257,9 @@ class SplitIn(BaseModel):
 
 
 @router.post("/{txn_id}/split", dependencies=[Depends(csrf_protect)])
-def create_or_replace_splits(txn_id: int, payload: SplitIn, db: Session = Depends(get_db)):
+def create_or_replace_splits(
+    txn_id: int, payload: SplitIn, db: Session = Depends(get_db)
+):
     try:
         legs = upsert_splits(db, txn_id, [leg.model_dump() for leg in payload.legs])
         return {"status": "ok", "count": len(legs)}
@@ -253,17 +293,20 @@ def recurring_list(db: Session = Depends(get_db)):
     items = db.query(RecurringSeriesORM).order_by(RecurringSeriesORM.merchant).all()
     out: List[Dict[str, Any]] = []
     for r in items:
-        out.append(dict(
-            id=r.id,
-            merchant=r.merchant,
-            avg_amount=float(r.avg_amount),
-            cadence=r.cadence,
-            first_seen=str(r.first_seen),
-            last_seen=str(r.last_seen),
-            next_due=str(r.next_due) if r.next_due else None,
-            sample_txn_id=r.sample_txn_id,
-        ))
+        out.append(
+            dict(
+                id=r.id,
+                merchant=r.merchant,
+                avg_amount=float(r.avg_amount),
+                cadence=r.cadence,
+                first_seen=str(r.first_seen),
+                last_seen=str(r.last_seen),
+                next_due=str(r.next_due) if r.next_due else None,
+                sample_txn_id=r.sample_txn_id,
+            )
+        )
     return out
+
 
 # --- DEV helper: recent transactions (not available in prod) ---
 # Dev helper: recent transactions
@@ -310,16 +353,26 @@ class ReclassifyIn(BaseModel):
 @router.post("/reclassify", dependencies=[Depends(csrf_protect)])
 def reclassify(
     payload: Optional[ReclassifyIn] = None,
-    month: Optional[str] = Query(None, description="YYYY-MM; defaults to latest if omitted"),
+    month: Optional[str] = Query(
+        None, description="YYYY-MM; defaults to latest if omitted"
+    ),
     db: Session = Depends(get_db),
 ):
     """
     Re-run categorization over transactions by applying all active rules.
     Defaults to latest month if not provided.
     """
-    month = (month or (payload.month if payload else None) or latest_month_from_data(db))
+    month = month or (payload.month if payload else None) or latest_month_from_data(db)
     if not month:
-        raise HTTPException(status_code=400, detail="No transactions available to determine month")
+        raise HTTPException(
+            status_code=400, detail="No transactions available to determine month"
+        )
 
     applied, skipped, details = apply_all_active_rules(db, month)
-    return {"status": "ok", "month": month, "applied": applied, "skipped": skipped, "details": details}
+    return {
+        "status": "ok",
+        "month": month,
+        "applied": applied,
+        "skipped": skipped,
+        "details": details,
+    }

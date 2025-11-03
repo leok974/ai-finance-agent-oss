@@ -1,0 +1,38 @@
+apiVersion: eksctl.io/v1alpha5
+kind: ClusterConfig
+
+metadata:
+  name: ledgermind-gpu
+  region: us-west-2
+  version: "1.30"
+
+iam:
+  withOIDC: true
+
+vpc:
+  clusterEndpoints:
+    publicAccess: true
+    privateAccess: false
+
+managedNodeGroups:
+  - name: sys-cpu
+    instanceType: t3.medium
+    desiredCapacity: 2
+    minSize: 2
+    maxSize: 3
+    amiFamily: AmazonLinux2
+    labels: { role: system }
+
+  - name: gpu-workers
+    instanceType: g5.xlarge # GPU family widely available in us-west-2
+    desiredCapacity: 0 # start OFF; autoscale to 1 when needed
+    minSize: 0
+    maxSize: 1
+    amiFamily: AmazonLinux2
+    labels:
+      role: gpu
+      nvidia.com/gpu.present: "true"
+    taints:
+      - key: nvidia.com/gpu
+        value: "true"
+        effect: NoSchedule

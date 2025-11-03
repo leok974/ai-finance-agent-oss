@@ -1,0 +1,51 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: lm-backend
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: lm-backend
+  template:
+    metadata:
+      labels:
+        app: lm-backend
+    spec:
+      containers:
+        - name: backend
+          image: 103102677735.dkr.ecr.us-west-2.amazonaws.com/ledgermind-backend:latest
+          env:
+            - name: DEFAULT_LLM_PROVIDER
+              value: "ollama"
+            - name: OLLAMA_BASE_URL
+              value: "http://host.docker.internal:11434"
+            - name: EMBED_PROVIDER
+              value: "ollama"
+            - name: EMBED_MODEL
+              value: "nomic-embed-text"
+            - name: DATABASE_URL
+              value: "sqlite:///./dev.sqlite3"
+          ports:
+            - name: http
+              containerPort: 8000
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              memory: "512Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: lm-backend-svc
+  namespace: default
+spec:
+  type: ClusterIP
+  selector:
+    app: lm-backend
+  ports:
+    - port: 8000
+      targetPort: 8000

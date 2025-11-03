@@ -1,0 +1,47 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "EdgeVerifyResult",
+  "type": "object",
+  "required": ["timestamp", "host", "probes", "critical"],
+  "properties": {
+    "timestamp": { "type": "string", "format": "date-time" },
+    "host": { "type": "string" },
+    "dns": {
+      "type": "object",
+      "required": ["ipv4"],
+      "properties": {
+        "ipv4": { "type": "array", "items": { "type": "string", "format": "ipv4" } },
+        "latency_ms": { "type": "number" },
+        "ok": { "type": "boolean" },
+        "error": { "type": "string" }
+      }
+    },
+    "tunnel": {
+      "type": "object",
+      "properties": {
+        "ha_connection_series": { "type": "array", "items": { "type": "number" } },
+        "ha_min": { "type": "number" },
+        "ha_max": { "type": "number" },
+        "status": { "type": "string" },
+        "metrics_present": { "type": "boolean" }
+      }
+    },
+    "tls": {
+      "type": "object",
+      "properties": {
+        "subject": { "type": "string" },
+        "not_after": { "type": "string", "format": "date-time" },
+        "days_remaining": { "type": "integer" },
+        "error": { "type": "string" }
+      }
+    },
+    "probes": {
+      "type": "object",
+      "patternProperties": {
+        "^(up|ready|healthz)$": { "type": "integer" }
+      },
+      "additionalProperties": true
+    },
+    "critical": { "type": "array", "items": { "type": "string" } }
+  }
+}

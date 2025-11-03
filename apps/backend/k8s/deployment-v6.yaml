@@ -1,0 +1,63 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: lm-backend
+  namespace: lm
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: lm-backend
+  template:
+    metadata:
+      labels:
+        app: lm-backend
+    spec:
+      containers:
+        - name: api
+          image: 103102677735.dkr.ecr.us-west-2.amazonaws.com/ledgermind:v6
+          ports:
+            - containerPort: 8000
+          env:
+            - name: DATABASE_URL
+              value: "sqlite:////data/dev.sqlite3"
+            - name: NIM_EMBED_URL
+              value: "https://integrate.api.nvidia.com/v1"
+            - name: NIM_EMBED_MODEL
+              value: "nvidia/nv-embedqa-e5-v5"
+            - name: NIM_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: nim-api-key
+                  key: key
+            - name: NGC_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: nim-api-key
+                  key: key
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          volumeMounts:
+            - name: sqlite-storage
+              mountPath: /data
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8000
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+      volumes:
+        - name: sqlite-storage
+          persistentVolumeClaim:
+            claimName: lm-sqlite-pvc

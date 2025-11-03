@@ -21,3 +21,15 @@ repos:
         entry: python scripts/precommit/block_secret_files.py
         language: python
         stages: [commit]
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: check-json
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+  - repo: https://github.com/zricethezav/gitleaks
+    rev: v8.18.4
+    hooks:
+      - id: gitleaks
+        args: ["detect", "--no-banner", "--config=.gitleaks.toml"]
+        pass_filenames: false

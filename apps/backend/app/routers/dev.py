@@ -1,18 +1,93 @@
-from fastapi import APIRouter, Depends, Body
+from fastapi import APIRouter, Depends, Body, HTTPException, Query, status
 from sqlalchemy.orm import Session
 from app.db import get_db
 from app.transactions import Transaction
 from typing import Optional
 from datetime import datetime, timezone, date
-from uuid import uuid4
-from app.orm_models import Feedback
+from calendar import monthrange
+from app.orm_models import Feedback, User
+from app.utils.auth import hash_password
 from app.services.rule_suggestions import evaluate_candidate, canonicalize_merchant
+import os
 
-router = APIRouter(prefix="/dev", tags=["dev"])
+router = APIRouter(prefix="/api/dev", tags=["dev"])
+
+
+def _dev_guard():
+    """
+    Enable only in dev/staging by setting:
+      ALLOW_DEV_ROUTES=1
+    Never enable in production.
+    """
+    if os.getenv("ALLOW_DEV_ROUTES") != "1":
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_enabled")
+
+
+@router.get("/env")
+def dev_env():
+    """
+    Lightweight environment probe for E2E diagnostics.
+    Returns only non-sensitive toggles and cookie policy info.
+    Enabled only when ALLOW_DEV_ROUTES=1.
+    """
+    _dev_guard()
+
+    def _truthy(v: str | None) -> bool:
+        return (v or "").strip().lower() in {"1", "true", "yes", "on"}
+
+    app_env = os.getenv("APP_ENV") or os.getenv("ENV") or "unknown"
+    allow_dev_routes = _truthy(os.getenv("ALLOW_DEV_ROUTES"))
+    allow_registration = _truthy(os.getenv("ALLOW_REGISTRATION"))
+    cookie_domain = os.getenv("COOKIE_DOMAIN") or ""
+    cookie_samesite = (os.getenv("COOKIE_SAMESITE") or "").lower() or "lax"
+    cookie_secure = _truthy(os.getenv("COOKIE_SECURE"))
+
+    return {
+        "app_env": app_env,
+        "allow_dev_routes": allow_dev_routes,
+        "allow_registration": allow_registration,
+        "cookie": {
+            "domain": cookie_domain,
+            "samesite": cookie_samesite,
+            "secure": cookie_secure,
+        },
+        "csrf_required": True,  # your backend enforces CSRF on auth mutations
+    }
+
+
+@router.post("/seed-user", status_code=201)
+def seed_user(payload: dict, db: Session = Depends(get_db)):
+    """
+    Create a user for E2E without enabling public registration.
+    Body: { "email": "...", "password": "...", "role": "admin" (optional) }
+    Returns 201 on create, 200 if already exists.
+    """
+    _dev_guard()
+    email = (payload.get("email") or "").strip().lower()
+    password = payload.get("password") or ""
+    role = payload.get("role", "user")  # default to user, allow admin override
+    if not email or not password:
+        raise HTTPException(status_code=400, detail="email_and_password_required")
+
+    u = db.query(User).filter(User.email == email).first()
+    if u:
+        return {"status": "exists"}
+
+    u = User(email=email, password_hash=hash_password(password), is_active=True)
+    # Set role if User model supports it (check your model's fields)
+    if hasattr(u, "role"):
+        u.role = role  # type: ignore
+    elif hasattr(u, "is_admin"):
+        u.is_admin = role == "admin"  # type: ignore
+    db.add(u)
+    db.commit()
+    db.refresh(u)
+    return {"status": "created", "id": getattr(u, "id", None), "role": role}
 
 
 @router.get("/first-txn-id")
 def first_txn_id(db: Session = Depends(get_db)):
+    _dev_guard()
     r = db.query(Transaction.id).order_by(Transaction.id.asc()).first()
     return {"id": r[0] if r else None}
 
@@ -29,6 +104,7 @@ def seed_suggestions(
     Posts N 'accept' feedback rows for a single transaction to force a rule suggestion.
     Returns suggestion info if threshold is crossed.
     """
+    _dev_guard()
     # Pick a transaction (explicit id or latest)
     if txn_id is None:
         txn = db.query(Transaction).order_by(Transaction.id.desc()).first()
@@ -44,8 +120,8 @@ def seed_suggestions(
     for _ in range(max(1, int(accepts))):
         fb = Feedback(
             txn_id=txn.id,
-            label=category,      # map category -> label
-            source="accept",    # treat source as action
+            label=category,  # map category -> label
+            source="accept",  # treat source as action
             created_at=datetime.now(timezone.utc),
         )
         db.add(fb)
@@ -76,6 +152,7 @@ def uncategorize(
     Sets category=NULL for up to `limit` transactions (optionally within a month).
     Useful to repopulate the ML Suggestions panel.
     """
+    _dev_guard()
     q = db.query(Transaction).order_by(Transaction.id.desc())
     if month:
         q = q.filter(Transaction.month == month)
@@ -86,40 +163,81 @@ def uncategorize(
     return {"ok": True, "updated": len(rows)}
 
 
-@router.post("/seed-unknowns")
+@router.post("/seed-unknowns", status_code=201)
 def seed_unknowns(
-    count: int = Body(5, embed=True),
-    month: Optional[str] = Body(None, embed=True),  # "YYYY-MM"
-    merchant: Optional[str] = Body(None, embed=True),
-    amount: float = Body(-5.0, embed=True),
+    count: int = Query(6, ge=1, le=50),
+    month: Optional[str] = Query(None, pattern=r"^\d{4}-\d{2}$"),
     db: Session = Depends(get_db),
 ):
-    """Create/ensure `count` uncategorized transactions for ML Suggestions."""
-    if month is None:
-        month = datetime.now(timezone.utc).strftime("%Y-%m")
+    """Insert a handful of uncategorized expenses for the Unknowns/Undo panel."""
+    _dev_guard()
 
-    # try to find existing uncategorized first
-    existing = (
-        db.query(Transaction)
-        .filter(Transaction.category == None)  # noqa: E711
-        .filter(Transaction.month == month)
-        .limit(int(count))
-        .all()
-    )
-    created = 0
-    while len(existing) + created < int(count):
-        d = datetime.now(timezone.utc).date()
-        tx = Transaction(
-            date=d,
-            merchant=merchant or "Demo Merchant",
-            description=f"demo-{uuid4().hex[:6]}",
-            amount=amount,
-            category=None,
-            raw_category=None,
-            account="dev",
-            month=month,
+    today = date.today()
+    if month:
+        year, mon = [int(part) for part in month.split("-")]
+    else:
+        year, mon = today.year, today.month
+        month = f"{year}-{mon:02d}"
+
+    start = date(year, mon, 1)
+    days_in_month = monthrange(year, mon)[1]
+
+    samples = [
+        ("Coffee Galaxy", "Latte", -4.75),
+        ("Green Grocer", "Snacks", -8.40),
+        ("Metro Tickets", "Transit fare", -2.50),
+        ("Cloud Store", "Storage charge", -3.99),
+        ("Corner Mart", "Water", -1.50),
+        ("Book Nook", "Notebook", -5.25),
+        ("Snack Shack", "Chips", -2.10),
+        ("City Bikes", "Day pass", -9.00),
+    ]
+
+    rows = []
+    limit = min(count, len(samples))
+    for idx in range(limit):
+        merchant, desc, amt = samples[idx]
+        day = min(idx + 1, days_in_month)
+        txn_date = date(year, mon, day)
+        rows.append(
+            Transaction(
+                date=txn_date,
+                merchant=merchant,
+                description=desc,
+                amount=amt,
+                category=None,
+                raw_category=None,
+                account="dev",
+                month=f"{year}-{mon:02d}",
+                merchant_canonical=canonicalize_merchant(merchant),
+            )
         )
-        db.add(tx)
-        created += 1
+
+    if not rows:
+        return {"inserted": 0, "month": month}
+
+    db.add_all(rows)
     db.commit()
-    return {"ok": True, "month": month, "existing": len(existing), "created": created}
+    return {"inserted": len(rows), "month": month}
+
+
+@router.get("/unknowns/peek")
+def unknowns_peek(db: Session = Depends(get_db), limit: int = Query(10, ge=1, le=50)):
+    """Quick peek at uncategorized transactions for debugging."""
+    _dev_guard()
+    q = (
+        db.query(Transaction)
+        .filter(Transaction.category.is_(None))
+        .order_by(Transaction.date.desc())
+        .limit(limit)
+    )
+    items = [
+        {
+            "id": t.id,
+            "date": t.date.isoformat() if t.date else None,
+            "merchant": t.merchant,
+            "amount": float(t.amount) if t.amount else 0,
+        }
+        for t in q
+    ]
+    return {"count": len(items), "items": items}
