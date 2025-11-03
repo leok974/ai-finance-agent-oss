@@ -1,133 +1,263 @@
-# 🎬 DEMO READY - LedgerMind RAG with NVIDIA NIM
+# Reliability & Observability Improvements - v6.1# 🎬 DEMO READY - LedgerMind RAG with NVIDIA NIM
 
-**Status:** ✅ v6 WORKING + Production Code Complete
-**Updated:** November 3, 2025 1:40 AM EST
+
+
+## Overview**Status:** ✅ v6 WORKING + Production Code Complete
+
+Production hardening, enhanced observability, and demo repeatability improvements for hackathon submission.**Updated:** November 3, 2025 1:40 AM EST
+
 **Cost:** $0/hour (Free Tier + Hosted NIM)
 
+## ✅ Changes Implemented
+
 ---
+
+### 1. Nginx Configuration Hardening
 
 ## ✅ What's Working RIGHT NOW
 
-### RAG System - FULLY FUNCTIONAL (v6)
+**Literal Backend Address** (prevents regression)
 
-- **632 Embeddings Ingested** from 3 financial documents
-- **Semantic Search Working** with >0.4 similarity scores
-- **Key Fix**: Asymmetric embeddings (input_type="query" vs "passage")
+```nginx### RAG System - FULLY FUNCTIONAL (v6)
+
+location /api/ {
+
+  proxy_pass http://backend:8000/;  # literal + trailing slash strips /api/- **632 Embeddings Ingested** from 3 financial documents
+
+}- **Semantic Search Working** with >0.4 similarity scores
+
+```- **Key Fix**: Asymmetric embeddings (input_type="query" vs "passage")
+
 - **Persistent Storage**: PVC mounted at /data, survives pod restarts
-- **Models**: meta/llama-3.1-8b-instruct + nv-embedqa-e5-v5
 
-### Production Improvements (Coded, Ready for v7+)
+**Enhanced Access Logging**- **Models**: meta/llama-3.1-8b-instruct + nv-embedqa-e5-v5
 
-**All files updated with production hardening:**
+```nginx
 
-1. ✅ `nim_embed.py` - Retry logic, exponential backoff, batch processing
-2. ✅ `rag_store.py` - Cosine clamping, empty vector guards
-3. ✅ `config.py` - Feature flags (RAG_STORE, timeouts, batch size)
-4. ✅ `health.py` - Structured checks with embeddings_count
-5. ✅ `rag.py` - Timing metrics, structured logging
-6. ✅ `README.md` - Asymmetric embeddings documentation, pgvector upgrade path
-7. ✅ `smoke-test.ps1` - One-command validation
+log_format main_ext '$remote_addr "$request" $status uri="$uri" req="$request_uri" '### Production Improvements (Coded, Ready for v7+)
+
+                    'upstream="$upstream_addr" us="$upstream_status" rt="$request_time" urt="$upstream_response_time"';
+
+```**All files updated with production hardening:**
+
+
+
+**Bind Mount** (live config updates)1. ✅ `nim_embed.py` - Retry logic, exponential backoff, batch processing
+
+```yaml2. ✅ `rag_store.py` - Cosine clamping, empty vector guards
+
+services:3. ✅ `config.py` - Feature flags (RAG_STORE, timeouts, batch size)
+
+  nginx:4. ✅ `health.py` - Structured checks with embeddings_count
+
+    volumes:5. ✅ `rag.py` - Timing metrics, structured logging
+
+      - ./deploy/nginx.conf:/etc/nginx/nginx.conf:ro6. ✅ `README.md` - Asymmetric embeddings documentation, pgvector upgrade path
+
+```7. ✅ `smoke-test.ps1` - One-command validation
+
 8. ✅ `PRE_RECORDING_CHECKLIST.md` - Complete submission guide
+
+### 2. Enhanced RAG Status Endpoint
 
 ---
 
-## 🎬 RECOMMENDED DEMO APPROACH
+```json
 
-### Option A: Show v6 Working System + Code Walkthrough (3 min)
+{## 🎬 RECOMMENDED DEMO APPROACH
 
-**0:00-0:20 - Intro & Architecture**
+  "status": "ok",
 
-```powershell
-# Show EKS cluster
-kubectl get nodes
+  "documents": 9,### Option A: Show v6 Working System + Code Walkthrough (3 min)
+
+  "chunks": 2933,
+
+  "embedded": 2933,**0:00-0:20 - Intro & Architecture**
+
+  "vendors": ["docs", "community"],
+
+  "models": ["nv-embedqa-e5-v5", "llama-3.1-nemotron-nano-8b-instruct"]```powershell
+
+}# Show EKS cluster
+
+```kubectl get nodes
+
 # t3.micro CPU nodes - $0 cost!
 
+### 3. API Smoke Tests (Playwright)
+
 kubectl -n lm get pods
-# Show working backend pod
+
+**File:** `apps/web/tests/api-smoke.spec.ts`# Show working backend pod
+
 ```
+
+Tests nginx routing, health endpoints, version, RAG status, and charts.
 
 **0:20-1:20 - Live RAG Demo**
 
+### 4. Demo Script
+
 ```powershell
-# Port-forward
+
+**File:** `demo_prelude.sh`# Port-forward
+
 kubectl -n lm port-forward svc/lm-backend-svc 8080:80
 
-# Health check - shows embeddings_count: 632
-curl http://localhost:8080/healthz | ConvertFrom-Json | Select-Object -Expand checks
+Waits for backend, validates health, runs 3 canonical queries.
 
-# Semantic search demo
-curl -X POST http://localhost:8080/agent/rag/query `
-  -H "content-type: application/json" `
-  -d '{"q":"How do credit card rewards work?","k":3}' | ConvertFrom-Json
+# Health check - shows embeddings_count: 632
+
+## Quick Verificationcurl http://localhost:8080/healthz | ConvertFrom-Json | Select-Object -Expand checks
+
+
+
+```bash# Semantic search demo
+
+# Health & Versioncurl -X POST http://localhost:8080/agent/rag/query `
+
+curl -fsS http://localhost/api/healthz  -H "content-type: application/json" `
+
+curl -fsS http://localhost/api/version  -d '{"q":"How do credit card rewards work?","k":3}' | ConvertFrom-Json
+
 ```
 
-**1:20-2:20 - Code Walkthrough (Production Features)**
+# Agent tools
 
-- Open `nim_embed.py` → Show retry logic with exponential backoff (lines 50-75)
-- Open `rag_store.py` → Show cosine clamping & empty vector guards (lines 22-46)
+curl -fsS http://localhost/api/agent/tools/meta/latest_month**1:20-2:20 - Code Walkthrough (Production Features)**
+
+
+
+# RAG status- Open `nim_embed.py` → Show retry logic with exponential backoff (lines 50-75)
+
+curl -fsS http://localhost/api/agent/tools/rag/status- Open `rag_store.py` → Show cosine clamping & empty vector guards (lines 22-46)
+
 - Open `health.py` → Show structured checks object (lines 264-270)
-- Open `README.md` → Show asymmetric embeddings documentation
 
-**2:20-2:50 - Key Achievements**
+# Nginx logs (extended format)- Open `README.md` → Show asymmetric embeddings documentation
 
-- ✅ Fixed asymmetric embeddings (THE breakthrough that made RAG work)
+docker exec ai-finance-agent-oss-clean-nginx-1 tail /var/cache/nginx/access.log
+
+```**2:20-2:50 - Key Achievements**
+
+
+
+## Architecture (Devpost Ready)- ✅ Fixed asymmetric embeddings (THE breakthrough that made RAG work)
+
 - ✅ Production-ready code (retry, resilience, observability)
-- ✅ Cost: $0 (AWS Free Tier t3.micro, no GPU)
-- ✅ Scalable: SQLite → pgvector upgrade path documented
 
-**2:50-3:00 - Wrap-up**
+**Reasoning:** `nvidia/llama-3.1-nemotron-nano-8b-instruct` NIM  - ✅ Cost: $0 (AWS Free Tier t3.micro, no GPU)
+
+**Embedding:** `nvidia/nv-embedqa-e5-v5` (asymmetric, 768-dim)  - ✅ Scalable: SQLite → pgvector upgrade path documented
+
+**Storage:** PostgreSQL pgvector + SQLite fallback
+
+**Infra:** EKS (2× t3.micro), Hosted NIM → $0 GPU  **2:50-3:00 - Wrap-up**
+
 "LedgerMind: Production-ready RAG with NVIDIA NIM embeddings on AWS EKS."
+
+## Hackathon Judge Instructions
 
 ---
 
-## 📊 System Status
+**60-second demo:**
 
-### Working (v6 - Previously Deployed)
+```bash## 📊 System Status
 
-```
+curl -fsS http://localhost/api/healthz
+
+curl -fsS http://localhost/api/agent/tools/meta/latest_month### Working (v6 - Previously Deployed)
+
+./demo_prelude.sh
+
+``````
+
 Pod Status: Previously Running with working RAG
-Embeddings: 632 chunks stored
-Search Quality: 0.4-0.5 similarity scores
-Documents: cc-rewards.txt, budgeting.txt, merchants.txt
-Persistence: PVC lm-sqlite-pvc mounted at /data
-```
 
-### Infrastructure Challenge (t3.micro Limits)
+**Full demo (5 min):**Embeddings: 632 chunks stored
 
-- **Node Capacity**: 4 pods max per t3.micro node
-- **Current**: 6 kube-system pods (3 per node) = tight limits
+```bashSearch Quality: 0.4-0.5 similarity scores
+
+# Status checkDocuments: cc-rewards.txt, budgeting.txt, merchants.txt
+
+curl -fsS http://localhost/api/healthz | jqPersistence: PVC lm-sqlite-pvc mounted at /data
+
+curl -fsS http://localhost/api/version | jq```
+
+
+
+# RAG query### Infrastructure Challenge (t3.micro Limits)
+
+curl -fsS -X POST http://localhost/api/agent/rag/query \
+
+  -H 'content-type: application/json' \- **Node Capacity**: 4 pods max per t3.micro node
+
+  -d '{"q":"credit card rewards","k":3}' | jq- **Current**: 6 kube-system pods (3 per node) = tight limits
+
 - **Issue**: Orphan deployment in `default` namespace consumed slots
-- **Actions Taken**:
-  - ✅ Deleted orphan `default/lm-backend` deployment
-  - ✅ Switched to Recreate strategy (no surge)
+
+# Logs- **Actions Taken**:
+
+docker logs ai-finance-agent-oss-clean-backend-1 --tail 20  - ✅ Deleted orphan `default/lm-backend` deployment
+
+docker exec ai-finance-agent-oss-clean-nginx-1 tail /var/cache/nginx/access.log  - ✅ Switched to Recreate strategy (no surge)
+
   - ✅ Reduced memory requests to 96Mi
-  - ✅ Enabled PREFIX_DELEGATION for future capacity
-  - ⏳ Awaiting scheduler retry (or demo with existing v6 state)
+
+# Tests  - ✅ Enabled PREFIX_DELEGATION for future capacity
+
+cd apps/web && pnpm test:e2e  - ⏳ Awaiting scheduler retry (or demo with existing v6 state)
+
+```
 
 ### Production Code Complete
 
+## Files Modified
+
 All improvements coded and tested locally:
 
-- Retry logic, rate limiting, resilience
-- Feature flags, structured logging
-- Comprehensive documentation
+- `apps/backend/app/services/rag_tools.py` - Enhanced status
+
+- `deploy/nginx.conf` - Literal backend + extended logging- Retry logic, rate limiting, resilience
+
+- `apps/web/tests/api-smoke.spec.ts` - New Playwright tests- Feature flags, structured logging
+
+- `demo_prelude.sh` - New demo script- Comprehensive documentation
+
 - One-command smoke test
+
+## Deployment
 
 ---
 
-## 🎥 3-Minute Demo Script (One Take)
+```bash
 
-### 0:00-0:30 - Architecture Overview
+# Backend## 🎥 3-Minute Demo Script (One Take)
 
-**"LedgerMind: Agentic AI Finance Assistant"**
+docker compose -f docker-compose.prod.yml build backend
 
-Show terminal:
+docker compose -f docker-compose.prod.yml up -d backend### 0:00-0:30 - Architecture Overview
 
-```powershell
+
+
+# Nginx (live reload)**"LedgerMind: Agentic AI Finance Assistant"**
+
+docker compose -f docker-compose.prod.yml restart nginx
+
+```Show terminal:
+
+
+
+## Version```powershell
+
 # Show we're on CPU-only EKS (no GPU needed!)
-kubectl get nodes
-# NAME                                           STATUS   ROLES    AGE
-# ip-192-168-6-78.us-west-2.compute.internal     Ready    <none>   2h
+
+**Release:** v6.1  kubectl get nodes
+
+**Date:** 2025-11-03  # NAME                                           STATUS   ROLES    AGE
+
+**Status:** Demo Ready ✅# ip-192-168-6-78.us-west-2.compute.internal     Ready    <none>   2h
+
 # ip-192-168-82-100.us-west-2.compute.internal   Ready    <none>   79m
 ```
 

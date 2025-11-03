@@ -1,10 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { NON_AUTH_BASE, dashSlug } from './http';
+import { BASE, dashSlug } from './http';
 
-describe('NON_AUTH_BASE derivation', () => {
-  it('strips trailing /api', () => {
-    // In test config VITE_API_BASE is defined as '' so NON_AUTH_BASE should be '/'
-    expect(NON_AUTH_BASE).toBe('/');
+describe('BASE derivation', () => {
+  it('defaults to / when VITE_API_BASE is empty', () => {
+    // In test config VITE_API_BASE is defined as '' so BASE should be '/' (fallback to /api then stripped)
+    expect(BASE).toBe('/api');
   });
 });
 

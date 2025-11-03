@@ -11,7 +11,6 @@ import type {
   AgentPlanStatus,
   Transaction,
   RuleSaveResponse,
-  PlannerResponse,
   ExplainSignalData,
   MLStatusResponse,
 } from '@/types/agent';
@@ -1001,6 +1000,7 @@ export type AgentChatRequest = {
   model?: string;
   temperature?: number;
   top_p?: number;
+  conversational?: boolean;  // Enable conversational voice styling (default: true)
 };
 export type AgentChatResponse = TypedAgentChatResponse & {
   // Additional fields beyond the base type

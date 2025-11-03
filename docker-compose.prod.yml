@@ -116,6 +116,7 @@ services:
         WEB_BUILD_ID: ${WEB_BUILD_ID:-not_set}
         VITE_SUGGESTIONS_ENABLED: ${VITE_SUGGESTIONS_ENABLED:-1}
         VITE_ANALYTICS_ENABLED: ${VITE_ANALYTICS_ENABLED:-0}
+        VITE_API_BASE: ${VITE_API_BASE:-/api}
         VITE_GIT_BRANCH: ${VITE_GIT_BRANCH:-unknown}
         VITE_GIT_COMMIT: ${VITE_GIT_COMMIT:-unknown}
         GIT_BRANCH: ${VITE_GIT_BRANCH:-unknown}
@@ -128,6 +129,7 @@ services:
       agui:
         condition: service_healthy
     volumes:
+      - ./deploy/nginx.conf:/etc/nginx/nginx.conf:ro
       - certbot_www:/var/www/certbot
       - letsencrypt:/etc/letsencrypt:ro
     ports:

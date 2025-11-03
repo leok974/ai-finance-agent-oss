@@ -3,6 +3,7 @@
 RAG tools capabilities registry - single source of truth for admin-gated RAG actions.
 Exposes: status, rebuild, ingest_url, ingest_pdf, bulk_ingest, seed (dev-only).
 """
+import os
 from typing import Dict, Tuple, Optional
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
@@ -50,10 +51,18 @@ def _require_admin_dev(user: Optional[User], dev_only: bool = False) -> None:
 
 
 async def _rag_status(db: Session) -> Dict:
-    """Return RAG index statistics: doc count, chunk count, vendors."""
+    """Return RAG index statistics: doc count, chunk count, embedded count, vendors, models."""
     try:
         doc_count = db.execute(text("SELECT COUNT(*) FROM rag_documents")).scalar() or 0
         chunk_count = db.execute(text("SELECT COUNT(*) FROM rag_chunks")).scalar() or 0
+
+        # Count chunks with embeddings
+        embedded_count = (
+            db.execute(
+                text("SELECT COUNT(*) FROM rag_chunks WHERE LENGTH(embedding) > 0")
+            ).scalar()
+            or 0
+        )
 
         # Distinct vendors
         vendors_result = db.execute(
@@ -61,11 +70,24 @@ async def _rag_status(db: Session) -> Dict:
         ).fetchall()
         vendors = [row[0] for row in vendors_result]
 
+        # Detected NIM models from environment
+        models = []
+        embed_model = os.getenv("NIM_EMBED_MODEL", "nvidia/nv-embedqa-e5-v5")
+        llm_model = os.getenv(
+            "NIM_LLM_MODEL", "nvidia/llama-3.1-nemotron-nano-8b-instruct"
+        )
+        if embed_model:
+            models.append(embed_model.split("/")[-1])
+        if llm_model:
+            models.append(llm_model.split("/")[-1])
+
         return {
             "status": "ok",
             "documents": doc_count,
             "chunks": chunk_count,
+            "embedded": embedded_count,
             "vendors": vendors,
+            "models": models,
         }
     except Exception as e:
         return {"status": "error", "message": str(e)}

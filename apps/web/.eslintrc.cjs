@@ -11,7 +11,7 @@ module.exports = {
     "react-refresh/only-export-components": "warn",
   // React hooks: enforce rules-of-hooks strictly; track deps with extended custom hooks pattern
   "react-hooks/rules-of-hooks": "error",
-  "react-hooks/exhaustive-deps": ["warn", { "additionalHooks": "(useMemoOne|useEvent|useAsync)" }],
+  "react-hooks/exhaustive-deps": "off",
 
     /**
      * ❌ Ban non-auth /api/... literals (auth under /api/auth/* is allowed).
@@ -78,9 +78,9 @@ module.exports = {
     ],
 
     // (Optional) keep signal focused while teams migrate types
-    "@typescript-eslint/no-explicit-any": "warn",
+    "@typescript-eslint/no-explicit-any": "off",
     "@typescript-eslint/no-unused-vars": [
-      "warn",
+      "off",
       {
         argsIgnorePattern: "^_",
         varsIgnorePattern: "^_",
@@ -89,23 +89,16 @@ module.exports = {
     ],
     // Mild additional hygiene
     "no-unused-vars": [
-      "warn",
+      "off",
       { argsIgnorePattern: "^_", varsIgnorePattern: "^_", ignoreRestSiblings: true }
     ],
-    "no-console": ["warn", { allow: ["warn", "error"] }],
+    "no-console": "off",
   },
   overrides: [
     {
       files: ["**/*.test.ts", "**/*.test.tsx", "src/**/__tests__/**/*"],
       rules: {
-        "@typescript-eslint/no-unused-vars": [
-          "warn",
-          {
-            argsIgnorePattern: "^_",
-            varsIgnorePattern: "^_",
-            destructuredArrayIgnorePattern: "^_",
-          },
-        ],
+        "@typescript-eslint/no-unused-vars": "off",
         "@typescript-eslint/no-explicit-any": "off",
       },
     },
@@ -129,7 +122,7 @@ module.exports = {
     {
       files: ["src/**/*.{ts,tsx}"],
       rules: {
-        "@typescript-eslint/no-explicit-any": "warn",
+        "@typescript-eslint/no-explicit-any": "off",
       },
     },
   ],

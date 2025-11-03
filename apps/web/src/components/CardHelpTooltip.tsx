@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { useState, useEffect, useRef, useId } from 'react';
-import { agentDescribe } from '@/lib/api';
+import { fetchCardExplain } from '@/lib/agent/explain';
+import { fetchAgentStatus } from '@/lib/agent/status';
 import { useLlmStore } from '@/state/llmStore';
 import { Button, pillIconClass } from '@/components/ui/button';
 import { t } from '@/lib/i18n';
@@ -60,11 +61,20 @@ export default function CardHelpTooltip({
   const [activeTab, setActiveTab] = useState<'what' | 'why'>('what');
   const [why, setWhy] = useState<string | null>(null);
   const [whyErr, setWhyErr] = useState<string | null>(null);
+  const [loadingWhy, setLoadingWhy] = useState(false);
+  const [llmStatus, setLlmStatus] = useState<{ llm_ok: boolean } | null>(null);
   const popId = useId();
 
   const modelsOk = useLlmStore((s) => s.modelsOk);
 
   const what = WHAT[cardId] ?? 'This card explains a key metric for the selected month.';
+
+  // Check LLM status on mount
+  useEffect(() => {
+    let alive = true;
+    fetchAgentStatus().then((s) => alive && setLlmStatus({ llm_ok: !!s?.llm_ok }));
+    return () => { alive = false; };
+  }, []);
 
   function position() {
     const rect = btnRef.current?.getBoundingClientRect();
@@ -75,27 +85,39 @@ export default function CardHelpTooltip({
     });
   }
 
-  useEffect(() => {
-    setWhy(null);
-    setWhyErr(null);
-    if (!open || activeTab !== 'why' || !modelsOk) return;
+  // Fetch explanation when switching to "why" tab
+  async function ensureExplain() {
+    if (why || loadingWhy || whyErr) return;
 
-    (async () => {
-      try {
-        const res = await agentDescribe(cardId, { month, stream: false }, { rephrase: true }) as { why?: string; reply?: string; text?: string };
-        setWhy(res?.why ?? res?.reply ?? res?.text ?? null);
-      } catch {
-        setWhyErr('The language model is temporarily unavailable.');
+    setLoadingWhy(true);
+    setWhyErr(null);
+
+    try {
+      const res = await fetchCardExplain({ cardId, month });
+      if (res?.explain) {
+        setWhy(res.explain);
+      } else {
+        setWhyErr('No explanation available.');
       }
-    })();
-  }, [open, activeTab, cardId, month, modelsOk]);
+    } catch {
+      setWhyErr('The language model is temporarily unavailable.');
+    } finally {
+      setLoadingWhy(false);
+    }
+  }
+
+  // Switch to Why tab and try to load explanation
+  async function switchToWhy() {
+    setActiveTab('why');
+    await ensureExplain();
+  }
 
   async function openPopover(e: React.MouseEvent) {
     const shift = e.shiftKey;
     position();
     setOpen(true);
-    if (shift && autoOpenWhyOnShift && modelsOk) {
-      setActiveTab('why');
+    if (shift && autoOpenWhyOnShift && (modelsOk || llmStatus?.llm_ok)) {
+      await switchToWhy();
     } else {
       setActiveTab('what');
     }
@@ -135,6 +157,17 @@ export default function CardHelpTooltip({
 
   const triggerLabel = variant === 'icon' ? '?' : t('ui.help.what');
 
+  // Determine why state for rendering
+  const whyState = React.useMemo(() => {
+    if (loadingWhy) return { kind: 'loading' } as const;
+    if (why) return { kind: 'ready' as const, explain: why };
+    if (whyErr) return { kind: 'error' as const, message: whyErr };
+    if (!modelsOk && !llmStatus?.llm_ok) {
+      return { kind: 'fallback' as const, reason: 'llm_unavailable' };
+    }
+    return { kind: 'empty' } as const;
+  }, [loadingWhy, why, whyErr, modelsOk, llmStatus?.llm_ok]);
+
   return (
     <>
       <button
@@ -144,7 +177,7 @@ export default function CardHelpTooltip({
         aria-controls={open ? popId : undefined}
         onClick={open ? closePopover : openPopover}
         className={`${variant === 'icon' ? pillIconClass + ' h-5 w-5 text-[11px]' : 'text-xs underline decoration-dotted'} ${className}`}
-        title={modelsOk ? `${t('ui.help.what')} (Shift+Click ${t('ui.help.why')})` : t('ui.help.what')}
+        title={modelsOk || llmStatus?.llm_ok ? `${t('ui.help.what')} (Shift+Click ${t('ui.help.why')})` : t('ui.help.what')}
       >
         {triggerLabel}
       </button>
@@ -153,7 +186,7 @@ export default function CardHelpTooltip({
         <div
           id={popId}
           data-popover-role="card-help"
-          className="fixed z-[9999] w-[360px] rounded-xl border bg-background p-3 shadow-xl animate-in fade-in-0 zoom-in-95"
+          className="fixed z-[9999] w-[360px] rounded-xl border bg-background p-3 shadow-xl animate-in fade-in-0 zoom-in-95 pointer-events-auto"
           style={{ top: pos.top, left: pos.left }}
           role="dialog"
         >
@@ -170,10 +203,11 @@ export default function CardHelpTooltip({
             >
               {t('ui.help.what')}
             </button>
+            {/* 🔑 Always clickable - removed disabled attribute */}
             <button
-              onClick={() => setActiveTab('why')}
-              disabled={!modelsOk}
-              className={`px-2 py-1 rounded-md ${activeTab === 'why' ? 'bg-accent text-accent-foreground' : 'hover:bg-muted'} ${!modelsOk ? 'opacity-50 cursor-not-allowed' : ''}`}
+              onClick={switchToWhy}
+              className={`px-2 py-1 rounded-md ${activeTab === 'why' ? 'bg-accent text-accent-foreground' : 'hover:bg-muted'}`}
+              aria-label="Why is this value what it is?"
             >
               {t('ui.help.why')}
             </button>
@@ -185,16 +219,82 @@ export default function CardHelpTooltip({
           </div>
           <div className="mt-3 text-sm whitespace-pre-wrap max-h-[50vh] overflow-auto">
             {activeTab === 'what' && what}
-            {activeTab === 'why' && !modelsOk && (
-              <span className="text-muted-foreground">
-                The language model is temporarily unavailable.
-              </span>
+
+            {activeTab === 'why' && whyState.kind === 'loading' && (
+              <div className="text-muted-foreground">Fetching an explanation…</div>
             )}
-            {activeTab === 'why' && modelsOk && !why && !whyErr && <span>Loading…</span>}
-            {activeTab === 'why' && modelsOk && whyErr && (
-              <span className="text-muted-foreground">{whyErr}</span>
+
+            {activeTab === 'why' && whyState.kind === 'ready' && (
+              <div>{whyState.explain}</div>
             )}
-            {activeTab === 'why' && modelsOk && why && why}
+
+            {activeTab === 'why' && whyState.kind === 'error' && (
+              <div className="space-y-3">
+                <p className="text-muted-foreground">{whyState.message}</p>
+                <div className="flex gap-2">
+                  <Button
+                    variant="pill"
+                    size="sm"
+                    onClick={() => {
+                      setWhy(null);
+                      setWhyErr(null);
+                      ensureExplain();
+                    }}
+                  >
+                    Try again
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'why' && whyState.kind === 'fallback' && (
+              <div className="space-y-3">
+                <p className="text-muted-foreground">
+                  An explanation isn't available right now because the language model is unavailable.
+                </p>
+                <div className="flex gap-2">
+                  <Button
+                    variant="pill"
+                    size="sm"
+                    onClick={() => {
+                      // Dispatch event to open chat with prefilled message
+                      window.dispatchEvent(new CustomEvent('agent:prefill', {
+                        detail: {
+                          message: `Explain ${cardId} for ${month ?? 'the current month'} and cite sources.`,
+                        }
+                      }));
+                      closePopover();
+                    }}
+                  >
+                    Ask the agent
+                  </Button>
+                  {llmStatus?.llm_ok && (
+                    <Button
+                      variant="pill-outline"
+                      size="sm"
+                      onClick={ensureExplain}
+                    >
+                      Re-run now
+                    </Button>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'why' && whyState.kind === 'empty' && (
+              <div className="space-y-3">
+                <p className="text-muted-foreground">
+                  No explanation attached yet. Want me to generate one?
+                </p>
+                <Button
+                  variant="pill"
+                  size="sm"
+                  onClick={ensureExplain}
+                >
+                  Generate explanation
+                </Button>
+              </div>
+            )}
           </div>
         </div>
       )}

@@ -2,6 +2,7 @@ import React, { useCallback, useRef, useState } from "react";
 import {
   uploadCsv,
   fetchLatestMonth,
+  deleteAllTransactions,
   agentTools,
   chartsSummary,
   chartsMerchants,
@@ -10,10 +11,7 @@ import {
 } from "../lib/api"; // uses your existing helpers
 import { emitToastSuccess, emitToastError } from "@/lib/toast-helpers";
 import { t } from '@/lib/i18n';
-import { ToastAction } from "@/components/ui/toast";
-import { scrollToId } from "@/lib/scroll";
 import { useMonth } from "../context/MonthContext";
-import Card from "./Card";
 import { Button } from "@/components/ui/button";
 import { Upload } from "lucide-react";
 
@@ -76,11 +74,25 @@ const UploadCsv: React.FC<UploadCsvProps> = ({ onUploaded, defaultReplace = true
     if (e.type === "dragleave") setDragOver(false);
   }, []);
 
-  const reset = useCallback(() => {
-    setFile(null);
-    setResult(null);
-    if (inputRef.current) inputRef.current.value = "";
-  }, []);
+  const reset = useCallback(async () => {
+    try {
+      setBusy(true);
+      // Delete all transactions from the database
+      await deleteAllTransactions();
+      // Clear UI state
+      setFile(null);
+      setResult(null);
+      if (inputRef.current) inputRef.current.value = "";
+      emitToastSuccess(t('ui.toast.data_cleared_title'), { description: t('ui.toast.data_cleared_description') });
+      // Trigger parent refresh (e.g., dashboard)
+      onUploaded?.();
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      emitToastError(t('ui.toast.reset_failed_title'), { description: msg });
+    } finally {
+      setBusy(false);
+    }
+  }, [onUploaded]);
 
   // After a successful upload, snap to latest month and refetch key dashboards
   const handleUploadSuccess = useCallback(async (uploadData?: Record<string, unknown>) => {

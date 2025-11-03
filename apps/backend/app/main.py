@@ -71,6 +71,17 @@ from .routers import health as health_router
 from .routers import agent_plan as agent_plan_router
 from app.routers import rag as rag_router
 from app.routers import agent_tools_rag as agent_tools_rag_router
+from app.routers import agent_tools_meta as agent_tools_meta_router
+from app.routers import agent_tools_charts as agent_tools_charts_router
+from app.routers import agent_tools_transactions as agent_tools_transactions_router
+from app.routers import agent_tools_rules as agent_tools_rules_router
+from app.routers import agent_tools_rules_crud as agent_tools_rules_crud_router
+from app.routers import agent_tools_rules_save as agent_tools_rules_save_router
+from app.routers import (
+    agent_tools_rules_apply_all as agent_tools_rules_apply_all_router,
+)
+from app.routers import agent_tools_budget as agent_tools_budget_router
+from app.routers import agent_tools_insights as agent_tools_insights_router
 from app.routers import agent_actions as agent_actions_router
 from app.routers import dev_overlay as dev_overlay_router
 from app.routes import csp as csp_routes
@@ -497,8 +508,20 @@ app.add_middleware(
 try:
     app.include_router(rag_router.router)
     app.include_router(agent_tools_rag_router.router)
+    app.include_router(agent_tools_meta_router.router)
+    app.include_router(agent_tools_charts_router.router)
+    app.include_router(agent_tools_categorize_router.router)
+    app.include_router(agent_tools_transactions_router.router)
+    app.include_router(agent_tools_rules_router.router)
+    app.include_router(agent_tools_rules_crud_router.router)
+    app.include_router(agent_tools_rules_save_router.router)
+    app.include_router(agent_tools_rules_apply_all_router.router)
+    app.include_router(agent_tools_budget_router.router)
+    app.include_router(agent_tools_insights_router.router)
+    app.include_router(agent_tools_suggestions_router.router)
     app.include_router(agent_actions_router.router)
-except Exception:
+except Exception as e:
+    logger.error(f"Failed to include agent_tools routers: {e}", exc_info=True)
     pass
 
 # CSRF is attached per-route on unsafe endpoints only (see routers)

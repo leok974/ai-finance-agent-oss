@@ -10,8 +10,13 @@ import * as RC from "recharts";
 import {
   getMonthSummary,
   getMonthMerchants,
+  getMonthCategories,
   getMonthFlows,
   getSpendingTrends,
+  type UIMerchant,
+  type UIDaily,
+  type UICategory,
+  type MonthSummaryResp
 } from "../lib/api";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -39,13 +44,14 @@ const currency = (n: number) =>
 
 const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
   const [loading, setLoading] = useState(true);
-  const [summary, setSummary] = useState<any | null>(null);
-  const [merchants, setMerchants] = useState<any | null>(null);
-  const [flows, setFlows] = useState<any | null>(null);
+  const [summary, setSummary] = useState<MonthSummaryResp | null>(null);
+  const [merchants, setMerchants] = useState<UIMerchant[]>([]);
+  const [categories, setCategories] = useState<UICategory[]>([]);
+  const [daily, setDaily] = useState<UIDaily[]>([]);
   const [trends, setTrends] = useState<any | null>(null);
   const [empty, setEmpty] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [_selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [monthsWindow, setMonthsWindow] = useState<number>(6);
 
   // resolvedMonth prefers server-returned month, falls back to prop
@@ -58,25 +64,29 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
       setError(null);
       setEmpty(false);
       try {
-        const [s, m, f, t] = await Promise.all([
+        const [s, m, c, d, t] = await Promise.all([
           getMonthSummary(month),
           getMonthMerchants(month),
+          getMonthCategories(month),
           getMonthFlows(month),
           getSpendingTrends(6),
         ]);
         if (!alive) return;
-        // consider backend-empty cases: nulls from 400 handler, or objects with month: null
-        const isEmpty = (!s && !m && !f) || ((s?.month ?? null) === null && (m?.month ?? null) === null && (f?.month ?? null) === null);
-        if (isEmpty) {
+
+        // Check if we have any data
+        const hasData = s?.month || m.length > 0 || c.length > 0 || d.length > 0;
+        if (!hasData) {
           setEmpty(true);
           setSummary(null);
-          setMerchants(null);
-          setFlows(null);
+          setMerchants([]);
+          setCategories([]);
+          setDaily([]);
           setTrends(t ?? null);
         } else {
           setSummary(s);
           setMerchants(m);
-          setFlows(f);
+          setCategories(c);
+          setDaily(d);
           setTrends(t);
         }
       } catch (e: any) {
@@ -109,9 +119,9 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
     return () => window.removeEventListener('open-category-chart', onOpenChart as any);
   }, []);
 
-  const categoriesData = useMemo(() => summary?.categories ?? [], [summary]);
-  const merchantsData = useMemo(() => merchants?.merchants ?? [], [merchants]);
-  const flowsData = useMemo(() => flows?.series ?? [], [flows]);
+  const categoriesData = useMemo(() => categories, [categories]);
+  const merchantsData = useMemo(() => merchants, [merchants]);
+  const flowsData = useMemo(() => daily, [daily]);
   const trendsData = useMemo(
     () => (trends?.trends ?? []).map((t: any) => ({ month: t.month, spent: t.spent ?? t.spending ?? 0 })),
     [trends]
@@ -126,7 +136,7 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
     return "#ef4444";                    // red-500
   }
   const maxCategory = useMemo(() => Math.max(1, ...categoriesData.map((d: any) => Math.abs(Number(d?.amount ?? 0)))), [categoriesData]);
-  const maxMerchant = useMemo(() => Math.max(1, ...merchantsData.map((d: any) => Math.abs(Number(d?.amount ?? 0)))), [merchantsData]);
+  const maxMerchant = useMemo(() => Math.max(1, ...merchantsData.map((d: any) => Math.abs(Number(d?.spend ?? 0)))), [merchantsData]);
 
   // Dark tooltip style
   const tooltipStyle = useMemo(() => ({
@@ -166,7 +176,7 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
           title={t('ui.charts.overview_title', { month: resolvedMonth })}
           helpKey="cards.overview"
           month={resolvedMonth}
-          helpCtx={{ summary, merchants, flows }}
+          helpCtx={{ summary, merchants, flows: daily }}
           helpBaseText={getHelpBaseText('cards.overview', { month: resolvedMonth })}
           actions={<ExportMenu month={resolvedMonth} />}
           className="mb-2"
@@ -189,13 +199,13 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
             <div className="tile-no-border p-3">
               <div className="text-gray-400">{t('ui.metrics.total_spend')}</div>
               <div className="mt-1 text-lg font-semibold text-rose-300">
-                {currency(summary.total_spend || 0)}
+                {currency(Math.abs(summary.total_outflows || 0))}
               </div>
             </div>
             <div className="tile-no-border p-3">
               <div className="text-gray-400">{t('ui.metrics.total_income')}</div>
               <div className="mt-1 text-lg font-semibold text-emerald-300">
-                {currency(summary.total_income || 0)}
+                {currency(summary.total_inflows || 0)}
               </div>
             </div>
             <div className="tile-no-border p-3">
@@ -289,9 +299,9 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
                 />
                 <Tooltip contentStyle={tooltipStyle} itemStyle={tooltipItemStyle} labelStyle={tooltipLabelStyle} />
                 <Legend content={<BarPaletteLegend label={t('ui.charts.legend_spend')} />} />
-                <Bar dataKey="amount" name={t('ui.charts.legend_spend')} activeBar={{ fillOpacity: 1, stroke: "#fff", strokeWidth: 1 }} fillOpacity={0.9}>
+                <Bar dataKey="spend" name={t('ui.charts.legend_spend')} activeBar={{ fillOpacity: 1, stroke: "#fff", strokeWidth: 1 }} fillOpacity={0.9}>
                   {merchantsData.map((d: any, i: number) => (
-                    <Cell key={i} fill={pickColor(Number(d?.amount ?? 0), maxMerchant)} />
+                    <Cell key={i} fill={pickColor(Number(d?.spend ?? 0), maxMerchant)} />
                   ))}
                 </Bar>
               </BarChart>

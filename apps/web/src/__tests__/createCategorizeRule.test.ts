@@ -18,8 +18,8 @@ beforeEach(() => {
   global.fetch = vi.fn(async (url: string, init?: RequestInit) => {
     const body = init?.body ? JSON.parse(String(init.body)) : undefined;
     calls.push({ url: String(url), body });
-    // shape 1 attempt
-    if (url === 'agent/tools/rules/save' || url === '/agent/tools/rules/save') {
+    // shape 1 attempt - matches /api/agent/tools/rules/save (with /api prefix from BASE)
+    if (url === '/api/agent/tools/rules/save') {
       // Fail first shape to force fallback (#1)
       if (JSON.stringify(body).includes('"kind":"categorize"')) {
         return fail(400, { error: 'unsupported shape' });
@@ -42,10 +42,9 @@ describe('createCategorizeRule', () => {
     expect(res.ok).toBe(true);
     expect(res.id).toBe(101);
     // First two calls: first shape fail, second shape success, no legacy
-    const norm = (u: string) => u.replace(/^\/(?!api\/)/, '');
-    expect(calls.map(c => norm(c.url))).toEqual([
-      'agent/tools/rules/save',
-      'agent/tools/rules/save',
+    expect(calls.map(c => c.url)).toEqual([
+      '/api/agent/tools/rules/save',
+      '/api/agent/tools/rules/save',
     ]);
   });
 
@@ -64,10 +63,9 @@ describe('createCategorizeRule', () => {
     const res = await createCategorizeRule({ merchant: 'BOOKS INC', category: 'Books' });
     expect(res.ok).toBe(true);
     expect(res.id).toBe(555);
-    const norm = (u: string) => u.replace(/^\/(?!api\/)/, '');
-    expect(calls.map(c => norm(c.url))).toEqual([
-      'agent/tools/rules/save', // first attempt (categorize)
-      'agent/tools/rules/save', // second attempt (verbose)
+    expect(calls.map(c => c.url)).toEqual([
+      '/api/agent/tools/rules/save', // first attempt (categorize)
+      '/api/agent/tools/rules/save', // second attempt (verbose)
       '/api/rules/save',        // legacy fallback
     ]);
   });

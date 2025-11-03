@@ -9,6 +9,7 @@ import os
 import hmac
 import hashlib
 import time
+from typing import Literal
 from fastapi import APIRouter, Request, Response, HTTPException
 
 router = APIRouter(prefix="/agent/dev", tags=["dev-overlay"])
@@ -16,11 +17,19 @@ router = APIRouter(prefix="/agent/dev", tags=["dev-overlay"])
 COOKIE_NAME = "sa_dev"
 COOKIE_SECURE = os.getenv("COOKIE_SECURE", "1") == "1"
 COOKIE_DOMAIN = os.getenv("COOKIE_DOMAIN", "")
-COOKIE_SAMESITE = os.getenv("COOKIE_SAMESITE", "lax").capitalize()
+_samesite_raw = os.getenv("COOKIE_SAMESITE", "lax").lower()
+COOKIE_SAMESITE: Literal["lax", "strict", "none"] = (
+    _samesite_raw if _samesite_raw in ("lax", "strict", "none") else "lax"
+)
 COOKIE_MAX_AGE = 60 * 60 * 24 * 14  # 14 days
 
-DEV_ENABLE_TOKEN = os.getenv("SITEAGENT_DEV_ENABLE_TOKEN", "dev")
-SIGNING_KEY = os.getenv("SITEAGENT_DEV_COOKIE_KEY", "")
+# LedgerMind canonical env vars with legacy fallbacks
+DEV_ENABLE_TOKEN = os.getenv("LM_DEV_ENABLE_TOKEN") or os.getenv(
+    "SITEAGENT_DEV_ENABLE_TOKEN", "dev"
+)
+SIGNING_KEY = os.getenv("LM_DEV_COOKIE_KEY") or os.getenv(
+    "SITEAGENT_DEV_COOKIE_KEY", ""
+)
 
 
 def _sign(val: str) -> str:
