@@ -3,10 +3,35 @@ import { isRuleSuggestionArray } from "@/types/rules";
 import { fetchJSON } from '@/lib/http';
 import { FEATURES } from '@/config/featureFlags';
 import { useDev } from '@/state/dev';
+import type {
+  AgentChatResponse as TypedAgentChatResponse,
+  AgentStatusResponse as TypedAgentStatusResponse,
+  WhatIfParams,
+  WhatIfResult,
+  AgentPlanStatus,
+  Transaction,
+  RuleSaveResponse,
+  PlannerResponse,
+  ExplainSignalData,
+  MLStatusResponse,
+} from '@/types/agent';
 
 // Resolve API base from env, with a dev fallback when running Vite on port 5173
 const rawApiBase = (import.meta as { env?: Record<string, string> }).env?.VITE_API_BASE;
 export const API_BASE = ((rawApiBase ?? '/api') as string).replace(/\/+$/, '') || '/api';
+
+// ============================================================================
+// Runtime guards (keeps UI stable with malformed backend responses)
+// ============================================================================
+
+/** Safe array coercion: returns empty array if input is not array-like */
+const arr = <T>(x: unknown): T[] => Array.isArray(x) ? x as T[] : [];
+
+/** Safe number coercion: returns 0 if NaN */
+const num = (x: unknown): number => {
+  const n = Number(x);
+  return Number.isFinite(n) ? n : 0;
+};
 
 export function apiUrl(path: string): string {
   return `${API_BASE}${path.startsWith('/') ? path : `/${path}`}`;
@@ -352,35 +377,87 @@ export const getAlerts = (month?: string) =>
 export const downloadReportCsv = (month: string) => window.open(`${apiUrl('/report_csv')}${q({ month })}`,'_blank')
 
 // ---------- Charts ----------
-// (Removed legacy fetchJson wrapper; use fetchJSON from http.ts directly)
+// Normalized UI types (isolate backend drift to mappers below)
+export type UIMerchant = { merchant: string; spend: number; txns: number };
+export type UIDaily = { date: string; in: number; out: number; net: number };
+export type UICategory = { name: string; amount: number };
 
-// Minimal shapes for charts responses (only fields accessed by components)
-export interface MonthSummaryResp { month: string | null; categories?: Array<{ category: string; amount: number }>; }
-export interface MonthMerchantsResp { month?: string | null; merchants?: Array<{ name: string; amount: number }>; }
-export interface MonthFlowsResp { month?: string | null; series?: Array<{ name: string; value: number; month?: string }>; }
+export interface MonthSummaryResp {
+  month: string | null;
+  total_inflows?: number;
+  total_outflows?: number;
+  net?: number;
+  daily?: UIDaily[];
+  categories?: UICategory[];
+}
 
-async function postChart<T>(endpoint: string, body: unknown): Promise<T | null> {
+// Normalized fetchers with backend → UI mapping
+export async function getMonthSummary(month?: string): Promise<MonthSummaryResp | null> {
+  if (!month) month = await resolveMonth();
   try {
-    return await fetchJSON<T>(`agent/tools/charts/${endpoint}`, { method: 'POST', body: JSON.stringify(body) });
+    const r = await fetchJSON<Record<string, unknown>>(`agent/tools/charts/summary`, {
+      method: 'POST',
+      body: JSON.stringify({ month, include_daily: true })
+    });
+    if (!r) return null;
+    return {
+      month: r.month ? String(r.month) : null,
+      total_inflows: num(r.total_inflows),
+      total_outflows: num(r.total_outflows),
+      net: num(r.net),
+      daily: arr<Record<string, unknown>>(r.daily).map((d) => ({
+        date: String(d.date ?? ''),
+        in: num(d.inflow),
+        out: num(d.outflow),
+        net: num(d.net)
+      })),
+      categories: [] // Will be fetched separately
+    };
   } catch (e) {
-    // Swallow 404/410 gracefully – treat as null (empty state)
+    console.warn('[api] getMonthSummary failed:', e);
     return null;
   }
 }
 
-export async function getMonthSummary(month?: string): Promise<MonthSummaryResp | null> {
+export async function getMonthMerchants(month?: string): Promise<UIMerchant[]> {
   if (!month) month = await resolveMonth();
-  return postChart<MonthSummaryResp>('summary', { month });
+  try {
+    const r = await fetchJSON<Record<string, unknown>>(`agent/tools/charts/merchants`, {
+      method: 'POST',
+      body: JSON.stringify({ month })
+    });
+    return arr<Record<string, unknown>>(r?.items).map((m) => ({
+      merchant: String(m.merchant ?? 'Unknown'),
+      spend: num(m.spend),
+      txns: num(m.txns)
+    }));
+  } catch (e) {
+    console.warn('[api] getMonthMerchants failed:', e);
+    return [];
+  }
 }
 
-export async function getMonthMerchants(month?: string): Promise<MonthMerchantsResp | null> {
+export async function getMonthCategories(month?: string): Promise<UICategory[]> {
   if (!month) month = await resolveMonth();
-  return postChart<MonthMerchantsResp>('merchants', { month });
+  try {
+    const r = await fetchJSON<Record<string, unknown>>(`agent/tools/budget/summary`, {
+      method: 'POST',
+      body: JSON.stringify({ month })
+    });
+    return arr<Record<string, unknown>>(r?.by_category).map((c) => ({
+      name: String(c.category ?? 'Unknown'),
+      amount: num(c.spend)
+    }));
+  } catch (e) {
+    console.warn('[api] getMonthCategories failed:', e);
+    return [];
+  }
 }
 
-export async function getMonthFlows(month?: string): Promise<MonthFlowsResp | null> {
-  if (!month) month = await resolveMonth();
-  return postChart<MonthFlowsResp>('flows', { month });
+export async function getMonthFlows(month?: string): Promise<UIDaily[]> {
+  // Daily flows = summary.daily (reuse from getMonthSummary logic)
+  const summary = await getMonthSummary(month);
+  return summary?.daily ?? [];
 }
 
 export async function loadSpendingTrends(monthsArr: string[]) {
@@ -440,8 +517,8 @@ export const analytics = {
       method: 'POST',
       body: JSON.stringify({ month, lookback_months }),
     }),
-  whatif: (payload: { scenario?: string; adjustments?: Record<string, unknown> }) =>
-    fetchJSON(`agent/tools/analytics/whatif`, {
+  whatif: (payload: WhatIfParams): Promise<WhatIfResult> =>
+    fetchJSON<WhatIfResult>(`agent/tools/analytics/whatif`, {
       method: 'POST',
       body: JSON.stringify(payload ?? {}),
     }),
@@ -925,16 +1002,14 @@ export type AgentChatRequest = {
   temperature?: number;
   top_p?: number;
 };
-export type AgentChatResponse = {
-  mode?: string;
-  reply: string;
+export type AgentChatResponse = TypedAgentChatResponse & {
+  // Additional fields beyond the base type
   summary?: string;
   rephrased?: string | null;
   nlq?: unknown;
   citations: { type: string; id?: string; count?: number }[];
   used_context: { month?: string };
   tool_trace: Array<Record<string, unknown>>;
-  model: string;
 };
 export async function agentChat(
   input: string | ChatMessage[] | AgentChatRequest,
@@ -962,8 +1037,14 @@ export async function agentChat(
 }
 
 // ---------- Agent status ----------
-export async function agentStatus() {
-  return fetchJSON('agent/status').catch(() => ({}));
+export type AgentStatusResponse = TypedAgentStatusResponse & {
+  // Additional fields beyond the base type
+  fallbacks_last_15m?: number;
+  last_llm_error?: string;
+};
+
+export async function agentStatus(): Promise<AgentStatusResponse> {
+  return fetchJSON<AgentStatusResponse>('agent/status').catch(() => ({ ok: false, llm_ok: false }));
 }
 
 // ---------- Reports (Excel/PDF) ----------
@@ -1124,8 +1205,8 @@ export async function listTxns(params: {
   return http<{ items: Array<Record<string, unknown>>; total: number; limit: number; offset: number }>(`/txns/edit${qs ? `?${qs}` : ""}`);
 }
 
-export function getTxn(id: number) {
-  return http(`/txns/edit/${id}`);
+export function getTxn(id: number): Promise<Transaction> {
+  return http<Transaction>(`/txns/edit/${id}`);
 }
 
 export function patchTxn(id: number, patch: Record<string, unknown>) {
@@ -1260,17 +1341,17 @@ export async function agentPlanApply(body: {
 }
 
 // Optional; some panels read a status card. If it 404s, return benign default.
-export async function agentPlanStatus() {
+export async function agentPlanStatus(): Promise<AgentPlanStatus> {
   try {
-    return await api("/agent/plan/status");
+    return await api<AgentPlanStatus>("/agent/plan/status");
   } catch (e) {
     // If 404 or route missing, return a benign default without throwing
     const msg = String((e && typeof e === 'object' && 'message' in e) ? e.message : e || "");
     if (/\b404\b/.test(msg) || /Not Found/i.test(msg)) {
-      return { mode: "deterministic", steps: 0, throttle: null, available: false };
+      return { enabled: false, openActions: 0 };
     }
     // For other errors, still return default to avoid dev console noise
-    return { mode: "deterministic", steps: 0, throttle: null, available: false };
+    return { enabled: false, openActions: 0 };
   }
 }
 
@@ -1282,10 +1363,10 @@ export type SaveRulePayload = {
   backfill?: boolean;
 };
 
-export async function saveRule(payload: SaveRulePayload, opts?: { idempotencyKey?: string }) {
+export async function saveRule(payload: SaveRulePayload, opts?: { idempotencyKey?: string }): Promise<RuleSaveResponse> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (opts?.idempotencyKey) headers['Idempotency-Key'] = opts.idempotencyKey;
-  return http('/agent/tools/rules/save', {
+  return http<RuleSaveResponse>('/agent/tools/rules/save', {
     method: 'POST',
     headers,
     body: JSON.stringify(payload),
@@ -1470,7 +1551,7 @@ export type ExplainResponse = {
   llm_rationale?: string;
   rationale?: string;
   mode?: string;
-  evidence?: unknown;
+  evidence?: ExplainSignalData['evidence'];
 };
 export async function getExplain(txnId: number | string, opts?: { use_llm?: boolean }) {
   const use = opts?.use_llm ? '?use_llm=1' : '';
@@ -1503,8 +1584,12 @@ export async function agentRephrase(text: string, _opts?: Record<string, unknown
 }
 
 // ML status + selftest
-export async function getMlStatus() { return http('/ml/status'); }
-export async function mlSelftest() { return http('/ml/selftest', { method: 'POST', body: JSON.stringify({}) }); }
+export async function getMlStatus(): Promise<{ classes?: string[]; feedback_count?: number; updated_at?: string | null; details?: unknown }> {
+  return http('/ml/status');
+}
+export async function mlSelftest(): Promise<MLStatusResponse> {
+  return http<MLStatusResponse>('/ml/selftest', { method: 'POST', body: JSON.stringify({}) });
+}
 
 // Simple CSV upload (auto-detect month server side). Backend expected route: /ingest/csv
 export async function uploadCsv(file: File | Blob, replace = true): Promise<unknown> {
@@ -1530,6 +1615,15 @@ export async function uploadCsv(file: File | Blob, replace = true): Promise<unkn
     body: form
   });
 }
+
+// Delete all transactions by sending an empty CSV with replace=true
+export async function deleteAllTransactions(): Promise<void> {
+  // The backend /ingest endpoint with replace=true deletes all transactions before ingesting
+  // Send an empty CSV to trigger the delete without adding new data
+  const emptyBlob = new Blob([''], { type: 'text/csv' });
+  await uploadCsv(emptyBlob, true);
+}
+
 export async function fetchLatestMonth(): Promise<string | null> {
   // Canonical method: POST meta endpoint (GET may 405)
   try {

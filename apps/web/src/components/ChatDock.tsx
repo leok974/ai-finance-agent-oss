@@ -8,7 +8,9 @@ import EnvAvatar from "@/components/EnvAvatar";
 import { useAuth } from "@/state/auth";
 import { createPortal } from "react-dom";
 import { ChevronUp, Wrench } from "lucide-react";
-import { agentTools, agentChat, type AgentChatRequest, type AgentChatResponse, type TxnQueryResult, explainTxnForChat, agentRephrase, analytics, transactionsNl, telemetry, txnsQueryCsv, txnsQuery } from "../lib/api";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Badge } from "@/components/ui/badge";
+import { agentTools, agentChat, type AgentChatRequest, type AgentChatResponse, type TxnQueryResult, explainTxnForChat, agentRephrase, analytics, transactionsNl, telemetry, txnsQueryCsv, txnsQuery, agentStatus, type AgentStatusResponse } from "../lib/api";
 import { fmtMonthSummary, fmtTopMerchants, fmtCashflow, fmtTrends } from "../lib/formatters";
 import { runToolWithRephrase } from "../lib/tools-runner";
 import { saveAs } from "../utils/save";
@@ -178,10 +180,32 @@ export default function ChatDock() {
   const [input, setInput] = useState("");
   const composerRef = React.useRef<HTMLTextAreaElement | null>(null);
   const [composerPlaceholder, setComposerPlaceholderState] = useState(DEFAULT_PLACEHOLDER);
+  // Why? modal state
+  const [showWhyModal, setShowWhyModal] = useState(false);
+  const [whyContent, setWhyContent] = useState<{ explain?: string; sources?: Array<any> }>({});
+  // LLM health status
+  const [llmStatus, setLlmStatus] = useState<AgentStatusResponse>({ ok: false, llm_ok: false });
   // AGUI streaming run state (moved earlier so handleSend can reference)
   const [aguiTools, setAguiTools] = useState<Array<{ name: string; status: 'pending'|'active'|'done'|'error'; startedAt?: number; endedAt?: number }>>([]);
   const aguiToolsRef = React.useRef<typeof aguiTools>(aguiTools);
   React.useEffect(()=>{ aguiToolsRef.current = aguiTools; }, [aguiTools]);
+
+  // Poll agent status every 30 seconds
+  React.useEffect(() => {
+    const fetchStatus = async () => {
+      try {
+        const status = await agentStatus();
+        setLlmStatus(status);
+      } catch (_err) {
+        // Silently fail - status will remain empty
+      }
+    };
+
+    fetchStatus(); // Initial fetch
+    const interval = setInterval(fetchStatus, 30000); // Poll every 30s
+
+    return () => clearInterval(interval);
+  }, []);
   // Track last what-if scenario text for rule saving
   const lastWhatIfScenarioRef = useRef<string>("");
   // Save Rule modal state (new component)
@@ -321,6 +345,17 @@ export default function ChatDock() {
         telemetry.track('chat_fallback_used', { provider: String(provider) });
       }
     } catch (_err) { /* intentionally empty: swallow to render empty-state */ }
+    // Show toast if fallback was active
+    if (metaPayload._router_fallback_active === true) {
+      try {
+        const { toast } = require('@/hooks/use-toast');
+        toast({
+          title: "Using deterministic fallback",
+          description: "The model is warming up or unavailable.",
+          variant: "default",
+        });
+      } catch (_err) { /* Fallback if toast hook unavailable */ }
+    }
     try { chatDiscardSnapshot(); } catch { /* ignore */ }
     setChatResp({
       reply: text,
@@ -332,6 +367,9 @@ export default function ChatDock() {
       args: metaPayload.args,
       suggestions: metaPayload.suggestions || [],
       rephrased: Object.prototype.hasOwnProperty.call(metaPayload, 'rephrased') ? metaPayload.rephrased : undefined,
+      _router_fallback_active: metaPayload._router_fallback_active,
+      explain: metaPayload.explain,
+      sources: metaPayload.sources,
     } as any);
   }, [setUiMessages, setChatResp]);
 
@@ -408,7 +446,13 @@ export default function ChatDock() {
               c.label = label;
               return true;
             });
-            if (!chips.length && !canSaveRule) return null;
+            // Check if "Why?" button should be enabled
+            const canShowWhy =
+              meta._router_fallback_active === false &&
+              meta.mode === "primary" &&
+              !!meta.explain;
+
+            if (!chips.length && !canSaveRule && !canShowWhy) return null;
             return (
               <div className="flex flex-wrap gap-2 mt-2 items-center">
                 {chips.map((chip: any) => (
@@ -423,6 +467,20 @@ export default function ChatDock() {
                     onClick={()=>handleSuggestionChip({ label: chip.label, action: chip.action || chip.label, source: chip.source })}
                   >{chip.label}</button>
                 ))}
+                {canShowWhy && (
+                  <button
+                    type="button"
+                    aria-label="Why? - View explanation"
+                    className="chip"
+                    onClick={() => {
+                      setWhyContent({ explain: meta.explain, sources: meta.sources });
+                      setShowWhyModal(true);
+                    }}
+                    title="View detailed explanation and sources"
+                  >
+                    Why?
+                  </button>
+                )}
                 {canSaveRule && (
                   <button
                     type="button"
@@ -732,7 +790,17 @@ export default function ChatDock() {
   // keep legacy helper name for response objects (internal use)
   const handleAgentResponse = React.useCallback((resp: AgentChatResponse) => {
     setChatResp(resp);
-  if (resp?.reply) appendAssistant(resp.reply, { citations: resp.citations, ctxMonth: resp.used_context?.month, trace: resp.tool_trace, model: resp.model, fallback: (resp as any).fallback });
+  if (resp?.reply) appendAssistant(resp.reply, {
+    citations: resp.citations,
+    ctxMonth: resp.used_context?.month,
+    trace: resp.tool_trace,
+    model: resp.model,
+    fallback: (resp as any).fallback,
+    _router_fallback_active: resp._router_fallback_active,
+    explain: resp.explain,
+    sources: resp.sources,
+    mode: resp.mode,
+  });
   }, [appendAssistant]);
 
   const appendAssistantFromText = React.useCallback((text: string, opts?: { meta?: any }) => {
@@ -1342,7 +1410,7 @@ export default function ChatDock() {
       appendUser(`What if I cut ${cat} by ${pct}%?`);
       await runToolWithRephrase(
         'analytics.whatif',
-        () => analytics.whatif({ month, cuts: [{ category: cat, pct }]}),
+        () => analytics.whatif({ month, cuts: [{ category: cat, pct }] }),
         (raw: any) => `Explain this what-if simulation for ${month} (cut ${cat} by ${pct}%):\n\n${JSON.stringify(raw)}`,
         (msg, meta) => appendAssistant(msg, { ...meta, ctxMonth: month }),
         (on) => setBusy(on),
@@ -1471,6 +1539,16 @@ export default function ChatDock() {
         <div className="flex items-center gap-2">
           <div className="text-sm text-neutral-300">Agent Tools</div>
           {restoredVisible && <RestoredBadge />}
+          {/* LLM Health Badge */}
+          {llmStatus.llm_ok !== undefined && (
+            <Badge
+              variant={llmStatus.llm_ok ? 'default' : 'destructive'}
+              className="text-xs"
+              title={llmStatus.llm_ok ? 'LLM is operational' : 'LLM is using fallback mode'}
+            >
+              {llmStatus.llm_ok ? 'LLM: OK' : 'LLM: Fallback'}
+            </Badge>
+          )}
         </div>
   <div className="flex items-center gap-2">
           {/* Export */}
@@ -1838,6 +1916,53 @@ export default function ChatDock() {
             return '';
         })()}
       />
+
+      {/* Why? Modal - Shows explanation and sources */}
+      <Dialog open={showWhyModal} onOpenChange={setShowWhyModal}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Why? - Explanation</DialogTitle>
+            <DialogDescription>
+              Detailed explanation of the agent&apos;s response
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            {whyContent.explain && (
+              <div>
+                <h3 className="text-sm font-semibold text-white mb-2">Explanation:</h3>
+                <div className="text-sm text-gray-300 whitespace-pre-wrap">
+                  {whyContent.explain}
+                </div>
+              </div>
+            )}
+            {whyContent.sources && whyContent.sources.length > 0 && (
+              <div>
+                <h3 className="text-sm font-semibold text-white mb-2">Sources:</h3>
+                <ul className="list-disc list-inside text-sm text-gray-300 space-y-1">
+                  {whyContent.sources.map((source, idx) => (
+                    <li key={idx}>
+                      {source.type}
+                      {source.id && ` (ID: ${source.id})`}
+                      {source.count && ` - ${source.count} items`}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {!whyContent.explain && (!whyContent.sources || whyContent.sources.length === 0) && (
+              <p className="text-sm text-gray-400">No explanation available.</p>
+            )}
+          </div>
+          <div className="mt-4 flex justify-end">
+            <button
+              onClick={() => setShowWhyModal(false)}
+              className="px-4 py-2 text-sm rounded-md bg-blue-600 hover:bg-blue-700 text-white"
+            >
+              Close
+            </button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
 
       {/* Composer - textarea with Enter to send, Shift+Enter newline */}

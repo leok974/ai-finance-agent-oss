@@ -16,11 +16,11 @@ export default function TxnEditDialog({ open, onOpenChange, txnId, onSaved }:{ o
         const t = await getTxn(txnId);
         if (!alive) return;
         setForm({
-          date: t?.date || "",
+          date: t?.date ?? "",
           amount: t?.amount != null ? String(t.amount) : "",
-          category: t?.category || "",
-          note: t?.note || "",
-          description: t?.description || "",
+          category: t?.category ?? "",
+          note: t?.note ?? "",
+          description: t?.description ?? "",
         });
       } catch (e: any) { if (alive) setError(e?.message || String(e)); }
       finally { if (alive) setLoading(false); }

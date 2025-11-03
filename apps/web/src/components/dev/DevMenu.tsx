@@ -27,7 +27,7 @@ export default function DevMenu({ adminRulesOpen, onToggleAdminRules, adminKnowl
   const loadStatus = React.useCallback(async () => {
     try {
       const r = await agentPlanStatus();
-      setThrottle(r.throttle);
+      setThrottle(r.throttle ?? null);
     } catch {
       setThrottle(null);
     }
