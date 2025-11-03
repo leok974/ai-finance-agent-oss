@@ -46,8 +46,14 @@ async def ingest_csv(
     """
     Ingest CSV; if `expenses_are_positive` is None, auto-detect and flip if needed.
     Expected columns: date, amount, merchant, description, category? (category optional)
+
+    **Important**: When `replace=True`, only transaction data is deleted.
+    ML training data (feedback, rules) is preserved for continuous learning.
     """
     if replace:
+        # ONLY delete transactions - preserve ML training assets
+        # feedback.txn_id is now nullable, so feedback survives transaction deletion
+        # rules, ml_feedback, merchant_overrides remain intact
         db.query(Transaction).delete()
         db.commit()
         # keep legacy in-memory state in sync

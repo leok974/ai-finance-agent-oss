@@ -160,6 +160,7 @@ else:
     from app.transactions import Transaction
     from app.services.agent.llm_post import post_process_tool_reply
     from app.services.agent_tools.common import no_data_kpis, no_data_anomalies
+    from app.services.reply_style import style_reply
     from app.utils.time import utc_now
     from app.utils import llm as llm_mod  # allow monkeypatch in tests
     from app.utils.llm import LLMQueueFullError
@@ -560,6 +561,8 @@ class AgentChatRequest(BaseModel):
     model: str = "gpt-oss:20b"
     temperature: float = 0.2
     top_p: float = 0.9
+    # Conversational voice styling (default: true)
+    conversational: Optional[bool] = True
 
     @field_validator("messages")
     @classmethod
@@ -590,6 +593,46 @@ def latest_month(db: Session) -> Optional[str]:
         return latest.month if latest else None
     except Exception:
         return None
+
+
+def _extract_style_context(ctx: Dict[str, Any], resp: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Extract context data for conversational styling.
+
+    Pulls month_label, month_spend, top_merchant from enriched context.
+    """
+    style_ctx: Dict[str, Any] = {}
+
+    # Extract month label
+    month = ctx.get("month")
+    if month:
+        try:
+            # Format month as "August 2025"
+            from datetime import datetime
+
+            dt = datetime.strptime(month, "%Y-%m")
+            style_ctx["month_label"] = dt.strftime("%B %Y")
+        except Exception:
+            style_ctx["month_label"] = month
+
+    # Extract spend from summary
+    summary = ctx.get("summary", {})
+    if isinstance(summary, dict):
+        # Try cents first, fallback to dollars
+        total_out_cents = summary.get("total_out_cents")
+        if total_out_cents is not None:
+            style_ctx["month_spend"] = abs(total_out_cents) / 100
+        elif summary.get("total_out") is not None:
+            style_ctx["month_spend"] = abs(summary.get("total_out", 0))
+
+    # Extract top merchant
+    top_merchants = ctx.get("top_merchants", [])
+    if isinstance(top_merchants, list) and len(top_merchants) > 0:
+        first = top_merchants[0]
+        if isinstance(first, dict):
+            style_ctx["top_merchant"] = first.get("merchant")
+
+    return style_ctx
 
 
 def _enrich_context(
@@ -861,9 +904,14 @@ def agent_chat(
                 "used_context": {"month": ctx.get("month")},
                 "tool_trace": tool_trace,
                 "model": model,
+                "_router_fallback_active": False,  # Bypass path uses primary LLM
+                "mode": "primary",
             }
             if fb:
                 resp["fallback"] = fb
+                resp["_router_fallback_active"] = (
+                    True  # Override if fallback provider used
+                )
                 try:
                     rid = (
                         request.headers.get("X-Request-ID") if request else None
@@ -1271,6 +1319,42 @@ def agent_chat(
                     pass
             if resp.get("fallback"):
                 path_hdr = f"fallback-{resp['fallback']}"
+
+        # --- Conversational voice styling -----------------------------------------------
+        # Apply consistent conversational tone to all replies
+        if (
+            isinstance(resp, dict)
+            and resp.get("reply")
+            and getattr(req, "conversational", True)
+        ):
+            try:
+                raw_reply = resp["reply"]
+                # Determine mode from response metadata
+                mode = resp.get("mode", "primary")
+                if resp.get("fallback") or resp.get("_router_fallback_active"):
+                    mode = "fallback"
+                elif mode == "deterministic" or resp.get("model") == "deterministic":
+                    mode = "deterministic"
+                elif "tool" in mode or mode in ("nl_txns", "router"):
+                    mode = "nl_txns"
+
+                # Extract context for dynamic inserts
+                style_ctx = _extract_style_context(ctx, resp)
+
+                # Apply conversational styling
+                styled_reply = style_reply(
+                    raw_reply,
+                    user_name=None,  # Could extract from request if available
+                    mode=mode,
+                    context=style_ctx,
+                    add_header=True,
+                )
+                resp["reply"] = styled_reply
+                resp["_styled"] = True  # Debug flag
+            except Exception as e:
+                # If styling fails, keep original reply
+                logging.getLogger("uvicorn").debug(f"Reply styling failed: {e}")
+
         response_payload = tag_if_analytics(last_user_msg, resp)
         r = JSONResponse(response_payload)
         r.headers["X-LLM-Path"] = path_hdr
@@ -1313,6 +1397,29 @@ def agent_rephrase(
     if model is None:
         model = settings.DEFAULT_LLM_MODEL
 
+    # Check LLM health before attempting to call
+    from app.services.llm_health import is_llm_available
+    import asyncio
+
+    # Run health check
+    llm_available = asyncio.run(is_llm_available(use_cache=True))
+
+    if not llm_available:
+        # LLM unavailable - return deterministic fallback
+        resp = {
+            "reply": "The AI assistant is temporarily unavailable. Please try again in a moment.",
+            "citations": [],
+            "used_context": {"month": ctx.get("month")},
+            "tool_trace": [{"tool": "health_check", "status": "llm_unavailable"}],
+            "model": "deterministic",
+            "_router_fallback_active": True,
+            "mode": "fallback",
+            "fallback_reason": "llm_health_check_failed",
+        }
+        if request is not None:
+            request.state.llm_path = "fallback-health"
+        return JSONResponse(resp, headers={"X-LLM-Path": "fallback-health"})
+
     reply, tool_trace = llm_mod.call_local_llm(
         model=model,
         messages=final_messages,
@@ -1325,10 +1432,17 @@ def agent_rephrase(
         "used_context": {"month": ctx.get("month")},
         "tool_trace": tool_trace,
         "model": model,
+        "_router_fallback_active": False,  # Primary LLM path
+        "mode": "primary",
     }
     if debug and getattr(settings, "ENV", "dev") != "prod":
         resp["__debug_context"] = ctx
-    return JSONResponse(resp)
+
+    # Set LLM path header
+    if request is not None:
+        request.state.llm_path = "primary"
+
+    return JSONResponse(resp, headers={"X-LLM-Path": "primary"})
 
 
 def _fmt_usd(v: float) -> str:
@@ -1575,28 +1689,33 @@ def _try_llm_rephrase_tool(
 
 # Legacy compatibility endpoints
 @router.get("/status")
-def agent_status(model: str = "gpt-oss:20b"):
-    """Ping local LLM to verify agent connectivity."""
-    try:
-        import urllib.request
+async def agent_status(model: str = "gpt-oss:20b"):
+    """
+    Ping LLM to verify agent connectivity.
+    Uses the same base URL as the actual LLM client for accurate health checks.
+    """
+    from app.services.llm_health import ping_llm
 
-        body = json.dumps({"model": model, "prompt": "pong!", "stream": False})
-        req = urllib.request.Request(
-            "http://127.0.0.1:11434/api/generate",
-            data=body.encode("utf-8"),
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
-        with urllib.request.urlopen(req, timeout=5.0) as resp:
-            data = json.loads(resp.read().decode("utf-8", errors="ignore"))
-            return {
-                "ok": True,
-                "status": "ok",
-                "pong": True,
-                "reply": data.get("response", ""),
-            }
-    except Exception as e:
-        return {"ok": False, "error": str(e)}
+    health = await ping_llm(timeout_s=3.0, use_cache=True)
+
+    if health["ok"]:
+        return {
+            "ok": True,
+            "status": "ok",
+            "llm_ok": True,
+            "provider": health["provider"],
+            "base_url": health["base_url"],
+            "model": model,
+        }
+    else:
+        return {
+            "ok": False,
+            "status": "error",
+            "llm_ok": False,
+            "error": health["reason"],
+            "provider": health["provider"],
+            "base_url": health["base_url"],
+        }
 
 
 # Enhanced redirect for legacy GPT chat route with JSON body for better client handling

@@ -54,6 +54,26 @@ def _env_bool(name: str, default: bool = False) -> bool:
         return default
 
 
+def _env(name: str, default: str | None = None) -> str | None:
+    """Get environment variable with optional default."""
+    return os.getenv(name, default)
+
+
+def _alias(primary: str, *fallbacks: str, default: str | None = None) -> str | None:
+    """
+    Get env var with fallback aliases. Primary name wins if present.
+    Example: _alias("LM_DEV_PIN", "DEV_SUPERUSER_PIN", default=None)
+    """
+    val = _env(primary)
+    if val:
+        return val
+    for fb in fallbacks:
+        v = _env(fb)
+        if v:
+            return v
+    return default
+
+
 # Only accept explicit numeric '1' for stub mode (avoid accidental 'True' string from host env)
 _raw_dev_no_llm = os.getenv("DEV_ALLOW_NO_LLM", "0")
 DEV_ALLOW_NO_LLM = True if _raw_dev_no_llm == "1" else False
@@ -82,8 +102,14 @@ class Settings(BaseSettings):
         "APP_ENV", os.getenv("ENV", "dev")
     )  # dev | prod | test (primary)
     ALLOW_DEV_ROUTES: int = int(os.getenv("ALLOW_DEV_ROUTES", "1"))
-    DEV_SUPERUSER_EMAIL: str | None = os.getenv("DEV_SUPERUSER_EMAIL")
-    DEV_SUPERUSER_PIN: str | None = os.getenv("DEV_SUPERUSER_PIN")
+
+    # --- LedgerMind Dev Super Override (canonical LM_* with legacy aliases) ---
+    DEV_SUPERUSER_EMAIL: str | None = _alias(
+        "LM_DEV_SUPER_EMAIL", "DEV_SUPERUSER_EMAIL", default=None
+    )
+    DEV_SUPERUSER_PIN: str | None = _alias(
+        "LM_DEV_SUPER_PIN", "DEV_SUPERUSER_PIN", default=None
+    )
     DEV_UNLOCK_MAX_ATTEMPTS: int = int(os.getenv("DEV_UNLOCK_MAX_ATTEMPTS", "5"))
     DEV_UNLOCK_LOCKOUT_S: int = int(
         os.getenv("DEV_UNLOCK_LOCKOUT_S", "300")

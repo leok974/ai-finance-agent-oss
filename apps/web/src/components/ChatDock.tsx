@@ -1,7 +1,7 @@
 import * as React from "react";
 import { stripToolNamespaces } from "@/utils/prettyToolName";
 import SaveRuleModal from '@/components/SaveRuleModal';
-const { useEffect, useMemo, useRef, useState } = React;
+const { useEffect, useRef, useState } = React;
 import { wireAguiStream } from "@/lib/aguiStream";
 import RobotThinking from "@/components/ui/RobotThinking";
 import EnvAvatar from "@/components/EnvAvatar";
@@ -14,12 +14,12 @@ import { agentTools, agentChat, type AgentChatRequest, type AgentChatResponse, t
 import { fmtMonthSummary, fmtTopMerchants, fmtCashflow, fmtTrends } from "../lib/formatters";
 import { runToolWithRephrase } from "../lib/tools-runner";
 import { saveAs } from "../utils/save";
+import { buildAgentGreeting, buildGreetingCtxFromAPI, type AgentGreetingCtx } from "@/lib/agent/greeting";
+import type { MonthSummary, MerchantsResponse } from "@/lib/api.types";
 // import { useOkErrToast } from "../lib/toast-helpers";
 import RestoredBadge from "./RestoredBadge";
-import remarkGfm from "remark-gfm";
 import Markdown from "./Markdown";
 import type { ToolKey, ToolSpec, ToolRunState } from "../types/agentTools";
-import { AgentResultRenderer } from "./AgentResultRenderers";
 import ErrorBoundary from "./ErrorBoundary";
 import { QuickChips, type ChipAction } from "./QuickChips";
 import { useMonth } from "../context/MonthContext";
@@ -648,6 +648,70 @@ export default function ChatDock() {
   // mark month ready once a non-empty month is available
   React.useEffect(() => { if (month) setMonthReady(true); }, [month]);
 
+  // Track if greeting has been seeded
+  const hasSeededGreetingRef = React.useRef(false);
+
+  // Seed conversational greeting when chat first opens with empty messages
+  React.useEffect(() => {
+    // Only seed greeting once, when panel first opens with no messages
+    if (hasSeededGreetingRef.current || !open || uiMessages.length > 0) return;
+
+    const seedGreeting = async () => {
+      try {
+        // Fetch quick data snapshot for greeting context
+        const [summaryData, merchantsData] = await Promise.allSettled([
+          agentTools.chartsSummary({ month: month || '' }).catch(() => null),
+          agentTools.chartsMerchants({ month: month || '', limit: 10 }).catch(() => null),
+        ]);
+
+        const summary = summaryData.status === 'fulfilled' ? summaryData.value as MonthSummary : undefined;
+        const merchants = merchantsData.status === 'fulfilled' ? merchantsData.value as MerchantsResponse : undefined;
+
+        // Build greeting context from typed API responses
+        const ctx = buildGreetingCtxFromAPI(summary, merchants);
+
+        const greeting = buildAgentGreeting(ctx);
+
+        appendAssistant(greeting, {
+          kind: "greeting",
+          used_data: {
+            month: ctx.monthLabel,
+            totalOut: ctx.totalOut ?? ctx.totalOutCents,
+            topMerchant: ctx.topMerchant,
+            merchantsN: ctx.merchantsN,
+            anomaliesN: ctx.anomaliesN,
+          },
+        });
+
+        hasSeededGreetingRef.current = true;
+      } catch (_err) {
+        // If greeting fails, fall back to simple message
+        appendAssistant("Hey! 👋 How can I help you with your finances today?", { kind: "greeting" });
+        hasSeededGreetingRef.current = true;
+      }
+    };
+
+    // Small delay to let month context settle
+    const timer = setTimeout(seedGreeting, 300);
+    return () => clearTimeout(timer);
+  }, [open, uiMessages.length, month, appendAssistant]);
+
+  // Listen for agent:prefill custom event from CardHelpTooltip
+  React.useEffect(() => {
+    const handlePrefill = (e: Event) => {
+      const customEvent = e as CustomEvent<{ message?: string }>;
+      if (customEvent.detail?.message) {
+        setInput(customEvent.detail.message);
+        setOpen(true);
+        // Focus composer after state settles
+        setTimeout(() => composerRef.current?.focus(), 100);
+      }
+    };
+
+    window.addEventListener('agent:prefill', handlePrefill);
+    return () => window.removeEventListener('agent:prefill', handlePrefill);
+  }, []);
+
   // helper: force-set month into payload text
   const setMonthInPayload = React.useCallback((m: string | undefined) => {
     try {
@@ -897,7 +961,8 @@ export default function ChatDock() {
       const req: AgentChatRequest = {
         messages: [{ role: 'user', content: text }],
         intent: 'general',
-        context: getContext(ev as any)
+        context: getContext(ev as any),
+        conversational: true  // Enable conversational voice styling
       };
       const resp = await agentChat(req);
       handleAgentResponse(resp);
@@ -1429,7 +1494,8 @@ export default function ChatDock() {
       const req: AgentChatRequest = {
         messages: [{ role: 'user', content: 'List my alerts for the selected month.' }],
         intent: 'general',
-        context: getContext(ev)
+        context: getContext(ev),
+        conversational: true  // Enable conversational voice styling
       };
   console.debug('[chat] alerts -> /agent/chat', { preview: req.messages[0]?.content?.slice(0, 80) });
   const resp = await agentChat(req);

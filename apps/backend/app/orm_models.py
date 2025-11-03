@@ -160,12 +160,8 @@ class Transaction(Base):
     __table_args__ = (
         UniqueConstraint("date", "amount", "description", name="uq_txn_dedup"),
     )
-    # Relationship: one-to-many feedbacks
-    feedbacks: Mapped[list["Feedback"]] = relationship(
-        "Feedback",
-        back_populates="txn",
-        cascade="all, delete-orphan",
-    )
+    # NOTE: Feedback relationship removed - feedback now decoupled from transaction lifecycle
+    # Feedback persists even when transactions are deleted (ML training data preservation)
 
     @validates("merchant")
     def _on_merchant_set(self, key, value):
@@ -309,24 +305,50 @@ class RecurringSeries(Base):
     )
 
 
-# --- NEW: Feedback -----------------------------------------------------------
+# --- NEW: Feedback (ML training events, decoupled from transaction lifecycle) ---
 class Feedback(Base):
+    """
+    ML training signal that survives transaction deletion.
+    Stores user decisions (accept/correct/reject) for incremental learning.
+    """
+
     __tablename__ = "feedback"
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    txn_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("transactions.id"), index=True, nullable=False
+
+    # Weak reference to transaction (nullable - transaction may be deleted)
+    txn_id: Mapped[int | None] = mapped_column(Integer, index=True, nullable=True)
+
+    # Direct merchant storage (so feedback works even if txn deleted)
+    merchant: Mapped[str | None] = mapped_column(String(256), nullable=True, index=True)
+
+    # User's chosen label (the ground truth)
+    label: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+
+    # Model's prediction (for tracking accuracy)
+    model_pred: Mapped[str | None] = mapped_column(String(128), nullable=True)
+
+    # Decision type: 'accept' | 'correct' | 'reject' | 'apply_rule'
+    decision: Mapped[str] = mapped_column(
+        String(32), nullable=False, server_default="correct"
     )
-    label: Mapped[str] = mapped_column(String(128), nullable=False)
+
+    # Source of feedback event
     source: Mapped[str] = mapped_column(
         String(64), nullable=False, server_default="user_change"
-    )  # user_change | accept_suggestion | rule_apply
+    )  # user_change | accept_suggestion | rule_apply | ui | import
+
+    # Weight for importance sampling (default 1.0)
+    weight: Mapped[float] = mapped_column(Float, nullable=False, server_default="1.0")
+
+    # Month for time-based analytics
+    month: Mapped[str | None] = mapped_column(String(7), nullable=True)
+
     # Enforce NOT NULL with server default at DB level for reliable windowing
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
-    # Relationship back to transaction
-    txn: Mapped["Transaction"] = relationship("Transaction", back_populates="feedbacks")
+
     # Alias for historical references: some service code may refer to fb.action
     # Keep the primary column name 'source'; 'action' is a read/write synonym.
     action = synonym("source")

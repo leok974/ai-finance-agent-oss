@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useCallback, useEffect, useRef, Suspense } from "react";
+import React, { useState, useCallback, useEffect, useRef, Suspense } from "react";
 import { MonthContext } from "./context/MonthContext";
 import UploadCsv from "./components/UploadCsv";
 import UnknownsPanel from "./components/UnknownsPanel";
@@ -8,7 +8,7 @@ import { AgentResultRenderer } from "./components/AgentResultRenderers";
 import { emitToastSuccess } from "@/lib/toast-helpers";
 import { t } from '@/lib/i18n';
 // import RulesPanel from "./components/RulesPanel";
-import { getAlerts, getMonthSummary, getMonthMerchants, getMonthFlows, getHealthz, api, agentTools, fetchLatestMonth } from './lib/api'
+import { getAlerts, getMonthSummary, getHealthz, agentTools, fetchLatestMonth } from './lib/api'
 import { flags } from "@/lib/flags";
 import AboutDrawer from './components/AboutDrawer';
 import RulesPanel from "./components/RulesPanel";
@@ -64,7 +64,7 @@ const App: React.FC = () => {
   const [refreshKey, setRefreshKey] = useState<number>(0);
   // Legacy report removed: using expanded insights and charts exclusively
   const [insights, setInsights] = useState<any>(null)
-  const [alerts, setAlerts] = useState<any>(null)
+  const [_alerts, setAlerts] = useState<any>(null)
   const [empty, setEmpty] = useState<boolean>(false)
   const [bannerDismissed, setBannerDismissed] = useState<boolean>(false)
   const [txPanelOpen, setTxPanelOpen] = useState<boolean>(false)
@@ -73,7 +73,7 @@ const App: React.FC = () => {
   const booted = useRef(false)
   const [dbRev, setDbRev] = useState<string | null>(null);
   const [inSync, setInSync] = useState<boolean | undefined>(undefined);
-  const chartsStore = useChartsStore();
+  const refetchAllCharts = useChartsStore((state) => state.refetchAll);
 
   // Keyboard toggles: Ctrl+Alt+D soft session toggle (no reload), Ctrl+Shift+D hard persistent toggle (reload)
   useEffect(() => {
@@ -138,12 +138,12 @@ const App: React.FC = () => {
       return;
     }
     // Use charts store to fetch and normalize all chart data
-    void chartsStore.refetchAll(month).then(() => {
+    void refetchAllCharts(month).then(() => {
       console.log('[boot] charts prefetch completed for month:', month);
     });
     // Also prefetch spending trends separately (not in store yet)
     void agentTools.chartsSpendingTrends({ month, months_back: 6 });
-  }, [authOk, month, chartsStore]);
+  }, [authOk, month, refetchAllCharts]);
 
   // Log DB health once after CORS/DB are good (boot complete) and capture db revision
   useEffect(() => {
