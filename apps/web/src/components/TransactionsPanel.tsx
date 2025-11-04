@@ -9,6 +9,8 @@ import SplitDialog from "./SplitDialog";
 import MergeDialog from "./MergeDialog";
 import TransferDialog from "./TransferDialog";
 import BulkEditDialog from "./bulk/BulkEditDialog";
+import { useUncategorizedMLSuggestions } from "@/hooks/useMLSuggestions";
+import { TransactionRowWithSuggestions } from "@/components/TransactionRowWithSuggestions";
 
 type Row = {
   id: number;
@@ -60,6 +62,47 @@ export default function TransactionsPanel() {
   }, [q, month, sort, page]);
 
   React.useEffect(() => { refresh(); }, [refresh]);
+
+  // ML Suggestions hook for uncategorized transactions
+  const {
+    getSuggestionsForTransaction,
+    loading: suggestionsLoading,
+    acceptSuggestion,
+    rejectSuggestion,
+  } = useUncategorizedMLSuggestions(rows, {
+    enabled: true,
+    topK: 3,
+    mode: 'auto',
+  });
+
+  // Handler for accepting ML suggestions
+  const handleAcceptSuggestion = React.useCallback(async (txnId: number, category: string) => {
+    try {
+      // Update transaction category
+      await patchTxn(txnId, { category });
+
+      // Send feedback to backend
+      await acceptSuggestion(String(txnId), category);
+
+      // Show success toast
+      emitToastSuccess('Category Applied', {
+        description: `Set category to "${category}"`,
+      });
+
+      // Refresh transaction list
+      refresh();
+    } catch (error) {
+      emitToastError('Failed to apply category', {
+        description: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  }, [acceptSuggestion, refresh]);
+
+  // Handler for rejecting ML suggestions
+  const handleRejectSuggestion = React.useCallback((txnId: number, category: string) => {
+    rejectSuggestion(String(txnId), category);
+    // Optional: Could show a toast or update UI
+  }, [rejectSuggestion]);
 
   // Keyboard shortcuts for selection actions
   React.useEffect(() => {
@@ -146,17 +189,18 @@ export default function TransactionsPanel() {
             </thead>
             <tbody>
               {rows.map((r) => (
-                <tr key={r.id} className="border-t border-border">
-                  <td className="px-2 py-1"><input type="checkbox" checked={sel.includes(r.id)} onChange={(e) => toggleOne(r.id, e.target.checked)} /></td>
-                  <td className="px-2 py-1 whitespace-nowrap">{r.date || '—'}</td>
-                  <td className="px-2 py-1">{(r as any).merchant_canonical || r.merchant || '—'}</td>
-                  <td className="px-2 py-1">{r.category || <span className="opacity-60">—</span>}</td>
-                  <td className="px-2 py-1 text-right">{r.amount?.toLocaleString?.(undefined, { style: 'currency', currency: 'USD' }) ?? String(r.amount)}</td>
-                  <td className="px-2 py-1 text-right">
-                    <Button variant="pill-ghost" onClick={() => openEdit(r)}>Edit</Button>
-                    <Button variant="pill-danger" onClick={() => handleDelete([r.id])}>Delete</Button>
-                  </td>
-                </tr>
+                <TransactionRowWithSuggestions
+                  key={r.id}
+                  transaction={r}
+                  suggestion={getSuggestionsForTransaction(String(r.id))}
+                  isSelected={sel.includes(r.id)}
+                  onSelect={(id, checked) => toggleOne(id, checked)}
+                  onEdit={(id) => openEdit(id)}
+                  onDelete={(id) => handleDelete([id])}
+                  onAcceptSuggestion={handleAcceptSuggestion}
+                  onRejectSuggestion={handleRejectSuggestion}
+                  suggestionsLoading={suggestionsLoading}
+                />
               ))}
             </tbody>
           </table>
