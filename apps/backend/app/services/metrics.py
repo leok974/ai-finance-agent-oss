@@ -1,4 +1,5 @@
 """Prometheus metrics for suggestion system."""
+
 from prometheus_client import Counter, Histogram
 
 SUGGESTIONS_TOTAL = Counter(

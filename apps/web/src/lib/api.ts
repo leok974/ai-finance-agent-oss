@@ -1682,16 +1682,16 @@ export async function testCatRule(
 // ML Suggestions API
 // ============================================================================
 
-export type SuggestCandidate = { 
-  label: string; 
-  confidence: number; 
-  reasons: string[] 
+export type SuggestCandidate = {
+  label: string;
+  confidence: number;
+  reasons: string[]
 };
 
-export type SuggestItem = { 
-  txn_id: string; 
-  event_id?: string; 
-  candidates: SuggestCandidate[] 
+export type SuggestItem = {
+  txn_id: string;
+  event_id?: string;
+  candidates: SuggestCandidate[]
 };
 
 export type SuggestRequest = {
@@ -1709,8 +1709,8 @@ export async function getMLSuggestions(body: SuggestRequest): Promise<{ items: S
 }
 
 export async function sendSuggestionFeedback(
-  event_id: string, 
-  action: "accept" | "reject" | "undo", 
+  event_id: string,
+  action: "accept" | "reject" | "undo",
   reason?: string
 ): Promise<{ ok: boolean }> {
   const r = await fetchJSON('agent/tools/suggestions/feedback', {
