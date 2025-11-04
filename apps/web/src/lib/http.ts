@@ -11,7 +11,8 @@ interface ViteEnv {
 const env = (import.meta as unknown as { env?: ViteEnv })?.env || {};
 
 // API base for all non-auth endpoints (e.g., /api in dev, / in prod)
-export const BASE = (env.VITE_API_BASE || '/api').replace(/\/$/, '');
+// Default to '/' for production (nginx routes without /api prefix)
+export const BASE = (env.VITE_API_BASE ?? '/').replace(/\/$/, '');
 
 // Auth endpoints (e.g., /api/auth in dev, /api/auth in prod)
 const AUTH_BASE = env.VITE_AUTH_API_BASE || '/api';

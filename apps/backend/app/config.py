@@ -103,6 +103,15 @@ class Settings(BaseSettings):
     )  # dev | prod | test (primary)
     ALLOW_DEV_ROUTES: int = int(os.getenv("ALLOW_DEV_ROUTES", "1"))
 
+    # === Suggestions/ML ===
+    SUGGEST_ENABLED: bool = _env_bool("SUGGEST_ENABLED", True)
+    SUGGEST_MODE: str = os.getenv("SUGGEST_MODE", "auto")  # one of: heuristic|model|auto
+    SUGGEST_MIN_CONF: float = float(os.getenv("SUGGEST_MIN_CONF", "0.65"))
+    SUGGEST_TOPK: int = int(os.getenv("SUGGEST_TOPK", "3"))
+    SUGGEST_SHADOW: bool = _env_bool("SUGGEST_SHADOW", True)
+    SUGGEST_CANARY_PCT: int = int(os.getenv("SUGGEST_CANARY_PCT", "0"))  # 0..100
+    SUGGEST_MODEL_PATH: str | None = os.getenv("SUGGEST_MODEL_PATH", None)  # e.g. data/models/model.joblib
+
     # --- LedgerMind Dev Super Override (canonical LM_* with legacy aliases) ---
     DEV_SUPERUSER_EMAIL: str | None = _alias(
         "LM_DEV_SUPER_EMAIL", "DEV_SUPERUSER_EMAIL", default=None
