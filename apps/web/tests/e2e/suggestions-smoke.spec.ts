@@ -2,17 +2,16 @@ import { test, expect } from "@playwright/test";
 
 // Smoke test for ML suggestions endpoint
 // Assumes at least one transaction exists in test environment
+// Use E2E_TXN_ID env var to provide a real transaction ID from your test data
+
+const TEST_TXN_ID = process.env.E2E_TXN_ID || "1";  // Default to ID 1 for smoke test
 
 test("suggestions endpoint returns candidates", async ({ request }) => {
-  // Use a placeholder UUID for smoke test
-  // In real usage, replace with actual transaction ID from fixtures
-  const testTxnId = "00000000-0000-0000-0000-000000000001";
-
   const res = await request.post("/agent/tools/suggestions", {
     data: {
-      txn_ids: [testTxnId],
+      txn_ids: [TEST_TXN_ID],
       top_k: 3,
-      mode: "heuristic"
+      mode: "auto"  // Use auto mode to test full pipeline
     },
   });
 
@@ -44,13 +43,12 @@ test("suggestions endpoint returns candidates", async ({ request }) => {
 
 test("suggestions feedback endpoint accepts feedback", async ({ request }) => {
   // First, create a suggestion to get an event_id
-  const testTxnId = "00000000-0000-0000-0000-000000000001";
 
   const suggestRes = await request.post("/agent/tools/suggestions", {
     data: {
-      txn_ids: [testTxnId],
+      txn_ids: [TEST_TXN_ID],
       top_k: 1,
-      mode: "heuristic"
+      mode: "auto"
     },
   });
 
