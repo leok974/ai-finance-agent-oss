@@ -9,6 +9,7 @@ import { useAuth } from "@/state/auth";
 import { createPortal } from "react-dom";
 import { ChevronUp, Wrench } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { agentTools, agentChat, type AgentChatRequest, type AgentChatResponse, type TxnQueryResult, explainTxnForChat, agentRephrase, analytics, transactionsNl, telemetry, txnsQueryCsv, txnsQuery, agentStatus, type AgentStatusResponse } from "../lib/api";
 import { fmtMonthSummary, fmtTopMerchants, fmtCashflow, fmtTrends } from "../lib/formatters";
@@ -242,6 +243,9 @@ export default function ChatDock() {
   // Dev tools visibility check (PIN-gated)
   const showDevTools = useShowDevTools();
 
+  // Toast for fallback notifications
+  const { toast } = useToast();
+
   useEffect(() => {
     return registerComposerControls({
       setValue: (value: string) => setInput(value),
@@ -348,7 +352,6 @@ export default function ChatDock() {
     // Show toast if fallback was active
     if (metaPayload._router_fallback_active === true) {
       try {
-        const { toast } = require('@/hooks/use-toast');
         toast({
           title: "Using deterministic fallback",
           description: "The model is warming up or unavailable.",

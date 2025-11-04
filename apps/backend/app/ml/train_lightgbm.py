@@ -16,7 +16,7 @@ from pathlib import Path
 from datetime import datetime
 
 import pandas as pd
-import lightgbm as lgb
+import lightgbm as lgb  # type: ignore[import-untyped]
 from sklearn.model_selection import train_test_split, cross_val_score
 from sklearn.calibration import CalibratedClassifierCV
 from sklearn.metrics import classification_report, accuracy_score

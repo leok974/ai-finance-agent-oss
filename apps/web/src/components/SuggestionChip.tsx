@@ -31,6 +31,7 @@ export function SuggestionChip({
 
   return (
     <div
+      data-testid="suggestion-chip"
       className={cn(
         'group inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-all',
         isHighConfidence
@@ -43,31 +44,35 @@ export function SuggestionChip({
       title={`${confidencePercent}% confidence - ${candidate.reasons.join(', ')}`}
     >
       <Sparkles className="h-3 w-3 opacity-70" />
-      <span className="font-semibold">{candidate.label}</span>
+      <span data-testid="suggestion-label" className="font-semibold">{candidate.label}</span>
       <span className="opacity-60 text-[10px]">{confidencePercent}%</span>
 
       {!disabled && (
         <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity ml-1">
           {onAccept && (
             <button
+              data-testid="accept-suggestion-button"
               onClick={(e) => {
                 e.stopPropagation();
                 onAccept();
               }}
               className="p-0.5 rounded-full hover:bg-green-100 transition-colors"
               title="Accept suggestion"
+              aria-label="Accept suggestion"
             >
               <CheckCircle2 className="h-3 w-3 text-green-600" />
             </button>
           )}
           {onReject && (
             <button
+              data-testid="reject-suggestion-button"
               onClick={(e) => {
                 e.stopPropagation();
                 onReject();
               }}
               className="p-0.5 rounded-full hover:bg-red-100 transition-colors"
               title="Reject suggestion"
+              aria-label="Reject suggestion"
             >
               <X className="h-3 w-3 text-red-600" />
             </button>

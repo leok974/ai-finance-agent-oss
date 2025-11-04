@@ -457,7 +457,9 @@ def trim_ctx_for_prompt(ctx: dict, max_chars: int = 8000) -> dict:
     Keep: month + txn + summary (core data)
     """
     trim_order = ["suggestions", "top_merchants", "insights", "alerts", "rules"]
-    calc_size = lambda d: len(json.dumps(d, default=str))
+
+    def calc_size(d):
+        return len(json.dumps(d, default=str))
 
     if calc_size(ctx) <= max_chars:
         return ctx
@@ -1374,6 +1376,7 @@ def agent_chat(
 def agent_rephrase(
     req: AgentChatRequest,
     db: Session = Depends(get_db),
+    request=None,
     debug: bool = Query(False, description="Return raw CONTEXT in response (dev only)"),
 ):
     """Clean endpoint to always hit the LLM path without tool/router logic."""
@@ -1508,7 +1511,6 @@ if not _HERMETIC:
 
             # Aggregate income (positive) and expenses (abs negative)
             amt_col = Transaction.amount
-            q_month = db.query(Transaction).filter(Transaction.month == target)
             income_val = (
                 db.query(_func.sum(amt_col))
                 .filter(Transaction.month == target, amt_col > 0)
