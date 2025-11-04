@@ -1,4 +1,5 @@
 """Heuristic-based category suggestion (baseline, never-empty)."""
+
 from __future__ import annotations
 from typing import List, Dict
 import re
@@ -50,10 +51,10 @@ def score_candidate(label: str, memo: str, amount: float) -> float:
 
 def suggest_for_txn(txn: Dict) -> List[Dict]:
     """Return candidate list of {label, confidence, reasons[]} ordered by confidence.
-    
+
     Args:
         txn: Transaction dict with keys: amount, merchant, memo, name, payee
-        
+
     Returns:
         List of candidates sorted by confidence (highest first)
     """
@@ -67,22 +68,40 @@ def suggest_for_txn(txn: Dict) -> List[Dict]:
     for key, label in MERCHANT_PRIORS.items():
         if key in merchant:
             conf = score_candidate(label, memo, amount)
-            cands.append({"label": label, "confidence": conf, "reasons": [f"merchant_prior:{key}"]})
+            cands.append(
+                {
+                    "label": label,
+                    "confidence": conf,
+                    "reasons": [f"merchant_prior:{key}"],
+                }
+            )
 
     # 2) Regex rules on memo
     for pattern, label in REGEX_RULES:
         if pattern.search(memo):
             conf = score_candidate(label, memo, amount)
-            cands.append({"label": label, "confidence": conf, "reasons": [f"regex:{pattern.pattern}"]})
+            cands.append(
+                {
+                    "label": label,
+                    "confidence": conf,
+                    "reasons": [f"regex:{pattern.pattern}"],
+                }
+            )
 
     # 3) Fallback simple channel tokens
     if not cands:
         if "zelle" in merchant or "zelle" in memo:
-            cands.append({"label": "Transfer", "confidence": 0.62, "reasons": ["token:zelle"]})
+            cands.append(
+                {"label": "Transfer", "confidence": 0.62, "reasons": ["token:zelle"]}
+            )
         elif "deposit" in memo:
-            cands.append({"label": "Income", "confidence": 0.61, "reasons": ["token:deposit"]})
+            cands.append(
+                {"label": "Income", "confidence": 0.61, "reasons": ["token:deposit"]}
+            )
         else:
-            cands.append({"label": "General", "confidence": 0.55, "reasons": ["fallback"]})
+            cands.append(
+                {"label": "General", "confidence": 0.55, "reasons": ["fallback"]}
+            )
 
     cands.sort(key=lambda x: x["confidence"], reverse=True)
     return cands
