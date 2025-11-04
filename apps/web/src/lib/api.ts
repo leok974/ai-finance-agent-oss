@@ -1677,3 +1677,45 @@ export async function testCatRule(
   });
   return r as { ok: boolean; error?: string; matches: string[]; misses: string[] };
 }
+
+// ============================================================================
+// ML Suggestions API
+// ============================================================================
+
+export type SuggestCandidate = { 
+  label: string; 
+  confidence: number; 
+  reasons: string[] 
+};
+
+export type SuggestItem = { 
+  txn_id: string; 
+  event_id?: string; 
+  candidates: SuggestCandidate[] 
+};
+
+export type SuggestRequest = {
+  txn_ids: string[];
+  top_k?: number;
+  mode?: "heuristic" | "model" | "auto";
+};
+
+export async function getMLSuggestions(body: SuggestRequest): Promise<{ items: SuggestItem[] }> {
+  const r = await fetchJSON('agent/tools/suggestions', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+  return r as { items: SuggestItem[] };
+}
+
+export async function sendSuggestionFeedback(
+  event_id: string, 
+  action: "accept" | "reject" | "undo", 
+  reason?: string
+): Promise<{ ok: boolean }> {
+  const r = await fetchJSON('agent/tools/suggestions/feedback', {
+    method: 'POST',
+    body: JSON.stringify({ event_id, action, reason }),
+  });
+  return r as { ok: boolean };
+}
