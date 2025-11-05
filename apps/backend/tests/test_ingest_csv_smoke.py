@@ -5,7 +5,7 @@ import pytest
 
 # Candidate endpoints observed historically (broadened to include bare /ingest)
 CANDIDATE_PATHS = (
-    "/ingest",        # some backends mount here
+    "/ingest",  # some backends mount here
     "/ingest/csv",
     "/agent/ingest/csv",
     "/api/ingest/csv",
@@ -74,10 +74,13 @@ def _first_existing_path(client) -> str | None:
     return None
 
 
-@pytest.mark.parametrize("header_name,header_value", [
-    ("Origin", "http://localhost"),
-    ("Access-Control-Request-Method", "POST"),
-])
+@pytest.mark.parametrize(
+    "header_name,header_value",
+    [
+        ("Origin", "http://localhost"),
+        ("Access-Control-Request-Method", "POST"),
+    ],
+)
 def test_ingest_options_preflight_tolerant(client, header_name, header_value):
     """
     OPTIONS should not 5xx. Many backends 404/405 OPTIONS; we tolerate that.
@@ -107,9 +110,12 @@ def test_ingest_post_unauth_tolerant(client):
             break
 
     assert last_resp is not None, "no response captured"
-    assert last_resp.status_code < 500, f"unexpected 5xx on {last_path}: {last_resp.status_code}"
-    assert last_resp.status_code in (OK_SET | UNAUTH_SET | VALIDATION_SET | NOT_IMPLEMENTED_SET), \
-        f"unexpected status {last_resp.status_code} for unauth ingest at {last_path}"
+    assert (
+        last_resp.status_code < 500
+    ), f"unexpected 5xx on {last_path}: {last_resp.status_code}"
+    assert last_resp.status_code in (
+        OK_SET | UNAUTH_SET | VALIDATION_SET | NOT_IMPLEMENTED_SET
+    ), f"unexpected status {last_resp.status_code} for unauth ingest at {last_path}"
 
 
 def test_ingest_post_auth_tolerant(auth_client):
@@ -132,12 +138,18 @@ def test_ingest_post_auth_tolerant(auth_client):
             break
 
     assert last_resp is not None, "no response captured"
-    assert last_resp.status_code < 500, f"unexpected 5xx on {last_path}: {last_resp.status_code}"
-    assert last_resp.status_code in (OK_SET | UNAUTH_SET | VALIDATION_SET | NOT_IMPLEMENTED_SET), \
-        f"unexpected status {last_resp.status_code} for auth ingest at {last_path}"
+    assert (
+        last_resp.status_code < 500
+    ), f"unexpected 5xx on {last_path}: {last_resp.status_code}"
+    assert last_resp.status_code in (
+        OK_SET | UNAUTH_SET | VALIDATION_SET | NOT_IMPLEMENTED_SET
+    ), f"unexpected status {last_resp.status_code} for auth ingest at {last_path}"
 
 
-@pytest.mark.skipif(os.getenv("AUTH_E2E") not in {"1","true","TRUE"}, reason="happy-path auth ingest disabled")
+@pytest.mark.skipif(
+    os.getenv("AUTH_E2E") not in {"1", "true", "TRUE"},
+    reason="happy-path auth ingest disabled",
+)
 def test_ingest_post_auth_happy_path(auth_client):
     """
     When AUTH_E2E=1 (and your stack issues an accepted auth for uploads),
@@ -148,7 +160,9 @@ def test_ingest_post_auth_happy_path(auth_client):
     outcomes = []
 
     for path in CANDIDATE_PATHS:
-        r, used_path, field = _multipart_attempt(auth_client, path, headers=headers, rows=1)
+        r, used_path, field = _multipart_attempt(
+            auth_client, path, headers=headers, rows=1
+        )
         outcomes.append((used_path, "multipart", field, r.status_code))
         if r.status_code in OK_SET:
             got_2xx = True
@@ -160,17 +174,29 @@ def test_ingest_post_auth_happy_path(auth_client):
 
     assert got_2xx, f"expected a 2xx happy path; outcomes={outcomes}"
 
-@pytest.mark.skipif(os.getenv("INGEST_LARGE") not in {"1","true","TRUE"}
-                    and not (os.getenv("INGEST_CSV_ROWS") and os.getenv("INGEST_CSV_ROWS").isdigit()),
-                    reason="large ingest disabled")
+
+@pytest.mark.skipif(
+    os.getenv("INGEST_LARGE") not in {"1", "true", "TRUE"}
+    and not (os.getenv("INGEST_CSV_ROWS") and os.getenv("INGEST_CSV_ROWS").isdigit()),
+    reason="large ingest disabled",
+)
 def test_ingest_post_auth_large_optional(auth_client):
     """Optional large-ish upload (rows controlled via INGEST_CSV_ROWS or INGEST_LARGE=1 -> 500).
     Still tolerant: forbid 5xx, allow 2xx/4xx depending on env."""
     headers = {}
-    last = None; last_path = None; rows = None
-    rows = int(os.getenv("INGEST_CSV_ROWS") or "500") if os.getenv("INGEST_LARGE") in {"1","true","TRUE"} or os.getenv("INGEST_CSV_ROWS") else 500
+    last = None
+    last_path = None
+    rows = None
+    rows = (
+        int(os.getenv("INGEST_CSV_ROWS") or "500")
+        if os.getenv("INGEST_LARGE") in {"1", "true", "TRUE"}
+        or os.getenv("INGEST_CSV_ROWS")
+        else 500
+    )
     for path in CANDIDATE_PATHS:
-        r, used_path, _ = _multipart_attempt(auth_client, path, headers=headers, rows=rows)
+        r, used_path, _ = _multipart_attempt(
+            auth_client, path, headers=headers, rows=rows
+        )
         last, last_path = r, used_path
         if r.status_code not in NOT_IMPLEMENTED_SET:
             break
@@ -179,5 +205,9 @@ def test_ingest_post_auth_large_optional(auth_client):
         if r.status_code not in NOT_IMPLEMENTED_SET:
             break
     assert last is not None
-    assert last.status_code < 500, f"unexpected 5xx on {last_path} (rows={rows}): {last.status_code}"
-    assert last.status_code in (OK_SET | UNAUTH_SET | VALIDATION_SET | NOT_IMPLEMENTED_SET)
+    assert (
+        last.status_code < 500
+    ), f"unexpected 5xx on {last_path} (rows={rows}): {last.status_code}"
+    assert last.status_code in (
+        OK_SET | UNAUTH_SET | VALIDATION_SET | NOT_IMPLEMENTED_SET
+    )

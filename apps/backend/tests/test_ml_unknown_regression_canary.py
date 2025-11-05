@@ -3,7 +3,10 @@ import os
 import textwrap
 from types import SimpleNamespace
 import pytest
-pytestmark = pytest.mark.skip(reason="Legacy /ml/* endpoints removed; use /agent/tools/*")
+
+pytestmark = pytest.mark.skip(
+    reason="Legacy /ml/* endpoints removed; use /agent/tools/*"
+)
 from fastapi.testclient import TestClient
 
 from app.main import app
@@ -24,7 +27,9 @@ def _seed_via_ingest_minimal():
     assert resp.status_code in (200, 201), resp.text
 
 
-@pytest.mark.xfail(strict=True, reason="Canary: should FAIL if exclusion remains active after patch")
+@pytest.mark.xfail(
+    strict=True, reason="Canary: should FAIL if exclusion remains active after patch"
+)
 def test_canary_reinclude_unknown_via_monkeypatch(monkeypatch):
     # Run only when explicitly enabled to avoid CI noise
     if os.getenv("RUN_CANARY") not in ("1", "true", "True"):

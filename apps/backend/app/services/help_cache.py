@@ -5,6 +5,7 @@ from typing import Any, Dict, Optional, Tuple
 # Optional Prometheus metrics (safe if library absent)
 try:  # pragma: no cover - optional dependency
     from prometheus_client import Counter, Gauge  # type: ignore
+
     _METRICS = {
         "hits": Counter("help_cache_hits_total", "Help cache hits"),
         "misses": Counter("help_cache_misses_total", "Help cache misses"),
@@ -19,8 +20,10 @@ _cache: Dict[str, Tuple[Dict[str, Any], float]] = {}
 _lock = threading.Lock()
 _stats = {"hits": 0, "misses": 0, "evictions": 0}
 
+
 def _now() -> float:
     return time.time()
+
 
 def make_key(
     panel_id: str,
@@ -32,6 +35,7 @@ def make_key(
     mode_token = (mode or ("explain" if rephrase else "learn")) or "learn"
     safe_mode = mode_token.replace("|", ":")
     return f"{panel_id}|{safe_mode}|{month or 'none'}|{filters_hash}|r={1 if rephrase else 0}"
+
 
 def get(key: str) -> Optional[Dict[str, Any]]:
     with _lock:
@@ -57,12 +61,14 @@ def get(key: str) -> Optional[Dict[str, Any]]:
             _METRICS["hits"].inc()
         return val
 
+
 def set_(key: str, value: Dict[str, Any], ttl: Optional[float] = None) -> None:
     with _lock:
         t = float(_TTL_DEFAULT if ttl is None else ttl)
         _cache[key] = (value, _now() + t)
         if _METRICS:
             _METRICS["size"].set(len(_cache))
+
 
 def clear() -> None:
     with _lock:
@@ -71,13 +77,21 @@ def clear() -> None:
         if _METRICS:
             _METRICS["size"].set(0)
 
+
 def size() -> int:
     with _lock:
         return len(_cache)
 
+
 def stats() -> Dict[str, int]:
     with _lock:
-        return {"hits": _stats["hits"], "misses": _stats["misses"], "evictions": _stats["evictions"], "size": len(_cache)}
+        return {
+            "hits": _stats["hits"],
+            "misses": _stats["misses"],
+            "evictions": _stats["evictions"],
+            "size": len(_cache),
+        }
+
 
 def reset_stats() -> None:
     with _lock:
@@ -85,7 +99,9 @@ def reset_stats() -> None:
         _stats["misses"] = 0
         _stats["evictions"] = 0
 
+
 # For tests
+
 
 def _set_ttl_for_tests(seconds: float, retroactive: bool = False) -> None:
     """Set global TTL. If retroactive, tighten existing entries to now+seconds."""
@@ -96,6 +112,7 @@ def _set_ttl_for_tests(seconds: float, retroactive: bool = False) -> None:
         with _lock:
             for k, (val, _) in list(_cache.items()):
                 _cache[k] = (val, now + _TTL_DEFAULT)
+
 
 def _force_expire_for_tests(key: str) -> None:
     """Deterministically evict a key for tests.

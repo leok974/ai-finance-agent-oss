@@ -20,7 +20,7 @@ test.describe("ML Suggestions in TransactionsPanel", () => {
     request,
   }) => {
     // Prime suggestions via API to ensure event_id is present
-    const primeResponse = await request.post("/agent/tools/suggestions", {
+    const primeResponse = await request.post("/ml/suggestions", {
       data: {
         txn_ids: [TEST_TXN_ID],
         top_k: 3,
@@ -51,7 +51,7 @@ test.describe("ML Suggestions in TransactionsPanel", () => {
     request,
   }) => {
     // Prime suggestions
-    const primeResponse = await request.post("/agent/tools/suggestions", {
+    const primeResponse = await request.post("/ml/suggestions", {
       data: {
         txn_ids: [TEST_TXN_ID],
         top_k: 3,
@@ -107,7 +107,7 @@ test.describe("ML Suggestions in TransactionsPanel", () => {
     const REJECT_TXN_ID = "999002";
 
     // Prime suggestions
-    await request.post("/agent/tools/suggestions", {
+    await request.post("/ml/suggestions", {
       data: {
         txn_ids: [REJECT_TXN_ID],
         top_k: 3,
@@ -146,7 +146,7 @@ test.describe("ML Suggestions in TransactionsPanel", () => {
     // Prime suggestions for multiple transactions
     const txnIds = ["999001", "999002", "999003"];
 
-    await request.post("/agent/tools/suggestions", {
+    await request.post("/ml/suggestions", {
       data: {
         txn_ids: txnIds,
         top_k: 3,
@@ -173,7 +173,7 @@ test.describe("ML Suggestions in TransactionsPanel", () => {
     request,
   }) => {
     // Prime suggestions
-    await request.post("/agent/tools/suggestions", {
+    await request.post("/ml/suggestions", {
       data: {
         txn_ids: [TEST_TXN_ID],
         top_k: 3,
@@ -202,7 +202,7 @@ test.describe("ML Suggestions in TransactionsPanel", () => {
 
   test("handles API errors gracefully", async ({ page, context }) => {
     // Mock API failure
-    await context.route("**/agent/tools/suggestions", (route) => {
+    await context.route("**/ml/suggestions", (route) => {
       route.fulfill({
         status: 500,
         body: JSON.stringify({ error: "Internal server error" }),
@@ -223,7 +223,7 @@ test.describe("ML Suggestions in TransactionsPanel", () => {
 
 test.describe("ML Suggestions API Integration", () => {
   test("suggestions endpoint returns candidates", async ({ request }) => {
-    const response = await request.post("/agent/tools/suggestions", {
+    const response = await request.post("/ml/suggestions", {
       data: {
         txn_ids: [TEST_TXN_ID],
         top_k: 3,
@@ -256,7 +256,7 @@ test.describe("ML Suggestions API Integration", () => {
 
   test("feedback endpoint accepts accept action", async ({ request }) => {
     // First get a suggestion to get event_id
-    const suggestResponse = await request.post("/agent/tools/suggestions", {
+    const suggestResponse = await request.post("/ml/suggestions", {
       data: {
         txn_ids: [TEST_TXN_ID],
         top_k: 1,
@@ -270,7 +270,7 @@ test.describe("ML Suggestions API Integration", () => {
 
     // Send feedback
     const feedbackResponse = await request.post(
-      "/agent/tools/suggestions/feedback",
+      "/ml/suggestions/feedback",
       {
         data: {
           event_id: eventId,
@@ -287,7 +287,7 @@ test.describe("ML Suggestions API Integration", () => {
   });
 
   test("feedback endpoint accepts reject action", async ({ request }) => {
-    const suggestResponse = await request.post("/agent/tools/suggestions", {
+    const suggestResponse = await request.post("/ml/suggestions", {
       data: {
         txn_ids: ["999002"],
         top_k: 1,
@@ -300,7 +300,7 @@ test.describe("ML Suggestions API Integration", () => {
     const eventId = suggestData.items[0].event_id;
 
     const feedbackResponse = await request.post(
-      "/agent/tools/suggestions/feedback",
+      "/ml/suggestions/feedback",
       {
         data: {
           event_id: eventId,

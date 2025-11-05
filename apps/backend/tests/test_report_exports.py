@@ -1,7 +1,6 @@
 import datetime as dt
 from sqlalchemy import delete
 
-import pytest
 
 from app.orm_models import Transaction
 
@@ -47,7 +46,10 @@ def test_report_excel_endpoint_returns_file(client, db_session):
     r = client.get(f"/report/excel?month={month}")
     assert r.status_code == 200
     # XLSX is a ZIP container; should start with PK\x03\x04
-    assert r.headers.get("content-type") == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    assert (
+        r.headers.get("content-type")
+        == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
     body = r.content
     assert isinstance(body, (bytes, bytearray)) and len(body) > 100
     assert body[:2] == b"PK"
@@ -77,11 +79,17 @@ def test_report_excel_include_transactions_toggle(client, db_session):
     # Without transactions sheet
     r1 = client.get(f"/report/excel?month={month}&include_transactions=false")
     assert r1.status_code == 200
-    assert r1.headers.get("content-type") == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    assert (
+        r1.headers.get("content-type")
+        == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
     assert r1.content[:2] == b"PK"
 
     # With transactions sheet (default)
     r2 = client.get(f"/report/excel?month={month}")
     assert r2.status_code == 200
-    assert r2.headers.get("content-type") == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    assert (
+        r2.headers.get("content-type")
+        == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
     assert r2.content[:2] == b"PK"

@@ -29,7 +29,9 @@ def _categorize(txn_ids, category: str):
 
 
 def _get_by_ids(txn_ids):
-    return client.post("/agent/tools/transactions/get_by_ids", json={"txn_ids": txn_ids})
+    return client.post(
+        "/agent/tools/transactions/get_by_ids", json={"txn_ids": txn_ids}
+    )
 
 
 def test_search_unlabeled_only_filters_and_orders():
@@ -37,27 +39,27 @@ def test_search_unlabeled_only_filters_and_orders():
     month = "2025-08"
 
     # Seed labeled and unlabeled rows
-    labeled_csv = textwrap.dedent("""\
+    labeled_csv = textwrap.dedent(
+        """\
         date,month,merchant,description,amount,category
         2025-08-10,2025-08,Costco,Groceries run,-85.40,Groceries
         2025-08-11,2025-08,Starbucks,Latte,-5.25,Shopping
-    """)
+    """
+    )
     _ingest(labeled_csv)
 
-    unlabeled_csv = textwrap.dedent(f"""\
+    unlabeled_csv = textwrap.dedent(
+        f"""\
         date,month,merchant,description,amount,category
         2025-08-12,{month},Uber,Ride home,-17.80,
         2025-08-13,{month},Amazon,Household,-34.99,Unknown
         2025-08-14,{month},Trader Joes,Groceries,-42.10,
-    """)
+    """
+    )
     _ingest(unlabeled_csv)
 
     # Search unlabeled only, Ordered by date desc (default), limit 2
-    r = _search({
-        "month": month,
-        "unlabeled_only": True,
-        "limit": 2
-    })
+    r = _search({"month": month, "unlabeled_only": True, "limit": 2})
     assert r.status_code == 200, r.text
     payload = r.json()
     assert set(payload.keys()) == {"total", "items"}
@@ -81,12 +83,14 @@ def test_categorize_bulk_then_search_shows_no_longer_unlabeled():
     month = "2025-09"
 
     # Seed some unlabeled rows
-    unlabeled_csv = textwrap.dedent(f"""\
+    unlabeled_csv = textwrap.dedent(
+        f"""\
         date,month,merchant,description,amount,category
         2025-09-01,{month},Uber,Ride,-10.00,
         2025-09-02,{month},Amazon,HH,-12.34,Unknown
         2025-09-03,{month},Trader Joes,Groceries,-22.22,
-    """)
+    """
+    )
     _ingest(unlabeled_csv)
 
     # First search: collect all unlabeled ids
@@ -113,11 +117,13 @@ def test_categorize_bulk_then_search_shows_no_longer_unlabeled():
 def test_get_by_ids_roundtrip_and_empty_case():
     """get_by_ids returns DTOs for existing IDs and empty list for unknown IDs."""
     month = "2025-10"
-    csv = textwrap.dedent(f"""\
+    csv = textwrap.dedent(
+        f"""\
         date,month,merchant,description,amount,category
         2025-10-01,{month},Costco,Groceries,-50.00,Groceries
         2025-10-02,{month},Starbucks,Coffee,-3.50,Shopping
-    """)
+    """
+    )
     _ingest(csv)
 
     # Find their IDs via a search

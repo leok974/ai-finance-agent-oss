@@ -32,16 +32,21 @@ def store_event(rec: Dict[str, Any]) -> None:
                       (:event, :props_json, :client_ts, :server_ts, :rid, :path, :ip, :ua)
                     """
                 )
-            db.execute(q, {
-                "event": rec.get("event"),
-                "props_json": json.dumps(rec.get("props") or {}, ensure_ascii=False),
-                "client_ts": rec.get("client_ts"),
-                "server_ts": rec.get("server_ts"),
-                "rid": rec.get("rid"),
-                "path": rec.get("path"),
-                "ip": rec.get("ip"),
-                "ua": rec.get("ua"),
-            })
+            db.execute(
+                q,
+                {
+                    "event": rec.get("event"),
+                    "props_json": json.dumps(
+                        rec.get("props") or {}, ensure_ascii=False
+                    ),
+                    "client_ts": rec.get("client_ts"),
+                    "server_ts": rec.get("server_ts"),
+                    "rid": rec.get("rid"),
+                    "path": rec.get("path"),
+                    "ip": rec.get("ip"),
+                    "ua": rec.get("ua"),
+                },
+            )
             db.commit()
         finally:
             db.close()

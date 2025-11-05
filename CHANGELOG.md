@@ -41,4 +41,3 @@ The format loosely follows Keep a Changelog; versions may be git-sha based until
 
 ### Notes
 This date-stamped section serves as a baseline; earlier internal iterations were not versioned publicly.
-

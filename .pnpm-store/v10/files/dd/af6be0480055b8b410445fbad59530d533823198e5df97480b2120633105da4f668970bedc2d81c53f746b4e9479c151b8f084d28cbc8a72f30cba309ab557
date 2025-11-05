@@ -356,7 +356,7 @@ if (ast.stylesheet.parsingErrors) {
 Position information is available on most nodes and includes:
 
 - `start.line` and `start.column`: Beginning of the node
-- `end.line` and `end.column`: End of the node  
+- `end.line` and `end.column`: End of the node
 - `source`: Source file path (if provided during parsing)
 
 This is useful for:

@@ -1,0 +1,12 @@
+version: 2
+
+models:
+  - name: mart_suggestions_kpis
+    description: "30-day rolling KPIs for suggestions."
+    columns:
+      - name: as_of_date
+        tests: [not_null]
+      - name: suggestions_30d
+      - name: model_suggestions_30d
+      - name: heur_suggestions_30d
+      - name: auto_suggestions_30d

@@ -7,6 +7,7 @@ edge_csp_policy_sha{sha="deadbeef"} 1
 edge_csp_policy_sha{sha="beadfeed"} 0
 """
 
+
 def test_helper_parses_samples():
     assert count_unlabeled(_SAMPLE, "edge_csp_policy_length") == 1
     assert count_labeled(_SAMPLE, "edge_csp_policy_sha", sha="deadbeef") == 1

@@ -1,9 +1,10 @@
-from datetime import datetime, date, timedelta
+from datetime import date, timedelta
 from app.utils.time import utc_now
 
 
 def seed_feedback(db):
     from app.orm_models import Feedback, Transaction
+
     now = utc_now()
     # 3 confirmations for Starbucks -> Dining out within the window
     for i in range(3):

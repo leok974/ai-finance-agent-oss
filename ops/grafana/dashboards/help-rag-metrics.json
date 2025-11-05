@@ -1,0 +1,378 @@
+{
+  "dashboard": {
+    "title": "LedgerMind Help & RAG Dashboard",
+    "uid": "help-rag-metrics",
+    "timezone": "browser",
+    "schemaVersion": 16,
+    "version": 0,
+    "refresh": "30s",
+    "panels": [
+      {
+        "id": 1,
+        "type": "stat",
+        "title": "Help Cache Hit Ratio (10m)",
+        "gridPos": {
+          "h": 4,
+          "w": 6,
+          "x": 0,
+          "y": 0
+        },
+        "targets": [
+          {
+            "expr": "sum(rate(lm_help_requests_total{cache=\"hit\"}[10m])) / clamp_min(sum(rate(lm_help_requests_total[10m])), 1)",
+            "refId": "A",
+            "legendFormat": "hit ratio"
+          }
+        ],
+        "options": {
+          "reduceOptions": {
+            "calcs": ["lastNotNull"],
+            "fields": "",
+            "values": false
+          },
+          "orientation": "horizontal",
+          "colorMode": "value",
+          "graphMode": "none",
+          "justifyMode": "center"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percentunit",
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {
+                  "color": "red",
+                  "value": 0
+                },
+                {
+                  "color": "yellow",
+                  "value": 0.2
+                },
+                {
+                  "color": "green",
+                  "value": 0.5
+                }
+              ]
+            }
+          },
+          "overrides": []
+        }
+      },
+      {
+        "id": 12,
+        "type": "gauge",
+        "title": "Help Cache Keys",
+        "gridPos": {
+          "h": 4,
+          "w": 6,
+          "x": 6,
+          "y": 0
+        },
+        "targets": [
+          {
+            "expr": "lm_help_cache_keys",
+            "refId": "A",
+            "legendFormat": "keys"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "min": 0,
+            "max": 2000,
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {
+                  "color": "green",
+                  "value": 0
+                },
+                {
+                  "color": "yellow",
+                  "value": 1000
+                },
+                {
+                  "color": "red",
+                  "value": 1800
+                }
+              ]
+            }
+          },
+          "overrides": []
+        },
+        "options": {
+          "reduceOptions": {
+            "calcs": ["lastNotNull"]
+          }
+        }
+      },
+      {
+        "id": 2,
+        "type": "stat",
+        "title": "RAG Success Rate",
+        "gridPos": {
+          "h": 6,
+          "w": 6,
+          "x": 12,
+          "y": 0
+        },
+        "targets": [
+          {
+            "expr": "sum(lm_help_rag_total{status=\"hit\"}) / clamp_min(sum(lm_help_rag_total),1)",
+            "refId": "A",
+            "legendFormat": "RAG Success"
+          }
+        ],
+        "options": {
+          "reduceOptions": {
+            "values": false,
+            "calcs": ["lastNotNull"]
+          },
+          "showThresholdLabels": false,
+          "showThresholdMarkers": true
+        },
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percentunit",
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {
+                  "value": null,
+                  "color": "yellow"
+                },
+                {
+                  "value": 0.3,
+                  "color": "green"
+                }
+              ]
+            },
+            "noValue": "RAG Disabled"
+          }
+        }
+      },
+      {
+        "id": 3,
+        "type": "graph",
+        "title": "RAG Latency (p95)",
+        "gridPos": {
+          "h": 6,
+          "w": 6,
+          "x": 18,
+          "y": 0
+        },
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, sum(rate(lm_help_rag_latency_seconds_bucket[5m])) by (le))",
+            "refId": "A",
+            "legendFormat": "p95 latency"
+          },
+          {
+            "expr": "histogram_quantile(0.50, sum(rate(lm_help_rag_latency_seconds_bucket[5m])) by (le))",
+            "refId": "B",
+            "legendFormat": "p50 latency"
+          }
+        ],
+        "yaxes": [
+          {
+            "format": "s",
+            "label": "Latency"
+          },
+          {
+            "format": "short"
+          }
+        ]
+      },
+      {
+        "id": 4,
+        "type": "timeseries",
+        "title": "Help Requests by Panel",
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 0,
+          "y": 6
+        },
+        "targets": [
+          {
+            "expr": "sum(rate(lm_help_requests_total[5m])) by (panel_id)",
+            "refId": "A",
+            "legendFormat": "{{panel_id}}"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "reqps"
+          }
+        }
+      },
+      {
+        "id": 5,
+        "type": "piechart",
+        "title": "Cache Hit/Miss Distribution",
+        "gridPos": {
+          "h": 8,
+          "w": 6,
+          "x": 12,
+          "y": 6
+        },
+        "targets": [
+          {
+            "expr": "sum(lm_help_requests_total) by (cache)",
+            "refId": "A",
+            "legendFormat": "{{cache}}"
+          }
+        ]
+      },
+      {
+        "id": 6,
+        "type": "piechart",
+        "title": "RAG Status Distribution",
+        "gridPos": {
+          "h": 8,
+          "w": 6,
+          "x": 18,
+          "y": 6
+        },
+        "targets": [
+          {
+            "expr": "sum(lm_help_rag_total) by (status)",
+            "refId": "A",
+            "legendFormat": "{{status}}"
+          }
+        ]
+      },
+      {
+        "id": 7,
+        "type": "table",
+        "title": "Top Panels by Requests",
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 0,
+          "y": 14
+        },
+        "targets": [
+          {
+            "expr": "topk(10, sum(lm_help_requests_total) by (panel_id))",
+            "refId": "A",
+            "format": "table",
+            "instant": true
+          }
+        ],
+        "transformations": [
+          {
+            "id": "organize",
+            "options": {
+              "excludeByName": {
+                "Time": true
+              },
+              "renameByName": {
+                "panel_id": "Panel",
+                "Value": "Total Requests"
+              }
+            }
+          }
+        ]
+      },
+      {
+        "id": 8,
+        "type": "stat",
+        "title": "Total Help Requests",
+        "gridPos": {
+          "h": 4,
+          "w": 4,
+          "x": 12,
+          "y": 14
+        },
+        "targets": [
+          {
+            "expr": "sum(lm_help_requests_total)",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short"
+          }
+        }
+      },
+      {
+        "id": 9,
+        "type": "stat",
+        "title": "Heuristic Fallbacks",
+        "gridPos": {
+          "h": 4,
+          "w": 4,
+          "x": 16,
+          "y": 14
+        },
+        "targets": [
+          {
+            "expr": "sum(lm_help_rag_total{status=\"heuristic\"})",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short",
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {
+                  "value": null,
+                  "color": "green"
+                },
+                {
+                  "value": 10,
+                  "color": "yellow"
+                }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 10,
+        "type": "stat",
+        "title": "RAG Errors",
+        "gridPos": {
+          "h": 4,
+          "w": 4,
+          "x": 20,
+          "y": 14
+        },
+        "targets": [
+          {
+            "expr": "sum(lm_help_rag_total{status=\"err\"})",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short",
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {
+                  "value": null,
+                  "color": "green"
+                },
+                {
+                  "value": 1,
+                  "color": "red"
+                }
+              ]
+            }
+          }
+        }
+      }
+    ]
+  }
+}

@@ -3,6 +3,11 @@ import sys
 import pathlib
 import pytest
 
+# ===========================================================================
+# Pytest Bootstrap & Environment Hardening
+# ===========================================================================
+
+# 1) Ensure backend package on sys.path
 # Ensure backend tests parent (apps/backend) is on sys.path BEFORE importing test helpers.
 # This prevents the top-level repository 'tests' directory (without helpers/) from shadowing
 # the backend test helpers namespace during early import.
@@ -10,6 +15,17 @@ _THIS_DIR = pathlib.Path(__file__).parent
 _BACKEND_ROOT = _THIS_DIR.parent  # apps/backend
 if str(_BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(_BACKEND_ROOT))
+
+# 2) Make logs unbuffered for tests (helps with log assertion reliability)
+os.environ.setdefault("PYTHONUNBUFFERED", "1")
+
+# 3) Disable Prometheus multiprocess mode during tests
+# (Integration/e2e can set PROMETHEUS_MULTIPROC_DIR explicitly if needed.)
+# This prevents "Duplicated timeseries" errors when collecting metrics in unit tests.
+os.environ.pop("PROMETHEUS_MULTIPROC_DIR", None)
+
+# 4) Stable timezone for timestamp logic
+os.environ.setdefault("TZ", "UTC")
 
 try:  # primary absolute import (after path injection)
     from tests.helpers.auth_jwt import patch_server_secret, mint_access, preferred_csrf_key  # type: ignore
@@ -38,6 +54,29 @@ def _baseline_test_env(monkeypatch):
     # engine and dependency overrides for the entire test session. Rebinding per
     # test causes race conditions and table create/drop conflicts.
     yield
+
+
+@pytest.fixture(autouse=True)
+def _clear_prom_registry_between_tests():
+    """
+    Optional: If a test needs a *fresh* default REGISTRY, this fixture can prune
+    duplicate collectors caused by module re-imports. Most tests can rely on deltas
+    (before/after) without needing this, so we keep it light-weight and non-destructive.
+
+    By default, we do NOT clear the registry to avoid KeyErrors from collectors
+    registered at module import time. Tests should measure metric deltas instead.
+    """
+    # Setup — nothing (we want counters to accumulate across a single test process)
+    yield
+    # Teardown — do not clear global REGISTRY by default (avoids KeyErrors)
+    # If you *must* clear for a specific test, enable this code in that test's conftest:
+    # from prometheus_client import REGISTRY
+    # collectors = list(REGISTRY._collector_to_names.keys())
+    # for c in collectors:
+    #     try:
+    #         REGISTRY.unregister(c)
+    #     except Exception:
+    #         pass
 
 
 """Pytest configuration & hermetic environment shims.

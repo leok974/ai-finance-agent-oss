@@ -10,6 +10,7 @@ Revision ID: 20250909_add_merchant_canonical
 Revises: c4a739e0f055
 Create Date: 2025-09-09 15:00:00.000000
 """
+
 from typing import Sequence, Union
 
 from alembic import op
@@ -22,6 +23,7 @@ revision: str = "20250909_add_merchant_canonical"
 down_revision: Union[str, Sequence[str], None] = "c4a739e0f055"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
+
 
 def _py_canonicalize(s: str | None) -> str | None:
     if not s:
@@ -54,7 +56,10 @@ def _drop_index_if_present(conn, name: str, table: str):
 
 
 def upgrade() -> None:
-    op.add_column("transactions", sa.Column("merchant_canonical", sa.String(length=256), nullable=True))
+    op.add_column(
+        "transactions",
+        sa.Column("merchant_canonical", sa.String(length=256), nullable=True),
+    )
 
     conn = op.get_bind()
     dialect = conn.engine.dialect.name
@@ -63,10 +68,15 @@ def upgrade() -> None:
     rows = conn.execute(text("SELECT id, merchant FROM transactions")).fetchall()
     for id_, merchant in rows:
         mc = _py_canonicalize(merchant)
-        conn.execute(text("UPDATE transactions SET merchant_canonical = :mc WHERE id = :id"), {"mc": mc, "id": id_})
+        conn.execute(
+            text("UPDATE transactions SET merchant_canonical = :mc WHERE id = :id"),
+            {"mc": mc, "id": id_},
+        )
 
     # Create index (guard if exists)
-    _create_index_if_absent(conn, "ix_transactions_merchant_canonical", "transactions", "merchant_canonical")
+    _create_index_if_absent(
+        conn, "ix_transactions_merchant_canonical", "transactions", "merchant_canonical"
+    )
 
 
 def downgrade() -> None:

@@ -1,4 +1,3 @@
-import pytest
 from datetime import datetime, timezone
 import uuid
 
@@ -13,7 +12,7 @@ def _mk_txn(db, merchant="Starbucks", category="Coffee"):
     row = Transaction(
         date=today,
         merchant=merchant,
-        description=desc,          # unique per test run
+        description=desc,  # unique per test run
         amount=-5.0,
         category=None,
         raw_category=None,

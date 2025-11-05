@@ -34,10 +34,15 @@ def test_tamper_raises(db_session):
     db_session.add(t)
     db_session.commit()
     db_session.refresh(t)
-    row = db_session.execute(text("SELECT note_nonce, note_enc FROM transactions WHERE id=:i"), {"i": t.id}).first()
+    row = db_session.execute(
+        text("SELECT note_nonce, note_enc FROM transactions WHERE id=:i"), {"i": t.id}
+    ).first()
     nonce, enc = bytes(row[0]), bytearray(row[1])
     enc[-1] ^= 0xFF
-    db_session.execute(text("UPDATE transactions SET note_enc=:e WHERE id=:i"), {"e": bytes(enc), "i": t.id})
+    db_session.execute(
+        text("UPDATE transactions SET note_enc=:e WHERE id=:i"),
+        {"e": bytes(enc), "i": t.id},
+    )
     db_session.commit()
     with pytest.raises(Exception):
         _ = db_session.get(Transaction, t.id).note_text

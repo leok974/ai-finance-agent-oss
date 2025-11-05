@@ -1,4 +1,3 @@
-
 # Module under test
 import app.status_utils as su
 

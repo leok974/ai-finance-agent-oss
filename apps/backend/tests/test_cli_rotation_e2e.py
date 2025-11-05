@@ -57,7 +57,9 @@ def test_cli_rotation_begin_run_finalize_e2e(monkeypatch, capsys):
     assert new_label and new_label.startswith("rotating::")
 
     # Status should show label exists; remaining >= 0
-    st_begin = _run_cli(monkeypatch, capsys, "dek-rotate-status", "--new-label", new_label)
+    st_begin = _run_cli(
+        monkeypatch, capsys, "dek-rotate-status", "--new-label", new_label
+    )
     assert st_begin, "no output from dek-rotate-status (begin)"
     st0 = ast.literal_eval(st_begin[-1])
     assert st0.get("label") == new_label
@@ -65,10 +67,22 @@ def test_cli_rotation_begin_run_finalize_e2e(monkeypatch, capsys):
     assert isinstance(st0.get("done"), int)
 
     # Run one batch
-    _run_cli(monkeypatch, capsys, "dek-rotate-run", "--new-label", new_label, "--batch-size", "100", "--max-batches", "1")
+    _run_cli(
+        monkeypatch,
+        capsys,
+        "dek-rotate-run",
+        "--new-label",
+        new_label,
+        "--batch-size",
+        "100",
+        "--max-batches",
+        "1",
+    )
 
     # Status after run
-    st_after = _run_cli(monkeypatch, capsys, "dek-rotate-status", "--new-label", new_label)
+    st_after = _run_cli(
+        monkeypatch, capsys, "dek-rotate-status", "--new-label", new_label
+    )
     assert st_after, "no output from dek-rotate-status (after)"
     st1 = ast.literal_eval(st_after[-1])
     assert st1.get("label") == new_label
@@ -77,7 +91,9 @@ def test_cli_rotation_begin_run_finalize_e2e(monkeypatch, capsys):
     assert st1.get("done") > st0.get("done") or st0.get("total_cipher_rows") == 0
 
     # Finalize rotation
-    fin_out = _run_cli(monkeypatch, capsys, "dek-rotate-finalize", "--new-label", new_label)
+    fin_out = _run_cli(
+        monkeypatch, capsys, "dek-rotate-finalize", "--new-label", new_label
+    )
     assert fin_out, "no output from dek-rotate-finalize"
 
     # Status still callable (may report latest rotating label or same)

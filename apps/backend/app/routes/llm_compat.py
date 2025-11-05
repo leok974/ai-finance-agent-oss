@@ -34,9 +34,17 @@ else:
 
 router = APIRouter()
 
-def _safe_list_models(refresh: bool = False) -> Dict[str, Any]:  # refresh retained for signature compat
+
+def _safe_list_models(
+    refresh: bool = False,
+) -> Dict[str, Any]:  # refresh retained for signature compat
     if agent_router is None:
-        return {"provider": "unknown", "default": None, "models": [], "error": f"agent_router import failed: {_import_error}"}
+        return {
+            "provider": "unknown",
+            "default": None,
+            "models": [],
+            "error": f"agent_router import failed: {_import_error}",
+        }
     try:
         data = agent_router.list_models()  # underlying function is sync
         if not isinstance(data, dict):  # normalize
@@ -44,6 +52,7 @@ def _safe_list_models(refresh: bool = False) -> Dict[str, Any]:  # refresh retai
         return data
     except Exception as e:  # pragma: no cover - defensive
         return {"provider": "unknown", "default": None, "models": [], "error": str(e)}
+
 
 @router.get("/llm/models")
 async def llm_models(refresh: bool = False) -> JSONResponse:

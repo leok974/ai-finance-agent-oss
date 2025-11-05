@@ -90,7 +90,11 @@ def incremental_update(texts: List[str], labels: List[str]) -> dict:
         clf.partial_fit(X, labels, classes=init_classes)
     else:
         # subsequent updates: ensure no new classes appear
-        known = set(current_classes.tolist() if hasattr(current_classes, "tolist") else current_classes)
+        known = set(
+            current_classes.tolist()
+            if hasattr(current_classes, "tolist")
+            else current_classes
+        )
         missing = sorted(set(labels) - known)
         if missing:
             return {
@@ -108,7 +112,12 @@ def incremental_update(texts: List[str], labels: List[str]) -> dict:
     return {"updated": True, "classes": list(out_classes)}
 
 
-def retrain_model(db: Session, month: Optional[str] = None, min_samples: int = 6, test_size: float = 0.2) -> Dict[str, Any]:
+def retrain_model(
+    db: Session,
+    month: Optional[str] = None,
+    min_samples: int = 6,
+    test_size: float = 0.2,
+) -> Dict[str, Any]:
     return train_on_db(db, month=month, min_samples=min_samples, test_size=test_size)
 
 
@@ -167,10 +176,19 @@ def incremental_update_rows(rows: List[Dict[str, Any]], labels: List[str]) -> di
         init_classes = np.array(sorted(set(labels)))
         clf.partial_fit(X, labels, classes=init_classes)
     else:
-        known = set(current_classes.tolist() if hasattr(current_classes, "tolist") else current_classes)
+        known = set(
+            current_classes.tolist()
+            if hasattr(current_classes, "tolist")
+            else current_classes
+        )
         missing = sorted(set(labels) - known)
         if missing:
-            return {"updated": False, "reason": "label_not_in_model", "missing_labels": missing, "known_classes": sorted(list(known))}
+            return {
+                "updated": False,
+                "reason": "label_not_in_model",
+                "missing_labels": missing,
+                "known_classes": sorted(list(known)),
+            }
         clf.partial_fit(X, labels)
 
     _save_pipeline(pipe)

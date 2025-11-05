@@ -1,0 +1,41 @@
+version: 2
+
+exposures:
+  - name: suggestions_kpis_dashboard
+    type: dashboard
+    maturity: high
+    owner:
+      name: LedgerMind Ops
+      email: leoklemet.pa@gmail.com
+    url: https://grafana.example.com/d/ledgermind/kpis  # update when ready
+    description: Daily KPIs and accept-rate trends for Suggestions.
+    depends_on:
+      - ref('mart_suggestions_kpis')
+      - ref('mart_suggestions_daily')
+
+  - name: suggestions_feedback_dashboard
+    type: dashboard
+    maturity: medium
+    owner:
+      name: LedgerMind Ops
+      email: leoklemet.pa@gmail.com
+    url: https://grafana.example.com/d/ledgermind/feedback  # update
+    description: Feedback volume and accept/reject breakdown.
+    depends_on:
+      - ref('mart_suggestions_feedback_daily')
+
+  - name: ml_training_pipeline
+    type: application
+    owner:
+      name: LedgerMind ML
+      email: ml@ledger-mind.org
+    url: https://app.ledger-mind.org/agent/tools/ml
+    maturity: high
+    description: >
+      The production ML training job consumes the fct_training_view and related marts
+      to build, evaluate, calibrate, and deploy the classifier.
+    depends_on:
+      - ref('fct_training_view')
+      - ref('dim_merchants')
+      - ref('fct_suggestions_eval')
+    tags: ["ledgermind","ml","training","canary","phase3"]

@@ -48,7 +48,10 @@ def list_txns(
         qry = qry.filter(Transaction.merchant_canonical == merchant)
     if q:
         like = f"%{q.lower()}%"
-        qry = qry.filter(Transaction.description.ilike(like) | Transaction.merchant_canonical.ilike(like))
+        qry = qry.filter(
+            Transaction.description.ilike(like)
+            | Transaction.merchant_canonical.ilike(like)
+        )
 
     desc = sort.startswith("-")
     field = sort[1:] if desc else sort
@@ -197,6 +200,7 @@ def split_txn(id: int, payload: TxnSplitRequest, db: Session = Depends(get_db)):
     t.split_parent_id = t.id
     t.amount = Decimal("0.00")
     from app.orm_models import Transaction as TxnORM
+
     for part in payload.parts:
         child = TxnORM(
             date=t.date,
@@ -225,6 +229,7 @@ def merge_txns(payload: TxnMergeRequest, db: Session = Depends(get_db)):
     month = min([r.month for r in rows])
     merchant = rows[0].merchant
     from app.orm_models import Transaction as TxnORM
+
     merged = TxnORM(
         date=date,
         month=month,

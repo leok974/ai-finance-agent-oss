@@ -2,9 +2,27 @@ import pytest
 import importlib
 
 RULES = [
-    {"id": "A", "name": "A",  "pattern": "aldi|kroger",         "category": "groceries",  "enabled": True},
-    {"id": "A", "name": "A2", "pattern": "kroger|wholefoods",  "category": "groceries",  "enabled": True},
-    {"id": "B", "name": "Rides", "pattern": "uber|lyft",       "category": "transport",  "enabled": True},
+    {
+        "id": "A",
+        "name": "A",
+        "pattern": "aldi|kroger",
+        "category": "groceries",
+        "enabled": True,
+    },
+    {
+        "id": "A",
+        "name": "A2",
+        "pattern": "kroger|wholefoods",
+        "category": "groceries",
+        "enabled": True,
+    },
+    {
+        "id": "B",
+        "name": "Rides",
+        "pattern": "uber|lyft",
+        "category": "transport",
+        "enabled": True,
+    },
 ]
 
 CANDIDATE_MODULES = (
@@ -22,6 +40,7 @@ CANDIDATE_FUNCS = (
     "merge_rules",
 )
 
+
 def _maybe_import_service():
     for mod in CANDIDATE_MODULES:
         try:
@@ -29,6 +48,7 @@ def _maybe_import_service():
         except Exception:
             continue
     return None
+
 
 @pytest.mark.httpapi
 def test_rules_core_function_executes_without_router(monkeypatch):
@@ -48,7 +68,15 @@ def test_rules_core_function_executes_without_router(monkeypatch):
         if hasattr(svc, attr):
             monkeypatch.setattr(svc, attr, lambda *a, **k: None, raising=False)
 
-    existing = [{"id": "A", "name": "A0", "pattern": "aldi", "category": "groceries", "enabled": True}]
+    existing = [
+        {
+            "id": "A",
+            "name": "A0",
+            "pattern": "aldi",
+            "category": "groceries",
+            "enabled": True,
+        }
+    ]
 
     try:
         out = fn(existing=existing, incoming=RULES, dry_run=True, replace=False)  # type: ignore

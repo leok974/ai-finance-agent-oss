@@ -18,7 +18,9 @@ def apply_all(body: ApplyAllIn, db: Session = Depends(get_db)) -> Dict[str, Any]
     month = body.month or latest_month_from_data(db)
     if not month:
         # No data at all; keep it explicit
-        raise HTTPException(status_code=400, detail="No data available to resolve month")
+        raise HTTPException(
+            status_code=400, detail="No data available to resolve month"
+        )
 
     applied, skipped, details = apply_all_active_rules(db, month)
     return {

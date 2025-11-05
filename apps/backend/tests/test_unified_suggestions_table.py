@@ -1,14 +1,33 @@
-from datetime import datetime, timedelta, date
+from datetime import timedelta, date
 from app.utils.time import utc_now
+
 
 def seed_feedback(db):
     from app.orm_models import Feedback, Transaction
+
     now = utc_now()
     # Transaction to link feedback
-    t = Transaction(date=date(2025,8,6), merchant="Starbucks", description="Latte", amount=-5.0, category=None, raw_category=None, account=None, month="2025-08")
-    db.add(t); db.flush()
+    t = Transaction(
+        date=date(2025, 8, 6),
+        merchant="Starbucks",
+        description="Latte",
+        amount=-5.0,
+        category=None,
+        raw_category=None,
+        account=None,
+        month="2025-08",
+    )
+    db.add(t)
+    db.flush()
     for i in range(3):
-        db.add(Feedback(txn_id=t.id, label="Dining out", source="accept_suggestion", created_at=now - timedelta(days=2*i)))
+        db.add(
+            Feedback(
+                txn_id=t.id,
+                label="Dining out",
+                source="accept_suggestion",
+                created_at=now - timedelta(days=2 * i),
+            )
+        )
     db.commit()
 
 

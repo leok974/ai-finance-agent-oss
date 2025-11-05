@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 try:
     # Import lazily/optionally to avoid hard dependency at import time
     from statsmodels.tsa.statespace.sarimax import SARIMAX  # type: ignore
+
     _HAS_SM = True
 except Exception:
     SARIMAX = None  # type: ignore
@@ -27,7 +28,13 @@ def _fit_forecast(series: List[float], horizon: int, seasonal: bool) -> List[flo
     order = (1, 1, 1)
     seasonal_order = (0, 1, 1, 12) if seasonal else (0, 0, 0, 0)
     try:
-        model = SARIMAX(series, order=order, seasonal_order=seasonal_order, enforce_stationarity=False, enforce_invertibility=False)
+        model = SARIMAX(
+            series,
+            order=order,
+            seasonal_order=seasonal_order,
+            enforce_stationarity=False,
+            enforce_invertibility=False,
+        )
         res = model.fit(disp=False)
         fc = res.forecast(steps=horizon)
         return [float(x) for x in fc]
@@ -54,7 +61,9 @@ def _jitter_if_constant(seq: List[float]) -> List[float]:
     return seq
 
 
-def sarimax_cashflow_forecast(db: Session, base_series_fn, month: Optional[str], horizon: int) -> Optional[Dict]:
+def sarimax_cashflow_forecast(
+    db: Session, base_series_fn, month: Optional[str], horizon: int
+) -> Optional[Dict]:
     """Generate cashflow forecast using SARIMAX.
 
     Parameters
@@ -90,10 +99,20 @@ def sarimax_cashflow_forecast(db: Session, base_series_fn, month: Optional[str],
     f_net = [round(a - b, 2) for a, b in zip(f_in, f_out)]
 
     forecast = [
-        {"t": i + 1, "inflows": float(f_in[i]), "outflows": float(f_out[i]), "net": float(f_net[i])}
+        {
+            "t": i + 1,
+            "inflows": float(f_in[i]),
+            "outflows": float(f_out[i]),
+            "net": float(f_net[i]),
+        }
         for i in range(horizon)
     ]
-    return {"months": months, "series": series, "forecast": forecast, "model": "sarimax"}
+    return {
+        "months": months,
+        "series": series,
+        "forecast": forecast,
+        "model": "sarimax",
+    }
 
 
 def sarimax_forecast(
@@ -115,19 +134,23 @@ def sarimax_forecast(
     try:
         # Convert keys like 'YYYY-MM' into Month Start timestamps for explicit freq
         try:
-            idx = pd.to_datetime([k + '-01' for k in sorted(month_series.keys())], format='%Y-%m-%d')
-            s_vals = [month_series[k.strftime('%Y-%m')] for k in idx]
+            idx = pd.to_datetime(
+                [k + "-01" for k in sorted(month_series.keys())], format="%Y-%m-%d"
+            )
+            s_vals = [month_series[k.strftime("%Y-%m")] for k in idx]
             s = pd.Series(s_vals, index=idx)
             # Force freq if inferable; fallback to asfreq to tag MS
             if s.index.freq is None:
-                s = s.asfreq('MS')
+                s = s.asfreq("MS")
         except Exception:
             s = pd.Series(month_series).astype(float).sort_index()
         use_seasonal = len(s) >= seasonal_periods
         model = SARIMAX(
             s,
             order=(1, 1, 1),
-            seasonal_order=((1, 1, 1, seasonal_periods) if use_seasonal else (0, 0, 0, 0)),
+            seasonal_order=(
+                (1, 1, 1, seasonal_periods) if use_seasonal else (0, 0, 0, 0)
+            ),
             enforce_stationarity=False,
             enforce_invertibility=False,
         )

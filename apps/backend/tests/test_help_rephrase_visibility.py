@@ -18,7 +18,9 @@ def test_describe_llm_called_even_if_text_unchanged(monkeypatch):
 
     monkeypatch.setattr(detect, "try_llm_rephrase_summary", echo_rephrase)
     monkeypatch.setattr(llm_mod, "reset_fallback_provider", lambda: None, raising=False)
-    monkeypatch.setattr(llm_mod, "get_last_fallback_provider", lambda: None, raising=False)
+    monkeypatch.setattr(
+        llm_mod, "get_last_fallback_provider", lambda: None, raising=False
+    )
 
     response = client.post("/agent/describe/top_merchants", json={"mode": "explain"})
     assert response.status_code == 200
@@ -42,7 +44,9 @@ def test_describe_learn_mode_skips_llm(monkeypatch):
 
     monkeypatch.setattr(detect, "try_llm_rephrase_summary", fake_rephrase)
     monkeypatch.setattr(llm_mod, "reset_fallback_provider", lambda: None, raising=False)
-    monkeypatch.setattr(llm_mod, "get_last_fallback_provider", lambda: None, raising=False)
+    monkeypatch.setattr(
+        llm_mod, "get_last_fallback_provider", lambda: None, raising=False
+    )
 
     response = client.post("/agent/describe/top_merchants", json={"mode": "learn"})
     assert response.status_code == 200

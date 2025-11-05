@@ -29,7 +29,9 @@ def test_kpis_empty_state_future_month():
     if data.get("mode"):
         assert data.get("mode") == "analytics.kpis"
     if reason:
-        assert any(r in reason for r in ["not_enough_history", "no_data", "KPIs"])  # loose match
+        assert any(
+            r in reason for r in ["not_enough_history", "no_data", "KPIs"]
+        )  # loose match
     sugg = meta.get("suggestions", [])
     # suggestions may nest inside meta or direct list
     if isinstance(sugg, list) and sugg:
@@ -44,7 +46,9 @@ def test_anomalies_empty_state_future_month():
     meta = data.get("meta", {})
     reason = meta.get("reason") or meta.get("tool")
     if reason:
-        assert any(r in reason for r in ["no_anomalies", "not_enough_history", "no_data"])  # flexible
+        assert any(
+            r in reason for r in ["no_anomalies", "not_enough_history", "no_data"]
+        )  # flexible
     sugg = meta.get("suggestions", [])
     if isinstance(sugg, list) and sugg:
         assert all(isinstance(s, dict) and "label" in s for s in sugg)

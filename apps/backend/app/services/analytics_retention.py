@@ -1,11 +1,11 @@
 import asyncio
 import time
 import logging
-from typing import Optional
 from sqlalchemy import text
 from app.db import SessionLocal
 
 logger = logging.getLogger(__name__)
+
 
 def _prune_once(cutoff_ms: int) -> int:
     """Delete analytics_events older than cutoff_ms. Returns rows deleted.
@@ -15,7 +15,10 @@ def _prune_once(cutoff_ms: int) -> int:
     rows = 0
     db = SessionLocal()
     try:
-        res = db.execute(text("DELETE FROM analytics_events WHERE server_ts < :cutoff"), {"cutoff": cutoff_ms})
+        res = db.execute(
+            text("DELETE FROM analytics_events WHERE server_ts < :cutoff"),
+            {"cutoff": cutoff_ms},
+        )
         # SQLAlchemy 1.4 keeps rowcount on the result for DML
         rows = getattr(res, "rowcount", 0) or 0
         db.commit()
@@ -30,6 +33,7 @@ def _prune_once(cutoff_ms: int) -> int:
         except Exception:
             pass
     return int(rows)
+
 
 async def retention_loop(retention_days: int = 90, interval_hours: int = 24) -> None:
     """Background task: periodically prune analytics_events older than retention_days.
@@ -49,7 +53,11 @@ async def retention_loop(retention_days: int = 90, interval_hours: int = 24) -> 
             # Run prune in thread to avoid blocking event loop
             deleted = await asyncio.to_thread(_prune_once, cutoff_ms)
             try:
-                logger.info("analytics_retention: pruned %s rows older than %s days", deleted, retention_days)
+                logger.info(
+                    "analytics_retention: pruned %s rows older than %s days",
+                    deleted,
+                    retention_days,
+                )
             except Exception:
                 pass
         except asyncio.CancelledError:

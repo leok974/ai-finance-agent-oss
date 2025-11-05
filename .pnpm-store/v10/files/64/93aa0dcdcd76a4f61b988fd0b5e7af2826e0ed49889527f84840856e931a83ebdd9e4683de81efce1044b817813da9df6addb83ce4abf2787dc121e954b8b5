@@ -249,7 +249,7 @@ const css = `
       padding: 10px;
     }
   }
-  
+
   @keyframes fadeIn {
     from { opacity: 0; }
     to { opacity: 1; }

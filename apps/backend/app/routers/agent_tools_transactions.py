@@ -1,14 +1,16 @@
 from typing import List, Optional, Literal, Dict, Any, Annotated
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from app.utils.csrf import csrf_protect
 from pydantic import BaseModel, Field
-from sqlalchemy import func, and_, or_, desc, asc
+from sqlalchemy import func, or_, desc, asc
 from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.transactions import Transaction
 
-router = APIRouter(prefix="/agent/tools/transactions", tags=["agent-tools:transactions"])
+router = APIRouter(
+    prefix="/agent/tools/transactions", tags=["agent-tools:transactions"]
+)
 
 
 # ---------- Pydantic I/O ----------
@@ -42,11 +44,19 @@ class SearchQuery(BaseModel):
     month: Optional[str] = Field(None, description="YYYY-MM; filters by t.month")
     merchant_contains: Optional[str] = None
     description_contains: Optional[str] = None
-    category_in: Optional[List[str]] = Field(None, description="Match any of these categories")
-    unlabeled_only: bool = Field(False, description='Treat None/""/"Unknown" as unlabeled when true')
+    category_in: Optional[List[str]] = Field(
+        None, description="Match any of these categories"
+    )
+    unlabeled_only: bool = Field(
+        False, description='Treat None/""/"Unknown" as unlabeled when true'
+    )
     # Use numeric fields with constraints via Field to satisfy type checkers
-    min_amount: Optional[float] = Field(None, description="Minimum amount (<=0 for outflows, >=0 for inflows)")
-    max_amount: Optional[float] = Field(None, description="Maximum amount (<=0 for outflows, >=0 for inflows)")
+    min_amount: Optional[float] = Field(
+        None, description="Minimum amount (<=0 for outflows, >=0 for inflows)"
+    )
+    max_amount: Optional[float] = Field(
+        None, description="Maximum amount (<=0 for outflows, >=0 for inflows)"
+    )
     order_by: OrderField = "date"
     order_dir: OrderDir = "desc"
     offset: int = Field(0, ge=0)
@@ -93,7 +103,9 @@ def _apply_order(query, field: OrderField, direction: OrderDir):
 
 # ---------- Endpoints ----------
 @router.post("/search", response_model=SearchResponse)
-def search_transactions(body: SearchQuery, db: Session = Depends(get_db)) -> SearchResponse:
+def search_transactions(
+    body: SearchQuery, db: Session = Depends(get_db)
+) -> SearchResponse:
     q = db.query(Transaction)
 
     if body.month:
@@ -113,7 +125,9 @@ def search_transactions(body: SearchQuery, db: Session = Depends(get_db)) -> Sea
             q = q.filter(_unlabeled_condition())
             others = [c for c in body.category_in if c.lower() != "unlabeled"]
             if others:
-                q = q.filter(or_(Transaction.category.in_(others), _unlabeled_condition()))
+                q = q.filter(
+                    or_(Transaction.category.in_(others), _unlabeled_condition())
+                )
         else:
             q = q.filter(Transaction.category.in_(body.category_in))
 
@@ -132,7 +146,9 @@ def search_transactions(body: SearchQuery, db: Session = Depends(get_db)) -> Sea
     return SearchResponse(total=total, items=[TxnDTO.from_row(t) for t in rows])
 
 
-@router.post("/categorize", response_model=Dict[str, Any], dependencies=[Depends(csrf_protect)])
+@router.post(
+    "/categorize", response_model=Dict[str, Any], dependencies=[Depends(csrf_protect)]
+)
 def categorize_transactions(body: CategorizeBody, db: Session = Depends(get_db)):
     updated = (
         db.query(Transaction)

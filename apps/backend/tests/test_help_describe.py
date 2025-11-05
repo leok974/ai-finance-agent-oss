@@ -1,5 +1,6 @@
 import time
-import os, pytest
+import pytest
+
 pytestmark = pytest.mark.httpapi
 from fastapi.testclient import TestClient
 from app.main import app
@@ -8,11 +9,16 @@ import app.services.agent_detect as detect
 
 client = TestClient(app)
 
+
 def test_describe_caches_and_propagates_provider(monkeypatch):
     calls = {"n": 0}
-    def fake_rephrase(panel_id, result, summary):  # signature aligned with use in describe
+
+    def fake_rephrase(
+        panel_id, result, summary
+    ):  # signature aligned with use in describe
         calls["n"] += 1
         return f"[polished] {summary}"  # actual helper returns just text
+
     monkeypatch.setattr(detect, "try_llm_rephrase_summary", fake_rephrase)
     # Force rephrase path on
     monkeypatch.setattr("app.utils.llm.call_local_llm", lambda *a, **k: ("noop", []))

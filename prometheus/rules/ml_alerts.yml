@@ -1,0 +1,83 @@
+groups:
+  - name: ml
+    interval: 30s
+    rules:
+      # Alert when training validation F1 is below threshold
+      - alert: MLTrainLowF1
+        expr: lm_ml_train_val_f1_macro < 0.70
+        for: 2h
+        labels:
+          severity: warning
+          component: ml
+        annotations:
+          summary: "ML training F1 macro score is low"
+          description: "Last training run achieved F1={{ $value | humanizePercentage }}, below 70% threshold. Model may not be deployed."
+          runbook_url: https://github.com/leok974/ai-finance-agent-oss/blob/main/warehouse/ML_README.md#troubleshooting
+
+      # Alert when model predictions are unavailable
+      - alert: MLPredictErrors
+        expr: rate(lm_ml_predict_requests_total{available="False"}[15m]) > 0
+        for: 15m
+        labels:
+          severity: warning
+          component: ml
+        annotations:
+          summary: "ML model unavailable during predictions"
+          description: "Model returned unavailable status for predictions (rate={{ $value | humanize }}/sec). Check if model is deployed."
+          runbook_url: https://github.com/leok974/ai-finance-agent-oss/blob/main/warehouse/ML_README.md#issue-model-unavailable
+
+      # Alert on high prediction latency
+      - alert: MLPredictHighLatency
+        expr: histogram_quantile(0.95, rate(lm_ml_predict_latency_seconds_bucket[5m])) > 1.0
+        for: 10m
+        labels:
+          severity: warning
+          component: ml
+        annotations:
+          summary: "ML prediction latency is high"
+          description: "P95 prediction latency is {{ $value | humanizeDuration }}, above 1s threshold."
+          runbook_url: https://github.com/leok974/ai-finance-agent-oss/blob/main/warehouse/ML_README.md#performance
+
+      # Alert when training runs fail frequently
+      - alert: MLTrainFailureRate
+        expr: rate(lm_ml_train_runs_total{status="error"}[1h]) > 0.1
+        for: 30m
+        labels:
+          severity: critical
+          component: ml
+        annotations:
+          summary: "ML training failure rate is high"
+          description: "Training runs failing at {{ $value | humanize }}/hour. Check logs for errors."
+          runbook_url: https://github.com/leok974/ai-finance-agent-oss/blob/main/warehouse/ML_README.md#training-failures
+
+      # Alert when no training has occurred recently (stale model)
+      - alert: MLNoRecentTraining
+        expr: time() - lm_ml_train_runs_total > 172800  # 48 hours
+        for: 1h
+        labels:
+          severity: info
+          component: ml
+        annotations:
+          summary: "No ML training runs in 48 hours"
+          description: "Last training was {{ $value | humanizeDuration }} ago. Scheduled training may be disabled."
+          runbook_url: https://github.com/leok974/ai-finance-agent-oss/blob/main/warehouse/ML_README.md#training-schedule
+
+      # Alert when shadow mode agreement drops (model diverging from rules)
+      - alert: SuggestAgreementDrop
+        expr: (sum(rate(lm_suggest_compare_total{agree="True"}[1h])) / clamp_min(sum(rate(lm_suggest_compare_total[1h])), 1e-9)) < 0.75
+        for: 30m
+        labels:
+          severity: warning
+          component: ml
+        annotations:
+          summary: "Rule ↔ model agreement below 75%"
+          description: "Shadow mode shows {{ $value | humanizePercentage }} agreement over 1h. Model may be diverging from rule-based logic."
+          runbook_url: https://github.com/leok974/ai-finance-agent-oss/blob/main/warehouse/ML_README.md#shadow-mode
+
+      # Info: Track model agreement rate (shadow mode)
+      - record: ml:shadow:agreement_rate
+        expr: rate(lm_suggest_compare_total{agree="True"}[5m]) / rate(lm_suggest_compare_total[5m])
+
+      # Info: Track model vs rule usage distribution
+      - record: ml:source:rate_by_source
+        expr: rate(lm_suggest_source_total[5m])

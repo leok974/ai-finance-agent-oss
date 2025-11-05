@@ -50,24 +50,28 @@ def describe(payload: dict = Body(...), db: Session = Depends(get_db)):
                 if not month:
                     # try to infer latest month for context
                     from app.services.charts_data import latest_month_str
+
                     month = latest_month_str(db)
                 if month:
                     ctx["data"] = charts_svc.get_month_merchants(db, month)
             elif lookup_key == "charts.top_categories":
                 if not month:
                     from app.services.charts_data import latest_month_str
+
                     month = latest_month_str(db)
                 if month:
                     ctx["data"] = charts_svc.get_month_categories(db, month)
             elif lookup_key == "charts.month_flows":
                 if not month:
                     from app.services.charts_data import latest_month_str
+
                     month = latest_month_str(db)
                 if month:
                     ctx["data"] = charts_svc.get_month_flows(db, month)
             elif lookup_key == "charts.daily_flows":
                 if not month:
                     from app.services.charts_data import latest_month_str
+
                     month = latest_month_str(db)
                 if month:
                     ctx["data"] = charts_svc.get_month_flows(db, month)

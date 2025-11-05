@@ -1,0 +1,133 @@
+{
+  "dashboard": {
+    "title": "LedgerMind — ML Canary Overview",
+    "tags": ["ledgermind", "ml", "canary"],
+    "time": { "from": "now-6h", "to": "now" },
+    "templating": {
+      "list": [
+        {
+          "type": "datasource",
+          "name": "prom",
+          "query": "prometheus",
+          "label": "Prometheus",
+          "hide": 0
+        }
+      ]
+    },
+    "panels": [
+      {
+        "type": "stat",
+        "title": "Coverage (accepted / total)",
+        "gridPos": { "x": 0, "y": 0, "w": 8, "h": 4 },
+        "targets": [
+          {
+            "expr": "sum(rate(lm_ml_predictions_total{accepted=\"True\"}[5m])) / clamp_min(sum(rate(lm_ml_predictions_total[5m])), 1)",
+            "datasource": { "type": "prometheus", "uid": "${prom}" }
+          }
+        ],
+        "options": {
+          "reduceOptions": { "calcs": ["lastNotNull"] },
+          "colorMode": "value",
+          "graphMode": "none",
+          "justifyMode": "center"
+        }
+      },
+      {
+        "type": "stat",
+        "title": "Disagreement (5m)",
+        "gridPos": { "x": 8, "y": 0, "w": 8, "h": 4 },
+        "targets": [
+          {
+            "expr": "sum(rate(lm_suggest_compare_total{agree=\"False\"}[5m])) / clamp_min(sum(rate(lm_suggest_compare_total[5m])), 1)",
+            "datasource": { "type": "prometheus", "uid": "${prom}" }
+          }
+        ],
+        "options": {
+          "reduceOptions": { "calcs": ["lastNotNull"] },
+          "colorMode": "value"
+        }
+      },
+      {
+        "type": "stat",
+        "title": "Fallback rate (5m)",
+        "gridPos": { "x": 16, "y": 0, "w": 8, "h": 4 },
+        "targets": [
+          {
+            "expr": "sum(rate(lm_ml_fallback_total[5m])) / clamp_min(sum(rate(lm_ml_predictions_total[5m])), 1)",
+            "datasource": { "type": "prometheus", "uid": "${prom}" }
+          }
+        ],
+        "options": {
+          "reduceOptions": { "calcs": ["lastNotNull"] }
+        }
+      },
+      {
+        "type": "timeseries",
+        "title": "Fallback reasons",
+        "gridPos": { "x": 0, "y": 4, "w": 12, "h": 8 },
+        "targets": [
+          {
+            "expr": "rate(lm_ml_fallback_total[5m])",
+            "legendFormat": "{{reason}}",
+            "datasource": { "type": "prometheus", "uid": "${prom}" }
+          }
+        ]
+      },
+      {
+        "type": "timeseries",
+        "title": "Agreement vs Total",
+        "gridPos": { "x": 12, "y": 4, "w": 12, "h": 8 },
+        "targets": [
+          {
+            "expr": "rate(lm_suggest_compare_total{agree=\"True\"}[5m])",
+            "legendFormat": "agree",
+            "datasource": { "type": "prometheus", "uid": "${prom}" }
+          },
+          {
+            "expr": "rate(lm_suggest_compare_total{agree=\"False\"}[5m])",
+            "legendFormat": "disagree",
+            "datasource": { "type": "prometheus", "uid": "${prom}" }
+          }
+        ]
+      },
+      {
+        "type": "timeseries",
+        "title": "Predict latency (p50, p95)",
+        "gridPos": { "x": 0, "y": 12, "w": 12, "h": 8 },
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.5, sum by (le) (rate(lm_ml_predict_latency_seconds_bucket[5m])))",
+            "legendFormat": "p50",
+            "datasource": { "type": "prometheus", "uid": "${prom}" }
+          },
+          {
+            "expr": "histogram_quantile(0.95, sum by (le) (rate(lm_ml_predict_latency_seconds_bucket[5m])))",
+            "legendFormat": "p95",
+            "datasource": { "type": "prometheus", "uid": "${prom}" }
+          }
+        ]
+      },
+      {
+        "type": "timeseries",
+        "title": "Accepted vs Rejected (model)",
+        "gridPos": { "x": 12, "y": 12, "w": 12, "h": 8 },
+        "targets": [
+          {
+            "expr": "rate(lm_ml_predictions_total{accepted=\"True\"}[5m])",
+            "legendFormat": "accepted",
+            "datasource": { "type": "prometheus", "uid": "${prom}" }
+          },
+          {
+            "expr": "rate(lm_ml_predictions_total{accepted=\"False\"}[5m])",
+            "legendFormat": "rejected",
+            "datasource": { "type": "prometheus", "uid": "${prom}" }
+          }
+        ]
+      }
+    ],
+    "schemaVersion": 39,
+    "version": 1
+  },
+  "overwrite": true,
+  "folderUid": null
+}

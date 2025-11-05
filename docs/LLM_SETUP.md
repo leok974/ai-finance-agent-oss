@@ -100,13 +100,13 @@ When adding a new provider:
 | Prometheus gauge: `agent_models_available` | Alerting on zero healthy models. |
 
 ## FAQ
-**Q: Does the backend attempt failover automatically?**  
+**Q: Does the backend attempt failover automatically?**
 A: Yes—if local primary is disabled or unhealthy, only fallback-listed models appear; the frontend logic remains the same.
 
-**Q: Are model generation endpoints also changing?**  
+**Q: Are model generation endpoints also changing?**
 A: Planned; they will consolidate under `/agent/*` for clarity (e.g., `/agent/chat`).
 
-**Q: How do I test fallback only?**  
+**Q: How do I test fallback only?**
 A: Set `DISABLE_PRIMARY=1`, ensure fallback provider credentials are present, restart backend, confirm `/agent/models` still non-empty.
 
 ---

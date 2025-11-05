@@ -59,3 +59,15 @@ scrape_configs:
           env: 'prod'
           service: 'postgres'
     scrape_interval: 30s
+
+  # Prometheus Pushgateway (for batch job metrics like DB freshness)
+  - job_name: 'pushgateway'
+    honor_labels: true
+    static_configs:
+      - targets:
+          - 'pushgateway:9091'
+        labels:
+          env: 'prod'
+          service: 'pushgateway'
+    scrape_interval: 15s
+    scrape_timeout: 10s

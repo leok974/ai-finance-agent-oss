@@ -1,0 +1,78 @@
+name: dbt-nightly
+
+on:
+  schedule:
+    # Run at 3 AM UTC daily
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+
+env:
+  DBT_PROJECT_DIR: ./warehouse
+
+jobs:
+  dbt-build:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dbt
+        run: |
+          pip install dbt-core dbt-bigquery==1.7.0
+
+      - name: Install dbt dependencies
+        run: |
+          cd ${{ env.DBT_PROJECT_DIR }}
+          dbt deps
+
+      - name: Run dbt models
+        env:
+          GCP_SA_JSON: ${{ secrets.GCP_SA_JSON }}
+          GCP_PROJECT: ${{ secrets.GCP_PROJECT }}
+          DBT_BIGQUERY_DATASET: ${{ secrets.DBT_BIGQUERY_DATASET }}
+        run: |
+          cd ${{ env.DBT_PROJECT_DIR }}
+          # Create profiles.yml from secrets
+          echo "$GCP_SA_JSON" > /tmp/bq-keyfile.json
+          mkdir -p ~/.dbt
+          cat > ~/.dbt/profiles.yml <<EOF
+          ledgermind:
+            target: prod
+            outputs:
+              prod:
+                type: bigquery
+                method: service-account
+                project: ${GCP_PROJECT}
+                dataset: ${DBT_BIGQUERY_DATASET}
+                keyfile: /tmp/bq-keyfile.json
+                location: US
+                threads: 4
+                timeout_seconds: 300
+          EOF
+          
+          dbt run --target prod
+          dbt test --target prod
+
+      - name: Generate documentation
+        if: success()
+        run: |
+          cd ${{ env.DBT_PROJECT_DIR }}
+          dbt docs generate --target prod
+
+      - name: Upload docs artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dbt-docs
+          path: warehouse/target/*
+
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "dbt build failed. Check logs for details."
+          # Add Slack/PagerDuty notification here if desired

@@ -60,6 +60,7 @@ class RuleTestPayload(BaseModel):
     rule: RuleInput
     month: Optional[MonthStr] = None
 
+
 class TransactionSample(BaseModel):
     id: int
     merchant: Optional[str] = None

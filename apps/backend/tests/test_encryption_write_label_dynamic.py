@@ -5,7 +5,6 @@ import os
 from datetime import date
 
 import pytest
-from sqlalchemy import text
 
 from app.services.crypto import EnvelopeCrypto
 from app.core.crypto_state import set_crypto, set_active_label, set_write_label
@@ -15,7 +14,9 @@ from app.orm_models import Transaction, EncryptionKey
 @pytest.fixture(autouse=True)
 def _seed_kek_env(monkeypatch):
     # Stable KEK for test determinism
-    os.environ.setdefault("ENCRYPTION_MASTER_KEY_BASE64", base64.b64encode(os.urandom(32)).decode())
+    os.environ.setdefault(
+        "ENCRYPTION_MASTER_KEY_BASE64", base64.b64encode(os.urandom(32)).decode()
+    )
     yield
 
 

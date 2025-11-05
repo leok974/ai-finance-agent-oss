@@ -1,0 +1,24 @@
+# Cron job for orphaned feedback cleanup
+# Add to docker-compose.prod.yml or run via external cron
+
+# Run every Sunday at 2 AM UTC
+# 0 2 * * 0 docker compose -f /path/to/docker-compose.prod.yml exec -T backend python scripts/cleanup_orphaned_feedback.py --days 90
+
+# For testing (every 5 minutes):
+# */5 * * * * docker compose -f /path/to/docker-compose.prod.yml exec -T backend python scripts/cleanup_orphaned_feedback.py --days 90 --dry-run
+
+# Alternative: Add to docker-compose.prod.yml as a separate service
+# 
+# services:
+#   cleanup-cron:
+#     image: ai-finance-agent-oss-clean-backend
+#     command: sh -c "while true; do sleep 604800; python scripts/cleanup_orphaned_feedback.py --days 90; done"
+#     environment:
+#       - DATABASE_URL_FILE=/run/secrets/backend_db_url
+#     secrets:
+#       - backend_db_url
+#     depends_on:
+#       - postgres
+#     networks:
+#       - default
+#     restart: unless-stopped

@@ -1,4 +1,5 @@
 """Pydantic schemas used by transaction-related routers."""
+
 from pydantic import BaseModel
 
 

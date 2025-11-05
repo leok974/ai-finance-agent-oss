@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Dict, List, Tuple, Optional, Any, Callable, cast
+from typing import Dict, List, Tuple, Optional, Any, cast
 from collections import defaultdict, Counter
 from datetime import date as _date, datetime as _dt
 import math
@@ -10,23 +10,30 @@ import time
 import logging
 
 from app.transactions import Transaction
+
 try:  # avoid importing heavy stack (pandas/statsmodels) during hermetic test startup
     from .analytics_forecast import sarimax_cashflow_forecast, sarimax_forecast  # type: ignore
 except Exception:  # pragma: no cover
+
     def sarimax_cashflow_forecast(db: Session, base_series_fn: Any, month: Optional[str], horizon: int) -> Optional[Dict[Any, Any]]:  # type: ignore[unused-ignore]
         return None
+
     def sarimax_forecast(month_series: Dict[str, float], horizon: int = 3, seasonal_periods: int = 12, alpha: float = 0.2) -> Optional[Tuple[List[float], List[float], List[float]]]:  # type: ignore[unused-ignore]
         return None
 
+
 log = logging.getLogger(__name__)
+
 
 class _Timed:
     def __init__(self, label: str):
         self.label = label
         self.t0 = 0.0
+
     def __enter__(self):
         self.t0 = time.perf_counter()
         return self
+
     def __exit__(self, *exc):
         try:
             dt_ms = int((time.perf_counter() - self.t0) * 1000)
@@ -44,7 +51,9 @@ def _month_key(d: _date | _dt) -> str:
     return f"{d.year:04d}-{d.month:02d}"
 
 
-def _months_window(all_months: List[str], ref_month: Optional[str], lookback: int) -> List[str]:
+def _months_window(
+    all_months: List[str], ref_month: Optional[str], lookback: int
+) -> List[str]:
     if not all_months:
         return []
     # Ensure mypy understands this remains a list[str]
@@ -66,7 +75,9 @@ def _fetch_txns_window(db: Session, months: List[str]) -> List[Transaction]:
     return cast(List[Transaction], rows)
 
 
-def _monthly_sums(db: Session, lookback: int, ref_month: Optional[str]) -> Tuple[Dict[str, Dict[str, float]], Dict[str, List[Dict]]]:
+def _monthly_sums(
+    db: Session, lookback: int, ref_month: Optional[str]
+) -> Tuple[Dict[str, Dict[str, float]], Dict[str, List[Dict]]]:
     """Portable monthly aggregator over Transaction rows.
     Returns (series, txns_by_month) where series[month] = {in,out,net} and
     txns_by_month[month] = list of dicts for downstream analytics.
@@ -75,7 +86,9 @@ def _monthly_sums(db: Session, lookback: int, ref_month: Optional[str]) -> Tuple
     all_months = [m for (m,) in db.query(Transaction.month).distinct().all() if m]
     months = _months_window(all_months, ref_month, lookback)
     txns = _fetch_txns_window(db, months)
-    series: Dict[str, Dict[str, float]] = defaultdict(lambda: {"in": 0.0, "out": 0.0, "net": 0.0})
+    series: Dict[str, Dict[str, float]] = defaultdict(
+        lambda: {"in": 0.0, "out": 0.0, "net": 0.0}
+    )
     txns_by_month: Dict[str, List[Dict]] = defaultdict(list)
     for t in txns:
         m = t.month
@@ -85,12 +98,14 @@ def _monthly_sums(db: Session, lookback: int, ref_month: Optional[str]) -> Tuple
         else:
             series[m]["out"] += abs(amt)
         # carry minimal fields to keep outputs stable
-        txns_by_month[m].append({
-            "date": t.date,
-            "amount": amt,
-            "merchant": t.merchant_canonical or t.merchant or "",
-            "category": t.category or "",
-        })
+        txns_by_month[m].append(
+            {
+                "date": t.date,
+                "amount": amt,
+                "merchant": t.merchant_canonical or t.merchant or "",
+                "category": t.category or "",
+            }
+        )
     for m in list(series.keys()):
         series[m]["net"] = series[m]["in"] - series[m]["out"]
     return dict(series), dict(txns_by_month)
@@ -123,7 +138,7 @@ def compute_kpis(db: Session, month: Optional[str] = None, lookback: int = 6) ->
         if mu == 0:
             return 0.0
         var = sum((x - mu) ** 2 for x in xs) / len(xs)
-        return (var ** 0.5) / mu
+        return (var**0.5) / mu
 
     kpis = {
         "avg_inflows": avg_in,
@@ -172,7 +187,13 @@ def forecast_cashflow(
         series, _ = _monthly_sums(db, lookback=36, ref_month=month)
     months = sorted(series.keys())
     if len(months) < 3:
-        return {"ok": False, "reason": "not_enough_history", "months": months, "series": series, "forecast": []}
+        return {
+            "ok": False,
+            "reason": "not_enough_history",
+            "months": months,
+            "series": series,
+            "forecast": [],
+        }
 
     infl = [series[m]["in"] for m in months]
     outf = [series[m]["out"] for m in months]
@@ -188,16 +209,25 @@ def forecast_cashflow(
 
     if model in ("auto", "sarimax"):
         try:
-            sar_out = sarimax_forecast(nets, horizon=horizon, seasonal_periods=12, alpha=ci_alpha)
+            sar_out = sarimax_forecast(
+                nets, horizon=horizon, seasonal_periods=12, alpha=ci_alpha
+            )
         except Exception:
             sar_out = None
         if sar_out is not None:
             fc_net, net_ci_low, net_ci_high = sar_out
             used_model = "sarimax"
         elif model == "sarimax":
-            return {"ok": False, "reason": "sarimax_unavailable", "months": months, "series": series, "forecast": []}
+            return {
+                "ok": False,
+                "reason": "sarimax_unavailable",
+                "months": months,
+                "series": series,
+                "forecast": [],
+            }
 
     ema_in, ema_out = _ema(infl), _ema(outf)
+
     def _proj(last_seq: List[float]) -> List[float]:
         last = last_seq[-1]
         return [last for _ in range(horizon)]
@@ -212,23 +242,41 @@ def forecast_cashflow(
         denom = (last_in + last_out) or 1.0
         ratio = max(0.0, min(1.0, last_in / denom))
         f_net = [round(n, 2) for n in fc_net]
-        f_in  = [round(max(0.0, n * ratio), 2) for n in fc_net]
+        f_in = [round(max(0.0, n * ratio), 2) for n in fc_net]
         f_out = [round(max(0.0, n * (1.0 - ratio)), 2) for n in fc_net]
 
     forecast = [
-        (lambda i: (
-            {**{
-                "t": i + 1,
-                "inflows": f_in[i],
-                "outflows": f_out[i],
-                "net": f_net[i],
-            }, **({
-                "net_ci": [round(float(net_ci_low[i]), 2), round(float(net_ci_high[i]), 2)]
-            } if (used_model == "sarimax" and net_ci_low and net_ci_high) else {})}
-        ))(i)
+        (
+            lambda i: (
+                {
+                    **{
+                        "t": i + 1,
+                        "inflows": f_in[i],
+                        "outflows": f_out[i],
+                        "net": f_net[i],
+                    },
+                    **(
+                        {
+                            "net_ci": [
+                                round(float(net_ci_low[i]), 2),
+                                round(float(net_ci_high[i]), 2),
+                            ]
+                        }
+                        if (used_model == "sarimax" and net_ci_low and net_ci_high)
+                        else {}
+                    ),
+                }
+            )
+        )(i)
         for i in range(horizon)
     ]
-    resp: Dict = {"months": months, "series": series, "forecast": forecast, "model": used_model, "ok": True}
+    resp: Dict = {
+        "months": months,
+        "series": series,
+        "forecast": forecast,
+        "model": used_model,
+        "ok": True,
+    }
     if used_model == "sarimax":
         resp["ci_alpha"] = ci_alpha
     return resp
@@ -257,17 +305,28 @@ def find_anomalies(db: Session, month: Optional[str] = None, lookback: int = 6) 
         mag = abs(t["amount"])
         robust_z = 0.6745 * (mag - median) / mad
         if mag >= high or robust_z >= 3.5:
-            flagged.append({
-                "date": (t["date"].isoformat() if hasattr(t["date"], "isoformat") else str(t["date"])),
-                "merchant": t["merchant"],
-                "category": t["category"],
-                "amount": mag,
-                "reason": "IQR" if mag >= high else "robust_z",
-            })
-    return {"month": last, "items": sorted(flagged, key=lambda x: x["amount"], reverse=True)}
+            flagged.append(
+                {
+                    "date": (
+                        t["date"].isoformat()
+                        if hasattr(t["date"], "isoformat")
+                        else str(t["date"])
+                    ),
+                    "merchant": t["merchant"],
+                    "category": t["category"],
+                    "amount": mag,
+                    "reason": "IQR" if mag >= high else "robust_z",
+                }
+            )
+    return {
+        "month": last,
+        "items": sorted(flagged, key=lambda x: x["amount"], reverse=True),
+    }
 
 
-def detect_recurring(db: Session, month: Optional[str] = None, lookback: int = 6) -> Dict:
+def detect_recurring(
+    db: Session, month: Optional[str] = None, lookback: int = 6
+) -> Dict:
     with _Timed("recurring"):
         lookback = max(1, min(24, int(lookback or 6)))
         _, by_month = _monthly_sums(db, lookback, month)
@@ -284,13 +343,22 @@ def detect_recurring(db: Session, month: Optional[str] = None, lookback: int = 6
         arr = sorted(arr, key=lambda x: x["date"])
         if len(arr) < 3:
             continue
-        dom = Counter([getattr(d["date"], "day", None) or _dt.fromisoformat(str(d["date"])[:10]).day for d in arr])
+        dom = Counter(
+            [
+                getattr(d["date"], "day", None)
+                or _dt.fromisoformat(str(d["date"])[:10]).day
+                for d in arr
+            ]
+        )
         gaps = [
-            (arr[i]["date"] - arr[i - 1]["date"]).days
-            if hasattr(arr[i]["date"], "__sub__")
-            else (
-                _dt.fromisoformat(str(arr[i]["date"])[:10]) - _dt.fromisoformat(str(arr[i - 1]["date"])[:10])
-            ).days
+            (
+                (arr[i]["date"] - arr[i - 1]["date"]).days
+                if hasattr(arr[i]["date"], "__sub__")
+                else (
+                    _dt.fromisoformat(str(arr[i]["date"])[:10])
+                    - _dt.fromisoformat(str(arr[i - 1]["date"])[:10])
+                ).days
+            )
             for i in range(1, len(arr))
         ]
         median_gap = stats.median(gaps) if gaps else None
@@ -298,26 +366,54 @@ def detect_recurring(db: Session, month: Optional[str] = None, lookback: int = 6
         dom_peak = dom.most_common(1)[0][1] / len(arr)
         strength = (dom_peak + (1 if monthlyish else 0)) / 2
         avg_amt = sum(abs(x["amount"]) for x in arr) / len(arr)
-        results.append({
-            "merchant": merch,
-            "count": len(arr),
-            "avg_amount": round(avg_amt, 2),
-            "median_gap_days": median_gap,
-            "strength": round(strength, 2),
-        })
+        results.append(
+            {
+                "merchant": merch,
+                "count": len(arr),
+                "avg_amount": round(avg_amt, 2),
+                "median_gap_days": median_gap,
+                "strength": round(strength, 2),
+            }
+        )
     # Sort by composite numeric tuple; mypy expects a key returning an orderable type
-    results.sort(key=lambda x: (float(x["strength"]), int(x["count"]), float(x["avg_amount"])), reverse=True)
+    results.sort(
+        key=lambda x: (float(x["strength"]), int(x["count"]), float(x["avg_amount"])),
+        reverse=True,
+    )
     return {"items": results[:50]}
 
 
 SUB_KEYWORDS = [
-    "spotify","netflix","hulu","prime","apple","google","microsoft","adobe","discord","crunchyroll",
-    "patreon","xbox","playstation","gym","planet fitness","new york times","washington post","substack",
-    "dropbox","1password","notion","zoom","slack","figma"
+    "spotify",
+    "netflix",
+    "hulu",
+    "prime",
+    "apple",
+    "google",
+    "microsoft",
+    "adobe",
+    "discord",
+    "crunchyroll",
+    "patreon",
+    "xbox",
+    "playstation",
+    "gym",
+    "planet fitness",
+    "new york times",
+    "washington post",
+    "substack",
+    "dropbox",
+    "1password",
+    "notion",
+    "zoom",
+    "slack",
+    "figma",
 ]
 
 
-def find_subscriptions(db: Session, month: Optional[str] = None, lookback: int = 6) -> Dict:
+def find_subscriptions(
+    db: Session, month: Optional[str] = None, lookback: int = 6
+) -> Dict:
     with _Timed("subscriptions"):
         lookback = max(1, min(24, int(lookback or 6)))
         rec = detect_recurring(db, month, lookback)["items"]
@@ -325,7 +421,9 @@ def find_subscriptions(db: Session, month: Optional[str] = None, lookback: int =
     for r in rec:
         name = (r["merchant"] or "").lower()
         kw = any(k in name for k in SUB_KEYWORDS)
-        monthlyish = r.get("median_gap_days") and 25 <= (r.get("median_gap_days") or 0) <= 35
+        monthlyish = (
+            r.get("median_gap_days") and 25 <= (r.get("median_gap_days") or 0) <= 35
+        )
         if (kw and r["strength"] >= 0.5) or (monthlyish and r["strength"] >= 0.7):
             out.append({**r, "tag": "keyword" if kw else "cadence"})
     return {"items": out}
@@ -360,14 +458,16 @@ def budget_suggest(db: Session, month: Optional[str] = None, lookback: int = 6) 
     for cat, vals in spend_per.items():
         if not vals:
             continue
-        items.append({
-            "category": cat,
-            "p50": round(pct(vals, 0.5), 2),
-            "p75": round(pct(vals, 0.75), 2),
-            "p90": round(pct(vals, 0.9), 2),
-            "avg": round(sum(vals) / len(vals), 2),
-            "months": len(vals),
-        })
+        items.append(
+            {
+                "category": cat,
+                "p50": round(pct(vals, 0.5), 2),
+                "p75": round(pct(vals, 0.75), 2),
+                "p90": round(pct(vals, 0.9), 2),
+                "avg": round(sum(vals) / len(vals), 2),
+                "months": len(vals),
+            }
+        )
     items.sort(key=lambda x: float(x["avg"]), reverse=True)
     return {"items": items}
 
@@ -396,7 +496,11 @@ def whatif_sim(db: Session, payload: Dict) -> Dict:
                 pct = float(c.get("pct", 0.0)) / 100.0
                 if cat and (t.category or "") == cat:
                     cut_pct = max(cut_pct, pct)
-                if merch and (t.merchant_canonical or t.merchant or "").lower() == str(merch).lower():
+                if (
+                    merch
+                    and (t.merchant_canonical or t.merchant or "").lower()
+                    == str(merch).lower()
+                ):
                     cut_pct = max(cut_pct, pct)
             reduced = spend * (1.0 - cut_pct)
             base_out += spend

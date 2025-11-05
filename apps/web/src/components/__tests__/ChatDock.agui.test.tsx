@@ -105,4 +105,3 @@ describe('ChatDock AG-UI (streaming via wireAguiStream mock)', () => {
   await act(async () => { h2.onFinish?.(); });
   });
 });
-

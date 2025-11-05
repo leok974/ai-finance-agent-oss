@@ -22,7 +22,9 @@ def isolated_db(monkeypatch):
         future=True,
     )
     Base.metadata.create_all(engine)
-    SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, future=True)
+    SessionLocal = sessionmaker(
+        bind=engine, autoflush=False, autocommit=False, future=True
+    )
 
     def _override_get_db():
         db = SessionLocal()
@@ -58,9 +60,27 @@ def test_month_summary_db_fallback_uses_db_when_memory_empty(client):
     db = SessionLocal()
     try:
         rows = [
-            models.Transaction(id=9001, date=date(2099, 11, 15), amount=-10.0, merchant="Coffee", category="Dining"),
-            models.Transaction(id=9002, date=date(2099, 12, 3), amount=100.0, merchant="Stripe", category="Income"),
-            models.Transaction(id=9003, date=date(2099, 12, 5), amount=-25.0, merchant="Store", category="Groceries"),
+            models.Transaction(
+                id=9001,
+                date=date(2099, 11, 15),
+                amount=-10.0,
+                merchant="Coffee",
+                category="Dining",
+            ),
+            models.Transaction(
+                id=9002,
+                date=date(2099, 12, 3),
+                amount=100.0,
+                merchant="Stripe",
+                category="Income",
+            ),
+            models.Transaction(
+                id=9003,
+                date=date(2099, 12, 5),
+                amount=-25.0,
+                merchant="Store",
+                category="Groceries",
+            ),
         ]
         db.add_all(rows)
         db.commit()
@@ -77,4 +97,6 @@ def test_month_summary_db_fallback_uses_db_when_memory_empty(client):
     assert round(cats.get("Groceries", 0.0), 2) == 25.0
     # total_spend should equal sum of category magnitudes returned
     assert round(float(data.get("total_spend", -1)), 2) == round(sum(cats.values()), 2)
-    assert round(float(data.get("net", -999)), 2) == round(100.0 - float(data.get("total_spend", 0.0)), 2)
+    assert round(float(data.get("net", -999)), 2) == round(
+        100.0 - float(data.get("total_spend", 0.0)), 2
+    )

@@ -1,7 +1,7 @@
-import os
 from fastapi.testclient import TestClient
 
 from app.main import app
+
 
 def test_version_shape_ok():
     c = TestClient(app)

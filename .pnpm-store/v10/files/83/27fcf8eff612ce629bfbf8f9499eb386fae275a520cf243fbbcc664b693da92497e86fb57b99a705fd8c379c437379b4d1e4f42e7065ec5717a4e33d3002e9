@@ -197,7 +197,7 @@ function requireChaiSubset () {
 				}
 			});
 
-		}).call(chaiSubset); 
+		}).call(chaiSubset);
 	} (chaiSubset$1));
 	return chaiSubset$1.exports;
 }
@@ -740,7 +740,7 @@ function requireDeprecated () {
 		    } else {
 		        console.log(msg);
 		    }
-		}; 
+		};
 	} (deprecated));
 	return deprecated;
 }
@@ -1334,7 +1334,7 @@ function requireTypeDetect () {
 
 		return typeDetect;
 
-		}))); 
+		})));
 	} (typeDetect$1));
 	return typeDetect$1.exports;
 }

@@ -3,12 +3,13 @@ from typing import Any, Dict
 
 LOW_VALUE_SET = {"ok", "okay", "done", "noted"}
 
+
 def post_process_tool_reply(out: Dict[str, Any], ctx: Any):
     # Skip if empty
     if not out:
         return out
     # Never transform deterministic/tool-routed responses (they always include 'mode')
-    if 'mode' in out:
+    if "mode" in out:
         return out
     # Deterministic tool responses set mode + tool_trace and either rephrased is None or False
     if out.get("model") == "deterministic":
@@ -19,7 +20,9 @@ def post_process_tool_reply(out: Dict[str, Any], ctx: Any):
 
     original_snapshot = dict(out)  # defensive: preserve all keys to reapply later
     try:
-        print("post_process_tool_reply: initial keys=", sorted(original_snapshot.keys()))
+        print(
+            "post_process_tool_reply: initial keys=", sorted(original_snapshot.keys())
+        )
     except Exception:
         pass
     txt = (out.get("reply") or "").strip().lower()
@@ -45,7 +48,9 @@ def post_process_tool_reply(out: Dict[str, Any], ctx: Any):
             if k not in out:
                 out[k] = v
         try:
-            print("post_process_tool_reply: low-value applied keys=", sorted(out.keys()))
+            print(
+                "post_process_tool_reply: low-value applied keys=", sorted(out.keys())
+            )
         except Exception:
             pass
     return out

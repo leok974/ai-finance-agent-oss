@@ -53,7 +53,10 @@ def normalize_rule_input(payload: Dict[str, Any]) -> Dict[str, Any]:
     if "when" in payload and "then" in payload:
         return payload
     return {
-        "when": {"target": payload.get("target", "description"), "pattern": payload.get("pattern", "")},
+        "when": {
+            "target": payload.get("target", "description"),
+            "pattern": payload.get("pattern", ""),
+        },
         "then": {"category": payload.get("category")},
     }
 
@@ -73,7 +76,11 @@ def preview_rule_matches(
     q = _q_window(q, _cutoff(window_days))
     q = _q_when(q, ri["when"])
     total = q.count()
-    sample = q.order_by(Transaction.date.desc(), Transaction.id.desc()).limit(sample_limit).all()
+    sample = (
+        q.order_by(Transaction.date.desc(), Transaction.id.desc())
+        .limit(sample_limit)
+        .all()
+    )
     rows = [
         {
             "id": t.id,

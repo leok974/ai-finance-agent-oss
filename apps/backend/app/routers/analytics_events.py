@@ -2,7 +2,12 @@ from __future__ import annotations
 from fastapi import APIRouter, Request, Response, HTTPException
 from pydantic import BaseModel, Field, field_validator
 from typing import Any, Dict, Optional
-import time, os, logging, json, re, asyncio
+import time
+import os
+import logging
+import json
+import re
+import asyncio
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
 log = logging.getLogger("analytics")
@@ -30,7 +35,12 @@ def _props_size_ok(p: Optional[Dict[str, Any]]) -> bool:
     if not p:
         return True
     try:
-        return len(json.dumps(p, separators=(",", ":"), ensure_ascii=False).encode("utf-8")) <= MAX_PROPS_BYTES
+        return (
+            len(
+                json.dumps(p, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+            )
+            <= MAX_PROPS_BYTES
+        )
     except Exception:
         return False
 
@@ -54,7 +64,8 @@ async def track(req: Request, body: TrackEvent):
         "server_ts": now_ms,
         "rid": rid,
         "path": str(req.url.path),
-        "ip": req.headers.get("CF-Connecting-IP") or (req.client.host if req.client else None),
+        "ip": req.headers.get("CF-Connecting-IP")
+        or (req.client.host if req.client else None),
         "ua": req.headers.get("User-Agent"),
     }
 
@@ -70,6 +81,7 @@ async def track(req: Request, body: TrackEvent):
         try:
             # import lazily to avoid overhead if unused
             from app.services.analytics_sink import store_event  # sync function
+
             loop = asyncio.get_running_loop()
             # offload to default executor so we don't block the event loop
             loop.create_task(loop.run_in_executor(None, store_event, record))

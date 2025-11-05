@@ -4,7 +4,6 @@ import base64
 import os
 from datetime import date
 
-from sqlalchemy import text
 
 from app.services.crypto import EnvelopeCrypto
 from app.core.crypto_state import set_crypto, set_active_label, set_write_label
@@ -31,7 +30,9 @@ import pytest
 @pytest.mark.rotation
 def test_dek_rotation_dryrun_smoke(db_session):
     # Seed KEK for determinism (mirror to MASTER_KEK_B64 to satisfy unwrap paths referencing either)
-    if not os.getenv("ENCRYPTION_MASTER_KEY_BASE64") and not os.getenv("MASTER_KEK_B64"):
+    if not os.getenv("ENCRYPTION_MASTER_KEY_BASE64") and not os.getenv(
+        "MASTER_KEK_B64"
+    ):
         kek = base64.b64encode(os.urandom(32)).decode()
         os.environ.setdefault("ENCRYPTION_MASTER_KEY_BASE64", kek)
         os.environ.setdefault("MASTER_KEK_B64", kek)
@@ -44,7 +45,9 @@ def test_dek_rotation_dryrun_smoke(db_session):
     _ensure_key(db_session, "active")
     set_write_label("active")
     for i in range(3):
-        t = Transaction(merchant_canonical=f"m{i}", amount=1 + i, date=date(2024, 1, 1+i))
+        t = Transaction(
+            merchant_canonical=f"m{i}", amount=1 + i, date=date(2024, 1, 1 + i)
+        )
         t.description_text = f"d{i}"
         db_session.add(t)
     db_session.commit()

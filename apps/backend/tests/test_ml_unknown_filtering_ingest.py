@@ -1,7 +1,10 @@
 import io
 import textwrap
 import pytest
-pytestmark = pytest.mark.skip(reason="Legacy /ml/* endpoints removed; use /agent/tools/*")
+
+pytestmark = pytest.mark.skip(
+    reason="Legacy /ml/* endpoints removed; use /agent/tools/*"
+)
 from fastapi.testclient import TestClient
 
 from app.main import app
@@ -47,7 +50,9 @@ def test_train_after_ingest_excludes_unknown():
     assert "Unknown" not in classes, f"'Unknown' leaked into classes: {classes}"
 
     # optional sanity: has at least one class
-    assert len(classes) >= 1, f"Expected at least one class after training, got {classes}"
+    assert (
+        len(classes) >= 1
+    ), f"Expected at least one class after training, got {classes}"
 
 
 @pytest.mark.order(2)
@@ -72,4 +77,6 @@ def test_suggest_never_returns_unknown_label():
         labels = labels_from(item)
         if not labels:
             continue
-        assert all(l != "Unknown" for l in labels), f"Found 'Unknown' in suggestions: {labels}"
+        assert all(
+            l != "Unknown" for l in labels
+        ), f"Found 'Unknown' in suggestions: {labels}"

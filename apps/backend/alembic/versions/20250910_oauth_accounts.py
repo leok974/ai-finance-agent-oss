@@ -5,6 +5,7 @@ Revises: 5349ed3102a4
 Create Date: 2025-09-10
 
 """
+
 from typing import Sequence, Union
 
 from alembic import op
@@ -30,11 +31,18 @@ def upgrade() -> None:
             op.create_table(
                 "oauth_accounts",
                 sa.Column("id", sa.Integer(), primary_key=True),
-                sa.Column("user_id", sa.Integer(), sa.ForeignKey("users.id", ondelete="CASCADE"), nullable=False),
+                sa.Column(
+                    "user_id",
+                    sa.Integer(),
+                    sa.ForeignKey("users.id", ondelete="CASCADE"),
+                    nullable=False,
+                ),
                 sa.Column("provider", sa.String(length=32), nullable=False),
                 sa.Column("provider_user_id", sa.String(length=255), nullable=False),
                 sa.Column("email", sa.String(length=255), nullable=True),
-                sa.UniqueConstraint("provider", "provider_user_id", name="uq_oauth_provider_user"),
+                sa.UniqueConstraint(
+                    "provider", "provider_user_id", name="uq_oauth_provider_user"
+                ),
             )
         else:
             idx_names = {ix.get("name") for ix in insp.get_indexes("oauth_accounts")}
@@ -50,14 +58,21 @@ def upgrade() -> None:
             op.create_table(
                 "oauth_accounts",
                 sa.Column("id", sa.Integer(), primary_key=True),
-                sa.Column("user_id", sa.Integer(), sa.ForeignKey("users.id", ondelete="CASCADE"), nullable=False),
+                sa.Column(
+                    "user_id",
+                    sa.Integer(),
+                    sa.ForeignKey("users.id", ondelete="CASCADE"),
+                    nullable=False,
+                ),
                 sa.Column("provider", sa.String(length=32), nullable=False),
                 sa.Column("provider_user_id", sa.String(length=255), nullable=False),
                 sa.Column("email", sa.String(length=255), nullable=True),
             )
         # Add the named unique constraint in dialects that support ALTER ADD CONSTRAINT
         # Safe if it already exists in some DBs, but typically Alembic sequence ensures this runs once.
-        op.create_unique_constraint("uq_oauth_provider_user", "oauth_accounts", ["provider", "provider_user_id"])
+        op.create_unique_constraint(
+            "uq_oauth_provider_user", "oauth_accounts", ["provider", "provider_user_id"]
+        )
 
 
 def downgrade() -> None:
@@ -67,7 +82,11 @@ def downgrade() -> None:
 
     if dialect == "sqlite":
         # Drop unique index if present, then drop table
-        idx_names = {ix.get("name") for ix in insp.get_indexes("oauth_accounts")} if insp.has_table("oauth_accounts") else set()
+        idx_names = (
+            {ix.get("name") for ix in insp.get_indexes("oauth_accounts")}
+            if insp.has_table("oauth_accounts")
+            else set()
+        )
         if "uq_oauth_provider_user" in idx_names:
             op.drop_index("uq_oauth_provider_user", table_name="oauth_accounts")
         if insp.has_table("oauth_accounts"):

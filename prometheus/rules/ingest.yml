@@ -1,0 +1,58 @@
+groups:
+- name: ingest
+  rules:
+  # Alert on any ingest replace failures (should be 0 in healthy system)
+  - alert: IngestReplaceErrors
+    expr: rate(lm_ingest_errors_total{phase="replace"}[5m]) > 0
+    for: 2m
+    labels:
+      severity: page
+    annotations:
+      summary: "Ingest replace operation failing"
+      description: "The /ingest?replace=true endpoint is experiencing errors. This may indicate database constraint violations or other critical issues."
+      runbook: "https://github.com/leok974/ai-finance-agent-oss/blob/website-cleaning/docs/INGEST_CASCADE_FIX.md"
+  
+  # Alert on sustained high error rate (multiple failures in short time)
+  - alert: IngestReplaceErrorsHigh
+    expr: rate(lm_ingest_errors_total{phase="replace"}[5m]) > 0.1
+    for: 1m
+    labels:
+      severity: critical
+    annotations:
+      summary: "High rate of ingest replace failures"
+      description: "Multiple consecutive /ingest?replace=true failures detected. System may be in degraded state."
+      runbook: "https://github.com/leok974/ai-finance-agent-oss/blob/website-cleaning/CLEANUP_MONITORING_COMPLETE.md"
+  
+  # SLO alert: Only fire if traffic exists (avoid noise during quiet hours)
+  - alert: IngestSLOViolation
+    expr: |
+      (
+        increase(lm_ingest_errors_total{phase="replace"}[1h]) > 0
+        AND
+        increase(lm_ingest_requests_total[1h]) > 0
+      )
+    for: 5m
+    labels:
+      severity: warn
+    annotations:
+      summary: "Ingest SLO violated (errors during active traffic)"
+      description: "Errors detected during active ingest traffic in the last hour. SLO: 0 errors expected."
+      runbook: "https://github.com/leok974/ai-finance-agent-oss/blob/website-cleaning/docs/INGEST_CASCADE_FIX.md#troubleshooting"
+  
+  # Warning for orphaned feedback accumulation (housekeeping reminder)
+  - alert: OrphanedFeedbackAccumulating
+    expr: |
+      (
+        count(suggestion_feedback_total{event_id="null"}) 
+        / 
+        count(suggestion_feedback_total)
+      ) > 0.3
+    for: 24h
+    labels:
+      severity: info
+    annotations:
+      summary: "High percentage of orphaned suggestion feedback"
+      description: "More than 30% of suggestion_feedback rows have NULL event_id. Consider running cleanup job."
+      runbook: "https://github.com/leok974/ai-finance-agent-oss/blob/website-cleaning/CLEANUP_MONITORING_COMPLETE.md#deployment-checklist"
+
+

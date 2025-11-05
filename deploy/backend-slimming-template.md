@@ -18,8 +18,8 @@ ARG PYTHONDONTWRITEBYTECODE=1
 ARG PYTHONUNBUFFERED=1
 
 # System build deps (remove in runtime)
-RUN apt-get update \ 
-  && apt-get install -y --no-install-recommends build-essential gcc \ 
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends build-essential gcc \
   && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

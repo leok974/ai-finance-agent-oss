@@ -8,6 +8,7 @@ Fields:
 
 Skips rows already having enc_label set.
 """
+
 from __future__ import annotations
 
 import os

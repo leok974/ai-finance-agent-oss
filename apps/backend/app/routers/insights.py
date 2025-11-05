@@ -6,7 +6,11 @@ from sqlalchemy.orm import Session
 from app.db import get_db
 from app.transactions import Transaction
 from app.services.insights_anomalies import compute_anomalies
-from app.services.anomaly_ignores_store import list_ignores as ai_list, add_ignore as ai_add, remove_ignore as ai_remove
+from app.services.anomaly_ignores_store import (
+    list_ignores as ai_list,
+    add_ignore as ai_add,
+    remove_ignore as ai_remove,
+)
 
 router = APIRouter(prefix="/insights", tags=["insights"])
 
@@ -15,10 +19,12 @@ router = APIRouter(prefix="/insights", tags=["insights"])
 def insights(month: str | None = Query(None), db: Session = Depends(get_db)):
     # Total net amount (income positive, spend negative)
     total = (
-        db.execute(select(func.sum(Transaction.amount)).where(
-            Transaction.month == month if month else True
-        ))
-        .scalar() or 0.0
+        db.execute(
+            select(func.sum(Transaction.amount)).where(
+                Transaction.month == month if month else True
+            )
+        ).scalar()
+        or 0.0
     )
 
     # Top merchants by absolute net amount
@@ -45,36 +51,48 @@ def insights(month: str | None = Query(None), db: Session = Depends(get_db)):
 
 
 class AnomalyModel(BaseModel):
-    category: str = Field(..., json_schema_extra={"examples":["Groceries"]})
+    category: str = Field(..., json_schema_extra={"examples": ["Groceries"]})
     current: float = Field(
-        ..., description="Current month spend magnitude", json_schema_extra={"examples":[700.0]}
+        ...,
+        description="Current month spend magnitude",
+        json_schema_extra={"examples": [700.0]},
     )
     median: float = Field(
-        ..., description="Median of prior months", json_schema_extra={"examples":[400.0]}
+        ...,
+        description="Median of prior months",
+        json_schema_extra={"examples": [400.0]},
     )
     pct_from_median: float = Field(
-        ..., description="(current - median) / median", json_schema_extra={"examples":[0.75]}
+        ...,
+        description="(current - median) / median",
+        json_schema_extra={"examples": [0.75]},
     )
     sample_size: int = Field(
-        ..., description="Historical months used", json_schema_extra={"examples":[5]}
+        ..., description="Historical months used", json_schema_extra={"examples": [5]}
     )
-    direction: Literal["high","low"] = Field(..., json_schema_extra={"examples":["high"]})
+    direction: Literal["high", "low"] = Field(
+        ..., json_schema_extra={"examples": ["high"]}
+    )
 
 
 class AnomaliesResp(BaseModel):
-    month: str | None = Field(None, json_schema_extra={"examples":["2025-09"]})
+    month: str | None = Field(None, json_schema_extra={"examples": ["2025-09"]})
     anomalies: list[AnomalyModel] = Field(default_factory=list)
 
 
 @router.get(
     "/anomalies",
     response_model=AnomaliesResp,
-    summary="Flag categories with unusual current-month spend"
+    summary="Flag categories with unusual current-month spend",
 )
 def get_anomalies(
     months: int = Query(6, ge=3, le=24, description="History window"),
-    min_spend_current: float = Query(50.0, ge=0, description="Ignore very small categories"),
-    threshold_pct: float = Query(0.4, ge=0.05, le=5.0, description="|% from median| to flag"),
+    min_spend_current: float = Query(
+        50.0, ge=0, description="Ignore very small categories"
+    ),
+    threshold_pct: float = Query(
+        0.4, ge=0.05, le=5.0, description="|% from median| to flag"
+    ),
     max_results: int = Query(8, ge=1, le=50, description="Return top-N by deviation"),
     month: str | None = Query(None, description="Override anchor month YYYY-MM"),
     db: Session = Depends(get_db),
@@ -92,22 +110,27 @@ def get_anomalies(
 
 
 class IgnoreListResp(BaseModel):
-    ignored: list[str] = Field(default_factory=list, json_schema_extra={"examples":[["Groceries","Transport"]]})
+    ignored: list[str] = Field(
+        default_factory=list,
+        json_schema_extra={"examples": [["Groceries", "Transport"]]},
+    )
 
 
 @router.post(
     "/anomalies/ignore/{category}",
     response_model=IgnoreListResp,
-    summary="Ignore a category for anomaly surfacing (persisted)"
+    summary="Ignore a category for anomaly surfacing (persisted)",
 )
-def add_anomaly_ignore(category: str = Path(..., min_length=1), db: Session = Depends(get_db)):
+def add_anomaly_ignore(
+    category: str = Path(..., min_length=1), db: Session = Depends(get_db)
+):
     return {"ignored": ai_add(db, category)}
 
 
 @router.get(
     "/anomalies/ignore",
     response_model=IgnoreListResp,
-    summary="List ignored categories for anomalies"
+    summary="List ignored categories for anomalies",
 )
 def list_anomaly_ignores(db: Session = Depends(get_db)):
     return {"ignored": ai_list(db)}
@@ -116,7 +139,9 @@ def list_anomaly_ignores(db: Session = Depends(get_db)):
 @router.delete(
     "/anomalies/ignore/{category}",
     response_model=IgnoreListResp,
-    summary="Remove category from anomaly ignore list"
+    summary="Remove category from anomaly ignore list",
 )
-def remove_anomaly_ignore(category: str = Path(..., min_length=1), db: Session = Depends(get_db)):
+def remove_anomaly_ignore(
+    category: str = Path(..., min_length=1), db: Session = Depends(get_db)
+):
     return {"ignored": ai_remove(db, category)}

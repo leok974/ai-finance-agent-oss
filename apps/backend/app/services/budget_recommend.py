@@ -70,15 +70,22 @@ def _window_from_max(max_dt: date, months: int) -> Tuple[date, date, List[str]]:
     start_y, start_m = map(int, keys[0].split("-"))
     end_y, end_m = map(int, keys[-1].split("-"))
     start_date = date(start_y, start_m, 1)
-    end_date = date(end_y + (1 if end_m == 12 else 0), (1 if end_m == 12 else end_m + 1), 1)
+    end_date = date(
+        end_y + (1 if end_m == 12 else 0), (1 if end_m == 12 else end_m + 1), 1
+    )
     return start_date, end_date, keys
+
 
 def _current_month_bounds(db: Session) -> tuple[date, date] | None:
     max_dt = db.query(func.max(Transaction.date)).scalar()
     if not max_dt:
         return None
     start = date(max_dt.year, max_dt.month, 1)
-    end = date(max_dt.year + (1 if max_dt.month == 12 else 0), (1 if max_dt.month == 12 else max_dt.month + 1), 1)
+    end = date(
+        max_dt.year + (1 if max_dt.month == 12 else 0),
+        (1 if max_dt.month == 12 else max_dt.month + 1),
+        1,
+    )
     return (start, end)
 
 
@@ -103,7 +110,9 @@ def _category_current_spend(db: Session) -> dict[str, float]:
     return {cat: float(total or 0.0) for cat, total in rows}
 
 
-def compute_recommendations(db: Session, months: int = 6, min_samples: int = 2, include_current: bool = True) -> List[Dict[str, Any]]:
+def compute_recommendations(
+    db: Session, months: int = 6, min_samples: int = 2, include_current: bool = True
+) -> List[Dict[str, Any]]:
     """
     Look at the last N full months; compute per-category monthly spend totals
     and derive median (p50), p75, and average (mean) as recommended caps.
@@ -146,7 +155,9 @@ def compute_recommendations(db: Session, months: int = 6, min_samples: int = 2, 
 
     # Accumulate per-month spend by category (only expenses)
     # category_month_totals[category][YYYY-MM] = total_spend_positive
-    category_month_totals: Dict[str, Dict[str, float]] = defaultdict(lambda: defaultdict(float))
+    category_month_totals: Dict[str, Dict[str, float]] = defaultdict(
+        lambda: defaultdict(float)
+    )
 
     for category, dt, amt in rows:
         if not _is_expense_row(amt, category):
@@ -167,15 +178,17 @@ def compute_recommendations(db: Session, months: int = 6, min_samples: int = 2, 
         avg = sum(samples) / len(samples)
         cur = current.get(category, 0.0)
         over = cur > p75 if include_current else None
-        recommendations.append({
-            "category": category,
-            "median": round(median, 2),
-            "p75": round(p75, 2),
-            "avg": round(avg, 2),
-            "sample_size": len(samples),
-            "current_month": round(cur, 2) if include_current else None,
-            "over_p75": bool(over) if include_current else None,
-        })
+        recommendations.append(
+            {
+                "category": category,
+                "median": round(median, 2),
+                "p75": round(p75, 2),
+                "avg": round(avg, 2),
+                "sample_size": len(samples),
+                "current_month": round(cur, 2) if include_current else None,
+                "over_p75": bool(over) if include_current else None,
+            }
+        )
 
     # Stable sort: highest median first, then p75 desc, then alpha
     recommendations.sort(key=lambda r: (-r["median"], -r["p75"], r["category"].lower()))

@@ -1,11 +1,13 @@
 /**
  * TransactionRowWithSuggestions - Enhanced transaction row with ML suggestions
  */
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { SuggestionList } from './SuggestionChip';
 import type { SuggestItem } from '@/lib/api';
+import { sendSuggestionFeedback } from '@/lib/api';
 import { Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
 
 type Transaction = {
   id: number;
@@ -44,16 +46,89 @@ export function TransactionRowWithSuggestions({
   suggestionsLoading = false,
 }: TransactionRowWithSuggestionsProps) {
   const [applying, setApplying] = useState(false);
+  const [lastEventId, setLastEventId] = useState<string | null>(null);
+  const [previousCategory, setPreviousCategory] = useState<string | null>(null);
   const showSuggestions = !transaction.category && suggestion?.candidates && suggestion.candidates.length > 0;
+
+  // Load last event ID from localStorage on mount
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(`lm:lastEvent:${transaction.id}`);
+      if (stored) {
+        setLastEventId(stored);
+      }
+    } catch {
+      // Ignore localStorage errors
+    }
+  }, [transaction.id]);
 
   const handleAccept = async (candidate: { label: string }) => {
     setApplying(true);
     try {
+      // Store previous category for potential undo
+      setPreviousCategory(transaction.category || null);
+
+      // Send accept feedback if we have an event_id
+      if (suggestion?.event_id) {
+        await sendSuggestionFeedback(suggestion.event_id, 'accept', 'user accepted');
+        setLastEventId(suggestion.event_id);
+        try {
+          localStorage.setItem(`lm:lastEvent:${transaction.id}`, suggestion.event_id);
+        } catch {
+          // Ignore localStorage errors
+        }
+      }
+
+      // Update transaction category
       await onAcceptSuggestion(transaction.id, candidate.label);
+      toast.success('Category updated');
+    } catch (error) {
+      toast.error('Failed to apply suggestion');
+      console.error('Accept suggestion error:', error);
     } finally {
       setApplying(false);
     }
   };
+
+  const handleReject = (candidate: { label: string }) => {
+    if (suggestion?.event_id) {
+      sendSuggestionFeedback(suggestion.event_id, 'reject', 'user rejected').catch(console.error);
+    }
+    onRejectSuggestion(transaction.id, candidate.label);
+    toast('Suggestion dismissed');
+  };
+
+  const handleUndo = async () => {
+    const eventId = lastEventId || (typeof window !== 'undefined' ? localStorage.getItem(`lm:lastEvent:${transaction.id}`) : null);
+    if (!eventId) return;
+
+    setApplying(true);
+    try {
+      await sendSuggestionFeedback(eventId, 'undo', 'user undo');
+
+      // Restore previous category if available
+      if (previousCategory !== null) {
+        await onAcceptSuggestion(transaction.id, previousCategory);
+      }
+
+      // Clear stored event
+      setLastEventId(null);
+      try {
+        localStorage.removeItem(`lm:lastEvent:${transaction.id}`);
+      } catch {
+        // Ignore localStorage errors
+      }
+
+      toast.success('Reverted last change');
+    } catch (error) {
+      toast.error('Failed to undo');
+      console.error('Undo error:', error);
+    } finally {
+      setApplying(false);
+    }
+  };
+
+  const canUndo = !!(lastEventId || (typeof window !== 'undefined' && localStorage.getItem(`lm:lastEvent:${transaction.id}`)));
 
   return (
     <>
@@ -127,9 +202,19 @@ export function TransactionRowWithSuggestions({
                 <SuggestionList
                   candidates={suggestion.candidates}
                   onAccept={handleAccept}
-                  onReject={(candidate) => onRejectSuggestion(transaction.id, candidate.label)}
+                  onReject={handleReject}
                   maxVisible={3}
                 />
+                {canUndo && (
+                  <button
+                    onClick={handleUndo}
+                    disabled={applying}
+                    className="text-xs underline opacity-80 hover:opacity-100 text-blue-600 ml-2 disabled:opacity-50"
+                    title="Undo last suggestion acceptance"
+                  >
+                    Undo last apply
+                  </button>
+                )}
               </div>
             )}
           </td>

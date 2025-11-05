@@ -4,7 +4,7 @@ from app.services.agent_tools import route_to_tool
 
 
 def seed(db):
-    db.add(Transaction(date=date(2025,9,6), category="Transport", amount=-120))
+    db.add(Transaction(date=date(2025, 9, 6), category="Transport", amount=-120))
     db.commit()
 
 

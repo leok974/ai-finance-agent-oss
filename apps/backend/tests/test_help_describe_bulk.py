@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import pytest
-import os, pytest
+
 pytestmark = pytest.mark.httpapi
 from fastapi.testclient import TestClient
 
@@ -14,11 +14,11 @@ client = TestClient(app)
 
 BASELINE_PANELS = [
     "overview.metrics.totalSpend",  # explicit deterministic branch
-    "total_spend",                  # alias branch
-    "top_categories",               # startswith logic
-    "top_merchants",                # existing but included for breadth
-    "anomalies.month_over_month",   # anomalies prefix
-    "cards.top_merchants",          # cards.* prefixed
+    "total_spend",  # alias branch
+    "top_categories",  # startswith logic
+    "top_merchants",  # existing but included for breadth
+    "anomalies.month_over_month",  # anomalies prefix
+    "cards.top_merchants",  # cards.* prefixed
 ]
 
 
@@ -33,7 +33,13 @@ def test_describe_panels_baseline(panel_id):
     # Expect not rephrased by default when no explicit rephrase flag
     assert j.get("rephrased") in (False, True)  # tolerate default True in some envs
     # Provider normalization
-    assert j.get("provider") in ("none", "primary", "fallback-primary", "fallback-azure", "fallback-openai")
+    assert j.get("provider") in (
+        "none",
+        "primary",
+        "fallback-primary",
+        "fallback-azure",
+        "fallback-openai",
+    )
 
 
 @pytest.mark.parametrize("panel_id", BASELINE_PANELS)
@@ -49,7 +55,9 @@ def test_describe_panels_rephrase(panel_id, monkeypatch):
 
     monkeypatch.setattr(detect, "try_llm_rephrase_summary", fake_rephrase)
     monkeypatch.setattr(llm_mod, "reset_fallback_provider", lambda: None, raising=False)
-    monkeypatch.setattr(llm_mod, "get_last_fallback_provider", lambda: None, raising=False)
+    monkeypatch.setattr(
+        llm_mod, "get_last_fallback_provider", lambda: None, raising=False
+    )
 
     r = client.post(f"/agent/describe/{panel_id}", json={"rephrase": True})
     assert r.status_code == 200

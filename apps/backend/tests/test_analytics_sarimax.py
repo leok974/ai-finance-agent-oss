@@ -1,6 +1,5 @@
 import datetime as dt
 import importlib.util
-import math
 import pytest
 from sqlalchemy.orm import Session
 from sqlalchemy import text as sql_text
@@ -32,34 +31,40 @@ def seed_seasonal_year_plus(db: Session):
         year, month = cur.year, cur.month
         month_key = f"{year:04d}-{month:02d}"
 
-        income_delta = (6.0 if i % 4 == 0 else -4.0 if i % 7 == 0 else 0.0)
-        rows.append({
-            "date": cur,
-            "amount": base_income + income_delta,
-            "merchant": "ACME CO",
-            "category": "Income",
-            "month": month_key,
-        })
+        income_delta = 6.0 if i % 4 == 0 else -4.0 if i % 7 == 0 else 0.0
+        rows.append(
+            {
+                "date": cur,
+                "amount": base_income + income_delta,
+                "merchant": "ACME CO",
+                "category": "Income",
+                "month": month_key,
+            }
+        )
 
         # Groceries mild seasonal pulse every 6 months
         g_delta = 35.0 if i % 6 in (2, 3) else (-25.0 if i % 6 == 5 else 0.0)
-        rows.append({
-            "date": dt.date(year, month, 12),
-            "amount": -(base_grocery + g_delta),
-            "merchant": "GROCER",
-            "category": "Groceries",
-            "month": month_key,
-        })
+        rows.append(
+            {
+                "date": dt.date(year, month, 12),
+                "amount": -(base_grocery + g_delta),
+                "merchant": "GROCER",
+                "category": "Groceries",
+                "month": month_key,
+            }
+        )
 
         # Transport subtle cyclical variation
         t_delta = 4.0 if i % 3 == 0 else (-3.0 if i % 3 == 1 else 0.0)
-        rows.append({
-            "date": dt.date(year, month, 20),
-            "amount": -(base_transport + t_delta),
-            "merchant": "UBER",
-            "category": "Transport",
-            "month": month_key,
-        })
+        rows.append(
+            {
+                "date": dt.date(year, month, 20),
+                "amount": -(base_transport + t_delta),
+                "merchant": "UBER",
+                "category": "Transport",
+                "month": month_key,
+            }
+        )
 
         cur = add_month(cur)
 

@@ -18,5 +18,5 @@ if (-not $cid) {
 
 Write-Host "Pulling model gpt-oss:20b inside container $cid ..."
 docker exec $cid ollama pull gpt-oss:20b
-Write-Host "Installed models:" 
+Write-Host "Installed models:"
 docker exec $cid ollama list

@@ -12,6 +12,7 @@ from .helpers.prom_expo import count_unlabeled, count_labeled, value_for
 #
 # Note: We intentionally avoid asserting on ordering or full label/timestamp formatting.
 
+
 def test_reload_gauge_does_not_duplicate_series():
     c = TestClient(app)
     # Ingest a fake edge metrics payload (length + sha)

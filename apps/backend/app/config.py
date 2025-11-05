@@ -54,6 +54,32 @@ def _env_bool(name: str, default: bool = False) -> bool:
         return default
 
 
+# === ML Suggestion Controls ===
+SUGGEST_ENABLE_SHADOW: bool = _env_bool("SUGGEST_ENABLE_SHADOW", True)
+# 0 | 10% | 50% | 100%
+SUGGEST_USE_MODEL_CANARY: str = os.getenv("SUGGEST_USE_MODEL_CANARY", "0")
+# Per-class thresholds; stringified JSON env wins over defaults
+_DEFAULT_THRESHOLDS = {
+    "Groceries": 0.70,
+    "Dining": 0.75,
+    "Shopping": 0.65,
+    "Transport": 0.65,
+    "Subscriptions": 0.70,
+    "Entertainment": 0.60,
+}
+try:
+    import json as _json
+
+    SUGGEST_THRESHOLDS = (
+        _json.loads(os.getenv("SUGGEST_THRESHOLDS_JSON", "")) or _DEFAULT_THRESHOLDS
+    )
+except Exception:
+    SUGGEST_THRESHOLDS = _DEFAULT_THRESHOLDS
+
+# Calibration toggle (train & serve)
+ML_CALIBRATION_ENABLED: bool = _env_bool("ML_CALIBRATION_ENABLED", True)
+
+
 def _env(name: str, default: str | None = None) -> str | None:
     """Get environment variable with optional default."""
     return os.getenv(name, default)

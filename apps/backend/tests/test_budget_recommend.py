@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from app.orm_models import Transaction
 from app.services.budget_recommend import compute_recommendations
 
+
 def seed_rows(db: Session):
     # 3 months of Groceries & Transport; amounts negative = expenses
     rows = [
@@ -23,6 +24,7 @@ def seed_rows(db: Session):
     ]
     db.add_all(rows)
     db.commit()
+
 
 def test_compute_recommendations_basic(db_session: Session):
     seed_rows(db_session)

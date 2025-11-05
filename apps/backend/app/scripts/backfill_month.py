@@ -16,7 +16,9 @@ def _month_str(d: date) -> str:
     return d.strftime("%Y-%m")
 
 
-def backfill_months(where_null_only: bool = False, target_month: Optional[str] = None) -> int:
+def backfill_months(
+    where_null_only: bool = False, target_month: Optional[str] = None
+) -> int:
     """
     Recompute Transaction.month from Transaction.date.
 
@@ -35,7 +37,7 @@ def backfill_months(where_null_only: bool = False, target_month: Optional[str] =
 
         rows = sess.execute(stmt).all()
 
-        for (tid, d, m) in rows:
+        for tid, d, m in rows:
             if not isinstance(d, date):
                 # Skip bad data
                 continue
@@ -46,9 +48,7 @@ def backfill_months(where_null_only: bool = False, target_month: Optional[str] =
                 continue
 
             sess.execute(
-                update(Transaction)
-                .where(Transaction.id == tid)
-                .values(month=new_month)
+                update(Transaction).where(Transaction.id == tid).values(month=new_month)
             )
             updated += 1
 

@@ -1,5 +1,8 @@
 import pytest
-pytestmark = pytest.mark.skip(reason="Legacy /ml/* endpoints removed; use /agent/tools/*")
+
+pytestmark = pytest.mark.skip(
+    reason="Legacy /ml/* endpoints removed; use /agent/tools/*"
+)
 from fastapi.testclient import TestClient
 
 from app.main import app
@@ -23,7 +26,9 @@ def test_training_excludes_unknown_label():
 
     # Even if there are too few labeled examples to populate many classes,
     # we must never include the 'Unknown' label in the trained model.
-    assert "Unknown" not in classes, f"Unexpected 'Unknown' present in classes: {classes}"
+    assert (
+        "Unknown" not in classes
+    ), f"Unexpected 'Unknown' present in classes: {classes}"
 
 
 @pytest.mark.order(2)
@@ -64,4 +69,6 @@ def test_suggest_never_returns_unknown_label():
         # If the server returns a different shape with no labels, skip that item
         if not labels:
             continue
-        assert all(l != "Unknown" for l in labels), f"Suggestion contains 'Unknown': {labels}"
+        assert all(
+            l != "Unknown" for l in labels
+        ), f"Suggestion contains 'Unknown': {labels}"

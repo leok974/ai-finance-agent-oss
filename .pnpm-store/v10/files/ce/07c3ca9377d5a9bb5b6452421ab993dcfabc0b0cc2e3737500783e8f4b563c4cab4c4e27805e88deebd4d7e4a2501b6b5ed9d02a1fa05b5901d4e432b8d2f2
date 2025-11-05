@@ -3487,7 +3487,7 @@ function requirePrompts$2 () {
 		  args.suggest = args.suggest || byTitle;
 		  args.choices = [].concat(args.choices || []);
 		  return toPrompt('AutocompletePrompt', args);
-		}; 
+		};
 	} (prompts$2));
 	return prompts$2;
 }
@@ -3665,7 +3665,7 @@ function requireAction () {
 
 	action = (key, isSelect) => {
 	  if (key.meta && key.name !== 'escape') return;
-	  
+
 	  if (key.ctrl) {
 	    if (key.name === 'a') return 'first';
 	    if (key.name === 'c') return 'abort';
@@ -3673,7 +3673,7 @@ function requireAction () {
 	    if (key.name === 'e') return 'last';
 	    if (key.name === 'g') return 'reset';
 	  }
-	  
+
 	  if (isSelect) {
 	    if (key.name === 'j') return 'down';
 	    if (key.name === 'k') return 'up';
@@ -3766,28 +3766,28 @@ function requireFigures () {
 	  arrowRight: '→',
 	  radioOn: '◉',
 	  radioOff: '◯',
-	  tick: '✔',	
-	  cross: '✖',	
-	  ellipsis: '…',	
-	  pointerSmall: '›',	
-	  line: '─',	
-	  pointer: '❯'	
-	};	
+	  tick: '✔',
+	  cross: '✖',
+	  ellipsis: '…',
+	  pointerSmall: '›',
+	  line: '─',
+	  pointer: '❯'
+	};
 	const win = {
 	  arrowUp: main.arrowUp,
 	  arrowDown: main.arrowDown,
 	  arrowLeft: main.arrowLeft,
 	  arrowRight: main.arrowRight,
 	  radioOn: '(*)',
-	  radioOff: '( )',	
-	  tick: '√',	
-	  cross: '×',	
-	  ellipsis: '...',	
-	  pointerSmall: '»',	
-	  line: '─',	
-	  pointer: '>'	
-	};	
-	const figures = process.platform === 'win32' ? win : main;	
+	  radioOff: '( )',
+	  tick: '√',
+	  cross: '×',
+	  ellipsis: '...',
+	  pointerSmall: '»',
+	  line: '─',
+	  pointer: '>'
+	};
+	const figures = process.platform === 'win32' ? win : main;
 
 	 figures_1 = figures;
 	return figures_1;
@@ -5745,7 +5745,7 @@ function requireAutocomplete () {
 	    if (this.clearFirst && this.input.length > 0) {
 	      this.reset();
 	    } else {
-	      this.done = this.exited = true; 
+	      this.done = this.exited = true;
 	      this.aborted = false;
 	      this.fire();
 	      this.render();
@@ -6439,7 +6439,7 @@ function requirePrompts$1 () {
 		  args.suggest = args.suggest || byTitle;
 		  args.choices = [].concat(args.choices || []);
 		  return toPrompt('AutocompletePrompt', args);
-		}; 
+		};
 	} (prompts$1));
 	return prompts$1;
 }

@@ -10,11 +10,12 @@ lazy import on first use.
 from importlib import import_module
 from typing import Any
 
+
 def __getattr__(name: str) -> Any:  # pragma: no cover - thin loader
-	if name == "route_to_tool":
-		mod = import_module("app.services.agent_tools.core")
-		return getattr(mod, name)
-	raise AttributeError(name)
+    if name == "route_to_tool":
+        mod = import_module("app.services.agent_tools.core")
+        return getattr(mod, name)
+    raise AttributeError(name)
+
 
 __all__ = ["route_to_tool"]
-

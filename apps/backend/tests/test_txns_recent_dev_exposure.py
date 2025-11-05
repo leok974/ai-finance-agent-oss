@@ -1,4 +1,3 @@
-import os
 from datetime import date
 from fastapi.testclient import TestClient
 
@@ -7,18 +6,21 @@ from app.db import get_db
 from app.models import Transaction
 from app.utils import env
 
+
 # Helper: make API use the same db_session fixture
 def _override_db(db_session):
     def _get_db():
         yield db_session
+
     app.dependency_overrides[get_db] = _get_db
+
 
 def _seed_txn(db_session, merchant="Café—Gamma", desc="Café—Gamma latte"):
     t = Transaction(
         date=date(2025, 8, 15),
         amount=-9.99,
-    description=desc,
-    merchant=merchant,
+        description=desc,
+        merchant=merchant,
         account="acc",
         month="2025-08",
         category=None,
@@ -28,6 +30,7 @@ def _seed_txn(db_session, merchant="Café—Gamma", desc="Café—Gamma latte"):
     db_session.commit()
     db_session.refresh(t)
     return t
+
 
 def test_txns_recent_hides_merchant_canonical_in_prod(db_session, monkeypatch):
     _override_db(db_session)
@@ -51,6 +54,7 @@ def test_txns_recent_hides_merchant_canonical_in_prod(db_session, monkeypatch):
     assert "merchant" in row and "description" in row
     # DEV-only field must be hidden in prod
     assert "merchant_canonical" not in row
+
 
 def test_txns_recent_exposes_merchant_canonical_in_dev(db_session, monkeypatch):
     _override_db(db_session)

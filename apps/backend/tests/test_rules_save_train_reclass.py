@@ -1,4 +1,3 @@
-import json
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -7,12 +6,14 @@ from fastapi.testclient import TestClient
 from app.routers.rules import router as rules_router
 from app.database import get_db
 
+
 # ---- Test app wiring (standalone; no full app needed) ----
 @pytest.fixture(scope="session")
 def test_app():
     app = FastAPI()
     app.include_router(rules_router)
     return app
+
 
 @pytest.fixture()
 def client(test_app):
@@ -22,8 +23,11 @@ def client(test_app):
         yield c
     test_app.dependency_overrides.clear()
 
+
 # ---- Helpers ----
-def payload(month="2025-09", name="Streaming", like="NETFLIX", category="Subscriptions"):
+def payload(
+    month="2025-09", name="Streaming", like="NETFLIX", category="Subscriptions"
+):
     return {
         "rule": {
             "name": name,
@@ -33,7 +37,9 @@ def payload(month="2025-09", name="Streaming", like="NETFLIX", category="Subscri
         "month": month,
     }
 
+
 # ---- Tests ----
+
 
 def test_save_train_reclass_happy_path(monkeypatch, client):
     # Stub services
@@ -63,7 +69,9 @@ def test_save_train_reclass_happy_path(monkeypatch, client):
 
     monkeypatch.setattr(rules_service, "create_rule", fake_create_rule)
     monkeypatch.setattr(ml_train_service, "retrain_model", fake_retrain_model)
-    monkeypatch.setattr(txns_service, "reclassify_transactions", fake_reclassify_transactions)
+    monkeypatch.setattr(
+        txns_service, "reclassify_transactions", fake_reclassify_transactions
+    )
 
     resp = client.post("/rules/save-train-reclass", json=payload())
     assert resp.status_code == 200, resp.text
@@ -93,7 +101,9 @@ def test_training_failure_is_non_fatal(monkeypatch, client):
 
     monkeypatch.setattr(rules_service, "create_rule", fake_create_rule)
     monkeypatch.setattr(ml_train_service, "retrain_model", fake_retrain_model)
-    monkeypatch.setattr(txns_service, "reclassify_transactions", fake_reclassify_transactions)
+    monkeypatch.setattr(
+        txns_service, "reclassify_transactions", fake_reclassify_transactions
+    )
 
     resp = client.post("/rules/save-train-reclass", json=payload())
     assert resp.status_code == 200, resp.text
@@ -108,7 +118,9 @@ def test_invalid_month_rejected(monkeypatch, client):
 
     monkeypatch.setattr(rules_service, "create_rule", lambda db, r: None)
     monkeypatch.setattr(ml_train_service, "retrain_model", lambda db: None)
-    monkeypatch.setattr(txns_service, "reclassify_transactions", lambda db, month=None: 0)
+    monkeypatch.setattr(
+        txns_service, "reclassify_transactions", lambda db, month=None: 0
+    )
 
     bad = payload(month="2025-13")  # invalid
     resp = client.post("/rules/save-train-reclass", json=bad)

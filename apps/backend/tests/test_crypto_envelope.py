@@ -1,5 +1,4 @@
 from app.services.crypto import EnvelopeCrypto
-import base64
 import pytest
 
 

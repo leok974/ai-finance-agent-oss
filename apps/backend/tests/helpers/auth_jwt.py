@@ -15,18 +15,27 @@ CANDIDATE_PAYLOADS = (
 )
 CANDIDATE_COOKIE_NAMES = ("access_token", "access", "jwt", "session")
 CANDIDATE_CSRF_CLAIMS = ("csrf", "xsrf", "csrf_token", "csrfClaim", "X-CSRF-Token")
-CANDIDATE_ENV_SECRETS = ("JWT_SECRET", "AUTH_SECRET", "SECRET_KEY", "APP_SECRET_KEY", "LM_JWT_SECRET")
+CANDIDATE_ENV_SECRETS = (
+    "JWT_SECRET",
+    "AUTH_SECRET",
+    "SECRET_KEY",
+    "APP_SECRET_KEY",
+    "LM_JWT_SECRET",
+)
 CSRF_HEADER = "X-CSRF-Token"
 
 # ----------------- JWT libs (PyJWT or python-jose) -----------------
 
+
 def _jwt_lib():
     try:
         import jwt as pyjwt  # PyJWT
+
         return ("pyjwt", pyjwt)
     except Exception:
         try:
             from jose import jwt as jose_jwt
+
             return ("jose", jose_jwt)
         except Exception:
             return (None, None)
@@ -37,10 +46,14 @@ def jwt_encode(payload: dict, secret: str, alg: str = "HS256") -> str:
     if not lib:
         # Provide a pure-Python HS256 fallback (mirrors minimal server strategy)
         if alg != "HS256":
-            raise RuntimeError("Fallback signer only supports HS256 and no JWT lib installed")
+            raise RuntimeError(
+                "Fallback signer only supports HS256 and no JWT lib installed"
+            )
         header = {"alg": alg, "typ": "JWT"}
+
         def _b64u(b: bytes) -> str:
             return base64.urlsafe_b64encode(b).rstrip(b"=").decode("ascii")
+
         h = _b64u(json.dumps(header, separators=(",", ":"), sort_keys=True).encode())
         p = _b64u(json.dumps(payload, separators=(",", ":"), sort_keys=True).encode())
         msg = f"{h}.{p}".encode()
@@ -58,17 +71,21 @@ def jwt_claims_unverified(token: str) -> Dict:
     if not lib:
         # Minimal parse for fallback: split and decode payload only
         try:
-            _h, p, _s = token.split('.')
-            pad = '=' * (-len(p) % 4)
-            raw = base64.urlsafe_b64decode(p + pad).decode('utf-8')
+            _h, p, _s = token.split(".")
+            pad = "=" * (-len(p) % 4)
+            raw = base64.urlsafe_b64decode(p + pad).decode("utf-8")
             return json.loads(raw)
         except Exception:
             return {}
     if name == "pyjwt":
-        return lib.decode(token, options={"verify_signature": False, "verify_exp": False})
+        return lib.decode(
+            token, options={"verify_signature": False, "verify_exp": False}
+        )
     return lib.get_unverified_claims(token)
 
+
 # ----------------- Detection helpers -----------------
+
 
 def detect_login(client) -> Optional[str]:
     """Return the first login endpoint that exists (OPTIONS/GET probe)."""
@@ -82,7 +99,9 @@ def detect_login(client) -> Optional[str]:
     return None
 
 
-def try_login(client, username: str, password: str) -> Tuple[Optional[str], Optional[str]]:
+def try_login(
+    client, username: str, password: str
+) -> Tuple[Optional[str], Optional[str]]:
     """
     Attempt a login using common payload shapes.
     Returns (access_token or None, cookie_name or None).
@@ -155,7 +174,9 @@ def preferred_csrf_key(client) -> Tuple[str, Optional[str], Optional[str]]:
     claim = detect_csrf_claim_from_token(token) or "csrf"
     return (claim, cookie_name, token)
 
+
 # ----------------- Server secret alignment (optional) -----------------
+
 
 def patch_server_secret(monkeypatch, secret: str):
     for k in CANDIDATE_ENV_SECRETS:
@@ -173,7 +194,15 @@ def patch_server_secret(monkeypatch, secret: str):
         pass
 
 
-def mint_access(sub: str, secret: str, csrf_key: str, csrf_value: str, ttl_seconds: int = 300) -> str:
+def mint_access(
+    sub: str, secret: str, csrf_key: str, csrf_value: str, ttl_seconds: int = 300
+) -> str:
     now = int(time.time())
-    payload = {"sub": sub, "iat": now - 5, "exp": now + ttl_seconds, csrf_key: csrf_value, "type": "access"}
+    payload = {
+        "sub": sub,
+        "iat": now - 5,
+        "exp": now + ttl_seconds,
+        csrf_key: csrf_value,
+        "type": "access",
+    }
     return jwt_encode(payload, secret, alg="HS256")

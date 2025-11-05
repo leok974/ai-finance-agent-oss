@@ -1,5 +1,4 @@
 import uuid
-import pytest
 from fastapi.testclient import TestClient
 from fastapi import FastAPI
 from app.routers.agent_tools_rules_save import router, _IDEM
@@ -20,7 +19,9 @@ def test_idempotency_initial_store(monkeypatch, tmp_path):
     key = str(uuid.uuid4())
 
     payload = {"rule": {"name": "X", "when": {}, "then": {}}}
-    r = client.post("/agent/tools/rules/save", json=payload, headers={"Idempotency-Key": key})
+    r = client.post(
+        "/agent/tools/rules/save", json=payload, headers={"Idempotency-Key": key}
+    )
     assert r.status_code == 200
     data = r.json()
     assert data["idempotency_reused"] is False
@@ -28,7 +29,9 @@ def test_idempotency_initial_store(monkeypatch, tmp_path):
     assert key in _IDEM._cache
 
     # Second request triggers reuse branch (already covered elsewhere, but harmless)
-    r2 = client.post("/agent/tools/rules/save", json=payload, headers={"Idempotency-Key": key})
+    r2 = client.post(
+        "/agent/tools/rules/save", json=payload, headers={"Idempotency-Key": key}
+    )
     assert r2.status_code == 200
     data2 = r2.json()
     assert data2["idempotency_reused"] is True

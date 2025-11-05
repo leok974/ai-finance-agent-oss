@@ -3,7 +3,9 @@ from typing import Dict, Any, Optional
 import os
 import time
 
-from app.utils.auth import get_current_user as _get_current_user  # returns User or raises
+from app.utils.auth import (
+    get_current_user as _get_current_user,
+)  # returns User or raises
 from app.orm_models import User
 from app.status_utils import (
     check_db,

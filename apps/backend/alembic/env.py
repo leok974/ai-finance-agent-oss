@@ -1,7 +1,8 @@
 from logging.config import fileConfig
 from alembic import context
 from sqlalchemy import engine_from_config, pool, text
-import os, sys
+import os
+import sys
 
 # Ensure the 'app' package is importable when running Alembic from this folder
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -14,6 +15,7 @@ import app.models  # noqa: F401  # register ORM tables via unified surface
 # NEW: pull the URL from your app settings/environment
 try:
     from app.config import settings
+
     db_url = getattr(settings, "DATABASE_URL", "") or os.getenv("DATABASE_URL", "")
 except Exception:
     db_url = os.getenv("DATABASE_URL", "")
@@ -30,6 +32,7 @@ if config.config_file_name is not None:
 
 target_metadata = Base.metadata
 
+
 def run_migrations_offline():
     context.configure(
         url=config.get_main_option("sqlalchemy.url"),
@@ -39,6 +42,7 @@ def run_migrations_offline():
     )
     with context.begin_transaction():
         context.run_migrations()
+
 
 def _ensure_alembic_version_width(connection):
     """Ensure alembic_version.version_num can store long revision ids.
@@ -90,6 +94,7 @@ def run_migrations_online():
         )
         with context.begin_transaction():
             context.run_migrations()
+
 
 if context.is_offline_mode():
     run_migrations_offline()

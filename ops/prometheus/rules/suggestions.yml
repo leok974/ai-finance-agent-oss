@@ -1,0 +1,89 @@
+groups:
+- name: lm-suggestions
+  interval: 30s
+  rules:
+  # Alert on any 5xx errors from ML suggestions endpoint
+  - alert: LmSuggestionsHigh5xx
+    expr: increase(lm_http_errors_total{route="/ml/suggestions"}[5m]) > 0
+    for: 10m
+    labels:
+      severity: page
+      component: ml-suggestions
+    annotations:
+      summary: "5xx errors on /ml/suggestions endpoint"
+      description: |
+        Non-zero 5xx errors detected on ML suggestions API in the last 5 minutes.
+        Current rate: {{ $value | humanize }}
+        Route: {{ $labels.route }}
+        
+        Check backend logs for detailed error traces.
+
+  # Alert when suggestion accept rate drops below acceptable threshold
+  - alert: LmSuggestionsLowAcceptRate
+    expr: |
+      (
+        sum(rate(lm_suggestions_accept_total[15m]))
+        /
+        (
+          sum(rate(lm_suggestions_accept_total[15m])) + 
+          sum(rate(lm_suggestions_reject_total[15m])) + 
+          1e-6
+        )
+      ) < 0.45
+    for: 30m
+    labels:
+      severity: warn
+      component: ml-suggestions
+    annotations:
+      summary: "Low accept rate for ML suggestions"
+      description: |
+        Suggestion accept rate has dropped below 45% for 30 minutes.
+        Current rate: {{ $value | humanizePercentage }}
+        
+        This may indicate:
+        - Model drift or degradation
+        - Poor heuristic rules
+        - User behavior changes
+        
+        Review recent suggestion quality and consider model retraining.
+
+  # Alert when suggestion latency is consistently high
+  - alert: LmSuggestionsHighLatency
+    expr: histogram_quantile(0.95, rate(lm_suggestions_latency_ms_bucket[5m])) > 1000
+    for: 15m
+    labels:
+      severity: warn
+      component: ml-suggestions
+    annotations:
+      summary: "High latency for ML suggestions"
+      description: |
+        95th percentile latency exceeds 1000ms for 15 minutes.
+        Current p95: {{ $value | humanize }}ms
+        
+        Check:
+        - Database query performance
+        - Model inference time
+        - Transaction volume
+
+  # Alert when suggestion coverage drops (fewer transactions getting suggestions)
+  - alert: LmSuggestionsCoverageDrop
+    expr: |
+      (
+        rate(lm_suggestions_covered_total[15m]) 
+        / 
+        (rate(lm_suggestions_total[15m]) + 1e-6)
+      ) < 0.70
+    for: 30m
+    labels:
+      severity: warn
+      component: ml-suggestions
+    annotations:
+      summary: "Low suggestion coverage"
+      description: |
+        Less than 70% of requests are receiving suggestions for 30 minutes.
+        Current coverage: {{ $value | humanizePercentage }}
+        
+        Possible causes:
+        - New transaction types not covered by rules
+        - Missing merchant priors
+        - Model failing to generate predictions

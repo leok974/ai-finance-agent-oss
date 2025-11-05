@@ -1,0 +1,35 @@
+groups:
+  - name: dbt-freshness
+    rules:
+      - alert: SourceStaleTransactions
+        expr: (time() - max by(table) (dbt_source_loaded_at_seconds{table="transactions"})) > 2*24*3600
+        for: 30m
+        labels: { severity: warning }
+        annotations:
+          summary: "transactions source is stale (>2 days)"
+          runbook: "https://github.com/leok974/ai-finance-agent-oss/blob/main/DATA_QUALITY_COMPLETE.md#freshness-check-fails"
+
+      - alert: SourceStaleTransactionLabels
+        expr: (time() - max by(table) (dbt_source_loaded_at_seconds{table="transaction_labels"})) > 2*24*3600
+        for: 30m
+        labels: { severity: warning }
+        annotations:
+          summary: "transaction_labels source is stale (>2 days)"
+          runbook: "https://github.com/leok974/ai-finance-agent-oss/blob/main/DATA_QUALITY_COMPLETE.md#freshness-check-fails"
+
+      - alert: SourceStaleMLFeatures
+        expr: (time() - max by(table) (dbt_source_loaded_at_seconds{table="ml_features"})) > 2*24*3600
+        for: 30m
+        labels: { severity: warning }
+        annotations:
+          summary: "ml_features source is stale (>2 days)"
+          runbook: "https://github.com/leok974/ai-finance-agent-oss/blob/main/DATA_QUALITY_COMPLETE.md#freshness-check-fails"
+
+      - alert: SourceCriticalStale
+        expr: (time() - max by(table) (dbt_source_loaded_at_seconds)) > 5*24*3600
+        for: 1h
+        labels: { severity: critical }
+        annotations:
+          summary: "Critical: Source {{ $labels.table }} stale >5 days"
+          description: "Table {{ $labels.table }} hasn't been updated in over 5 days. ML training should be blocked."
+          runbook: "https://github.com/leok974/ai-finance-agent-oss/blob/main/DATA_QUALITY_COMPLETE.md#freshness-check-fails"

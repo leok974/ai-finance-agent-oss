@@ -44,9 +44,9 @@ A concise, high‑signal summary of the current hardening posture for this repos
 
 ---
 ## 3. Network & Exposure
-- Only Nginx is intended to face external traffic (typically via Cloudflare Tunnel / reverse proxy). 
+- Only Nginx is intended to face external traffic (typically via Cloudflare Tunnel / reverse proxy).
 - Backend is *not* directly published (internal Docker network name `backend`).
-- Health & readiness separation: `/live` (no DB/crypto) vs `/healthz` (full system checks). 
+- Health & readiness separation: `/live` (no DB/crypto) vs `/healthz` (full system checks).
 - Strict Host enforcement reduces Host header poisoning and SSRF vectors relying on ambiguous routing.
 
 ---
@@ -73,7 +73,7 @@ Recommended (future):
 ---
 ## 6. Cryptography (Envelope Model)
 - Sensitive columns encrypted with a Data Encryption Key (DEK).
-- DEK wrapped by either: 
+- DEK wrapped by either:
   - Environment-supplied KEK (AES-GCM) — fastest bootstrap.
   - GCP KMS key for managed rotation & central policy.
 - Disabled crypto is informational: system still serves non-sensitive endpoints without failing health.
@@ -123,7 +123,7 @@ Out-of-scope examples (unless they lead to real impact):
 
 ---
 ## 11. Contact & Attribution
-Primary maintainer: repository owner (`leok974`).  
+Primary maintainer: repository owner (`leok974`).
 Please include the term "SECURITY" in any subject lines or advisory titles.
 
 ---
@@ -185,4 +185,3 @@ Example Compose Snippet:
 Future Enhancements:
 - Add optional `/_metrics` internal endpoint (or sidecar) exporting Nginx stub status behind a network policy.
 - Introduce automated conformance check (CI script) to flag Nginx services missing required hardening fields.
-

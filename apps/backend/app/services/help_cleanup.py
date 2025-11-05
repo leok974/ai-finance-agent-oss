@@ -3,6 +3,7 @@
 Runs periodically (default every 30 minutes) removing rows where expires_at < now.
 Skips execution entirely if no rows found or an exception occurs (logs once per failure).
 """
+
 from __future__ import annotations
 import asyncio
 import logging
@@ -13,6 +14,7 @@ from app.db import SessionLocal
 from app.orm_models import HelpCache
 
 log = logging.getLogger("help.cleanup")
+
 
 async def help_cache_cleanup_loop(interval_seconds: int = 1800):  # 30m default
     # Run forever until task is cancelled at shutdown.

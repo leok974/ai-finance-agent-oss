@@ -137,7 +137,9 @@ def compute_metrics(
     return pos, rate, (last_seen or end_dt)
 
 
-def evaluate_candidate(db: Session, merchant_norm: str, category: str) -> Optional[RuleSuggestion]:
+def evaluate_candidate(
+    db: Session, merchant_norm: str, category: str
+) -> Optional[RuleSuggestion]:
     """Upsert RuleSuggestion based on recent feedback.
 
     Strategy:
@@ -149,12 +151,21 @@ def evaluate_candidate(db: Session, merchant_norm: str, category: str) -> Option
     # Upsert row first so we can increment when metrics aren't derivable
     row = (
         db.query(RuleSuggestion)
-        .filter(RuleSuggestion.merchant_norm == merchant_norm, RuleSuggestion.category == category)
+        .filter(
+            RuleSuggestion.merchant_norm == merchant_norm,
+            RuleSuggestion.category == category,
+        )
         .one_or_none()
     )
     # created flag omitted (was previously unused)
     if row is None:
-        row = RuleSuggestion(merchant_norm=merchant_norm, category=category, support_count=0, positive_rate=1.0, last_seen=now)
+        row = RuleSuggestion(
+            merchant_norm=merchant_norm,
+            category=category,
+            support_count=0,
+            positive_rate=1.0,
+            last_seen=now,
+        )
         db.add(row)
     # row created
 
@@ -221,8 +232,12 @@ def mine_suggestions(
                 Feedback.label != "",
             )
         )
-    .group_by(Transaction.merchant_canonical, Feedback.label)
-        .order_by(func.count(Feedback.id).desc(), Transaction.merchant_canonical.asc(), Feedback.label.asc())
+        .group_by(Transaction.merchant_canonical, Feedback.label)
+        .order_by(
+            func.count(Feedback.id).desc(),
+            Transaction.merchant_canonical.asc(),
+            Feedback.label.asc(),
+        )
     )
 
     rows = agg_q.all()
@@ -231,7 +246,9 @@ def mine_suggestions(
 
     # DB-backed ignored pairs
     try:
-        ignored_pairs: Set[Tuple[str, str]] = set(db.query(_RSI.merchant, _RSI.category).all())
+        ignored_pairs: Set[Tuple[str, str]] = set(
+            db.query(_RSI.merchant, _RSI.category).all()
+        )
     except Exception:
         ignored_pairs = set()
 
@@ -279,7 +296,9 @@ def mine_suggestions(
         sample_ids = [i for (i,) in sample_rows]
 
         recent_date = db.query(func.max(Transaction.date)).scalar()
-        month_key = f"{recent_date.year:04d}-{recent_date.month:02d}" if recent_date else None
+        month_key = (
+            f"{recent_date.year:04d}-{recent_date.month:02d}" if recent_date else None
+        )
 
         suggestions.append(
             Suggestion(
@@ -298,7 +317,9 @@ def mine_suggestions(
         if cur is None or s.count > cur.count:
             best_by_merchant[s.merchant] = s
 
-    ordered = sorted(best_by_merchant.values(), key=lambda s: s.count, reverse=True)[:max_results]
+    ordered = sorted(best_by_merchant.values(), key=lambda s: s.count, reverse=True)[
+        :max_results
+    ]
     return [s.to_dict() for s in ordered]
 
 
@@ -324,14 +345,18 @@ def list_suggestions(
     rows = q.offset(int(offset)).limit(int(limit)).all()
     out: List[Dict[str, Any]] = []
     for r in rows:
-        out.append({
-            "id": r.id,
-            "merchant_norm": r.merchant_norm,
-            "category": r.category,
-            "support": getattr(r, "support_count", None),
-            "positive_rate": float(getattr(r, "positive_rate", 0.0) or 0.0),
-            "last_seen": (r.last_seen.isoformat() if getattr(r, "last_seen", None) else None),
-        })
+        out.append(
+            {
+                "id": r.id,
+                "merchant_norm": r.merchant_norm,
+                "category": r.category,
+                "support": getattr(r, "support_count", None),
+                "positive_rate": float(getattr(r, "positive_rate", 0.0) or 0.0),
+                "last_seen": (
+                    r.last_seen.isoformat() if getattr(r, "last_seen", None) else None
+                ),
+            }
+        )
     return out
 
 

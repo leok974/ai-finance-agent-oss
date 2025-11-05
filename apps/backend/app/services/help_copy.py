@@ -27,4 +27,3 @@ def get_static_help_for_panel(panel_id: str) -> str:
 
 
 __all__ = ["get_static_help_for_panel"]
-

@@ -1,9 +1,20 @@
 from __future__ import annotations
-from typing import List, Dict, Any
 
 RULES_SEED = [
-    {"id": "seed-1", "name": "Groceries", "pattern": "aldi|kroger", "category": "groceries", "enabled": True},
-    {"id": "seed-2", "name": "Rides",     "pattern": "uber|lyft",   "category": "transport", "enabled": True},
+    {
+        "id": "seed-1",
+        "name": "Groceries",
+        "pattern": "aldi|kroger",
+        "category": "groceries",
+        "enabled": True,
+    },
+    {
+        "id": "seed-2",
+        "name": "Rides",
+        "pattern": "uber|lyft",
+        "category": "transport",
+        "enabled": True,
+    },
 ]
 
 CRUD_CANDIDATES = (
@@ -13,6 +24,7 @@ CRUD_CANDIDATES = (
     "/api/rules",
 )
 
+
 def seed_via_crud(client) -> bool:
     """Attempt to persist initial rules using an available CRUD-like endpoint."""
     for path in CRUD_CANDIDATES:
@@ -20,6 +32,7 @@ def seed_via_crud(client) -> bool:
         if r.status_code not in (404, 405):
             return r.status_code < 500
     return False
+
 
 def seed_via_app_state(client) -> None:
     """Fallback: seed directly onto app.state supporting common shapes."""
@@ -34,6 +47,7 @@ def seed_via_app_state(client) -> None:
         app.state.rules_store = store
     else:
         app.state.rules = RULES_SEED.copy()
+
 
 def ensure_seeded_rules(client) -> None:
     if not seed_via_crud(client):

@@ -323,7 +323,7 @@
 		    });
 		    return styleObject;
 		}
-		
+
 		return cjs$1;
 	}
 
@@ -379,7 +379,7 @@
 		    return property.replace(HYPHEN_REGEX, capitalize);
 		};
 		utilities.camelCase = camelCase;
-		
+
 		return utilities;
 	}
 
@@ -412,7 +412,7 @@
 		}
 		StyleToJS.default = StyleToJS;
 		cjs = StyleToJS;
-		
+
 		return cjs;
 	}
 

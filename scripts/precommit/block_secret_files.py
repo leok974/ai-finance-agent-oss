@@ -22,10 +22,16 @@ def main(argv: list[str]) -> int:
             blocked.append(raw_path)
 
     if blocked:
-        print("Refusing to commit files that look like wrapped keys or service account credentials:", file=sys.stderr)
+        print(
+            "Refusing to commit files that look like wrapped keys or service account credentials:",
+            file=sys.stderr,
+        )
         for entry in blocked:
             print(f"  - {entry}", file=sys.stderr)
-        print("Move them to a secrets location or ensure they stay ignored.", file=sys.stderr)
+        print(
+            "Move them to a secrets location or ensure they stay ignored.",
+            file=sys.stderr,
+        )
         return 1
     return 0
 

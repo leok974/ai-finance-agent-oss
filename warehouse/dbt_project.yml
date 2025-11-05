@@ -1,0 +1,26 @@
+name: "ledgermind"
+version: "1.0.0"
+config-version: 2
+
+profile: "ledgermind"  # Define in ~/.dbt/profiles.yml or env-based
+
+model-paths: ["models"]
+macro-paths: ["macros"]
+seed-paths: ["seeds"]
+
+quoting:
+  database: false
+  schema: false
+  identifier: false
+
+models:
+  ledgermind:
+    +persist_docs: { relation: true, columns: true }
+    +on_schema_change: ignore
+    staging:
+      +materialized: view
+    marts:
+      +materialized: table
+      # BigQuery configs (remove for Postgres):
+      # +cluster_by: ["mode", "model_id"]
+      # +partition_by: { field: created_date, data_type: date }

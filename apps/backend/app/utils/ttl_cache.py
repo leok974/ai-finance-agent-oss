@@ -2,6 +2,7 @@ from __future__ import annotations
 import time
 from typing import Any, Callable, Tuple
 
+
 class TTLCache:
     def __init__(self):
         self._store: dict[str, Tuple[float, Any]] = {}

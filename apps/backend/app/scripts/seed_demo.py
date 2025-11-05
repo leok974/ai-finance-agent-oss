@@ -83,7 +83,9 @@ def seed(csv_path: Path, replace: bool = False) -> int:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Seed demo transactions into the current DATABASE_URL.")
+    parser = argparse.ArgumentParser(
+        description="Seed demo transactions into the current DATABASE_URL."
+    )
     parser.add_argument(
         "csv",
         nargs="?",
@@ -91,7 +93,11 @@ def main():
         default=None,
         help="Path to CSV (defaults to app/data/samples/transactions_sample.csv)",
     )
-    parser.add_argument("--replace", action="store_true", help="Delete existing transactions before seeding")
+    parser.add_argument(
+        "--replace",
+        action="store_true",
+        help="Delete existing transactions before seeding",
+    )
     args = parser.parse_args()
 
     csv_path = args.csv or _default_sample_csv()

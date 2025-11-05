@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { useState, useEffect, useRef, useId } from 'react';
+import { useState, useEffect, useRef, useId, useMemo } from 'react';
 import { fetchCardExplain } from '@/lib/agent/explain';
 import { fetchAgentStatus } from '@/lib/agent/status';
 import { useLlmStore } from '@/state/llmStore';
@@ -63,6 +63,8 @@ export default function CardHelpTooltip({
   const [whyErr, setWhyErr] = useState<string | null>(null);
   const [loadingWhy, setLoadingWhy] = useState(false);
   const [llmStatus, setLlmStatus] = useState<{ llm_ok: boolean } | null>(null);
+  const [reasons, setReasons] = useState<string[]>([]);
+  const [grounded, setGrounded] = useState<boolean | undefined>(undefined);
   const popId = useId();
 
   const modelsOk = useLlmStore((s) => s.modelsOk);
@@ -86,24 +88,37 @@ export default function CardHelpTooltip({
   }
 
   // Fetch explanation when switching to "why" tab
+  // Debounced to prevent spam
+  const debouncedFetch = useMemo(() => {
+    let timer: NodeJS.Timeout;
+    return (fn: () => void) => {
+      clearTimeout(timer);
+      timer = setTimeout(fn, 250);
+    };
+  }, []);
+
   async function ensureExplain() {
     if (why || loadingWhy || whyErr) return;
 
-    setLoadingWhy(true);
-    setWhyErr(null);
+    debouncedFetch(async () => {
+      setLoadingWhy(true);
+      setWhyErr(null);
 
-    try {
-      const res = await fetchCardExplain({ cardId, month });
-      if (res?.explain) {
-        setWhy(res.explain);
-      } else {
-        setWhyErr('No explanation available.');
+      try {
+        const res = await fetchCardExplain({ cardId, month });
+        if (res?.explain) {
+          setWhy(res.explain);
+          setReasons(res.reasons || []);
+          setGrounded(res.grounded);
+        } else {
+          setWhyErr('No explanation available.');
+        }
+      } catch {
+        setWhyErr('The language model is temporarily unavailable.');
+      } finally {
+        setLoadingWhy(false);
       }
-    } catch {
-      setWhyErr('The language model is temporarily unavailable.');
-    } finally {
-      setLoadingWhy(false);
-    }
+    });
   }
 
   // Switch to Why tab and try to load explanation
@@ -214,6 +229,20 @@ export default function CardHelpTooltip({
             {activeTab === 'what' && (
               <span className="ml-auto text-[10px] uppercase tracking-wide opacity-60">
                 DETERMINISTIC
+              </span>
+            )}
+            {activeTab === 'why' && reasons.length > 0 && (
+              <span className="ml-auto text-[10px] uppercase tracking-wide opacity-60">
+                {reasons.includes('heuristic') && (
+                  <span className="px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300">
+                    HEURISTIC
+                  </span>
+                )}
+                {grounded && (
+                  <span className="px-1.5 py-0.5 rounded bg-sky-100 dark:bg-sky-900/30 text-sky-700 dark:text-sky-300 ml-1">
+                    AI-GROUNDED
+                  </span>
+                )}
               </span>
             )}
           </div>

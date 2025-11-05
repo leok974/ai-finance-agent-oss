@@ -1,7 +1,7 @@
-import os
 from fastapi.testclient import TestClient
 
 from app.main import app
+
 
 def test_agent_fallback_header_and_payload(monkeypatch):
     # Force stub path (deterministic) without invoking real LLM.
@@ -9,7 +9,9 @@ def test_agent_fallback_header_and_payload(monkeypatch):
     monkeypatch.setenv("TESTING", "1")
 
     client = TestClient(app)
-    resp = client.post("/agent/chat", json={"messages": [{"role": "user", "content": "hi"}]})
+    resp = client.post(
+        "/agent/chat", json={"messages": [{"role": "user", "content": "hi"}]}
+    )
     assert resp.status_code == 200
 
     hdr = resp.headers.get("X-LLM-Path")

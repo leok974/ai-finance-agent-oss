@@ -14,13 +14,20 @@ from app.services.ml_train_service import incremental_update_rows, latest_model_
 router = APIRouter()
 from app.utils.csrf import csrf_protect
 
+
 def _fetch_txn_row(db: Session, any_id: int):
     """Fetch a transaction row by DB id (raw SQL)."""
     # 1) DB primary key
-    row = db.execute(
-        text("select id, merchant, description, amount from transactions where id=:id"),
-        {"id": any_id},
-    ).mappings().first()
+    row = (
+        db.execute(
+            text(
+                "select id, merchant, description, amount from transactions where id=:id"
+            ),
+            {"id": any_id},
+        )
+        .mappings()
+        .first()
+    )
     if row:
         return row
     # 2) fallback to external txn_id only if present; comment out by default
@@ -32,6 +39,7 @@ def _fetch_txn_row(db: Session, any_id: int):
     #     return row
     return None
 
+
 class TrainParams(BaseModel):
     min_samples: int | None = 6
     test_size: float | None = 0.2
@@ -41,9 +49,12 @@ class TrainParams(BaseModel):
 # Typed feedback for suggestion acceptance/rejection
 class FeedbackInSuggest(BaseModel):
     txn_id: int = Field(..., description="Transaction id to which feedback applies")
-    merchant: Optional[str] = Field(None, description="Merchant name override (defaults to txn.merchant)")
+    merchant: Optional[str] = Field(
+        None, description="Merchant name override (defaults to txn.merchant)"
+    )
     category: str = Field(..., min_length=1)
     action: Literal["accept", "reject"]
+
 
 @router.post("/ml/train", dependencies=[Depends(csrf_protect)])
 def train_model(params: TrainParams, db: Session = Depends(get_db)) -> Dict[str, Any]:
@@ -60,6 +71,7 @@ def train_model(params: TrainParams, db: Session = Depends(get_db)) -> Dict[str,
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
 @router.get("/ml/status")
 def ml_status(db: Session = Depends(get_db)) -> Dict[str, Any]:
     info: Dict[str, Any] = {"ok": True}
@@ -72,17 +84,25 @@ def ml_status(db: Session = Depends(get_db)) -> Dict[str, Any]:
     try:
         import os
         import joblib
-        model_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "data", "models", "latest.joblib"))
+
+        model_path = os.path.abspath(
+            os.path.join(
+                os.path.dirname(__file__), "..", "data", "models", "latest.joblib"
+            )
+        )
         if os.path.exists(model_path):
             pipe = joblib.load(model_path)
             steps = getattr(pipe, "named_steps", {}) or {}
             clf = steps.get("clf")
-            info["classes"] = sorted(list(getattr(clf, "classes_", []))) if clf is not None else []
+            info["classes"] = (
+                sorted(list(getattr(clf, "classes_", []))) if clf is not None else []
+            )
         else:
             info["classes"] = []
     except Exception:
         info["classes"] = []
     return info
+
 
 @router.post("/ml/selftest", dependencies=[Depends(csrf_protect)])
 def ml_selftest(db: Session = Depends(get_db)) -> Dict[str, Any]:
@@ -94,7 +114,9 @@ def ml_selftest(db: Session = Depends(get_db)) -> Dict[str, Any]:
       - Incrementally update to label 'Coffee'
       - Verify model mtime bumped and status sane
     """
-    import os, time
+    import os
+    import time
+
     # 0) Read current status (classes + feedback_count)
     before = ml_status(db)
     classes = before.get("classes") or []
@@ -125,7 +147,8 @@ def ml_selftest(db: Session = Depends(get_db)) -> Dict[str, Any]:
     txn = (
         db.query(Transaction)
         .filter(
-            (Transaction.merchant.ilike("%starbucks%")) | (Transaction.description.ilike("%coffee%"))
+            (Transaction.merchant.ilike("%starbucks%"))
+            | (Transaction.description.ilike("%coffee%"))
         )
         .order_by(Transaction.id.desc())
         .first()
@@ -147,17 +170,17 @@ def ml_selftest(db: Session = Depends(get_db)) -> Dict[str, Any]:
     after = ml_status(db)
     mtime_after = os.path.getmtime(model_path) if os.path.exists(model_path) else None
 
-    mtime_bumped = (
-        (mtime_before is None and mtime_after is not None)
-        or (
-            isinstance(mtime_before, float)
-            and isinstance(mtime_after, float)
-            and mtime_after > mtime_before
-        )
+    mtime_bumped = (mtime_before is None and mtime_after is not None) or (
+        isinstance(mtime_before, float)
+        and isinstance(mtime_after, float)
+        and mtime_after > mtime_before
     )
 
     return {
-        "ok": bool(mtime_bumped and ("Coffee" in ((after.get("classes") or updated_classes or [])))) ,
+        "ok": bool(
+            mtime_bumped
+            and ("Coffee" in ((after.get("classes") or updated_classes or [])))
+        ),
         "updated": mtime_bumped,
         "reason": None if mtime_bumped else "mtime_not_changed",
         "used_txn_id": txn.id,
@@ -172,6 +195,7 @@ def ml_selftest(db: Session = Depends(get_db)) -> Dict[str, Any]:
         "model_path": model_path,
     }
 
+
 @router.get("/ml/suggest")
 def ml_suggest(
     limit: int = 50,
@@ -181,9 +205,9 @@ def ml_suggest(
 ) -> Dict[str, Any]:
     # Define "unlabeled": None, empty string, or literal "Unknown" (case-insensitive)
     unlabeled_cond = (
-        (Transaction.category.is_(None)) |
-        (func.trim(Transaction.category) == "") |
-        (func.lower(Transaction.category) == "unknown")
+        (Transaction.category.is_(None))
+        | (func.trim(Transaction.category) == "")
+        | (func.lower(Transaction.category) == "unknown")
     )
 
     # Build base query and (optionally) month filter
@@ -200,7 +224,9 @@ def ml_suggest(
         return {"month": month, "suggestions": []}
 
     # Ask the service for suggestions (could be noisy; we’ll filter strictly)
-    raw: List[Dict[str, Any]] = suggest_for_unknowns(db, month=month, limit=limit, topk=topk)
+    raw: List[Dict[str, Any]] = suggest_for_unknowns(
+        db, month=month, limit=limit, topk=topk
+    )
 
     # Keep only items that:
     #  1) refer to a txn_id that is in our unlabeled set, and
@@ -210,8 +236,7 @@ def ml_suggest(
         return bool(cands)
 
     cleaned = [
-        it for it in raw
-        if it.get("txn_id") in unlabeled_ids and has_candidates(it)
+        it for it in raw if it.get("txn_id") in unlabeled_ids and has_candidates(it)
     ]
 
     return {"month": month, "suggestions": cleaned}
@@ -220,9 +245,12 @@ def ml_suggest(
 # ---------- Feedback + Incremental Update ----------
 class FeedbackIn(BaseModel):
     txn_id: int = Field(..., description="Transaction id to which feedback applies")
-    merchant: Optional[str] = Field(None, description="Merchant name override (defaults to txn.merchant)")
+    merchant: Optional[str] = Field(
+        None, description="Merchant name override (defaults to txn.merchant)"
+    )
     category: str = Field(..., min_length=1)
     action: Literal["accept", "reject"]
+
 
 class FeedbackByIdIn(BaseModel):
     id: int  # DB primary key
@@ -240,8 +268,8 @@ def record_feedback(fb: FeedbackIn, db: Session = Depends(get_db)):
 
     row = Feedback(
         txn_id=txn.id,
-    label=fb.category,
-    source=fb.action,  # store exact action for DB-agnostic metrics
+        label=fb.category,
+        source=fb.action,  # store exact action for DB-agnostic metrics
         notes=None,
     )
     db.add(row)
@@ -268,6 +296,7 @@ def record_feedback(fb: FeedbackIn, db: Session = Depends(get_db)):
 
     db.commit()
     return {"ok": True, "id": row.id}
+
 
 @router.post("/ml/feedback/by_id", dependencies=[Depends(csrf_protect)])
 def record_feedback_by_id(payload: FeedbackByIdIn, db: Session = Depends(get_db)):

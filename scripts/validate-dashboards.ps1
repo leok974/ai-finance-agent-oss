@@ -44,14 +44,14 @@ if (-not $python) {
 if ($Files.Count -eq 0) {
     $grafanaDir = Join-Path $PSScriptRoot ".." "ops" "grafana"
     if (Test-Path $grafanaDir) {
-        $Files = Get-ChildItem -Path $grafanaDir -Filter "*.json" -Recurse | 
+        $Files = Get-ChildItem -Path $grafanaDir -Filter "*.json" -Recurse |
                  Select-Object -ExpandProperty FullName
-        
+
         if ($Files.Count -eq 0) {
             Write-Host "⚠️  No dashboard JSON files found in ops/grafana/" -ForegroundColor Yellow
             exit 0
         }
-        
+
         Write-Host "🔍 Found $($Files.Count) dashboard file(s) to validate" -ForegroundColor Cyan
     } else {
         Write-Error "Grafana directory not found: $grafanaDir"

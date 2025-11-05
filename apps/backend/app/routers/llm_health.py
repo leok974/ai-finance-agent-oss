@@ -3,24 +3,27 @@ import os
 import httpx
 from typing import Literal, Tuple
 
+
 # We already have key loading logic in config: OPENAI_API_KEY and OPENAI_API_KEY_FILE.
 # Define a small helper to report presence + source without exposing the key.
-def _read_openai_key_meta() -> Tuple[bool, Literal['env','file','absent']]:
+def _read_openai_key_meta() -> Tuple[bool, Literal["env", "file", "absent"]]:
     k = os.getenv("OPENAI_API_KEY")
     if k and k.strip():
-        return True, 'env'
+        return True, "env"
     path = os.getenv("OPENAI_API_KEY_FILE", "/run/secrets/openai_api_key")
     try:
         if path and os.path.isfile(path):
             # only check existence/readability; do not return contents
-            with open(path, 'r', encoding='utf-8') as f:
+            with open(path, "r", encoding="utf-8") as f:
                 present = bool(f.read().strip())
-            return (True if present else False), ('file' if present else 'absent')
+            return (True if present else False), ("file" if present else "absent")
     except Exception:
         pass
-    return False, 'absent'
+    return False, "absent"
+
 
 router = APIRouter(prefix="/llm", tags=["llm"])
+
 
 @router.get("/health")
 async def llm_health():

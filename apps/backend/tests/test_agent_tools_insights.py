@@ -20,7 +20,8 @@ def _ingest(csv_text: str):
 
 def test_insights_expanded_basic_shape():
     month = "2025-08"
-    csv = textwrap.dedent(f"""\
+    csv = textwrap.dedent(
+        f"""\
         date,month,merchant,description,amount,category
         2025-08-01,{month},Payroll,Monthly salary,5000.00,Income
         2025-08-02,{month},Costco,Groceries,-120.00,
@@ -28,10 +29,13 @@ def test_insights_expanded_basic_shape():
         2025-08-04,{month},Amazon,Household,-75.00,
         2025-08-05,{month},Delta,Flight,-400.00,Travel
         2025-08-06,{month},Spotify,Family plan,-15.99,Subscriptions
-    """)
+    """
+    )
     _ingest(csv)
 
-    r = client.post("/agent/tools/insights/expanded", json={"month": month, "large_limit": 5})
+    r = client.post(
+        "/agent/tools/insights/expanded", json={"month": month, "large_limit": 5}
+    )
     assert r.status_code == 200, r.text
     payload = r.json()
 

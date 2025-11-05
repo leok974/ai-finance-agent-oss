@@ -13,7 +13,9 @@ class EncryptedStr(TypeDecorator):
             return None
         # Encrypt with active DEK; store nonce||ciphertext
         dek = get_data_key()
-        ct, nonce = get_crypto().aesgcm_encrypt(dek, value.encode("utf-8"), aad=b"txn:v1")
+        ct, nonce = get_crypto().aesgcm_encrypt(
+            dek, value.encode("utf-8"), aad=b"txn:v1"
+        )
         return nonce + ct
 
     def process_result_value(self, value, dialect):

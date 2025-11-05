@@ -9,9 +9,19 @@ def _map_to_fields(rule_input: Any) -> Dict[str, Any]:
     """Map flexible web rule input to ORM Rule fields.
     Expected shape: { name?, enabled?, when{ description_like? | merchant_like? | merchant? }, then{ category } }
     """
-    when = (getattr(rule_input, "when", None) or (rule_input.get("when") if isinstance(rule_input, dict) else {})) or {}
-    then = (getattr(rule_input, "then", None) or (rule_input.get("then") if isinstance(rule_input, dict) else {})) or {}
-    category = then.get("category") if isinstance(then, dict) else getattr(then, "category", None)
+    when = (
+        getattr(rule_input, "when", None)
+        or (rule_input.get("when") if isinstance(rule_input, dict) else {})
+    ) or {}
+    then = (
+        getattr(rule_input, "then", None)
+        or (rule_input.get("then") if isinstance(rule_input, dict) else {})
+    ) or {}
+    category = (
+        then.get("category")
+        if isinstance(then, dict)
+        else getattr(then, "category", None)
+    )
     if not category:
         raise ValueError("then.category is required")
 
@@ -34,7 +44,12 @@ def _map_to_fields(rule_input: Any) -> Dict[str, Any]:
     else:
         enabled = bool(getattr(rule_input, "enabled", True))
 
-    return {"pattern": pattern, "target": target, "category": category, "active": enabled}
+    return {
+        "pattern": pattern,
+        "target": target,
+        "category": category,
+        "active": enabled,
+    }
 
 
 def create_rule(db: Session, rule_input: Any) -> Rule:
@@ -44,7 +59,9 @@ def create_rule(db: Session, rule_input: Any) -> Rule:
     fields = _map_to_fields(rule_input)
 
     # Derive a default display name from provided name/pattern/category
-    def _default_rule_name(pattern: str | None, category: str | None, provided: str | None = None) -> str:
+    def _default_rule_name(
+        pattern: str | None, category: str | None, provided: str | None = None
+    ) -> str:
         left = (provided or "").strip() or (pattern or "").strip() or "Any"
         right = (category or "Uncategorized").strip()
         return f"{left} → {right}"
@@ -55,7 +72,9 @@ def create_rule(db: Session, rule_input: Any) -> Rule:
     else:
         provided_name = getattr(rule_input, "name", None)
 
-    display_name = _default_rule_name(fields.get("pattern"), fields.get("category"), provided_name)
+    display_name = _default_rule_name(
+        fields.get("pattern"), fields.get("category"), provided_name
+    )
 
     r = Rule(
         pattern=fields.get("pattern"),

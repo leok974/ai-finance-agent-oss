@@ -75,7 +75,7 @@ if(-not $hasPg){ Write-Warn 'POSTGRES_PASSWORD not set in environment (compose m
 
 # 1. Build (optional)
 if($Build){
-  Write-Info 'Building images (docker compose build)' 
+  Write-Info 'Building images (docker compose build)'
   docker compose $composeFiles build
   if($LASTEXITCODE -ne 0){ Write-Err 'Build failed'; exit 3 }
 }

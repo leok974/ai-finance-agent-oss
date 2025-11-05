@@ -1,7 +1,10 @@
 import io
 import textwrap
 import pytest
-pytestmark = pytest.mark.skip(reason="Legacy /ml/* endpoints removed; use /agent/tools/*")
+
+pytestmark = pytest.mark.skip(
+    reason="Legacy /ml/* endpoints removed; use /agent/tools/*"
+)
 from fastapi.testclient import TestClient
 
 from app.main import app
@@ -25,29 +28,37 @@ def test_ml_suggest_empty_after_labeling_month():
     month = "2025-08"
 
     # 1) Seed some baseline rows
-    labeled_csv = textwrap.dedent("""\
+    labeled_csv = textwrap.dedent(
+        """\
         date,month,merchant,description,amount,category
         2025-08-10,2025-08,Costco,Groceries run,-85.40,Groceries
         2025-08-12,2025-08,Starbucks,Latte,-5.25,Shopping
         2025-08-13,2025-08,Uber,Ride home,-17.80,Transport
         2025-08-14,2025-08,Spotify,Family plan,-15.99,Subscriptions
-    """)
+    """
+    )
     _ingest(labeled_csv)
 
     # 2) Seed entries that may show up as unlabeled for ML
-    unlabeled_csv = textwrap.dedent(f"""\
+    unlabeled_csv = textwrap.dedent(
+        f"""\
         date,month,merchant,description,amount,category
         2025-08-16,{month},Trader Joes,Groceries,-42.10,
         2025-08-17,{month},Uber,Ride to airport,-22.30,
         2025-08-18,{month},Amazon,Household,-34.99,
-    """)
+    """
+    )
     _ingest(unlabeled_csv)
 
     # 3) First call: whatever the app considers suggestible should appear here
     r = client.get(f"/ml/suggest?month={month}&limit=50&topk=3")
     assert r.status_code == 200, r.text
     payload = r.json()
-    assert isinstance(payload, dict) and "suggestions" in payload and payload.get("month") == month
+    assert (
+        isinstance(payload, dict)
+        and "suggestions" in payload
+        and payload.get("month") == month
+    )
 
     suggestions = payload["suggestions"] or []
     if not suggestions:
@@ -71,4 +82,6 @@ def test_ml_suggest_empty_after_labeling_month():
     payload2 = r2.json()
     assert isinstance(payload2, dict)
     assert payload2.get("month") == month
-    assert payload2.get("suggestions") == [], f"Expected empty suggestions, got: {payload2.get('suggestions')}"
+    assert (
+        payload2.get("suggestions") == []
+    ), f"Expected empty suggestions, got: {payload2.get('suggestions')}"

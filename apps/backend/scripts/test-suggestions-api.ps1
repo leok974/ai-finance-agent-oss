@@ -7,7 +7,7 @@ Write-Host "=== ML Suggestions API Smoke Test ===" -ForegroundColor Cyan
 Write-Host ""
 
 # Configuration
-$BASE_URL = if ($env:API_BASE_URL) { $env:API_BASE_URL } else { "http://localhost:8000" }
+$BASE_URL = if ($env:API_BASE_URL) { $env:API_BASE_URL } else { "http://localhost" }
 $TXN_ID = if ($env:TEST_TXN_ID) { $env:TEST_TXN_ID } else { "999001" }
 
 Write-Host "Using BASE_URL: $BASE_URL"
@@ -23,7 +23,7 @@ $suggestBody = @{
 } | ConvertTo-Json
 
 try {
-    $suggestResponse = Invoke-RestMethod -Uri "$BASE_URL/agent/tools/suggestions" `
+    $suggestResponse = Invoke-RestMethod -Uri "$BASE_URL/ml/suggestions" `
         -Method Post `
         -ContentType "application/json" `
         -Body $suggestBody
@@ -54,7 +54,7 @@ $feedbackBody = @{
 } | ConvertTo-Json
 
 try {
-    $feedbackResponse = Invoke-RestMethod -Uri "$BASE_URL/agent/tools/suggestions/feedback" `
+    $feedbackResponse = Invoke-RestMethod -Uri "$BASE_URL/ml/suggestions/feedback" `
         -Method Post `
         -ContentType "application/json" `
         -Body $feedbackBody
@@ -83,7 +83,7 @@ $suggestBody2 = @{
 } | ConvertTo-Json
 
 try {
-    $suggestResponse2 = Invoke-RestMethod -Uri "$BASE_URL/agent/tools/suggestions" `
+    $suggestResponse2 = Invoke-RestMethod -Uri "$BASE_URL/ml/suggestions" `
         -Method Post `
         -ContentType "application/json" `
         -Body $suggestBody2
@@ -97,7 +97,7 @@ try {
             reason = "test_automation"
         } | ConvertTo-Json
 
-        $rejectResponse = Invoke-RestMethod -Uri "$BASE_URL/agent/tools/suggestions/feedback" `
+        $rejectResponse = Invoke-RestMethod -Uri "$BASE_URL/ml/suggestions/feedback" `
             -Method Post `
             -ContentType "application/json" `
             -Body $rejectBody

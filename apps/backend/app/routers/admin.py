@@ -2,6 +2,7 @@ from fastapi import APIRouter, Header, HTTPException, Body, Request
 import os
 from app.services import help_cache
 from typing import Dict, Any
+
 """Admin endpoints.
 
 Avoid importing the FastAPI `app` instance from `app.main` to prevent circular
@@ -11,12 +12,14 @@ access runtime state via the per-request `Request` object instead.
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
+
 def _admin_token() -> str | None:
     """Fetch ADMIN_TOKEN at request time so tests that monkeypatch the
     environment after import still enforce auth. Previous implementation
     captured the value at module import, causing authorization tests to
     observe a 200 instead of 401 when ADMIN_TOKEN was later set."""
     return os.getenv("ADMIN_TOKEN")
+
 
 @router.post("/help-cache/reset", status_code=204)
 def reset_help_cache(x_admin_token: str | None = Header(None)):
@@ -34,7 +37,9 @@ def reset_help_cache(x_admin_token: str | None = Header(None)):
 
 
 @router.get("/toggles", summary="List runtime feature toggles")
-def list_toggles(request: Request, x_admin_token: str | None = Header(None)) -> Dict[str, Any]:
+def list_toggles(
+    request: Request, x_admin_token: str | None = Header(None)
+) -> Dict[str, Any]:
     token = _admin_token()
     if token and x_admin_token != token:
         raise HTTPException(status_code=401, detail="unauthorized")

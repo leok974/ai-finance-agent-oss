@@ -1,6 +1,5 @@
 from fastapi import APIRouter, HTTPException, Depends, Query
 from sqlalchemy.orm import Session
-import os
 from app.db import get_db
 from app.services.explain_service import build_explain_response
 from app.services.llm_flags import llm_policy
@@ -9,7 +8,11 @@ router = APIRouter()
 
 
 @router.get("/{txn_id}/explain")
-def explain(txn_id: int, use_llm: bool = Query(False, description="Optional: rephrase rationale with LLM"), db: Session = Depends(get_db)):
+def explain(
+    txn_id: int,
+    use_llm: bool = Query(False, description="Optional: rephrase rationale with LLM"),
+    db: Session = Depends(get_db),
+):
     """
     Explain a transaction deterministically with DB-backed evidence.
     Optional LLM polish can be enabled via ?use_llm=1.

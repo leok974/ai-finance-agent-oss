@@ -10,7 +10,7 @@ export default function DevMenuItem() {
 
   const onToggle = React.useCallback((e: React.MouseEvent) => {
     const next = !isDevUIEnabled();
-    if (e.altKey) {      
+    if (e.altKey) {
       setDevUIEnabledSoft(next);
   try { emitToastSuccess?.(`Dev UI (soft) ${next ? 'on' : 'off'}`); } catch { /* toast optional */ }
     } else {

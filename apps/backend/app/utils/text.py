@@ -15,9 +15,12 @@ from typing import Optional
 _WS_RE = re.compile(r"\s+")
 _PUNCT_RE = re.compile(r"[^\w\s]", re.UNICODE)
 
+
 def _strip_diacritics(s: str) -> str:
     # NFKD then drop combining marks
-    return "".join(ch for ch in unicodedata.normalize("NFKD", s) if not unicodedata.combining(ch))
+    return "".join(
+        ch for ch in unicodedata.normalize("NFKD", s) if not unicodedata.combining(ch)
+    )
 
 
 def canonicalize_merchant(val: Optional[str]) -> Optional[str]:

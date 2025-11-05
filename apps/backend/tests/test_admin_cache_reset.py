@@ -4,6 +4,7 @@ from app.services import help_cache
 
 client = TestClient(app)
 
+
 def test_admin_cache_reset_works(monkeypatch):
     # seed cache
     help_cache.set_("k1", {"text": "a"})

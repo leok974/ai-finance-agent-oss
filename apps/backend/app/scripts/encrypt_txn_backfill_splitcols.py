@@ -30,26 +30,38 @@ def _ensure_crypto_initialized():
     try:
         from app.orm_models import EncryptionKey
         from app.db import SessionLocal
+
         with SessionLocal() as s:
-            ek = s.query(EncryptionKey).filter(EncryptionKey.label == label).one_or_none()
+            ek = (
+                s.query(EncryptionKey)
+                .filter(EncryptionKey.label == label)
+                .one_or_none()
+            )
             if not ek:
                 dek = EnvelopeCrypto.new_dek()
                 wrapped, nonce = crypto.wrap_dek(dek)
-                ek = EncryptionKey(label=label, dek_wrapped=wrapped, dek_wrap_nonce=nonce)
+                ek = EncryptionKey(
+                    label=label, dek_wrapped=wrapped, dek_wrap_nonce=nonce
+                )
                 s.add(ek)
                 s.commit()
             # unwrap DEK and cache in process (detect KMS by empty/None nonce)
             try:
                 nonce = ek.dek_wrap_nonce
-                if nonce is None or (isinstance(nonce, (bytes, bytearray)) and len(nonce) == 0):
+                if nonce is None or (
+                    isinstance(nonce, (bytes, bytearray)) and len(nonce) == 0
+                ):
                     from app.services.gcp_kms_wrapper import kms_unwrap_dek  # type: ignore
+
                     plain = kms_unwrap_dek(ek.dek_wrapped)
                 else:
                     plain = crypto.unwrap_dek(ek.dek_wrapped, nonce)
                 set_data_key(plain)
             except Exception as e:
                 # If a key exists but unwrap fails, KEK is wrong; fail fast.
-                raise RuntimeError("KEK mismatch while unwrapping DEK. Update ENCRYPTION_MASTER_KEY_BASE64 (or MASTER_KEK_B64) to current KEK.") from e
+                raise RuntimeError(
+                    "KEK mismatch while unwrapping DEK. Update ENCRYPTION_MASTER_KEY_BASE64 (or MASTER_KEK_B64) to current KEK."
+                ) from e
             return
     except RuntimeError:
         raise
@@ -65,7 +77,11 @@ def run():
     for t in db.query(Transaction).yield_per(500):
         changed = False
         # Migrate legacy plaintext if still present and encrypted empty
-        if hasattr(t, "description") and getattr(t, "description") and not t.description_enc:
+        if (
+            hasattr(t, "description")
+            and getattr(t, "description")
+            and not t.description_enc
+        ):
             t.description_text = t.description
             try:
                 t.description = None

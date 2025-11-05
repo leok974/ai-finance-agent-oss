@@ -2,6 +2,7 @@ import hashlib
 import json
 from typing import Any, Dict
 
+
 def hash_filters(filters: Dict[str, Any] | None) -> str:
     if not filters:
         return "none"

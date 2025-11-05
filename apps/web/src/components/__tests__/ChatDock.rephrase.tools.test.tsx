@@ -5,4 +5,3 @@ describe('ChatDock.rephrase.tools', () => {
 		expect(true).toBe(true);
 	});
 });
-

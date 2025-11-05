@@ -1,14 +1,19 @@
 from fastapi.testclient import TestClient
 from app.main import app
-import os
 
 client = TestClient(app)
 
+
 def body(msg="ping", model="gpt-oss:20b"):
-    return {"messages":[{"role":"user","content":msg}], "model": model, "stream": False}
+    return {
+        "messages": [{"role": "user", "content": msg}],
+        "model": model,
+        "stream": False,
+    }
+
 
 def test_validation_no_messages():
-    r = client.post("/agent/chat", json={"messages":[]})
+    r = client.post("/agent/chat", json={"messages": []})
     assert r.status_code == 422
 
 

@@ -1,4 +1,6 @@
-import importlib, inspect, pytest
+import importlib
+import inspect
+import pytest
 
 MODULE_ORDER = [
     "apps.backend.app.services.rules_service",
@@ -8,14 +10,51 @@ MODULE_ORDER = [
     "app.routers.agent_tools_rules_save",
 ]
 CANDIDATE_FUNS = [
-    "compute_rules_plan", "merge_rules", "apply_rules_save", "save_rules", "process_rules", "rules_save"
+    "compute_rules_plan",
+    "merge_rules",
+    "apply_rules_save",
+    "save_rules",
+    "process_rules",
+    "rules_save",
 ]
-EXISTING = [{"id": "A", "name": "Groceries", "pattern": "aldi|kroger", "category": "groceries", "enabled": True}]
+EXISTING = [
+    {
+        "id": "A",
+        "name": "Groceries",
+        "pattern": "aldi|kroger",
+        "category": "groceries",
+        "enabled": True,
+    }
+]
 INCOMING = [
-    {"id": "A", "name": "Groceries+", "pattern": "kroger|wholefoods", "category": "groceries", "enabled": True},
-    {"id": "B", "name": "Rides", "pattern": "uber|lyft", "category": "transport", "enabled": True},
-    {"id": "DUP", "name": "CoffeeA", "pattern": "coffee", "category": "restaurants", "enabled": True},
-    {"id": "DUP", "name": "CoffeeB", "pattern": "espresso", "category": "restaurants", "enabled": True},
+    {
+        "id": "A",
+        "name": "Groceries+",
+        "pattern": "kroger|wholefoods",
+        "category": "groceries",
+        "enabled": True,
+    },
+    {
+        "id": "B",
+        "name": "Rides",
+        "pattern": "uber|lyft",
+        "category": "transport",
+        "enabled": True,
+    },
+    {
+        "id": "DUP",
+        "name": "CoffeeA",
+        "pattern": "coffee",
+        "category": "restaurants",
+        "enabled": True,
+    },
+    {
+        "id": "DUP",
+        "name": "CoffeeB",
+        "pattern": "espresso",
+        "category": "restaurants",
+        "enabled": True,
+    },
 ]
 
 
@@ -65,6 +104,7 @@ def _try_call(fn):
     if last:
         pytest.skip(f"signature mismatch for {fn.__name__}: {last}")
     pytest.skip(f"no usable payload for {fn.__name__}")
+
 
 def test_dynamic_core_exec_runs_merge_plan(monkeypatch):
     for k in ("RULES_ENABLED", "FEATURE_RULES", "ENABLE_RULES", "RULES_PLAN_MODE"):

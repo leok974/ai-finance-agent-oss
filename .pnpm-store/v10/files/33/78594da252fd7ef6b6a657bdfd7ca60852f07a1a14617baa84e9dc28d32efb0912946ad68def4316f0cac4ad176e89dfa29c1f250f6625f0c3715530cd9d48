@@ -5069,7 +5069,7 @@ function isValidApiRequest(config, req) {
 	try {
 		const token = url.searchParams.get("token");
 		if (token && crypto.timingSafeEqual(Buffer.from(token), Buffer.from(config.api.token))) return true;
-	} 
+	}
 	// an error is thrown when the length is incorrect
 catch {}
 	return false;

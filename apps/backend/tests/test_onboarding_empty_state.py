@@ -26,7 +26,9 @@ def isolated_db(monkeypatch):
         future=True,
     )
     Base.metadata.create_all(engine)
-    SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, future=True)
+    SessionLocal = sessionmaker(
+        bind=engine, autoflush=False, autocommit=False, future=True
+    )
 
     def _override_get_db():
         db = SessionLocal()
@@ -56,7 +58,9 @@ def test_month_summary_empty_returns_null_payload(client):
     # Ensure in-memory is empty
     app.state.txns = []
     r = client.get("/charts/month_summary")
-    assert r.status_code == 200  # With no DB rows & no in-memory, we return null/zero payload
+    assert (
+        r.status_code == 200
+    )  # With no DB rows & no in-memory, we return null/zero payload
     data = r.json()
     assert data.get("month") in (None, "", "null")
     assert data.get("total_spend") in (0, 0.0)
@@ -66,10 +70,38 @@ def test_month_summary_empty_returns_null_payload(client):
 
 def test_month_summary_with_inmemory_defaults_to_latest(client):
     sample = [
-        {"id": 1, "date": "2099-10-30", "amount": 100.00, "merchant": "ACME", "description": "Rebate", "category": "Income"},
-        {"id": 2, "date": "2099-11-02", "amount": 82.45, "merchant": "Stripe", "description": "Payout", "category": "Income"},
-        {"id": 3, "date": "2099-11-05", "amount": -30.00, "merchant": "Grocer", "description": "Food", "category": "Groceries"},
-        {"id": 4, "date": "2099-11-07", "amount": -12.50, "merchant": "Chipotle", "description": "Burrito", "category": "Dining"},
+        {
+            "id": 1,
+            "date": "2099-10-30",
+            "amount": 100.00,
+            "merchant": "ACME",
+            "description": "Rebate",
+            "category": "Income",
+        },
+        {
+            "id": 2,
+            "date": "2099-11-02",
+            "amount": 82.45,
+            "merchant": "Stripe",
+            "description": "Payout",
+            "category": "Income",
+        },
+        {
+            "id": 3,
+            "date": "2099-11-05",
+            "amount": -30.00,
+            "merchant": "Grocer",
+            "description": "Food",
+            "category": "Groceries",
+        },
+        {
+            "id": 4,
+            "date": "2099-11-07",
+            "amount": -12.50,
+            "merchant": "Chipotle",
+            "description": "Burrito",
+            "category": "Dining",
+        },
     ]
     app.state.txns = list(sample)
     r = client.get("/charts/month_summary")
@@ -86,8 +118,20 @@ def test_month_summary_with_inmemory_defaults_to_latest(client):
 
 def test_month_summary_no_leakage_after_clearing(client):
     populated = [
-        {"id": 10, "date": "2099-12-01", "amount": 500.0, "merchant": "Stripe", "category": "Income"},
-        {"id": 11, "date": "2099-12-03", "amount": -42.0, "merchant": "Market", "category": "Groceries"},
+        {
+            "id": 10,
+            "date": "2099-12-01",
+            "amount": 500.0,
+            "merchant": "Stripe",
+            "category": "Income",
+        },
+        {
+            "id": 11,
+            "date": "2099-12-03",
+            "amount": -42.0,
+            "merchant": "Market",
+            "category": "Groceries",
+        },
     ]
     app.state.txns = list(populated)
     r1 = client.get("/charts/month_summary")

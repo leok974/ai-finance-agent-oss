@@ -8,6 +8,7 @@ from app.main import app
 from app.db import get_db
 from app.orm_models import Transaction
 
+
 # Reuse the same pattern as existing test_txns_edit for DB session override
 @pytest.fixture
 def client(db_session: Session):
@@ -16,6 +17,7 @@ def client(db_session: Session):
             yield db_session
         finally:
             pass
+
     app.dependency_overrides[get_db] = _override_get_db
     with TestClient(app) as c:
         yield c
@@ -40,7 +42,9 @@ def _mk_txn(db: Session, **kwargs) -> Transaction:
 def test_patch_date_updates_month(client: TestClient, db_session: Session):
     t = _mk_txn(db_session, date=dt.date(2025, 1, 15), month="2025-01")
     # Patch using /txns/edit/{id} (existing router) with ISO date string
-    resp = client.patch(f"/txns/edit/{t.id}", json={"date": "2025-03-09"}, headers={"X-CSRF-Token": "x"})
+    resp = client.patch(
+        f"/txns/edit/{t.id}", json={"date": "2025-03-09"}, headers={"X-CSRF-Token": "x"}
+    )
     assert resp.status_code in (200, 403), resp.text
     if resp.status_code == 200:
         # Fetch txn to verify month sync if patch succeeded
@@ -54,21 +58,28 @@ def test_patch_date_updates_month(client: TestClient, db_session: Session):
 
 def test_patch_invalid_date_400(client: TestClient, db_session: Session):
     t = _mk_txn(db_session)
-    resp = client.patch(f"/txns/edit/{t.id}", json={"date": "2025-13-40"}, headers={"X-CSRF-Token": "x"})
+    resp = client.patch(
+        f"/txns/edit/{t.id}", json={"date": "2025-13-40"}, headers={"X-CSRF-Token": "x"}
+    )
     # 403 (csrf) acceptable; but if not blocked, must be 400
     assert resp.status_code in (400, 403)
     if resp.status_code == 400:
         assert "date" in resp.text.lower()
 
 
-@pytest.mark.parametrize("payload", [
-    {"amount": "abc"},
-    {"amount": None},
-    {"amount": "12,34"},
-])
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"amount": "abc"},
+        {"amount": None},
+        {"amount": "12,34"},
+    ],
+)
 def test_patch_invalid_amount_400(client: TestClient, db_session: Session, payload):
     t = _mk_txn(db_session)
-    resp = client.patch(f"/txns/edit/{t.id}", json=payload, headers={"X-CSRF-Token": "x"})
+    resp = client.patch(
+        f"/txns/edit/{t.id}", json=payload, headers={"X-CSRF-Token": "x"}
+    )
     assert resp.status_code in (400, 403, 422)
     # If CSRF passed, ensure server rejected
     if resp.status_code not in (403,):

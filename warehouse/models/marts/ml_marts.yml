@@ -1,0 +1,114 @@
+version: 2
+
+models:
+  - name: fct_training_view
+    description: "ML training dataset with features + labels (leakage-safe)"
+    meta:
+      owner: "ml-team"
+      refresh_cadence: "daily"
+    columns:
+      - name: txn_id
+        description: "Transaction identifier"
+        tests:
+          - not_null
+          - unique
+          - relationships:
+              to: ref('stg_transactions')
+              field: id
+      - name: target_label
+        description: "Ground truth category label for training"
+        tests:
+          - not_null
+          - accepted_values:
+              values: ["Groceries","Dining","Shopping","Transport","Subscriptions","Entertainment","Uncategorized"]
+      - name: ts_month
+        description: "Month bucket for temporal splits (yyyy-mm-01)"
+        tests:
+          - not_null
+          - not_in_future
+      - name: label_observed_at
+        description: "Timestamp when the label was recorded by the system (for leakage detection)"
+        tests:
+          - not_after_month_end:
+              ts_month_col: ts_month
+              ts_label_col: label_observed_at
+      - name: label_source
+        description: "Label origin (human > rule > import for weighting)"
+        tests:
+          - accepted_values:
+              values: ['human', 'rule', 'import']
+      - name: merchant
+        description: "Merchant name (required for training)"
+        tests:
+          - not_null
+      - name: amount
+        description: "Transaction amount (non-zero)"
+        tests:
+          - not_null
+      - name: abs_amount
+        description: "Absolute value of transaction amount"
+        tests:
+          - not_null
+
+  - name: dim_merchants
+    description: "Merchant dimension with category priors for heuristics"
+    meta:
+      owner: "ml-team"
+    columns:
+      - name: merchant_name
+        description: "Canonical merchant name"
+        tests:
+          - not_null
+          - unique
+      - name: category
+        description: "Category label"
+        tests:
+          - not_null
+          - accepted_values:
+              values: ["Groceries","Dining","Shopping","Transport","Subscriptions","Entertainment","Uncategorized"]
+      - name: category_prior
+        description: "P(category|merchant) probability"
+        tests:
+          - not_null
+      - name: confidence
+        description: "Confidence level (high/medium/low)"
+        tests:
+          - accepted_values:
+              values: ['high', 'medium', 'low']
+
+  - name: fct_suggestions_eval
+    description: "Model evaluation with predictions vs ground truth"
+    meta:
+      owner: "ml-team"
+      refresh_cadence: "hourly"
+    columns:
+      - name: eval_id
+        description: "Unique evaluation record ID"
+        tests:
+          - not_null
+          - unique
+      - name: suggestion_event_id
+        description: "Link to suggestion event"
+        tests:
+          - not_null
+      - name: txn_id
+        description: "Transaction ID"
+        tests:
+          - not_null
+      - name: predicted_label
+        description: "ML model predicted category"
+        tests:
+          - accepted_values:
+              values: ["Groceries","Dining","Shopping","Transport","Subscriptions","Entertainment","Uncategorized"]
+      - name: suggestion_mode
+        description: "Prediction source (heuristic/model/auto)"
+        tests:
+          - accepted_values:
+              values: ['heuristic', 'model', 'auto']
+      - name: user_action
+        description: "User feedback action"
+        tests:
+          - accepted_values:
+              values: ['accept', 'reject']
+              config:
+                where: "user_action is not null"

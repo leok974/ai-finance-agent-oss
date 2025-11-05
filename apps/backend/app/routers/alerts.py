@@ -3,6 +3,7 @@ from typing import List, Dict
 
 router = APIRouter()
 
+
 @router.get("")
 def alerts(month: str) -> List[Dict]:
     # Demo alerts
