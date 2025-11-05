@@ -1,0 +1,5 @@
+[31;1mParserError: [0mC:\ai-finance-agent-oss-clean\scripts\edge-verify.ps1:105:32[0m
+[31;1m[0m[36;1mLine |[0m
+[31;1m[0m[36;1m[36;1m 105 | [0m         $Raw -split "(`r?`n){2,[36;1m}[0m"[0m
+[31;1m[0m[36;1m[36;1m[0m[36;1m[0m[36;1m     | [31;1m                                ~[0m
+[31;1m[0m[36;1m[36;1m[0m[36;1m[0m[36;1m[31;1m[31;1m[36;1m     | [31;1mMissing expression after ','.[0m

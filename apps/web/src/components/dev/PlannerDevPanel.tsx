@@ -26,16 +26,16 @@ export default function PlannerDevPanel({ className }: { className?: string }) {
   const onPreview = useCallback(async () => {
     setPreviewing(true);
     try {
-  const res = await agentPlanPreview({ month: null, prompt });
+      const res = await agentPlanPreview({ month: null, prompt });
       setPlan(res);
-      setSelected(res.items ?? []);
+      setSelected((res as any).items ?? []);
     } catch (e) {
       // Show minimal inline error via console; dev panel
       console.error(e);
     } finally {
       setPreviewing(false);
     }
-  }, []);
+  }, [prompt]);
 
   const onApply = useCallback(async () => {
     if (!plan || applying) return;
@@ -57,7 +57,7 @@ export default function PlannerDevPanel({ className }: { className?: string }) {
   const loadStatus = useCallback(async () => {
     try {
       const r = await agentPlanStatus();
-      setThrottle(r.throttle);
+      setThrottle(r.throttle ?? null);
     } catch {
       // ignore
     }

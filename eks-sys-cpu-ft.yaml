@@ -1,0 +1,20 @@
+apiVersion: eksctl.io/v1alpha5
+kind: ClusterConfig
+
+metadata:
+  name: ledgermind-gpu
+  region: us-west-2
+
+managedNodeGroups:
+  - name: sys-cpu
+    instanceType: t3.micro # Free Tier eligible!
+    desiredCapacity: 1
+    minSize: 1
+    maxSize: 1
+    volumeSize: 20
+    volumeType: gp3
+    labels:
+      role: system
+    tags:
+      k8s.io/cluster-autoscaler/enabled: "true"
+      k8s.io/cluster-autoscaler/ledgermind-gpu: "owned"

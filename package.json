@@ -1,17 +1,27 @@
 {
   "type": "module",
+  "packageManager": "pnpm@9.0.0",
   "scripts": {
     "cf:purge": "node scripts/cf-purge.js --base=https://app.ledger-mind.org --dist=apps/web/dist --extra=/site.webmanifest,/favicon.ico",
     "cf:purge:changed": "node scripts/cf-purge.js --base=https://app.ledger-mind.org --dist=apps/web/dist --onlyIfChanged=1",
     "cf:purge:dry": "node scripts/cf-purge.js --base=https://app.ledger-mind.org --dist=apps/web/dist --onlyIfChanged=1 --dryRun=1",
-    "csp:hash": "node scripts/csp-hash-extract.mjs --html apps/web/dist/index.html --in deploy/nginx.conf --out deploy/nginx.conf.rendered --allow-empty",
-    "csp:check": "node scripts/csp-hash-extract.mjs --html apps/web/dist/index.html --in deploy/nginx.conf --out deploy/nginx.conf.rendered --allow-empty || exit 0",
-    "nginx:prep": "pnpm run csp:hash",
-    "lint:hooks": "pnpm -C apps/web run lint:hooks"
+    "lint:hooks": "pnpm -C apps/web run lint:hooks",
+  "test:csp": "pnpm -C apps/web exec playwright test apps/web/tests/csp.spec.ts",
+  "pw:install": "pnpm -C apps/web run pw:install",
+  "pw:fast": "pnpm -C apps/web run pw:fast",
+  "pw:shard:1": "pnpm -C apps/web run pw:shard:1",
+  "pw:shard:2": "pnpm -C apps/web run pw:shard:2",
+      "pw:changed": "pnpm -C apps/web run pw:changed",
+      "ci:guard:registration": "node scripts/ci-guard-prod-registration.mjs",
+      "ci:auth:smoke": "cross-env AUTH_SMOKE=1 pnpm -C apps/web exec playwright test apps/web/tests/e2e/auth/login-me.smoke.spec.ts",
+      "report:latency": "node scripts/report-latency.mjs --input edge-verify.json"
   },
   "dependencies": {
     "@radix-ui/react-dropdown-menu": "^2.1.16",
     "lucide-react": "^0.542.0",
     "recharts": "^2.15.4"
+  },
+  "devDependencies": {
+    "glob": "^10.4.5"
   }
 }

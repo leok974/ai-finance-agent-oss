@@ -1,5 +1,6 @@
 import * as React from 'react'
 import { getExplain, type ExplainResponse } from '@/api'
+import type { Transaction } from '@/types/agent'
 import Chip from '@/components/ui/chip'
 import { Skeleton } from '@/components/ui/skeleton'
 import { selectTopMerchantCat } from '@/selectors/explain'

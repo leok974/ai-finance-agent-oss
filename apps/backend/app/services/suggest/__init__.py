@@ -1,0 +1,1 @@
+"""Suggest package initialization."""

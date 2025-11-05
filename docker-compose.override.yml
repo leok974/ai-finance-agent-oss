@@ -1,0 +1,7 @@
+services:
+  backend:
+    environment:
+      - COOKIE_DOMAIN=.leoklemet.com
+      - COOKIE_SECURE=1
+      - COOKIE_SAMESITE=lax
+      - SITE_BASE_URL=https://www.leoklemet.com

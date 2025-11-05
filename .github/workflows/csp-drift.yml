@@ -1,0 +1,53 @@
+name: CSP Drift
+
+on:
+  schedule:
+    - cron: '0 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: csp-drift
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check CSP hash (exit 11 on drift)
+        id: check
+        shell: pwsh
+        continue-on-error: true
+        run: pwsh -File scripts/check-csp-hash.ps1 -Url https://app.ledger-mind.org -ExpectedHashFile .csp.sha
+
+      - name: Stop if no drift
+        if: steps.check.outcome == 'success'
+        run: echo "No drift."
+
+      - name: Prepare updated baseline (.csp.sha)
+        if: steps.check.outcome != 'success'
+        shell: pwsh
+        run: |
+          $hdrs = & pwsh -NoProfile -Command "`n            function Get-LastHeaderMap([string]`$u){`n              `$tmp=[System.IO.Path]::GetTempFileName();`n              try{`$raw = & curl.exe --ssl-no-revoke -sSL -D - -o `$tmp `$u 2>`$null;`n                `$blocks = `$raw -split '(`r?`n){2,}(?=HTTP/)' ; if(`$blocks.Count -gt 1){`$raw=`$blocks[-1]} ;`n                `$h=@{} ; foreach(`$line in (`$raw -split '`r?`n')){ if(`$line -match '^(?<n>[^:]+):\s*(?<v>.*)$'){ `$h[`$matches.n.ToLowerInvariant()]=`$matches.v }} ;`n                return `$h } finally { Remove-Item -Force `$tmp -ErrorAction SilentlyContinue } } ;`n            `$h=Get-LastHeaderMap 'https://app.ledger-mind.org' ;`n            `$p=`$h['content-security-policy'] ;`n            if(-not `$p){ throw 'No CSP header live' } ;`n            `$sha=[System.Security.Cryptography.SHA256]::Create();`n            `$hash=(`$sha.ComputeHash([Text.Encoding]::UTF8.GetBytes(`$p))|%%{`$_.ToString('x2')}) -join '' ;`n            `$hash"`n          Set-Content -NoNewline -Path .csp.sha -Value $hdrs
+
+      - name: Create PR (csp baseline update)
+        if: steps.check.outcome != 'success'
+        uses: peter-evans/create-pull-request@v6
+        with:
+          commit-message: "chore(csp): update baseline hash"
+          title: "chore(csp): update .csp.sha (baseline drift)"
+          body: |
+            Detected CSP header change at edge. This PR updates **.csp.sha** to the live value.
+
+            Merge only if this was an intentional CSP change.
+          labels: csp-update
+          branch: chore/csp-baseline-${{ github.run_id }}
+          delete-branch: true

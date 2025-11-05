@@ -1,0 +1,37 @@
+name: web-eslint-metrics
+on:
+  push:
+    paths: ["apps/web/**"]
+  pull_request:
+    paths: ["apps/web/**"]
+  workflow_dispatch: {}
+
+jobs:
+  eslint_metrics:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v3
+        with:
+          version: 9
+      - name: Install
+        run: pnpm install --frozen-lockfile
+      - name: ESLint JSON (always produce report)
+        run: pnpm run lint:json
+      - name: Summarize + emit metrics
+        run: pnpm run lint:metrics
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-eslint-metrics
+          path: |
+            apps/web/eslint-report.json
+            apps/web/eslint-summary.json
+            apps/web/eslint.prom
+      - name: Enforce budget (optional)
+        run: pnpm run lint:budget || true
+      - name: Enforce per-rule budgets (optional)
+        run: pnpm run lint:rules || true

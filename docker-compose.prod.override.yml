@@ -1,20 +1,10 @@
 services:
   nginx:
-    # Security hardening overrides
-    read_only: true
-    user: "101:101" # non-root (adjust if base image UID/GID differ)
-    cap_drop: ["ALL"]
+    # Security hardening overrides (base compose now sets read_only/user/cap_drop/tmpfs)
     cap_add: ["NET_BIND_SERVICE"]
-    # security_opt removed here to avoid duplicate merged entries; base prod file already sets
-    #   - no-new-privileges:true
     # Add seccomp once profile is available:
     # security_opt:
-    #   - no-new-privileges:true
     #   - seccomp:./security/seccomp-tight.json
-    tmpfs:
-      # Specify uid/gid/mode so non-root (101) can create temp cache dirs without chmod logic
-      - /var/cache/nginx:rw,noexec,nosuid,nodev,size=64m,uid=101,gid=101,mode=0755
-      - /var/run:rw,noexec,nosuid,nodev,size=16m,uid=101,gid=101,mode=0755
     ulimits:
       nofile: 65536
     healthcheck:
@@ -85,6 +75,21 @@ services:
     secrets: []
     env_file:
       - ./secrets/backend.env
+    environment:
+      SUGGESTIONS_ENABLED: "1"
+      # Dev/staging only - enables test user seeding (NEVER set in production)
+      ALLOW_DEV_ROUTES: "1"
+      # Production auth cookie settings for Cloudflare tunneled access
+      COOKIE_DOMAIN: ".ledger-mind.org"
+      COOKIE_SECURE: "1"
+      COOKIE_SAMESITE: "lax"
+      ACCESS_TOKEN_EXPIRE_MINUTES: "15"
+      REFRESH_TOKEN_EXPIRE_DAYS: "30"
+      # Registration control (set to "true" to allow public registration)
+      ALLOW_REGISTRATION: "false"
+      ANALYTICS_JSONL_PATH: /var/log/analytics.jsonl
+      ANALYTICS_JSONL_MAX_BYTES: "10485760"
+      ANALYTICS_JSONL_DEBUG: "0"
     read_only: true
     user: "10001:10001"
     cap_drop: ["ALL"]
@@ -96,6 +101,7 @@ services:
     volumes:
       # Mount the actual service account JSON file (host path is a directory containing the file)
       - ./secrets/gcp-sa.json/ledgermind-backend-sa.json:/secrets/gcp-sa.json:ro
+      - analytics_logs:/var/log
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request,sys;hdr={'Host':'backend'};\nfor u in ('http://127.0.0.1:8000/live','http://127.0.0.1:8000/healthz'):\n  try:\n    req=urllib.request.Request(u,headers=hdr);\n    with urllib.request.urlopen(req,timeout=2) as r:\n      if r.getcode()==200: sys.exit(0)\n  except Exception: pass\nsys.exit(1)"]
       interval: 10s
@@ -150,6 +156,7 @@ services:
 volumes:
   letsencrypt:
   ollama-data:
+  analytics_logs:
 
 # Disable secrets root in local override to avoid Docker Desktop bind errors on Windows
 secrets: {}

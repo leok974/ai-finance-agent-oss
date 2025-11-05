@@ -1,5 +1,12 @@
 from __future__ import annotations
-import os as _os, os, json, logging, re, time, uuid
+import os as _os
+import os
+import json
+import logging
+import re
+import time
+import uuid
+
 print("[agent.py] loaded version: refactor-tagfix-1")
 
 _HERMETIC = _os.getenv("HERMETIC") == "1"
@@ -10,43 +17,180 @@ if _HERMETIC:
     class _DummyRouter:
         def __init__(self):
             self.routes = []
+
+        # No-op decorator factories mimicking FastAPI router interface
+        def post(self, *a, **k):  # type: ignore
+            def _wrap(fn):
+                return fn
+
+            return _wrap
+
+        def get(self, *a, **k):  # type: ignore
+            def _wrap(fn):
+                return fn
+
+            return _wrap
+
+        def delete(self, *a, **k):  # type: ignore
+            def _wrap(fn):
+                return fn
+
+            return _wrap
+
+        def put(self, *a, **k):  # type: ignore
+            def _wrap(fn):
+                return fn
+
+            return _wrap
+
+        def head(self, *a, **k):  # type: ignore
+            def _wrap(fn):
+                return fn
+
+            return _wrap
+
+        def options(self, *a, **k):  # type: ignore
+            def _wrap(fn):
+                return fn
+
+            return _wrap
+
+        def patch(self, *a, **k):  # type: ignore
+            def _wrap(fn):
+                return fn
+
+            return _wrap
+
     router = _DummyRouter()  # type: ignore
+    # Minimal Pydantic stand‑ins so test modules that import request models do not crash.
+    try:  # pragma: no cover - defensive
+        from pydantic import BaseModel as _RealBaseModel  # type: ignore
+
+        BaseModel = _RealBaseModel  # type: ignore
+
+        def field_validator(*a, **k):  # type: ignore
+            def _wrap(fn):
+                return fn
+
+            return _wrap
+
+        # Lightweight FastAPI signature shims
+        class _Stub:
+            def __call__(self, *a, **k):
+                return None
+
+        def Depends(x):  # type: ignore
+            return None
+
+        def Query(default=None, **k):  # type: ignore
+            return default
+
+        def Header(default=None, **k):  # type: ignore
+            return default
+
+        BackgroundTasks = object  # type: ignore
+        Request = object  # type: ignore
+
+        class JSONResponse(dict):  # type: ignore
+            def __init__(self, content=None, headers=None):
+                super().__init__(content or {})
+                self.headers = headers or {}
+
+        def get_db():  # type: ignore
+            class _Dummy:
+                def __iter__(self):
+                    yield None
+
+            return _Dummy()
+
+    except Exception:  # Fallback extremely small shim
+
+        class BaseModel:  # type: ignore
+            def __init__(self, **data):
+                for k, v in data.items():
+                    setattr(self, k, v)
+
+        def field_validator(*a, **k):  # type: ignore
+            def _wrap(fn):
+                return fn
+
+            return _wrap
+
+        def Depends(x):  # type: ignore
+            return None
+
+        def Query(default=None, **k):  # type: ignore
+            return default
+
+        def Header(default=None, **k):  # type: ignore
+            return default
+
+        BackgroundTasks = object  # type: ignore
+        Request = object  # type: ignore
+
+        class JSONResponse(dict):  # type: ignore
+            def __init__(self, content=None, headers=None):
+                super().__init__(content or {})
+                self.headers = headers or {}
+
+        def get_db():  # type: ignore
+            class _Dummy:
+                def __iter__(self):
+                    yield None
+
+            return _Dummy()
+
     # Lightweight helpers still needed by describe/help logic below (if any) can go here.
     # We deliberately skip the rest of the heavy implementation.
 else:
-    from typing import Any, Dict, List, Optional, Tuple, Literal
+    from typing import Any, Dict, List, Optional, Literal
     from sqlalchemy.orm import Session
     from sqlalchemy import desc
     from pydantic import BaseModel, field_validator
-    from fastapi import APIRouter, Depends, HTTPException, Query, Header, BackgroundTasks, Request
+    from fastapi import (
+        APIRouter,
+        Depends,
+        HTTPException,
+        Query,
+        Header,
+    )
     from starlette.responses import JSONResponse, RedirectResponse
 
     from app.db import get_db
     from app.transactions import Transaction
     from app.services.agent.llm_post import post_process_tool_reply
     from app.services.agent_tools.common import no_data_kpis, no_data_anomalies
-    from app.services.agent_tools.common import no_data_kpis as _router_no_data_kpis
+    from app.services.reply_style import style_reply
     from app.utils.time import utc_now
     from app.utils import llm as llm_mod  # allow monkeypatch in tests
+    from app.utils.llm import LLMQueueFullError
     from app.config import settings
     from app.services.agent_detect import (
-        detect_txn_query, summarize_txn_result, infer_flow, try_llm_rephrase_summary
+        detect_txn_query,
+        summarize_txn_result,
+        infer_flow,
+        try_llm_rephrase_summary,
+        detect_rag_intent,
     )
     from app.services.txns_nl_query import run_txn_query
     from app.services.agent_tools import route_to_tool
     from app.services.agent.router_fallback import route_to_tool_with_fallback
     from app.services.agent.analytics_tag import tag_if_analytics
     import app.analytics_emit as analytics_emit
+    from app.services import rag_tools
 
     router = APIRouter()  # real router only in non‑hermetic mode
 
     # --- Optional enrichment modules (guarded) ---------------------------------
     _enrich_log = logging.getLogger(__name__)
+
     def _maybe_import(path: str):
         try:
-            return __import__(path, fromlist=['*'])
+            return __import__(path, fromlist=["*"])
         except Exception as e:  # pragma: no cover - best effort
-            _enrich_log.debug("Context enrichment optional module missing: %s (%s)", path, e)
+            _enrich_log.debug(
+                "Context enrichment optional module missing: %s (%s)", path, e
+            )
             return None
 
     _opt_charts = _maybe_import("app.routers.agent_tools_charts")
@@ -56,26 +200,99 @@ else:
 
     # Warmup tracking (one-time model list probe)
     _llm_warmed = False
+
     async def _ensure_warm():
         global _llm_warmed  # type: ignore
         if _llm_warmed:
             return True
         try:
             import asyncio
+
             loop = asyncio.get_running_loop()
+
             def _list():
                 try:
                     return llm_mod.list_models()
                 except Exception:
                     return {}
+
             models = await loop.run_in_executor(None, _list)
             _llm_warmed = bool(models)
         except Exception:
             _llm_warmed = False
         return _llm_warmed
 
+    @router.post("/warmup")
+    async def agent_warmup(
+        model: Optional[str] = Query(None, description="Optional model alias to prime")
+    ):
+        """Trigger LLM warmup so the first user call doesn't incur model load."""
+        import asyncio
+
+        start = time.perf_counter()
+        fallback: Optional[str] = None
+        effective_model = model or settings.DEFAULT_LLM_MODEL
+        warmed = False
+        dev_stub = os.getenv(
+            "DEV_ALLOW_NO_LLM", str(getattr(settings, "DEV_ALLOW_NO_LLM", "0"))
+        ).lower() in {"1", "true", "yes", "on"}
+
+        try:
+            if dev_stub:
+                warmed = await _ensure_warm()
+            else:
+                call_fn = getattr(
+                    llm_mod, "call_local_llm", getattr(llm_mod, "call_llm", None)
+                )
+                if call_fn is None:
+                    warmed = await _ensure_warm()
+                else:
+
+                    def _invoke():
+                        try:
+                            getattr(llm_mod, "reset_fallback_provider", lambda: None)()
+                            reply, _ = call_fn(
+                                model=effective_model,
+                                messages=[{"role": "user", "content": "Warmup ping."}],
+                                temperature=0.2,
+                                top_p=0.9,
+                            )
+                            fb = getattr(
+                                llm_mod, "get_last_fallback_provider", lambda: None
+                            )()
+                            return bool(reply), fb
+                        except Exception:
+                            getattr(llm_mod, "reset_fallback_provider", lambda: None)()
+                            raise
+
+                    loop = asyncio.get_running_loop()
+                    if loop.is_running():
+                        warmed, fallback = await loop.run_in_executor(None, _invoke)
+                    else:  # pragma: no cover - sync fallback (tests)
+                        warmed, fallback = _invoke()
+        except Exception as exc:
+            took_ms = int((time.perf_counter() - start) * 1000)
+            return {
+                "ok": False,
+                "warmed": bool(warmed),
+                "model": effective_model,
+                "took_ms": took_ms,
+                "fallback": fallback,
+                "error": str(exc),
+            }
+
+        took_ms = int((time.perf_counter() - start) * 1000)
+        return {
+            "ok": bool(warmed),
+            "warmed": bool(warmed),
+            "model": effective_model,
+            "took_ms": took_ms,
+            "fallback": fallback,
+        }
+
     # --- KPI empty-state guard (router-level) ---
     # (definitions that follow rely on heavy deps and remain inside this branch)
+
 
 def _emptyish(v):
     if v is None:
@@ -85,6 +302,7 @@ def _emptyish(v):
     if isinstance(v, (list, tuple, set)):
         return len(v) == 0 or all(_emptyish(x) for x in v)
     return False
+
 
 # ---------------------------------------------------------------------------
 # Core system prompt and intent-specific hints (used to enhance system prompt)
@@ -117,6 +335,7 @@ MODEL_ALIASES = {
     # Dash variant normalized to colon form (test expects underlying call gets gpt-oss:20b)
     "gpt-oss-20b": "gpt-oss:20b",
 }
+
 
 def enforce_analytics_empty_state(resp: dict):
     """Augment / replace replies for analytics & anomaly modes when data is empty.
@@ -152,7 +371,10 @@ def enforce_analytics_empty_state(resp: dict):
         # KPIs / generic analytics
         if mode in {"analytics", "analytics.kpis"}:
             from app.services.agent_tools.common import no_data_kpis as _nd_kpis
-            replacement = _nd_kpis(str(month_ctx) if month_ctx else _month_str_from_out_or_now(resp))
+
+            replacement = _nd_kpis(
+                str(month_ctx) if month_ctx else _month_str_from_out_or_now(resp)
+            )
             # Merge preserving existing tool_trace / model if present
             for k in ("tool_trace", "model", "used_context"):
                 if k in resp:
@@ -161,7 +383,10 @@ def enforce_analytics_empty_state(resp: dict):
         # Anomalies
         if mode == "insights.anomalies" and result_empty:
             from app.services.agent_tools.common import no_data_anomalies as _nd_anom
-            replacement = _nd_anom(str(month_ctx) if month_ctx else _month_str_from_out_or_now(resp))
+
+            replacement = _nd_anom(
+                str(month_ctx) if month_ctx else _month_str_from_out_or_now(resp)
+            )
             for k in ("tool_trace", "model", "used_context"):
                 if k in resp:
                     replacement.setdefault(k, resp[k])
@@ -169,38 +394,61 @@ def enforce_analytics_empty_state(resp: dict):
         # Forecast family
         if mode.startswith("analytics.forecast") and result_empty:
             suggestions = [
-                {"label": "Increase lookback", "action": {"type": "tool", "mode": mode, "args": {"months": 6}}},
-                {"label": "Change month", "action": {"type": "ui", "action": "open-month-picker"}},
+                {
+                    "label": "Increase lookback",
+                    "action": {"type": "tool", "mode": mode, "args": {"months": 6}},
+                },
+                {
+                    "label": "Change month",
+                    "action": {"type": "ui", "action": "open-month-picker"},
+                },
             ]
             msg = (
                 f"Not enough data to compute forecast for **{month_ctx or _month_str_from_out_or_now(resp)}**.\n"
                 "Try increasing the lookback window or selecting a month with more history."
             )
-            resp.update({
-                "ok": True,
-                "reply": msg,
-                "message": msg,
-                "summary": msg,
-                "meta": {"reason": "no_data", "suggestions": suggestions},
-            })
+            resp.update(
+                {
+                    "ok": True,
+                    "reply": msg,
+                    "message": msg,
+                    "summary": msg,
+                    "meta": {"reason": "no_data", "suggestions": suggestions},
+                }
+            )
         return resp
     except Exception:
         return resp
 
+
 # PII redaction for logging
-SENSITIVE_KEYS = {"content", "merchant", "description", "account_number", "address", "phone", "email"}
+SENSITIVE_KEYS = {
+    "content",
+    "merchant",
+    "description",
+    "account_number",
+    "address",
+    "phone",
+    "email",
+}
+
 
 def redact_pii(d):
     """Recursively redact sensitive information from data structures for logging."""
     if isinstance(d, dict):
-        return {k: ("[redacted]" if k in SENSITIVE_KEYS else redact_pii(v)) for k, v in d.items()}
+        return {
+            k: ("[redacted]" if k in SENSITIVE_KEYS else redact_pii(v))
+            for k, v in d.items()
+        }
     if isinstance(d, list):
         return [redact_pii(x) for x in d]
     return d
 
+
 def estimate_tokens(text: str) -> int:
     """Rough token estimation: ~4 chars per token for English text."""
     return len(text) // 4
+
 
 def trim_ctx_for_prompt(ctx: dict, max_chars: int = 8000) -> dict:
     """
@@ -209,32 +457,35 @@ def trim_ctx_for_prompt(ctx: dict, max_chars: int = 8000) -> dict:
     Keep: month + txn + summary (core data)
     """
     trim_order = ["suggestions", "top_merchants", "insights", "alerts", "rules"]
-    calc_size = lambda d: len(json.dumps(d, default=str))
-    
+
+    def calc_size(d):
+        return len(json.dumps(d, default=str))
+
     if calc_size(ctx) <= max_chars:
         return ctx
-    
+
     trimmed = dict(ctx)
-    
+
     for field in trim_order:
         if field in trimmed:
             if isinstance(trimmed[field], list):
                 # For lists, trim to half size first
                 original_len = len(trimmed[field])
-                trimmed[field] = trimmed[field][:max(1, original_len // 2)]
-                
+                trimmed[field] = trimmed[field][: max(1, original_len // 2)]
+
                 # If still too big, remove entirely
                 if calc_size(trimmed) > max_chars:
                     del trimmed[field]
             else:
                 # For non-lists, remove entirely
                 del trimmed[field]
-            
+
             # Check if we're under the limit now
             if calc_size(trimmed) <= max_chars:
                 break
-    
+
     return trimmed
+
 
 def latest_txn_for_month(db: Session, month: str) -> Optional[Dict[str, Any]]:
     """
@@ -242,10 +493,13 @@ def latest_txn_for_month(db: Session, month: str) -> Optional[Dict[str, Any]]:
     Returns transaction as dict or None if no transactions found.
     """
     try:
-        txn = db.query(Transaction).filter(
-            Transaction.month == month
-        ).order_by(desc(Transaction.date), desc(Transaction.id)).first()
-        
+        txn = (
+            db.query(Transaction)
+            .filter(Transaction.month == month)
+            .order_by(desc(Transaction.date), desc(Transaction.id))
+            .first()
+        )
+
         if txn:
             return {
                 "id": txn.id,
@@ -255,12 +509,13 @@ def latest_txn_for_month(db: Session, month: str) -> Optional[Dict[str, Any]]:
                 "amount": txn.amount,
                 "category": txn.category,
                 "account": txn.account,
-                "month": txn.month
+                "month": txn.month,
             }
     except Exception as e:
         logging.warning(f"Failed to find latest transaction for month {month}: {e}")
-    
+
     return None
+
 
 def parse_txn_from_message(message: str) -> Optional[Dict[str, Any]]:
     """
@@ -271,27 +526,29 @@ def parse_txn_from_message(message: str) -> Optional[Dict[str, Any]]:
     """
     try:
         # Look for amount patterns: $12.34, 12.34, $12
-        amount_match = re.search(r'\$?(\d+\.?\d*)', message)
-        
+        amount_match = re.search(r"\$?(\d+\.?\d*)", message)
+
         # Look for merchant patterns (capitalize words that might be business names)
         # This is very naive - just grab capitalized words
-        merchant_match = re.findall(r'\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\b', message)
-        
+        merchant_match = re.findall(r"\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\b", message)
+
         if amount_match:
             return {
                 "parsed_amount": float(amount_match.group(1)),
                 "parsed_merchant": merchant_match[0] if merchant_match else None,
-                "source": "message_parse"
+                "source": "message_parse",
             }
     except Exception:
         pass
-    
+
     return None
+
 
 # Pydantic models for request validation
 class ChatMessage(BaseModel):
     role: Literal["system", "user", "assistant"]
     content: str
+
 
 class AgentChatRequest(BaseModel):
     messages: List[ChatMessage]
@@ -306,6 +563,8 @@ class AgentChatRequest(BaseModel):
     model: str = "gpt-oss:20b"
     temperature: float = 0.2
     top_p: float = 0.9
+    # Conversational voice styling (default: true)
+    conversational: Optional[bool] = True
 
     @field_validator("messages")
     @classmethod
@@ -328,6 +587,7 @@ class AgentChatRequest(BaseModel):
             raise ValueError("top_p must be between 0.0 and 1.0")
         return v
 
+
 def latest_month(db: Session) -> Optional[str]:
     """Get the latest month from transactions table"""
     try:
@@ -336,56 +596,111 @@ def latest_month(db: Session) -> Optional[str]:
     except Exception:
         return None
 
-def _enrich_context(db: Session, ctx: Optional[Dict[str, Any]], txn_id: Optional[str]) -> Dict[str, Any]:
+
+def _extract_style_context(ctx: Dict[str, Any], resp: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Extract context data for conversational styling.
+
+    Pulls month_label, month_spend, top_merchant from enriched context.
+    """
+    style_ctx: Dict[str, Any] = {}
+
+    # Extract month label
+    month = ctx.get("month")
+    if month:
+        try:
+            # Format month as "August 2025"
+            from datetime import datetime
+
+            dt = datetime.strptime(month, "%Y-%m")
+            style_ctx["month_label"] = dt.strftime("%B %Y")
+        except Exception:
+            style_ctx["month_label"] = month
+
+    # Extract spend from summary
+    summary = ctx.get("summary", {})
+    if isinstance(summary, dict):
+        # Try cents first, fallback to dollars
+        total_out_cents = summary.get("total_out_cents")
+        if total_out_cents is not None:
+            style_ctx["month_spend"] = abs(total_out_cents) / 100
+        elif summary.get("total_out") is not None:
+            style_ctx["month_spend"] = abs(summary.get("total_out", 0))
+
+    # Extract top merchant
+    top_merchants = ctx.get("top_merchants", [])
+    if isinstance(top_merchants, list) and len(top_merchants) > 0:
+        first = top_merchants[0]
+        if isinstance(first, dict):
+            style_ctx["top_merchant"] = first.get("merchant")
+
+    return style_ctx
+
+
+def _enrich_context(
+    db: Session, ctx: Optional[Dict[str, Any]], txn_id: Optional[str]
+) -> Dict[str, Any]:
     ctx = dict(ctx or {})
     month = ctx.get("month") or latest_month(db) or "1970-01"  # Safe fallback
 
     # Only fetch what's missing to stay cheap and composable
     if month:
         ctx["month"] = month
-        
+
         if "summary" not in ctx and _opt_charts:
             try:
-                summary_body = getattr(_opt_charts, 'SummaryBody')(month=month)
-                summary_result = getattr(_opt_charts, 'charts_summary')(summary_body, db)
+                summary_body = getattr(_opt_charts, "SummaryBody")(month=month)
+                summary_result = getattr(_opt_charts, "charts_summary")(
+                    summary_body, db
+                )
                 ctx["summary"] = summary_result.model_dump()
             except Exception as e:
                 logging.getLogger("uvicorn").debug(f"Enrichment summary skipped: {e}")
-                
+
         if "top_merchants" not in ctx and _opt_charts:
             try:
-                merchants_body = getattr(_opt_charts, 'MerchantsBody')(month=month, top_n=10)
-                merchants_result = getattr(_opt_charts, 'charts_merchants')(merchants_body, db)
-                ctx["top_merchants"] = [item.model_dump() for item in merchants_result.items]
+                merchants_body = getattr(_opt_charts, "MerchantsBody")(
+                    month=month, top_n=10
+                )
+                merchants_result = getattr(_opt_charts, "charts_merchants")(
+                    merchants_body, db
+                )
+                ctx["top_merchants"] = [
+                    item.model_dump() for item in merchants_result.items
+                ]
             except Exception as e:
                 logging.getLogger("uvicorn").debug(f"Enrichment merchants skipped: {e}")
-                
+
         if "insights" not in ctx and _opt_insights:
             try:
-                insights_body = getattr(_opt_insights, 'ExpandedIn')(month=month, large_limit=10)
-                raw = getattr(_opt_insights, 'insights_expanded')(insights_body, db)
+                insights_body = getattr(_opt_insights, "ExpandedIn")(
+                    month=month, large_limit=10
+                )
+                raw = getattr(_opt_insights, "insights_expanded")(insights_body, db)
                 if isinstance(raw, dict):
-                    normalized = getattr(_opt_insights, 'expand')(raw).model_dump()
+                    normalized = getattr(_opt_insights, "expand")(raw).model_dump()
                 else:
                     try:
-                        normalized = getattr(_opt_insights, 'expand')(raw.model_dump()).model_dump()  # type: ignore[attr-defined]
+                        normalized = getattr(_opt_insights, "expand")(raw.model_dump()).model_dump()  # type: ignore[attr-defined]
                     except Exception:
-                        normalized = getattr(_opt_insights, 'ExpandedBody')().model_dump()
+                        normalized = getattr(
+                            _opt_insights, "ExpandedBody"
+                        )().model_dump()
                 ctx["insights"] = normalized
             except Exception as e:
                 logging.getLogger("uvicorn").debug(f"Enrichment insights skipped: {e}")
-    
+
     if "rules" not in ctx and _opt_rules_crud:
         try:
-            rules_result = getattr(_opt_rules_crud, 'list_rules')(db)
+            rules_result = getattr(_opt_rules_crud, "list_rules")(db)
             ctx["rules"] = [rule.model_dump() for rule in rules_result]
         except Exception as e:
             logging.getLogger("uvicorn").debug(f"Enrichment rules skipped: {e}")
-            
+
     if txn_id and "txn" not in ctx and _opt_txn_tools:
         try:
-            get_body = getattr(_opt_txn_tools, 'GetByIdsBody')(txn_ids=[int(txn_id)])
-            txn_result = getattr(_opt_txn_tools, 'get_by_ids')(get_body, db)
+            get_body = getattr(_opt_txn_tools, "GetByIdsBody")(txn_ids=[int(txn_id)])
+            txn_result = getattr(_opt_txn_tools, "get_by_ids")(get_body, db)
             if txn_result.items:
                 ctx["txn"] = txn_result.items[0].model_dump()
         except Exception as e:
@@ -393,12 +708,13 @@ def _enrich_context(db: Session, ctx: Optional[Dict[str, Any]], txn_id: Optional
 
     return ctx
 
+
 @router.post("/chat")
 def agent_chat(
     req: AgentChatRequest,
-    db: Session = Depends(get_db),
-    background_tasks: BackgroundTasks = None,
-    request: Request = None,
+    db: "Session" = Depends(get_db),
+    background_tasks=None,
+    request=None,
     debug: bool = Query(False, description="Return raw CONTEXT in response (dev only)"),
     mode_override: Optional[str] = Query(default=None, alias="mode"),
     bypass_router: bool = Query(False, alias="bypass_router"),
@@ -419,20 +735,32 @@ def agent_chat(
         # One-time warmup preflight: avoid user-facing 500 on cold model load.
         try:
             import asyncio
-            if not asyncio.get_event_loop().is_running():  # sync context (FastAPI def endpoint)
+
+            if (
+                not asyncio.get_event_loop().is_running()
+            ):  # sync context (FastAPI def endpoint)
                 # Convert to async temporarily to call _ensure_warm via run_until_complete if needed
                 pass  # FastAPI will run this in threadpool; skip complex detection
-            if '_ensure_warm' in globals():
+            if "_ensure_warm" in globals():
                 warmed = asyncio.run(_ensure_warm()) if asyncio.iscoroutinefunction(_ensure_warm) else True  # type: ignore
                 if not warmed:
                     from fastapi import HTTPException
-                    raise HTTPException(status_code=503, detail={"error":"model_warming","hint":"Model is starting; please retry."})
+
+                    raise HTTPException(
+                        status_code=503,
+                        detail={
+                            "error": "model_warming",
+                            "hint": "Model is starting; please retry.",
+                        },
+                    )
         except Exception:
             # If warm check fails, continue; normal timeout/retry path will handle
             pass
         print(f"Agent chat request: {redact_pii(req.model_dump())}")
         ctx = _enrich_context(db, req.context, req.txn_id)
-        last_user_msg = next((m.content for m in reversed(req.messages) if m.role == "user"), "")
+        last_user_msg = next(
+            (m.content for m in reversed(req.messages) if m.role == "user"), ""
+        )
         resp: Dict[str, Any] | None = None
 
         override_modes = {
@@ -467,18 +795,29 @@ def agent_chat(
             aliased = MODEL_ALIASES.get(requested_model, requested_model)
             model = aliased or settings.DEFAULT_LLM_MODEL
             # Dynamic evaluation so monkeypatch / env changes inside tests are honored each request
-            _DEV_NO_LLM = os.getenv("DEV_ALLOW_NO_LLM", str(getattr(settings, "DEV_ALLOW_NO_LLM", "0"))).lower() in {"1","true","yes","on"}
+            _DEV_NO_LLM = os.getenv(
+                "DEV_ALLOW_NO_LLM", str(getattr(settings, "DEV_ALLOW_NO_LLM", "0"))
+            ).lower() in {"1", "true", "yes", "on"}
             if _DEV_NO_LLM:
                 if request is not None:
                     # Under disabled LLM path we intentionally mark as fallback-stub unless a fallback provider appears
                     request.state.llm_path = "fallback-stub"
                 # Even with LLM disabled, invoke call_llm so alias tests (which monkeypatch call_llm) observe the normalized model.
-                generic = not (req.force_llm or effective_mode or bypass_router or x_bypass_router)
+                generic = not (
+                    req.force_llm or effective_mode or bypass_router or x_bypass_router
+                )
                 try:
                     # Prefer call_local_llm so tests monkeypatching it (fallback flag) see invocation
-                    call_fn = getattr(llm_mod, 'call_local_llm', getattr(llm_mod, 'call_llm'))
+                    call_fn = getattr(
+                        llm_mod, "call_local_llm", getattr(llm_mod, "call_llm")
+                    )
                     # Exercise alias normalization only if the alias actually changed the string or maps to default (None)
-                    _ = call_fn(model=model, messages=[{"role": "user", "content": last_user_msg or ""}], temperature=req.temperature, top_p=req.top_p)
+                    _ = call_fn(
+                        model=model,
+                        messages=[{"role": "user", "content": last_user_msg or ""}],
+                        temperature=req.temperature,
+                        top_p=req.top_p,
+                    )
                 except Exception:
                     pass
                 base_stub = {
@@ -488,22 +827,38 @@ def agent_chat(
                     "tool_trace": [],
                     "citations": [],
                     "used_context": {"month": ctx.get("month")},
-                    "stub": True
+                    "stub": True,
                 }
                 if not generic:
                     base_stub["mode"] = "stub.llm_disabled"
                 # If a fallback provider was set by a monkeypatched call_llm/call_local_llm, surface analytics emission manually
                 try:
                     # If monkeypatched call_local_llm set context var directly, retrieve it; else honor explicit force_llm inducing synthetic fallback for test
-                    fb = getattr(llm_mod, 'get_last_fallback_provider', lambda: None)()
-                    if (not fb) and (req.force_llm or effective_mode or bypass_router or x_bypass_router):
+                    fb = getattr(llm_mod, "get_last_fallback_provider", lambda: None)()
+                    if (not fb) and (
+                        req.force_llm
+                        or effective_mode
+                        or bypass_router
+                        or x_bypass_router
+                    ):
                         # Force an openai fallback marker when force_llm path under disabled LLM for analytics test coverage
                         fb = "openai"
                     if fb:
                         base_stub["fallback"] = fb
                         try:
-                            rid = (request.headers.get("X-Request-ID") if request else None) or str(uuid.uuid4())
-                            props = {"rid": rid, "provider": str(fb), "requested_model": requested_model, "fallback_model": getattr(llm_mod, '_model_for_openai', lambda m: 'gpt-4o-mini')(model)}
+                            rid = (
+                                request.headers.get("X-Request-ID") if request else None
+                            ) or str(uuid.uuid4())
+                            props = {
+                                "rid": rid,
+                                "provider": str(fb),
+                                "requested_model": requested_model,
+                                "fallback_model": getattr(
+                                    llm_mod,
+                                    "_model_for_openai",
+                                    lambda m: "gpt-4o-mini",
+                                )(model),
+                            }
                             analytics_emit.emit_fallback(props)
                         except Exception:
                             pass
@@ -520,28 +875,56 @@ def agent_chat(
                 return JSONResponse(base_stub, headers={"X-LLM-Path": path_hdr})
             intent_hint = INTENT_HINTS.get(req.intent, INTENT_HINTS["general"])
             enhanced_system_prompt = f"{SYSTEM_PROMPT}\n\n{intent_hint}"
-            final_messages = [{"role": "system", "content": enhanced_system_prompt}] + [{"role": m.role, "content": m.content} for m in req.messages]
+            final_messages = [{"role": "system", "content": enhanced_system_prompt}] + [
+                {"role": m.role, "content": m.content} for m in req.messages
+            ]
             trimmed_ctx = trim_ctx_for_prompt(ctx, max_chars=8000)
             ctx_str = json.dumps(trimmed_ctx, default=str)
             if len(ctx_str) > 10000:
                 ctx_str = ctx_str[:10000] + " …(hard-trimmed)"
-            final_messages.append({"role": "system", "content": f"## CONTEXT\n{ctx_str}\n## INTENT: {req.intent}"})
+            final_messages.append(
+                {
+                    "role": "system",
+                    "content": f"## CONTEXT\n{ctx_str}\n## INTENT: {req.intent}",
+                }
+            )
             # Reset per-call fallback flag and invoke LLM (tests may monkeypatch call_local_llm)
-            getattr(llm_mod, 'reset_fallback_provider', lambda: None)()
+            getattr(llm_mod, "reset_fallback_provider", lambda: None)()
             # Use call_llm so tests that monkeypatch call_llm (alias tests) observe the invocation
-            call_fn = getattr(llm_mod, 'call_local_llm', getattr(llm_mod, 'call_llm'))
-            reply, tool_trace = call_fn(model=model, messages=final_messages, temperature=req.temperature, top_p=req.top_p)
-            fb = getattr(llm_mod, 'get_last_fallback_provider', lambda: None)()
-            resp = {"ok": True, "reply": reply, "citations": [], "used_context": {"month": ctx.get("month")}, "tool_trace": tool_trace, "model": model}
+            call_fn = getattr(llm_mod, "call_local_llm", getattr(llm_mod, "call_llm"))
+            reply, tool_trace = call_fn(
+                model=model,
+                messages=final_messages,
+                temperature=req.temperature,
+                top_p=req.top_p,
+            )
+            fb = getattr(llm_mod, "get_last_fallback_provider", lambda: None)()
+            resp = {
+                "ok": True,
+                "reply": reply,
+                "citations": [],
+                "used_context": {"month": ctx.get("month")},
+                "tool_trace": tool_trace,
+                "model": model,
+                "_router_fallback_active": False,  # Bypass path uses primary LLM
+                "mode": "primary",
+            }
             if fb:
                 resp["fallback"] = fb
+                resp["_router_fallback_active"] = (
+                    True  # Override if fallback provider used
+                )
                 try:
-                    rid = (request.headers.get("X-Request-ID") if request else None) or str(uuid.uuid4())
+                    rid = (
+                        request.headers.get("X-Request-ID") if request else None
+                    ) or str(uuid.uuid4())
                     props = {
                         "rid": rid,
                         "provider": str(fb),
                         "requested_model": requested_model,
-                        "fallback_model": getattr(llm_mod, '_model_for_openai', lambda m: 'gpt-4o-mini')(model),
+                        "fallback_model": getattr(
+                            llm_mod, "_model_for_openai", lambda m: "gpt-4o-mini"
+                        )(model),
                     }
                     if background_tasks is not None:
                         background_tasks.add_task(analytics_emit.emit_fallback, props)
@@ -551,17 +934,136 @@ def agent_chat(
                 except Exception:
                     pass
         else:
-            if req.intent in ("general", "budget_help"):
+            # 1) RAG intent detection (admin-only, before router tools)
+            rag_intent = detect_rag_intent(last_user_msg)
+            if rag_intent:
+                try:
+                    # Get current user from request (optional_user pattern)
+                    user = None
+                    if request:
+                        try:
+                            from app.utils.auth import get_current_user
+
+                            user = get_current_user(request, db=db)
+                        except Exception:
+                            pass  # Not authenticated or not admin
+
+                    if user:
+                        # Execute RAG action (wrap async call for sync endpoint)
+                        action = rag_intent.get("action", "")
+                        payload = rag_intent.get("payload", {})
+
+                        import asyncio
+
+                        try:
+                            loop = asyncio.get_event_loop()
+                            if loop.is_running():
+                                # Create new event loop for nested async call
+                                result = asyncio.run(
+                                    rag_tools.run_action(action, user, db, **payload)
+                                )[0]
+                            else:
+                                result = loop.run_until_complete(
+                                    rag_tools.run_action(action, user, db, **payload)
+                                )[0]
+                        except RuntimeError:
+                            # No event loop, create one
+                            result = asyncio.run(
+                                rag_tools.run_action(action, user, db, **payload)
+                            )[0]
+
+                        # Build friendly message
+                        action_name = (
+                            action.replace("rag.", "").replace("_", " ").title()
+                        )
+                        summary_parts = []
+                        if result.get("status") == "ok":
+                            summary_parts.append(f"✅ {action_name}")
+                            if "documents" in result:
+                                summary_parts.append(
+                                    f"({result['documents']} docs, {result.get('chunks', 0)} chunks)"
+                                )
+                            elif "seeded" in result:
+                                summary_parts.append(
+                                    f"(seeded {result['seeded']} URLs)"
+                                )
+                            elif "message" in result:
+                                summary_parts.append(f"- {result['message']}")
+                        else:
+                            summary_parts.append(f"❌ {action_name} failed")
+                            if "message" in result:
+                                summary_parts.append(f": {result['message']}")
+
+                        message = " ".join(summary_parts)
+                        resp = {
+                            "ok": True,
+                            "mode": "tool",
+                            "tool": "rag",
+                            "action": action,
+                            "reply": message,
+                            "message": message,
+                            "result": result,
+                            "citations": [{"type": "rag_tool", "action": action}],
+                            "used_context": {"month": ctx.get("month")},
+                            "tool_trace": [
+                                {"tool": "rag", "action": action, "status": "ok"}
+                            ],
+                            "model": "deterministic",
+                        }
+                        if request is not None:
+                            request.state.llm_path = "router"
+                except Exception as e:
+                    # RAG action failed (auth, validation, execution)
+                    error_msg = str(e)
+                    if (
+                        "Admin only" in error_msg
+                        or "Authentication required" in error_msg
+                    ):
+                        message = "🔒 RAG tools require admin access"
+                    elif "Dev route disabled" in error_msg:
+                        message = "⚠️ This RAG action requires dev mode (set ALLOW_DEV_ROUTES=1)"
+                    else:
+                        message = f"⚠️ RAG action failed: {error_msg}"
+
+                    resp = {
+                        "ok": False,
+                        "mode": "error",
+                        "reply": message,
+                        "message": message,
+                        "error": error_msg,
+                        "used_context": {"month": ctx.get("month")},
+                        "tool_trace": [
+                            {"tool": "rag", "status": "error", "error": error_msg}
+                        ],
+                        "model": "deterministic",
+                    }
+                    if request is not None:
+                        request.state.llm_path = "router"
+
+            # 2) Continue with existing router tools if no RAG match
+            if resp is None and req.intent in ("general", "budget_help"):
                 t0 = time.perf_counter()
-                tool_resp = route_to_tool(last_user_msg, db) or route_to_tool_with_fallback(last_user_msg, ctx=db, db=db)
+                tool_resp = route_to_tool(
+                    last_user_msg, db
+                ) or route_to_tool_with_fallback(last_user_msg, ctx=db, db=db)
                 if tool_resp is not None:
                     dt_ms = int((time.perf_counter() - t0) * 1000)
                     summary = _summarize_tool_result(tool_resp) or ""
                     clean = summary.strip()
                     lower = clean.lower()
                     normalized = lower.replace("�", "'")
-                    bypass_rephrase = (not clean or lower in {"ok", "okay"} or lower.rstrip(".") in {"ok", "okay"} or "i couldn't find any transactions" in normalized or "i couldnt find any transactions" in normalized)
-                    rephrased = None if bypass_rephrase else _try_llm_rephrase_tool(last_user_msg, tool_resp, clean)
+                    bypass_rephrase = (
+                        not clean
+                        or lower in {"ok", "okay"}
+                        or lower.rstrip(".") in {"ok", "okay"}
+                        or "i couldn't find any transactions" in normalized
+                        or "i couldnt find any transactions" in normalized
+                    )
+                    rephrased = (
+                        None
+                        if bypass_rephrase
+                        else _try_llm_rephrase_tool(last_user_msg, tool_resp, clean)
+                    )
                     message = (rephrased or clean).strip() or clean
                     resp = {
                         "ok": True,
@@ -576,21 +1078,45 @@ def agent_chat(
                         "url": tool_resp.get("url"),
                         "citations": [{"type": "summary", "count": 1}],
                         "used_context": {"month": ctx.get("month")},
-                        "tool_trace": [{"tool": "router", "mode": tool_resp.get("mode"), "args": tool_resp.get("args"), "duration_ms": dt_ms, "status": "short_circuit"}],
+                        "tool_trace": [
+                            {
+                                "tool": "router",
+                                "mode": tool_resp.get("mode"),
+                                "args": tool_resp.get("args"),
+                                "duration_ms": dt_ms,
+                                "status": "short_circuit",
+                            }
+                        ],
                         "model": "deterministic",
                     }
-                    if request is not None and not getattr(request.state, "llm_path", None):
+                    if request is not None and not getattr(
+                        request.state, "llm_path", None
+                    ):
                         request.state.llm_path = "router"
                 else:
                     _l = last_user_msg.lower()
-                    if any(k in _l for k in ("kpi", "kpis", "forecast", "anomal", "recurring", "budget")):
+                    if any(
+                        k in _l
+                        for k in (
+                            "kpi",
+                            "kpis",
+                            "forecast",
+                            "anomal",
+                            "recurring",
+                            "budget",
+                        )
+                    ):
                         resp = {
-                            "reply": ("I didn’t find enough context to run the analytics tool directly. Try again, or switch to a month with data / Insights: Expanded."),
+                            "reply": (
+                                "I didn’t find enough context to run the analytics tool directly. Try again, or switch to a month with data / Insights: Expanded."
+                            ),
                             "rephrased": False,
                             "mode": "analytics",
                             "meta": {"reason": "router_fallback"},
                             "used_context": {"month": ctx.get("month")},
-                            "tool_trace": [{"tool": "analytics.fallback", "status": "stub"}],
+                            "tool_trace": [
+                                {"tool": "analytics.fallback", "status": "stub"}
+                            ],
                             "model": "deterministic",
                         }
             if resp is None:
@@ -600,6 +1126,7 @@ def agent_chat(
                     if flow:
                         setattr(nlq, "flow", flow)
                     import re as _re
+
                     m_pg = _re.search(r"page\s+(\d{1,3})", last_user_msg.lower())
                     if m_pg:
                         setattr(nlq, "page", int(m_pg.group(1)))
@@ -609,11 +1136,27 @@ def agent_chat(
                     summary = summarize_txn_result(qres)
                     rephrased = try_llm_rephrase_summary(last_user_msg, qres, summary)
                     resp = {
-                        "mode": "nl_txns", "reply": rephrased or summary, "summary": summary, "rephrased": rephrased, "nlq": qres.get("filters"), "result": qres,
-                        "citations": [{"type": "summary", "count": 1}], "used_context": {"month": ctx.get("month")}, "tool_trace": [{"tool": "nl_txns", "status": "short_circuit"}], "model": "deterministic"}
+                        "mode": "nl_txns",
+                        "reply": rephrased or summary,
+                        "summary": summary,
+                        "rephrased": rephrased,
+                        "nlq": qres.get("filters"),
+                        "result": qres,
+                        "citations": [{"type": "summary", "count": 1}],
+                        "used_context": {"month": ctx.get("month")},
+                        "tool_trace": [{"tool": "nl_txns", "status": "short_circuit"}],
+                        "model": "deterministic",
+                    }
 
-        if resp is None and req.intent == "explain_txn" and not req.txn_id and "txn" not in ctx:
-            parsed_info = parse_txn_from_message(last_user_msg) if req.messages else None
+        if (
+            resp is None
+            and req.intent == "explain_txn"
+            and not req.txn_id
+            and "txn" not in ctx
+        ):
+            parsed_info = (
+                parse_txn_from_message(last_user_msg) if req.messages else None
+            )
             if parsed_info:
                 print(f"Parsed transaction info from message: {parsed_info}")
             if ctx.get("month"):
@@ -632,7 +1175,12 @@ def agent_chat(
             ctx_str = json.dumps(trimmed_ctx, default=str)
             if len(ctx_str) > 10000:
                 ctx_str = ctx_str[:10000] + " …(hard-trimmed)"
-            final_messages.append({"role": "system", "content": f"## CONTEXT\n{ctx_str}\n## INTENT: {req.intent}"})
+            final_messages.append(
+                {
+                    "role": "system",
+                    "content": f"## CONTEXT\n{ctx_str}\n## INTENT: {req.intent}",
+                }
+            )
             original_size = len(json.dumps(ctx, default=str))
             trimmed_size = len(ctx_str)
             if original_size != trimmed_size:
@@ -643,24 +1191,59 @@ def agent_chat(
             try:
                 logging.getLogger("agent").info(
                     "LLM:decide main force=%s allow_stub=%s requested=%s messages=%d",
-                    bool(req.force_llm), _allow_stub, req.model or settings.DEFAULT_LLM_MODEL, len(final_messages)
+                    bool(req.force_llm),
+                    _allow_stub,
+                    req.model or settings.DEFAULT_LLM_MODEL,
+                    len(final_messages),
                 )
             except Exception:
                 pass
-            llm_out = llm_mod.invoke_llm_with_optional_stub(
-                requested_model=req.model or settings.DEFAULT_LLM_MODEL,
-                messages=final_messages,
-                temperature=req.temperature,
-                top_p=req.top_p,
-                allow_stub=_allow_stub,
-            )
+            try:
+                llm_out = llm_mod.invoke_llm_with_optional_stub(
+                    requested_model=req.model or settings.DEFAULT_LLM_MODEL,
+                    messages=final_messages,
+                    temperature=req.temperature,
+                    top_p=req.top_p,
+                    allow_stub=_allow_stub,
+                )
+            except LLMQueueFullError as e:
+                # GPU is busy - return HTTP 429 (Too Many Requests)
+                from fastapi import HTTPException
+
+                raise HTTPException(
+                    status_code=429,
+                    detail={
+                        "error": "queue_full",
+                        "message": str(e),
+                        "retry_after": 2,  # suggest retry after 2 seconds
+                    },
+                )
             citations = []
-            for key, citation_type in [("summary", "summary"),("rules", "rules"),("top_merchants", "merchants"),("alerts", "alerts"),("insights", "insights")]:
+            for key, citation_type in [
+                ("summary", "summary"),
+                ("rules", "rules"),
+                ("top_merchants", "merchants"),
+                ("alerts", "alerts"),
+                ("insights", "insights"),
+            ]:
                 if ctx.get(key):
-                    val = ctx[key]; citations.append({"type": citation_type, "count": (len(val) if isinstance(val, list) else 1)})
+                    val = ctx[key]
+                    citations.append(
+                        {
+                            "type": citation_type,
+                            "count": (len(val) if isinstance(val, list) else 1),
+                        }
+                    )
             if ctx.get("txn"):
                 citations.append({"type": "txn", "id": ctx["txn"].get("id")})
-            resp = {"ok": True, "reply": llm_out["reply"], "citations": citations, "used_context": {"month": ctx.get("month")}, "tool_trace": llm_out.get("tool_trace", []), "model": llm_out["model"]}
+            resp = {
+                "ok": True,
+                "reply": llm_out["reply"],
+                "citations": citations,
+                "used_context": {"month": ctx.get("month")},
+                "tool_trace": llm_out.get("tool_trace", []),
+                "model": llm_out["model"],
+            }
             if llm_out.get("fallback"):
                 resp["fallback"] = llm_out["fallback"]
             if llm_out.get("stub"):
@@ -669,13 +1252,22 @@ def agent_chat(
             if llm_out.get("fallback"):
                 try:
                     # Prefer context var request id (middleware-set) then header then uuid4
-                    from app.utils.request_ctx import get_request_id as _get_rid  # local import to avoid cycle
-                    rid_ctx = _get_rid() or (request.headers.get("X-Request-ID") if request else None) or str(uuid.uuid4())
+                    from app.utils.request_ctx import (
+                        get_request_id as _get_rid,
+                    )  # local import to avoid cycle
+
+                    rid_ctx = (
+                        _get_rid()
+                        or (request.headers.get("X-Request-ID") if request else None)
+                        or str(uuid.uuid4())
+                    )
                     props = {
                         "rid": rid_ctx,
                         "provider": str(llm_out.get("fallback")),
                         "requested_model": req.model or settings.DEFAULT_LLM_MODEL,
-                        "fallback_model": getattr(llm_mod, '_model_for_openai', lambda m: 'gpt-4o-mini')(llm_out.get("model")),
+                        "fallback_model": getattr(
+                            llm_mod, "_model_for_openai", lambda m: "gpt-4o-mini"
+                        )(llm_out.get("model")),
                     }
                     if background_tasks is not None:
                         background_tasks.add_task(analytics_emit.emit_fallback, props)
@@ -720,13 +1312,51 @@ def agent_chat(
             if not resp.get("fallback"):
                 # Late-decided fallback (e.g. stub or provider swap recorded in context var)
                 try:  # pragma: no cover (defensive)
-                    fb_ctx = getattr(llm_mod, 'get_last_fallback_provider', lambda: None)()
+                    fb_ctx = getattr(
+                        llm_mod, "get_last_fallback_provider", lambda: None
+                    )()
                     if fb_ctx:
                         resp["fallback"] = fb_ctx
                 except Exception:
                     pass
             if resp.get("fallback"):
                 path_hdr = f"fallback-{resp['fallback']}"
+
+        # --- Conversational voice styling -----------------------------------------------
+        # Apply consistent conversational tone to all replies
+        if (
+            isinstance(resp, dict)
+            and resp.get("reply")
+            and getattr(req, "conversational", True)
+        ):
+            try:
+                raw_reply = resp["reply"]
+                # Determine mode from response metadata
+                mode = resp.get("mode", "primary")
+                if resp.get("fallback") or resp.get("_router_fallback_active"):
+                    mode = "fallback"
+                elif mode == "deterministic" or resp.get("model") == "deterministic":
+                    mode = "deterministic"
+                elif "tool" in mode or mode in ("nl_txns", "router"):
+                    mode = "nl_txns"
+
+                # Extract context for dynamic inserts
+                style_ctx = _extract_style_context(ctx, resp)
+
+                # Apply conversational styling
+                styled_reply = style_reply(
+                    raw_reply,
+                    user_name=None,  # Could extract from request if available
+                    mode=mode,
+                    context=style_ctx,
+                    add_header=True,
+                )
+                resp["reply"] = styled_reply
+                resp["_styled"] = True  # Debug flag
+            except Exception as e:
+                # If styling fails, keep original reply
+                logging.getLogger("uvicorn").debug(f"Reply styling failed: {e}")
+
         response_payload = tag_if_analytics(last_user_msg, resp)
         r = JSONResponse(response_payload)
         r.headers["X-LLM-Path"] = path_hdr
@@ -734,7 +1364,9 @@ def agent_chat(
     except Exception as e:
         print(f"Agent chat error: {str(e)}")
         try:
-            print(f"Request context: {redact_pii(req.model_dump() if hasattr(req, 'model_dump') else {})}")
+            print(
+                f"Request context: {redact_pii(req.model_dump() if hasattr(req, 'model_dump') else {})}"
+            )
         except Exception:
             pass
         raise HTTPException(status_code=500, detail=f"Chat error: {str(e)}")
@@ -744,6 +1376,7 @@ def agent_chat(
 def agent_rephrase(
     req: AgentChatRequest,
     db: Session = Depends(get_db),
+    request=None,
     debug: bool = Query(False, description="Return raw CONTEXT in response (dev only)"),
 ):
     """Clean endpoint to always hit the LLM path without tool/router logic."""
@@ -758,12 +1391,37 @@ def agent_rephrase(
     ctx_str = json.dumps(trimmed_ctx, default=str)
     if len(ctx_str) > 10000:
         ctx_str = ctx_str[:10000] + " …(hard-trimmed)"
-    final_messages.append({"role": "system", "content": f"## CONTEXT\n{ctx_str}\n## INTENT: {req.intent}"})
+    final_messages.append(
+        {"role": "system", "content": f"## CONTEXT\n{ctx_str}\n## INTENT: {req.intent}"}
+    )
 
     requested_model = req.model if req.model else settings.DEFAULT_LLM_MODEL
     model = MODEL_ALIASES.get(requested_model, requested_model)
     if model is None:
         model = settings.DEFAULT_LLM_MODEL
+
+    # Check LLM health before attempting to call
+    from app.services.llm_health import is_llm_available
+    import asyncio
+
+    # Run health check
+    llm_available = asyncio.run(is_llm_available(use_cache=True))
+
+    if not llm_available:
+        # LLM unavailable - return deterministic fallback
+        resp = {
+            "reply": "The AI assistant is temporarily unavailable. Please try again in a moment.",
+            "citations": [],
+            "used_context": {"month": ctx.get("month")},
+            "tool_trace": [{"tool": "health_check", "status": "llm_unavailable"}],
+            "model": "deterministic",
+            "_router_fallback_active": True,
+            "mode": "fallback",
+            "fallback_reason": "llm_health_check_failed",
+        }
+        if request is not None:
+            request.state.llm_path = "fallback-health"
+        return JSONResponse(resp, headers={"X-LLM-Path": "fallback-health"})
 
     reply, tool_trace = llm_mod.call_local_llm(
         model=model,
@@ -777,10 +1435,17 @@ def agent_rephrase(
         "used_context": {"month": ctx.get("month")},
         "tool_trace": tool_trace,
         "model": model,
+        "_router_fallback_active": False,  # Primary LLM path
+        "mode": "primary",
     }
     if debug and getattr(settings, "ENV", "dev") != "prod":
         resp["__debug_context"] = ctx
-    return JSONResponse(resp)
+
+    # Set LLM path header
+    if request is not None:
+        request.state.llm_path = "primary"
+
+    return JSONResponse(resp, headers={"X-LLM-Path": "primary"})
 
 
 def _fmt_usd(v: float) -> str:
@@ -794,6 +1459,7 @@ def _fmt_window(f: Dict[str, Any]) -> str:
     if f and f.get("month"):
         return f" ({f['month']})"
     return ""
+
 
 # ---------------------------------------------------------------------------
 # Lightweight deterministic month summary (agent-scoped) --------------------
@@ -813,16 +1479,29 @@ if not _HERMETIC:
             # Determine target month
             target = month
             if not target:
-                latest = db.query(Transaction.month).order_by(desc(Transaction.month)).first()
+                latest = (
+                    db.query(Transaction.month)
+                    .order_by(desc(Transaction.month))
+                    .first()
+                )
                 target = latest.month if latest else None
             if not target:
-                return {"month": None, "start": None, "end": None, "income": 0.0, "expenses": 0.0, "net": 0.0, "top_merchant": None}
+                return {
+                    "month": None,
+                    "start": None,
+                    "end": None,
+                    "income": 0.0,
+                    "expenses": 0.0,
+                    "net": 0.0,
+                    "top_merchant": None,
+                }
 
             # Bounds (assumes month format YYYY-MM)
             try:
                 year, mon = target.split("-")
                 from calendar import monthrange as _mr
                 import datetime as _dt
+
                 y_i, m_i = int(year), int(mon)
                 last_day = _mr(y_i, m_i)[1]
                 start_date = _dt.date(y_i, m_i, 1)
@@ -832,13 +1511,24 @@ if not _HERMETIC:
 
             # Aggregate income (positive) and expenses (abs negative)
             amt_col = Transaction.amount
-            q_month = db.query(Transaction).filter(Transaction.month == target)
-            income_val = db.query(_func.sum(amt_col)).filter(Transaction.month == target, amt_col > 0).scalar() or 0.0
-            expense_val = db.query(_func.sum(_func.abs(amt_col))).filter(Transaction.month == target, amt_col < 0).scalar() or 0.0
+            income_val = (
+                db.query(_func.sum(amt_col))
+                .filter(Transaction.month == target, amt_col > 0)
+                .scalar()
+                or 0.0
+            )
+            expense_val = (
+                db.query(_func.sum(_func.abs(amt_col)))
+                .filter(Transaction.month == target, amt_col < 0)
+                .scalar()
+                or 0.0
+            )
             net_val = float(income_val) - float(expense_val)
 
             # Top merchant by absolute spend magnitude (expenses only)
-            merchant_col = _func.coalesce(Transaction.merchant_canonical, Transaction.merchant).label("merchant")
+            merchant_col = _func.coalesce(
+                Transaction.merchant_canonical, Transaction.merchant
+            ).label("merchant")
             spend_col = _func.sum(_func.abs(amt_col)).label("spend")
             # Deterministic tie-break: order by spend desc, then merchant name asc
             top_row = (
@@ -851,7 +1541,10 @@ if not _HERMETIC:
             )
             top_payload = None
             if top_row and getattr(top_row, "merchant", None):
-                top_payload = {"name": top_row.merchant, "spend": float(getattr(top_row, "spend", 0.0) or 0.0)}
+                top_payload = {
+                    "name": top_row.merchant,
+                    "spend": float(getattr(top_row, "spend", 0.0) or 0.0),
+                }
 
             return {
                 "month": target,
@@ -863,7 +1556,10 @@ if not _HERMETIC:
                 "top_merchant": top_payload,
             }
         except Exception as e:  # pragma: no cover - defensive
-            raise HTTPException(status_code=500, detail={"error": "month_summary_failed", "message": str(e)})
+            raise HTTPException(
+                status_code=500,
+                detail={"error": "month_summary_failed", "message": str(e)},
+            )
 
 
 def _summarize_tool_result(tool_resp: Dict[str, Any]) -> str:
@@ -888,20 +1584,32 @@ def _summarize_tool_result(tool_resp: Dict[str, Any]) -> str:
         window = _fmt_window(tool_resp.get("filters", {}))
         return (", ".join(parts) or "Summary ready") + window + "."
     if mode == "charts.flows":
-        series = tool_resp.get("result", {}).get("series") if isinstance(tool_resp.get("result"), dict) else None
+        series = (
+            tool_resp.get("result", {}).get("series")
+            if isinstance(tool_resp.get("result"), dict)
+            else None
+        )
         n = len(series or [])
         window = _fmt_window(tool_resp.get("filters", {}))
         return f"Returned {n} flow points{window}."
     if mode == "charts.merchants":
         rows = tool_resp.get("result") or []
-        top = ", ".join(f"{(r.get('merchant') or '?')} ({_fmt_usd(float(r.get('amount') or r.get('spend') or 0))})" for r in rows[:3])
+        top = ", ".join(
+            f"{(r.get('merchant') or '?')} ({_fmt_usd(float(r.get('amount') or r.get('spend') or 0))})"
+            for r in rows[:3]
+        )
         window = _fmt_window(tool_resp.get("filters", {}))
         return f"Top merchants{window}: {top}." if top else f"No merchant data{window}."
     if mode == "charts.categories":
         rows = tool_resp.get("result") or []
-        top = ", ".join(f"{(r.get('category') or '?')} ({_fmt_usd(float(r.get('spend') or 0))})" for r in rows[:3])
+        top = ", ".join(
+            f"{(r.get('category') or '?')} ({_fmt_usd(float(r.get('spend') or 0))})"
+            for r in rows[:3]
+        )
         window = _fmt_window(tool_resp.get("filters", {}))
-        return f"Top categories{window}: {top}." if top else f"No category data{window}."
+        return (
+            f"Top categories{window}: {top}." if top else f"No category data{window}."
+        )
     if mode == "report.link":
         kind = tool_resp.get("meta", {}).get("kind", "report").upper()
         window = _fmt_window(tool_resp.get("filters", {}))
@@ -934,7 +1642,9 @@ def _month_str_from_out_or_now(out: dict) -> str:
     return f"{now.year:04d}-{now.month:02d}"
 
 
-def _try_llm_rephrase_tool(user_text: str, tool_resp: Dict[str, Any], summary: str) -> Optional[str]:
+def _try_llm_rephrase_tool(
+    user_text: str, tool_resp: Dict[str, Any], summary: str
+) -> Optional[str]:
     # Default off in dev for determinism
     if getattr(settings, "ENV", "dev") != "prod" and getattr(settings, "DEBUG", True):
         return None
@@ -942,7 +1652,11 @@ def _try_llm_rephrase_tool(user_text: str, tool_resp: Dict[str, Any], summary: s
         slim = {
             "mode": tool_resp.get("mode"),
             "filters": tool_resp.get("filters"),
-            "preview": (tool_resp.get("result") or [])[:5] if isinstance(tool_resp.get("result"), list) else tool_resp.get("result"),
+            "preview": (
+                (tool_resp.get("result") or [])[:5]
+                if isinstance(tool_resp.get("result"), list)
+                else tool_resp.get("result")
+            ),
             "url": tool_resp.get("url"),
         }
         system = (
@@ -960,7 +1674,10 @@ def _try_llm_rephrase_tool(user_text: str, tool_resp: Dict[str, Any], summary: s
         )
         reply, _ = llm_mod.call_local_llm(
             model=getattr(settings, "DEFAULT_LLM_MODEL", "gpt-oss:20b"),
-            messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
             temperature=0.1,
             top_p=0.9,
         )
@@ -971,32 +1688,46 @@ def _try_llm_rephrase_tool(user_text: str, tool_resp: Dict[str, Any], summary: s
     except Exception:
         return None
 
+
 # Legacy compatibility endpoints
 @router.get("/status")
-def agent_status(model: str = "gpt-oss:20b"):
-    """Ping local LLM to verify agent connectivity."""
-    try:
-        import urllib.request
-        body = json.dumps({"model": model, "prompt": "pong!", "stream": False})
-        req = urllib.request.Request(
-            "http://127.0.0.1:11434/api/generate",
-            data=body.encode("utf-8"),
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
-        with urllib.request.urlopen(req, timeout=5.0) as resp:
-            data = json.loads(resp.read().decode("utf-8", errors="ignore"))
-            return {"ok": True, "status": "ok", "pong": True, "reply": data.get("response", "")}
-    except Exception as e:
-        return {"ok": False, "error": str(e)}
+async def agent_status(model: str = "gpt-oss:20b"):
+    """
+    Ping LLM to verify agent connectivity.
+    Uses the same base URL as the actual LLM client for accurate health checks.
+    """
+    from app.services.llm_health import ping_llm
+
+    health = await ping_llm(timeout_s=3.0, use_cache=True)
+
+    if health["ok"]:
+        return {
+            "ok": True,
+            "status": "ok",
+            "llm_ok": True,
+            "provider": health["provider"],
+            "base_url": health["base_url"],
+            "model": model,
+        }
+    else:
+        return {
+            "ok": False,
+            "status": "error",
+            "llm_ok": False,
+            "error": health["reason"],
+            "provider": health["provider"],
+            "base_url": health["base_url"],
+        }
+
 
 # Enhanced redirect for legacy GPT chat route with JSON body for better client handling
-@router.post("/gpt")  
+@router.post("/gpt")
 def deprecated_gpt_chat():
     """Gracefully redirect legacy GPT chat to unified agent endpoint."""
     response = RedirectResponse(url="/agent/chat", status_code=307)
     response.headers["X-Redirect-Reason"] = "Legacy endpoint - use /agent/chat"
     return response
+
 
 @router.get("/models")
 def list_models():
@@ -1015,7 +1746,7 @@ def list_models():
         # De-dup while preserving order
         seen = set()
         merged = []
-        for m in (aliases + info["models"]):
+        for m in aliases + info["models"]:
             mid = m["id"]
             if mid in seen:
                 continue
@@ -1026,7 +1757,7 @@ def list_models():
             "default": info["default"],
             "models": merged,
         }
-    except Exception as e:
+    except Exception:
         # Graceful fallback: never 5xx. Provide at least the configured default.
         try:
             provider = getattr(settings, "DEFAULT_LLM_PROVIDER", "ollama")
@@ -1040,7 +1771,7 @@ def list_models():
             aliases = [{"id": "gpt-oss:20b"}, {"id": "default"}]
         seen = set()
         merged = []
-        for m in (aliases + [{"id": default_model}]):
+        for m in aliases + [{"id": default_model}]:
             mid = m.get("id")
             if not mid or mid in seen:
                 continue
@@ -1052,12 +1783,14 @@ def list_models():
             "models": merged,
         }
 
+
 @router.head("/models")
 async def head_models():
     """Return 204 for HEAD requests with no-store to avoid probe stampedes."""
     from fastapi import Response
+
     return Response(status_code=204, headers={"Cache-Control": "no-store"})
+
 
 # Alternative JSON response for clients that prefer structured redirects
 # (Removed duplicate /agent/chat legacy JSON redirect to avoid route conflicts)
-

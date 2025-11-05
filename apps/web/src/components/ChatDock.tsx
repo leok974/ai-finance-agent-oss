@@ -1,23 +1,26 @@
 import * as React from "react";
 import { stripToolNamespaces } from "@/utils/prettyToolName";
 import SaveRuleModal from '@/components/SaveRuleModal';
-const { useEffect, useMemo, useRef, useState } = React;
+const { useEffect, useRef, useState } = React;
 import { wireAguiStream } from "@/lib/aguiStream";
 import RobotThinking from "@/components/ui/RobotThinking";
 import EnvAvatar from "@/components/EnvAvatar";
 import { useAuth } from "@/state/auth";
 import { createPortal } from "react-dom";
 import { ChevronUp, Wrench } from "lucide-react";
-import { agentTools, agentChat, getAgentModels, type AgentChatRequest, type AgentChatResponse, type AgentModelsResponse, type ChatMessage, txnsQueryCsv, txnsQuery, type TxnQueryResult, explainTxnForChat, agentRephrase, getMonthSummary, getMonthMerchants, getMonthFlows, getSpendingTrends, getBudgetCheck, analytics, transactionsNl, telemetry } from "../lib/api";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { useToast } from "@/hooks/use-toast";
+import { Badge } from "@/components/ui/badge";
+import { agentTools, agentChat, type AgentChatRequest, type AgentChatResponse, type TxnQueryResult, explainTxnForChat, agentRephrase, analytics, transactionsNl, telemetry, txnsQueryCsv, txnsQuery, agentStatus, type AgentStatusResponse } from "../lib/api";
 import { fmtMonthSummary, fmtTopMerchants, fmtCashflow, fmtTrends } from "../lib/formatters";
 import { runToolWithRephrase } from "../lib/tools-runner";
 import { saveAs } from "../utils/save";
+import { buildAgentGreeting, buildGreetingCtxFromAPI, type AgentGreetingCtx } from "@/lib/agent/greeting";
+import type { MonthSummary, MerchantsResponse } from "@/lib/api.types";
 // import { useOkErrToast } from "../lib/toast-helpers";
 import RestoredBadge from "./RestoredBadge";
-import remarkGfm from "remark-gfm";
 import Markdown from "./Markdown";
 import type { ToolKey, ToolSpec, ToolRunState } from "../types/agentTools";
-import { AgentResultRenderer } from "./AgentResultRenderers";
 import ErrorBoundary from "./ErrorBoundary";
 import { QuickChips, type ChipAction } from "./QuickChips";
 import { useMonth } from "../context/MonthContext";
@@ -29,6 +32,8 @@ import { registerChatHandlers } from "@/state/chat";
 import { DEFAULT_PLACEHOLDER, focusComposer, registerComposerControls, setComposer, setComposerPlaceholder as setComposerPlaceholderUI } from "@/state/chat/ui";
 import { handleTransactionsNL } from "./AgentTools";
 import FallbackBadge from "./FallbackBadge";
+import { useShowDevTools } from "@/state/auth";
+import { RagToolChips } from "./RagToolChips";
 // Minimal process env typing for test gating without pulling full @types/node
 declare const process: { env?: Record<string,string|undefined> } | undefined;
 // --- layout constants (right/bottom anchored) ---
@@ -170,18 +175,38 @@ export default function ChatDock() {
   const lastClickAtRef = React.useRef<number>(0);
   const [monthReady, setMonthReady] = React.useState<boolean>(false);
   // unified chat state
-  const [modelsInfo, setModelsInfo] = React.useState<AgentModelsResponse | null>(null);
-  const [showAdvanced, setShowAdvanced] = React.useState(false);
-  const [selectedModel, setSelectedModel] = React.useState<string>(""); // empty => server default
+  // Model selection removed - use Dev menu model override instead
   const [busy, setBusy] = React.useState(false);
   const [chatResp, setChatResp] = React.useState<AgentChatResponse | null>(null);
   const [input, setInput] = useState("");
   const composerRef = React.useRef<HTMLTextAreaElement | null>(null);
   const [composerPlaceholder, setComposerPlaceholderState] = useState(DEFAULT_PLACEHOLDER);
+  // Why? modal state
+  const [showWhyModal, setShowWhyModal] = useState(false);
+  const [whyContent, setWhyContent] = useState<{ explain?: string; sources?: Array<any> }>({});
+  // LLM health status
+  const [llmStatus, setLlmStatus] = useState<AgentStatusResponse>({ ok: false, llm_ok: false });
   // AGUI streaming run state (moved earlier so handleSend can reference)
   const [aguiTools, setAguiTools] = useState<Array<{ name: string; status: 'pending'|'active'|'done'|'error'; startedAt?: number; endedAt?: number }>>([]);
   const aguiToolsRef = React.useRef<typeof aguiTools>(aguiTools);
   React.useEffect(()=>{ aguiToolsRef.current = aguiTools; }, [aguiTools]);
+
+  // Poll agent status every 30 seconds
+  React.useEffect(() => {
+    const fetchStatus = async () => {
+      try {
+        const status = await agentStatus();
+        setLlmStatus(status);
+      } catch (_err) {
+        // Silently fail - status will remain empty
+      }
+    };
+
+    fetchStatus(); // Initial fetch
+    const interval = setInterval(fetchStatus, 30000); // Poll every 30s
+
+    return () => clearInterval(interval);
+  }, []);
   // Track last what-if scenario text for rule saving
   const lastWhatIfScenarioRef = useRef<string>("");
   // Save Rule modal state (new component)
@@ -214,6 +239,12 @@ export default function ChatDock() {
   const [undoMsg, setUndoMsg] = React.useState<string>("Cleared");
   const undoActionRef = React.useRef<null | (() => void)>(null);
   const [restoredVisible, setRestoredVisible] = React.useState(false);
+
+  // Dev tools visibility check (PIN-gated)
+  const showDevTools = useShowDevTools();
+
+  // Toast for fallback notifications
+  const { toast } = useToast();
 
   useEffect(() => {
     return registerComposerControls({
@@ -318,6 +349,16 @@ export default function ChatDock() {
         telemetry.track('chat_fallback_used', { provider: String(provider) });
       }
     } catch (_err) { /* intentionally empty: swallow to render empty-state */ }
+    // Show toast if fallback was active
+    if (metaPayload._router_fallback_active === true) {
+      try {
+        toast({
+          title: "Using deterministic fallback",
+          description: "The model is warming up or unavailable.",
+          variant: "default",
+        });
+      } catch (_err) { /* Fallback if toast hook unavailable */ }
+    }
     try { chatDiscardSnapshot(); } catch { /* ignore */ }
     setChatResp({
       reply: text,
@@ -329,6 +370,9 @@ export default function ChatDock() {
       args: metaPayload.args,
       suggestions: metaPayload.suggestions || [],
       rephrased: Object.prototype.hasOwnProperty.call(metaPayload, 'rephrased') ? metaPayload.rephrased : undefined,
+      _router_fallback_active: metaPayload._router_fallback_active,
+      explain: metaPayload.explain,
+      sources: metaPayload.sources,
     } as any);
   }, [setUiMessages, setChatResp]);
 
@@ -405,7 +449,13 @@ export default function ChatDock() {
               c.label = label;
               return true;
             });
-            if (!chips.length && !canSaveRule) return null;
+            // Check if "Why?" button should be enabled
+            const canShowWhy =
+              meta._router_fallback_active === false &&
+              meta.mode === "primary" &&
+              !!meta.explain;
+
+            if (!chips.length && !canSaveRule && !canShowWhy) return null;
             return (
               <div className="flex flex-wrap gap-2 mt-2 items-center">
                 {chips.map((chip: any) => (
@@ -420,6 +470,20 @@ export default function ChatDock() {
                     onClick={()=>handleSuggestionChip({ label: chip.label, action: chip.action || chip.label, source: chip.source })}
                   >{chip.label}</button>
                 ))}
+                {canShowWhy && (
+                  <button
+                    type="button"
+                    aria-label="Why? - View explanation"
+                    className="chip"
+                    onClick={() => {
+                      setWhyContent({ explain: meta.explain, sources: meta.sources });
+                      setShowWhyModal(true);
+                    }}
+                    title="View detailed explanation and sources"
+                  >
+                    Why?
+                  </button>
+                )}
                 {canSaveRule && (
                   <button
                     type="button"
@@ -535,7 +599,7 @@ export default function ChatDock() {
   }, []);
 
   // no-op cleanup needed for new snackbar timers (scoped to showUndo)
-  
+
   // Auto-run state for debounced month changes
   const isAutoRunning = useRef(false);
   const debounceTimer = useRef<number | null>(null);
@@ -554,10 +618,7 @@ export default function ChatDock() {
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, [open]);
-  // fetch models (best-effort)
-  React.useEffect(() => { (async () => {
-    try { const info = await getAgentModels(); setModelsInfo(info || null); } catch { /* ignore */ }
-  })(); }, []);
+  // Model fetching and persistence removed - handled by Dev menu's useDev store
 
   // When opening the panel, immediately clamp rb to the actual panel size
   useEffect(() => {
@@ -570,22 +631,6 @@ export default function ChatDock() {
   setRb((prev: { right: number; bottom: number }) => clampRB(prev, w, h));
     });
   }, [open]);
-
-  // Load saved model (per-tab)
-  useEffect(() => {
-    try {
-      const saved = sessionStorage.getItem('fa.model');
-      if (saved) setSelectedModel(saved);
-    } catch (_err) { /* intentionally empty: swallow to render empty-state */ }
-  }, []);
-
-  // Save when it changes (per-tab)
-  useEffect(() => {
-    try {
-      if (selectedModel) sessionStorage.setItem('fa.model', selectedModel);
-      else sessionStorage.removeItem('fa.model');
-    } catch (_err) { /* intentionally empty: swallow to render empty-state */ }
-  }, [selectedModel]);
 
   // handle keyboard
   React.useEffect(() => {
@@ -605,6 +650,70 @@ export default function ChatDock() {
 
   // mark month ready once a non-empty month is available
   React.useEffect(() => { if (month) setMonthReady(true); }, [month]);
+
+  // Track if greeting has been seeded
+  const hasSeededGreetingRef = React.useRef(false);
+
+  // Seed conversational greeting when chat first opens with empty messages
+  React.useEffect(() => {
+    // Only seed greeting once, when panel first opens with no messages
+    if (hasSeededGreetingRef.current || !open || uiMessages.length > 0) return;
+
+    const seedGreeting = async () => {
+      try {
+        // Fetch quick data snapshot for greeting context
+        const [summaryData, merchantsData] = await Promise.allSettled([
+          agentTools.chartsSummary({ month: month || '' }).catch(() => null),
+          agentTools.chartsMerchants({ month: month || '', limit: 10 }).catch(() => null),
+        ]);
+
+        const summary = summaryData.status === 'fulfilled' ? summaryData.value as MonthSummary : undefined;
+        const merchants = merchantsData.status === 'fulfilled' ? merchantsData.value as MerchantsResponse : undefined;
+
+        // Build greeting context from typed API responses
+        const ctx = buildGreetingCtxFromAPI(summary, merchants);
+
+        const greeting = buildAgentGreeting(ctx);
+
+        appendAssistant(greeting, {
+          kind: "greeting",
+          used_data: {
+            month: ctx.monthLabel,
+            totalOut: ctx.totalOut ?? ctx.totalOutCents,
+            topMerchant: ctx.topMerchant,
+            merchantsN: ctx.merchantsN,
+            anomaliesN: ctx.anomaliesN,
+          },
+        });
+
+        hasSeededGreetingRef.current = true;
+      } catch (_err) {
+        // If greeting fails, fall back to simple message
+        appendAssistant("Hey! 👋 How can I help you with your finances today?", { kind: "greeting" });
+        hasSeededGreetingRef.current = true;
+      }
+    };
+
+    // Small delay to let month context settle
+    const timer = setTimeout(seedGreeting, 300);
+    return () => clearTimeout(timer);
+  }, [open, uiMessages.length, month, appendAssistant]);
+
+  // Listen for agent:prefill custom event from CardHelpTooltip
+  React.useEffect(() => {
+    const handlePrefill = (e: Event) => {
+      const customEvent = e as CustomEvent<{ message?: string }>;
+      if (customEvent.detail?.message) {
+        setInput(customEvent.detail.message);
+        setOpen(true);
+        // Focus composer after state settles
+        setTimeout(() => composerRef.current?.focus(), 100);
+      }
+    };
+
+    window.addEventListener('agent:prefill', handlePrefill);
+    return () => window.removeEventListener('agent:prefill', handlePrefill);
+  }, []);
 
   // helper: force-set month into payload text
   const setMonthInPayload = React.useCallback((m: string | undefined) => {
@@ -748,7 +857,17 @@ export default function ChatDock() {
   // keep legacy helper name for response objects (internal use)
   const handleAgentResponse = React.useCallback((resp: AgentChatResponse) => {
     setChatResp(resp);
-  if (resp?.reply) appendAssistant(resp.reply, { citations: resp.citations, ctxMonth: resp.used_context?.month, trace: resp.tool_trace, model: resp.model, fallback: (resp as any).fallback });
+  if (resp?.reply) appendAssistant(resp.reply, {
+    citations: resp.citations,
+    ctxMonth: resp.used_context?.month,
+    trace: resp.tool_trace,
+    model: resp.model,
+    fallback: (resp as any).fallback,
+    _router_fallback_active: resp._router_fallback_active,
+    explain: resp.explain,
+    sources: resp.sources,
+    mode: resp.mode,
+  });
   }, [appendAssistant]);
 
   const appendAssistantFromText = React.useCallback((text: string, opts?: { meta?: any }) => {
@@ -811,11 +930,12 @@ export default function ChatDock() {
           }));
         },
         onMeta(meta) {
-          if (meta && meta.fallback) {
+          const fb = (meta as { fallback?: unknown } | null | undefined)?.fallback;
+          if (typeof fb !== 'undefined' && fb !== null) {
             setUiMessages(cur => cur.map((m,i) => {
               const thinking = (m as any).thinking || (m as any).meta?.thinking;
               return (i===cur.length-1 && m.role==='assistant' && thinking)
-                ? { ...m, meta: { ...(m.meta||{}), fallback: String(meta.fallback), thinking: true } }
+                ? { ...m, meta: { ...(m.meta||{}), fallback: String(fb), thinking: true } }
                 : m;
             }));
           }
@@ -845,7 +965,7 @@ export default function ChatDock() {
         messages: [{ role: 'user', content: text }],
         intent: 'general',
         context: getContext(ev as any),
-        ...(selectedModel ? { model: selectedModel } : {})
+        conversational: true  // Enable conversational voice styling
       };
       const resp = await agentChat(req);
       handleAgentResponse(resp);
@@ -855,7 +975,7 @@ export default function ChatDock() {
     } finally {
       setBusy(false);
     }
-  }, [busy, input, selectedModel, handleAgentResponse, month, appendUser, appendAssistant]);
+  }, [busy, input, handleAgentResponse, month, appendUser, appendAssistant]);
 
   const onComposerKeyDown = React.useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); handleSend(e); return; }
@@ -883,7 +1003,7 @@ export default function ChatDock() {
         },
   (msg, meta) => appendAssistant(msg, { ...meta, ctxMonth: month }),
   (on) => setBusy(on),
-  () => ({ context: getContext(), ...(selectedModel ? { model: selectedModel } : {}) })
+  () => ({ context: getContext() })
       );
       syncFromStoreDebounced(120);
     } finally { setBusy(false); }
@@ -901,13 +1021,13 @@ export default function ChatDock() {
         (raw: any) => `Identify likely subscriptions for ${month} and which to cancel, with reasons:\n\n${JSON.stringify(raw)}`,
         (msg, meta) => appendAssistant(msg, { ...meta, ctxMonth: month }),
         (on) => setBusy(on),
-        () => ({ context: getContext(), ...(selectedModel ? { model: selectedModel } : {}) })
+        () => ({ context: getContext() })
       );
       syncFromStoreDebounced(120);
     } finally {
       setBusy(false);
     }
-  }, [busy, month, appendAssistant, selectedModel]);
+  }, [busy, month, appendAssistant]);
 
   // Additional one-click runners shown in the tools tray
   const runTopMerchants = React.useCallback(async (_ev?: React.MouseEvent) => {
@@ -923,7 +1043,7 @@ export default function ChatDock() {
         (raw: any) => fmtTopMerchants(month || '', raw?.merchants || raw || []),
   (msg, meta) => appendAssistant(msg, { ...meta, ctxMonth: month }),
   (on) => setBusy(on),
-  () => ({ context: getContext(), ...(selectedModel ? { model: selectedModel } : {}) })
+  () => ({ context: getContext() })
       );
       syncFromStoreDebounced(120);
     } finally { setBusy(false); }
@@ -942,7 +1062,7 @@ export default function ChatDock() {
         (raw) => fmtCashflow(month || '', raw as any),
   (msg, meta) => appendAssistant(msg, { ...meta, ctxMonth: month }),
   (on) => setBusy(on),
-  () => ({ context: getContext(), ...(selectedModel ? { model: selectedModel } : {}) })
+  () => ({ context: getContext() })
       );
       syncFromStoreDebounced(120);
     } finally { setBusy(false); }
@@ -961,7 +1081,7 @@ export default function ChatDock() {
   (raw: any) => fmtTrends(raw?.trends || raw?.series || raw || []),
   (msg, meta) => appendAssistant(msg, { ...meta, ctxMonth: month }),
   (on) => setBusy(on),
-  () => ({ context: getContext(), ...(selectedModel ? { model: selectedModel } : {}) })
+  () => ({ context: getContext() })
       );
       syncFromStoreDebounced(120);
     } finally { setBusy(false); }
@@ -989,7 +1109,7 @@ export default function ChatDock() {
         (raw) => `Turn these insights for ${month} into a friendly paragraph with one recommendation: ${JSON.stringify(raw)}`,
   (msg, meta) => appendAssistant(msg, { ...meta, ctxMonth: month }),
   (on) => setBusy(on),
-  () => ({ context: getContext(), ...(selectedModel ? { model: selectedModel } : {}) })
+  () => ({ context: getContext() })
       );
       syncFromStore();
     } finally { setBusy(false); }
@@ -1007,7 +1127,7 @@ export default function ChatDock() {
         (raw) => `Expand insights for ${month} with MoM and anomalies: ${JSON.stringify(raw)}`,
   (msg, meta) => appendAssistant(msg, { ...meta, ctxMonth: month }),
   (on) => setBusy(on),
-  () => ({ context: getContext(), ...(selectedModel ? { model: selectedModel } : {}) })
+  () => ({ context: getContext() })
       );
       syncFromStore();
     } finally { setBusy(false); }
@@ -1026,7 +1146,7 @@ export default function ChatDock() {
         (raw) => `Summarize this budget status for ${month}: ${JSON.stringify(raw)}`,
   (msg, meta) => appendAssistant(msg, { ...meta, ctxMonth: month }),
   (on) => setBusy(on),
-  () => ({ context: getContext(), ...(selectedModel ? { model: selectedModel } : {}) })
+  () => ({ context: getContext() })
       );
       syncFromStore();
     } finally { setBusy(false); }
@@ -1045,11 +1165,11 @@ export default function ChatDock() {
         (raw: any) => `Summarize these KPIs for ${month} in 3 bullets and one suggestion:\n\n${JSON.stringify(raw)}`,
         (msg, meta) => appendAssistant(msg, { ...meta, ctxMonth: month }),
         (on) => setBusy(on),
-        () => ({ context: getContext(), ...(selectedModel ? { model: selectedModel } : {}) })
+        () => ({ context: getContext() })
       );
       syncFromStoreDebounced(120);
     } finally { setBusy(false); }
-  }, [busy, month, appendAssistant, selectedModel]);
+  }, [busy, month, appendAssistant]);
 
   const runAnalyticsForecast = React.useCallback(async (_ev?: React.MouseEvent) => {
     if (busy) return;
@@ -1063,11 +1183,11 @@ export default function ChatDock() {
         (raw: any) => `Explain this cashflow forecast for ${month} and what it means:\n\n${JSON.stringify(raw)}`,
         (msg, meta) => appendAssistant(msg, { ...meta, ctxMonth: month }),
         (on) => setBusy(on),
-        () => ({ context: getContext(), ...(selectedModel ? { model: selectedModel } : {}) })
+        () => ({ context: getContext() })
       );
       syncFromStoreDebounced(120);
     } finally { setBusy(false); }
-  }, [busy, month, appendAssistant, selectedModel]);
+  }, [busy, month, appendAssistant]);
 
   const runAnalyticsAnomalies = React.useCallback(async (_ev?: React.MouseEvent) => {
     if (busy) return;
@@ -1081,11 +1201,11 @@ export default function ChatDock() {
         (raw: any) => `List any spending anomalies for ${month} and suggest actions:\n\n${JSON.stringify(raw)}`,
         (msg, meta) => appendAssistant(msg, { ...meta, ctxMonth: month }),
         (on) => setBusy(on),
-        () => ({ context: getContext(), ...(selectedModel ? { model: selectedModel } : {}) })
+        () => ({ context: getContext() })
       );
       syncFromStoreDebounced(120);
     } finally { setBusy(false); }
-  }, [busy, month, appendAssistant, selectedModel]);
+  }, [busy, month, appendAssistant]);
 
   const runAnalyticsRecurring = React.useCallback(async (_ev?: React.MouseEvent) => {
     if (busy) return;
@@ -1099,11 +1219,11 @@ export default function ChatDock() {
         (raw: any) => `Summarize recurring charges for ${month}, with likely subscriptions highlighted:\n\n${JSON.stringify(raw)}`,
         (msg, meta) => appendAssistant(msg, { ...meta, ctxMonth: month }),
         (on) => setBusy(on),
-        () => ({ context: getContext(), ...(selectedModel ? { model: selectedModel } : {}) })
+        () => ({ context: getContext() })
       );
       syncFromStoreDebounced(120);
     } finally { setBusy(false); }
-  }, [busy, month, appendAssistant, selectedModel]);
+  }, [busy, month, appendAssistant]);
 
   const runAnalyticsBudgetSuggest = React.useCallback(async (_ev?: React.MouseEvent) => {
     if (busy) return;
@@ -1117,11 +1237,11 @@ export default function ChatDock() {
         (raw: any) => `Propose budget targets for ${month} from these stats, in a short list:\n\n${JSON.stringify(raw)}`,
         (msg, meta) => appendAssistant(msg, { ...meta, ctxMonth: month }),
         (on) => setBusy(on),
-        () => ({ context: getContext(), ...(selectedModel ? { model: selectedModel } : {}) })
+        () => ({ context: getContext() })
       );
       syncFromStoreDebounced(120);
     } finally { setBusy(false); }
-  }, [busy, month, appendAssistant, selectedModel]);
+  }, [busy, month, appendAssistant]);
 
   const callTransactionsNl = React.useCallback(async (payload?: Record<string, any>) => {
     if (busy) return null;
@@ -1358,15 +1478,15 @@ export default function ChatDock() {
       appendUser(`What if I cut ${cat} by ${pct}%?`);
       await runToolWithRephrase(
         'analytics.whatif',
-        () => analytics.whatif({ month, cuts: [{ category: cat, pct }]}),
+        () => analytics.whatif({ month, cuts: [{ category: cat, pct }] }),
         (raw: any) => `Explain this what-if simulation for ${month} (cut ${cat} by ${pct}%):\n\n${JSON.stringify(raw)}`,
         (msg, meta) => appendAssistant(msg, { ...meta, ctxMonth: month }),
         (on) => setBusy(on),
-        () => ({ context: getContext(), ...(selectedModel ? { model: selectedModel } : {}) })
+        () => ({ context: getContext() })
       );
       syncFromStoreDebounced(120);
     } finally { setBusy(false); }
-  }, [busy, month, appendAssistant, selectedModel]);
+  }, [busy, month, appendAssistant]);
 
   const runAlerts = React.useCallback(async (ev?: React.MouseEvent) => {
     if (busy) return;
@@ -1378,14 +1498,14 @@ export default function ChatDock() {
         messages: [{ role: 'user', content: 'List my alerts for the selected month.' }],
         intent: 'general',
         context: getContext(ev),
-        ...(selectedModel ? { model: selectedModel } : {})
+        conversational: true  // Enable conversational voice styling
       };
   console.debug('[chat] alerts -> /agent/chat', { preview: req.messages[0]?.content?.slice(0, 80) });
   const resp = await agentChat(req);
   console.debug('[chat] alerts ← ok', { model: resp?.model });
       handleAgentResponse(resp);
     } finally { setBusy(false); }
-  }, [busy, selectedModel, handleAgentResponse]);
+  }, [busy, handleAgentResponse]);
 
   // Removed legacy non-NL search tool in favor of NL query
 
@@ -1401,12 +1521,12 @@ export default function ChatDock() {
     if (debounceTimer.current) {
       window.clearTimeout(debounceTimer.current);
     }
-    
+
     debounceTimer.current = window.setTimeout(async () => {
       if (isAutoRunning.current) return;
       if (runningRef.current) return; // Already running from manual click
       if (lastRunForTool[tool] === month) return; // Already ran for this month/tool combo
-      
+
       try {
         isAutoRunning.current = true;
         insertContext(); // Update payload with current month
@@ -1488,6 +1608,16 @@ export default function ChatDock() {
         <div className="flex items-center gap-2">
           <div className="text-sm text-neutral-300">Agent Tools</div>
           {restoredVisible && <RestoredBadge />}
+          {/* LLM Health Badge */}
+          {llmStatus.llm_ok !== undefined && (
+            <Badge
+              variant={llmStatus.llm_ok ? 'default' : 'destructive'}
+              className="text-xs"
+              title={llmStatus.llm_ok ? 'LLM is operational' : 'LLM is using fallback mode'}
+            >
+              {llmStatus.llm_ok ? 'LLM: OK' : 'LLM: Fallback'}
+            </Badge>
+          )}
         </div>
   <div className="flex items-center gap-2">
           {/* Export */}
@@ -1564,16 +1694,7 @@ export default function ChatDock() {
             {showTools ? <ChevronUp size={14}/> : <Wrench size={14}/>}
             {showTools ? 'Hide tools' : 'Agent Tools'}
           </button>
-      {modelsInfo ? (
-            <button
-              onPointerDown={(e) => e.stopPropagation()}
-              onClick={(e) => { e.stopPropagation(); setShowAdvanced((v: boolean)=>!v); }}
-              className="px-2 py-1 rounded-lg bg-neutral-800 text-neutral-200 border border-neutral-700 hover:bg-neutral-700"
-        title="Models"
-            >
-        {showAdvanced ? 'Hide models' : 'Models'}
-            </button>
-          ) : null}
+          {/* Model selection removed - use Dev menu instead */}
           <button
             onPointerDown={(e) => e.stopPropagation()}
             onClick={(e) => { e.stopPropagation(); setOpen(false); }}
@@ -1585,25 +1706,7 @@ export default function ChatDock() {
         </div>
       </div>
 
-      {showAdvanced && modelsInfo && (
-        <div className="mb-2 p-2 rounded-lg border border-neutral-800 bg-neutral-800/40">
-          <div className="flex items-center gap-2">
-            <select
-              className="px-2 py-1 text-sm rounded-md bg-neutral-800 border border-neutral-700 text-neutral-100"
-              value={selectedModel}
-              onChange={(e) => setSelectedModel(e.target.value)}
-            >
-              <option value="">{`Default - ${modelsInfo.provider}: ${modelsInfo.default}`}</option>
-              {modelsInfo.models?.map((m: any) => (
-                <option key={m.id} value={m.id}>{m.id}</option>
-              ))}
-            </select>
-          </div>
-          <div className="text-[11px] mt-1 opacity-60">
-            Leave blank to use the server default. This selection applies only in this tab.
-          </div>
-        </div>
-      )}
+      {/* Advanced model selection panel removed - use Dev menu instead */}
 
       {/* Agent tools tray (all tools live here; one-click) */}
       {showTools && (
@@ -1655,7 +1758,7 @@ export default function ChatDock() {
                     ...(flow ? { flow } as any : {})
                   });
                   saveAs(blob, filename || "txns_query.csv");
-                 
+
                   appendAssistant(`Exported CSV for last NL query: ${q}`);
                 } catch (err: any) {
                   appendAssistant(`**CSV export failed:** ${err?.message || String(err)}`);
@@ -1757,6 +1860,13 @@ export default function ChatDock() {
         </div>
       )}
 
+      {/* RAG dev tools (PIN-gated) */}
+      {showDevTools && (
+        <div data-testid="rag-chips" className="px-3 py-2 border-b bg-muted/10">
+          <RagToolChips onReply={(msg) => appendAssistant(msg)} />
+        </div>
+      )}
+
       {/* Collapsible History panel */}
       {historyOpen && (
         <div className="px-3 py-2 border-b bg-muted/5">
@@ -1791,7 +1901,7 @@ export default function ChatDock() {
 
       {/* Messages list (scrollable) with day dividers & timestamps */}
       {aguiRunActive || aguiTools.length ? (
-        <div className={["px-3", aguiRunActive ? "" : "agui-ribbon-fade"].join(" ")}> 
+        <div className={["px-3", aguiRunActive ? "" : "agui-ribbon-fade"].join(" ")}>
           <div className="agui-ribbon">
             {aguiTools.map(t => {
               const baseClass = t.status === 'active' ? 'agui-chip-active' : t.status === 'done' ? 'agui-chip-done' : t.status === 'error' ? 'agui-chip-error' : 'agui-chip-pending';
@@ -1875,6 +1985,53 @@ export default function ChatDock() {
             return '';
         })()}
       />
+
+      {/* Why? Modal - Shows explanation and sources */}
+      <Dialog open={showWhyModal} onOpenChange={setShowWhyModal}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Why? - Explanation</DialogTitle>
+            <DialogDescription>
+              Detailed explanation of the agent&apos;s response
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            {whyContent.explain && (
+              <div>
+                <h3 className="text-sm font-semibold text-white mb-2">Explanation:</h3>
+                <div className="text-sm text-gray-300 whitespace-pre-wrap">
+                  {whyContent.explain}
+                </div>
+              </div>
+            )}
+            {whyContent.sources && whyContent.sources.length > 0 && (
+              <div>
+                <h3 className="text-sm font-semibold text-white mb-2">Sources:</h3>
+                <ul className="list-disc list-inside text-sm text-gray-300 space-y-1">
+                  {whyContent.sources.map((source, idx) => (
+                    <li key={idx}>
+                      {source.type}
+                      {source.id && ` (ID: ${source.id})`}
+                      {source.count && ` - ${source.count} items`}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {!whyContent.explain && (!whyContent.sources || whyContent.sources.length === 0) && (
+              <p className="text-sm text-gray-400">No explanation available.</p>
+            )}
+          </div>
+          <div className="mt-4 flex justify-end">
+            <button
+              onClick={() => setShowWhyModal(false)}
+              className="px-4 py-2 text-sm rounded-md bg-blue-600 hover:bg-blue-700 text-white"
+            >
+              Close
+            </button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
 
       {/* Composer - textarea with Enter to send, Shift+Enter newline */}

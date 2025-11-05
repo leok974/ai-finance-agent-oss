@@ -1,0 +1,42 @@
+Merchant Categorization: Understanding Your Spending Patterns
+
+Common Merchant Categories
+Financial tracking systems categorize transactions to help you understand spending patterns. Major categories include: Groceries (Kroger, Whole Foods, Safeway, Trader Joe's), Restaurants (McDonald's, Chipotle, Starbucks, local diners), Gas & Fuel (Shell, BP, Chevron, Exxon), Online Shopping (Amazon, eBay, Etsy), Utilities (electric company, water, internet, phone), Entertainment (Netflix, Spotify, movie theaters, concerts), Healthcare (pharmacies, doctor visits, dental), and Subscriptions (software, streaming services, gym memberships).
+
+The Challenge of Multi-Purpose Merchants
+Some merchants span multiple categories, making automatic categorization tricky. Target and Walmart sell groceries, clothing, electronics, and home goods. Amazon sells everything. These require either splitting transactions or categorizing by primary purpose. Many budgeting apps let you create rules or manually split transactions across categories.
+
+Recognizing Transaction Patterns
+Merchant names on credit card statements often differ from the store name you know. "SQ *Coffee Shop" is Square processing for a local café. "AMZN Mktp US" is Amazon Marketplace. "TST* Restaurant Name" is Toast POS processing. Learning these patterns helps you quickly identify transactions when reviewing statements.
+
+Subscription Detection
+Recurring charges often hide in statements. Look for: streaming services (Netflix, Hulu, Disney+, HBO Max), software subscriptions (Adobe, Microsoft 365, Dropbox), membership fees (Amazon Prime, Costco), gym memberships, meal kit services (HelloFresh, Blue Apron), and subscription boxes. These can add up to hundreds per month if not monitored.
+
+Gas Station vs Convenience Store
+Many gas station charges include convenience store purchases. If you bought snacks or coffee with your gas, consider splitting the transaction: fuel goes to Transportation, snacks to Food. Alternatively, categorize the whole transaction based on the larger amount.
+
+Restaurant vs Groceries
+The line between these categories has blurred with meal delivery services. Uber Eats, DoorDash, and Grubhub are restaurant spending even though you eat at home. Grocery delivery services like Instacart or Shipt count as groceries. Meal kits like HelloFresh typically fall under groceries since you cook them yourself.
+
+Travel-Related Merchants
+Travel expenses often span multiple categories: airlines and hotels (Travel), rental cars (Transportation), restaurants in unfamiliar cities (Food or Travel), airport shops (Shopping or Travel), ride-sharing to/from airport (Transportation or Travel). Choose what makes sense for your budget tracking goals.
+
+Healthcare and Pharmacy Purchases
+Pharmacies like CVS and Walgreens sell prescriptions (Healthcare), over-the-counter medications (Healthcare), cosmetics (Personal Care), groceries (Food), and general merchandise (Shopping). If you want precision, split these transactions. For simplicity, many people categorize all pharmacy purchases as Healthcare.
+
+Online Payment Processors
+Square, PayPal, Venmo, and Stripe process payments for countless merchants. The key is the descriptor following the processor name. "SQ *Local Bakery" is a food purchase. "PAYPAL *EBAY" is online shopping. Some statements provide better details than others.
+
+Automatic vs Manual Categorization
+Most financial apps automatically categorize transactions based on merchant data, but they're not perfect. Review categorizations monthly and create rules for merchants you frequent. Over time, your app learns your preferences and improves accuracy. For ambiguous merchants, consistency matters more than perfection.
+
+Creating Custom Categories
+Standard categories don't fit everyone. Parents might add "Childcare" or "Kids Activities." Pet owners might want a "Pet Care" category. Business owners need to separate business and personal expenses. Homeowners might split "Home Maintenance" from "Utilities." Customize your system to match your life and financial goals.
+
+Using Tags and Notes
+Beyond categories, tags add another dimension. Tag transactions as "Tax Deductible," "Reimbursable," "Gift," or "One-Time" to track important attributes. Add notes for context: "Client dinner" or "Birthday present for Mom." This helps during tax time and when reviewing spending patterns.
+
+The Importance of Consistent Categorization
+Whatever system you choose, be consistent. If you categorize Costco as "Groceries" one month and "Shopping" the next, your reports will be meaningless. Document your rules: "Target trips under $50 = Groceries, over $50 = Shopping" or "All Walmart = Groceries unless noted otherwise."
+
+Remember: Perfect categorization isn't the goal - understanding your spending patterns is. Choose a level of detail that provides insight without becoming burdensome.

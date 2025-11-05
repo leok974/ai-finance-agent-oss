@@ -9,3 +9,6 @@ pytest-httpx>=0.30
 # (Optional) add any test-only tooling below
 freezegun>=1.5
 pytest-cov>=5.0
+pytest-timeout>=2.3
+pytest-xdist>=3.6
+testcontainers>=4.9

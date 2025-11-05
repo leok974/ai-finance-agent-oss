@@ -1,7 +1,6 @@
-import pytest
 
 # Module under test
-import apps.backend.app.status_utils as su
+import app.status_utils as su
 
 # Direct import of the short module path used inside status_utils ("from app.db import engine")
 import app.db as app_db
@@ -13,13 +12,19 @@ def test_check_db_reuses_global_engine(monkeypatch):
     used_create_engine = False
 
     class FakeConn:
-        def __enter__(self): return self
-        def __exit__(self, *exc): pass
-        def execute(self, *a, **k): return None
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            pass
+
+        def execute(self, *a, **k):
+            return None
 
     class FakeEngine:
         def __init__(self, url="sqlite:///reused.db"):
             self.url = url
+
         def connect(self):
             return FakeConn()
 
@@ -42,19 +47,25 @@ def test_check_db_reuses_global_engine(monkeypatch):
 
 def test_check_db_ephemeral_engine_failure(monkeypatch):
     """When URLs differ, an ephemeral engine is created and failures are reported gracefully."""
+
     class FakeGlobalEngine:
-        def __init__(self): self.url = "sqlite:///other.db"
+        def __init__(self):
+            self.url = "sqlite:///other.db"
+
     # Patch the global engine on the actual module referenced by status_utils
     monkeypatch.setattr(app_db, "engine", FakeGlobalEngine(), raising=True)
 
     target_url = "sqlite:///ephemeral.db"
 
     class BadEngine:
-        def __init__(self, url): self.url = url
+        def __init__(self, url):
+            self.url = url
+
         def connect(self):
             raise RuntimeError("boom: cannot connect")
 
     seen = {"url": None}
+
     def fake_create_engine(url, *a, **k):
         seen["url"] = url
         return BadEngine(url)

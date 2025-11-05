@@ -1,6 +1,9 @@
 # Root dockerignore
 .git
-**/__pycache__
+**/__pycache__/
+**/.pytest_cache/
+**/.mypy_cache/
+**/.ruff_cache/
 *.pyc
 *.pyo
 *.log
@@ -11,6 +14,13 @@ dist/
 build/
 .cache/
 coverage/
-.gitignore
+docs/
+tests/
+.vscode/
+.idea/
 Dockerfile*
+*.md
+!.github/
+!.gitlab-ci.yml
+gitignore
 **/tests/__pycache__

@@ -1,24 +1,25 @@
 import React, { useState } from 'react'
 import Card from './Card'
 import EmptyState from './EmptyState'
-import { categorizeTxn, mlFeedback } from '@/api'
+import { mlFeedback, suggestForTxnBatch } from '@/api'
+import SuggestionPill from '@/components/SuggestionPill'
 import { useCoalescedRefresh } from '@/utils/refreshBus'
 // removed useOkErrToast hook (deprecated)
-import { ToastAction } from '@/components/ui/toast'
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 import { InfoDot } from './InfoDot'
 import LearnedBadge from './LearnedBadge'
 import ExplainSignalDrawer from './ExplainSignalDrawer'
-import { useUnknowns } from '@/hooks/useUnknowns'
+import { useUnknowns, type UnknownTxn } from '@/hooks/useUnknowns'
 import { Skeleton } from '@/components/ui/skeleton'
 import CardHelpTooltip from './CardHelpTooltip'
 import { getHelpBaseText } from '@/lib/helpBaseText';
 import { seedRuleFromTxn } from '@/lib/rulesSeed'
 import { emitToastSuccess, emitToastError } from '@/lib/toast-helpers'
 import { Button } from '@/components/ui/button'
+import { useIsAdmin } from '@/state/auth'
 import { t } from '@/lib/i18n'
 
-export default function UnknownsPanel({ month, onSeedRule, onChanged, refreshKey }: {
+export default function UnknownsPanel({ month, onSeedRule: _onSeedRule, onChanged, refreshKey: _refreshKey }: {
   month?: string
   onSeedRule?: (seed: { id: number; merchant?: string; description?: string }) => void
   onChanged?: () => void
@@ -29,49 +30,61 @@ export default function UnknownsPanel({ month, onSeedRule, onChanged, refreshKey
   const [learned, setLearned] = useState<Record<number, boolean>>({})
   const [explainOpen, setExplainOpen] = useState(false)
   const [explainTxnId, setExplainTxnId] = useState<number | null>(null)
-  const [explainTxn, setExplainTxn] = useState<any | null>(null)
+  const [explainTxn, setExplainTxn] = useState<UnknownTxn | null>(null)
+  const [suggestions, setSuggestions] = useState<Record<number, { category_slug: string; label?: string; score: number; why?: string[] }[]>>({})
+  const isAdmin = useIsAdmin()
   // One shared timer for all unknowns refresh requests across this tab
   const scheduleUnknownsRefresh = useCoalescedRefresh('unknowns-refresh', () => refresh(), 450)
 
-  async function quickApply(id: number, category: string) {
-    await categorizeTxn(id, category)
-    // Attempt ML feedback; show transient "learned" badge on success
-    try {
-      await mlFeedback({ txn_id: id, category, action: 'accept' })
-      setLearned(prev => ({ ...prev, [id]: true }))
-      setTimeout(() => {
-        setLearned(prev => {
-          const next = { ...prev }
-          delete next[id]
-          return next
-        })
-      }, 4500)
-    } catch (e: any) {
-  err(t('ui.toast.ml_feedback_failed', { error: e?.message ?? String(e) }))
-    }
-  // Optimistically remove the row
-  // items comes from the hook; since we can't mutate it here, trigger a refresh
-  refresh()
-    onChanged?.()
-  ok?.(t('ui.toast.category_applied', { category }))
-  // Batch multiple quick applies into a single reload (coalesced by key)
-  scheduleUnknownsRefresh()
-  }
+  // (Quick apply is now handled via SuggestionPill.onApplied)
 
-  function seedRuleFromRow(row: any) {
+  function seedRuleFromRow(row: UnknownTxn) {
     const draft = seedRuleFromTxn({
-      merchant: row.merchant,
-      description: row.description,
-      category_guess: row.category_guess,
+      merchant: row.merchant ?? undefined,
+      description: row.description ?? undefined,
     }, { month: currentMonth || month })
     // Provide a toast with an action to forcibly open (if listener not auto-opened)
     emitToastSuccess(t('ui.toast.seed_rule_title'), {
       description: t('ui.toast.seed_rule_description'),
       action: {
         label: t('ui.toast.seed_rule_action_open'),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         onClick: () => (window as any).__openRuleTester?.(draft),
       },
     })
+  }
+
+  // Batch load top suggestions for current rows
+  React.useEffect(() => {
+    const ids = items.map(x => x.id)
+    if (!ids.length) { setSuggestions({}); return }
+    let aborted = false
+    suggestForTxnBatch(ids)
+      .then(res => {
+        if (aborted) return
+        const map: Record<number, { category_slug: string; label?: string; score: number; why?: string[] }[]> = {}
+        for (const it of res?.items || []) map[it.txn] = (it.suggestions || [])
+        setSuggestions(map)
+      })
+      .catch(() => { if (!aborted) setSuggestions({}) })
+    return () => { aborted = true }
+  }, [items])
+
+  const onSuggestionApplied = async (id: number, category: string) => {
+    try {
+      await mlFeedback({ txn_id: id, category, action: 'accept' })
+      setLearned(prev => ({ ...prev, [id]: true }))
+      setTimeout(() => {
+        setLearned(prev => { const next = { ...prev }; delete next[id]; return next })
+      }, 4500)
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e)
+      err(t('ui.toast.ml_feedback_failed', { error: msg }))
+    }
+    refresh()
+    onChanged?.()
+    ok?.(t('ui.toast.category_applied', { category }))
+    scheduleUnknownsRefresh()
   }
 
   const resolvedMonth = (currentMonth ?? month) || '(latest)'
@@ -138,7 +151,7 @@ export default function UnknownsPanel({ month, onSeedRule, onChanged, refreshKey
                 <div className="font-mono">{typeof tx.amount === 'number' ? `$${tx.amount.toFixed(2)}` : tx.amount}</div>
               </div>
             </div>
-            <div className="mt-2 flex items-center gap-2">
+            <div className="mt-2 flex flex-wrap items-center gap-2 justify-between">
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
@@ -163,14 +176,31 @@ export default function UnknownsPanel({ month, onSeedRule, onChanged, refreshKey
                 {t('ui.unknowns.explain')}
               </Button>
               {([
-                { key: 'groceries', label: t('ui.categories.groceries') },
-                { key: 'dining', label: t('ui.categories.dining') },
-                { key: 'shopping', label: t('ui.categories.shopping') },
-              ] as const).map(c => (
-                <button key={c.key} className="px-2 py-1 rounded bg-blue-700 hover:bg-blue-600" onClick={()=>quickApply(tx.id, c.label)}>
-                  {t('ui.unknowns.apply_category', { category: c.label })}
-                </button>
-              ))}
+                // Fallback quick picks can remain, but prefer dynamic suggestions below
+              ] as const)}
+
+              {/* Dynamic suggestions */}
+              <div className="flex flex-wrap gap-2 justify-start">
+                {Array.isArray(suggestions[tx.id]) && suggestions[tx.id].slice(0,3).map((sug, idx) => (
+                  <SuggestionPill
+                    key={`${tx.id}-sug-${idx}`}
+                    txn={{ id: tx.id, merchant: tx.merchant || '', description: tx.description || '', amount: tx.amount }}
+                    s={{ category_slug: sug.category_slug, label: sug.label || sug.category_slug, score: sug.score, why: sug.why || [] }}
+                    isAdmin={isAdmin}
+                    onApplied={(id)=> onSuggestionApplied(id, sug.category_slug)}
+                    onRefreshSuggestions={() => {
+                      // Reload suggestions for only this txn (cheap path: refetch for all and rely on memoization)
+                      suggestForTxnBatch([tx.id]).then(res => {
+                        const map: Record<number, { category_slug: string; label?: string; score: number; why?: string[] }[]> = {}
+                        for (const it of res?.items || []) map[it.txn] = (it.suggestions || [])
+                        setSuggestions(prev => ({ ...prev, ...map }))
+                      }).catch(() => {/* ignore */})
+                    }}
+                  />
+                ))}
+              </div>
+
+              {/* Promote moved inline next to each suggestion */}
               {learned[tx.id] && <LearnedBadge />}
             </div>
           </li>

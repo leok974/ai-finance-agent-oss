@@ -1,0 +1,18 @@
+groups:
+- name: compat-sunset
+  rules:
+  - alert: CompatUnexpectedTraffic
+    expr: sum by (path)(increase(compat_endpoint_hits_total{source="client"}[24h])) > 0
+    for: 10m
+    labels:
+      severity: warning
+    annotations:
+      summary: "Legacy /api/* path saw client hits"
+      description: "Path(s): {{ $labels.path }} received client traffic in the last 24h."
+  - alert: CompatProbeMissing
+    expr: sum(increase(compat_endpoint_hits_total{source="probe"}[1h])) == 0
+    for: 1h
+    labels:
+      severity: info
+    annotations:
+      summary: "No probe traffic to compat endpoints (probe may be down)"

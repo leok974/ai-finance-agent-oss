@@ -1,0 +1,11 @@
+edge_assets_ok 1
+edge_assets_soft_ok 0
+edge_csp_present 1
+edge_csp_header 1
+edge_csp_meta 0
+edge_csp_policy_length 289
+edge_csp_policy_sha{sha="42471377c539eb527f2a4c51db2161ea172046174c7738139f00c98c8a73a7ef"} 1
+edge_auth_ok 0
+edge_auth_challenged 1
+edge_probe_success 1
+edge_probe_exit_code_os 0

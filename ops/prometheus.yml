@@ -1,0 +1,61 @@
+# Prometheus Configuration for KMS Monitoring
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: 'ledgermind-prod'
+    env: 'prod'
+
+# AlertManager configuration
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+            - alertmanager:9093
+
+# Load alert and recording rules
+rule_files:
+  - '/etc/prometheus/rules/*.yml'
+
+# Scrape configurations
+scrape_configs:
+  # Backend service metrics
+  - job_name: 'ai-finance-backend'
+    static_configs:
+      - targets:
+          - 'ai-finance-backend-1:8000'  # Docker container name
+        labels:
+          env: 'prod'
+          service: 'backend'
+    metrics_path: '/metrics'  # Assuming backend exposes /metrics endpoint
+    scrape_interval: 10s
+    scrape_timeout: 5s
+
+  # Prometheus self-monitoring
+  - job_name: 'prometheus'
+    static_configs:
+      - targets:
+          - 'localhost:9090'
+        labels:
+          env: 'prod'
+          service: 'prometheus'
+
+  # AlertManager monitoring
+  - job_name: 'alertmanager'
+    static_configs:
+      - targets:
+          - 'alertmanager:9093'
+        labels:
+          env: 'prod'
+          service: 'alertmanager'
+
+  # Postgres exporter (if added later)
+  - job_name: 'postgres'
+    static_configs:
+      - targets:
+          - 'postgres-exporter:9187'  # To be added if needed
+        labels:
+          env: 'prod'
+          service: 'postgres'
+    scrape_interval: 30s

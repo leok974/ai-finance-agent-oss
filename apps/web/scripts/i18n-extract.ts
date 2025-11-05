@@ -93,12 +93,17 @@ const unused = Array.from(enKeys).filter(k => !usedKeys.has(k)).sort();
 const report = {
   counts: { en: enKeys.size, used: usedKeys.size, missing: missing.length, unused: unused.length },
   missing,
-  unused,
+  // unused - comment out to reduce noise if not needed for cleanup
 };
 
-console.log(JSON.stringify(report, null, 2));
+// Only log if there are issues or if verbose mode is enabled
+if (missing.length || process.env.I18N_VERBOSE === '1') {
+  console.log(JSON.stringify(report, null, 2));
+}
 
 if (missing.length) {
   console.error(`\nERROR: ${missing.length} missing i18n keys.`);
   process.exit(1);
+} else if (process.env.I18N_VERBOSE !== '1') {
+  console.log(`✓ i18n check passed (${usedKeys.size} keys used, ${unused.length} unused)`);
 }

@@ -1,0 +1,74 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nim-llm
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nim-llm
+  template:
+    metadata:
+      labels:
+        app: nim-llm
+    spec:
+      nodeSelector:
+        nvidia.com/gpu: "true"
+      containers:
+        - name: nim-llm
+          image: nvcr.io/nvidia/nim/meta/llama-3.1-nemotron-nano-8b-v1:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8000
+              name: http
+          env:
+            - name: NGC_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: nim-secrets
+                  key: ngc-api-key
+            - name: NIM_CACHE_PATH
+              value: /opt/nim/.cache
+          resources:
+            requests:
+              nvidia.com/gpu: 1
+              memory: 16Gi
+              cpu: 4
+            limits:
+              nvidia.com/gpu: 1
+              memory: 24Gi
+              cpu: 8
+          volumeMounts:
+            - name: cache
+              mountPath: /opt/nim/.cache
+          livenessProbe:
+            httpGet:
+              path: /v1/health/live
+              port: 8000
+            initialDelaySeconds: 120
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /v1/health/ready
+              port: 8000
+            initialDelaySeconds: 60
+            periodSeconds: 10
+      volumes:
+        - name: cache
+          emptyDir:
+            sizeLimit: 50Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nim-llm-service
+  namespace: default
+spec:
+  selector:
+    app: nim-llm
+  ports:
+    - protocol: TCP
+      port: 8000
+      targetPort: 8000
+  type: ClusterIP

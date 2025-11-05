@@ -1,0 +1,14 @@
+title = "LedgerMind gitleaks rules"
+
+[allowlist]
+  description = "Allow generated caches and sample artifacts"
+  files = [
+    "apps/web/.env.production.example",
+    "ops/nginx/certs/yourcert/privkey.pem"
+  ]
+  paths = [
+    '.pnpm-store/',
+    'apps/web/.pnpm-store/',
+    'playwright-report/',
+    'apps/web/playwright-report/'
+  ]

@@ -1,0 +1,26 @@
+name: ci-fast-gates
+on:
+  push:
+    branches: [ '**' ]
+  pull_request:
+
+jobs:
+  web-gates:
+    name: Web Lint & Typecheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+      - name: Install web deps (frozen)
+        run: pnpm -C apps/web install --frozen-lockfile
+      - name: Lint (budget & rules)
+        run: pnpm -C apps/web run lint:budget && pnpm -C apps/web run lint:rules
+      - name: Typecheck
+        run: pnpm -C apps/web run typecheck

@@ -1,0 +1,84 @@
+# Slim multi-stage backend image
+# Builder compiles wheels, runtime installs only ready artifacts.
+
+# -------- builder --------
+FROM python:3.11-slim AS builder
+ENV PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential gcc curl ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /build
+
+# Dependency manifests (adjust if pyproject.toml / poetry used later)
+COPY apps/backend/requirements.txt ./requirements.txt
+# (Optional) dev/extra requirements could be copied conditionally
+
+# Prebuild wheels for faster, deterministic layering
+RUN python -m pip install --upgrade pip wheel \
+ && pip wheel --no-deps --wheel-dir /build/wheels -r requirements.txt
+
+# Copy runtime app code & migrations
+COPY apps/backend/app ./app
+COPY apps/backend/alembic ./alembic
+COPY apps/backend/alembic.ini ./alembic.ini
+
+# Prepare run script (alembic migrate -> uvicorn)
+RUN printf 'import subprocess,sys,os,time\n' \
+    'print("[run] starting migration sequence", flush=True)\n' \
+    'cmds=[\n' \
+    ' [sys.executable,"-m","alembic","-c","/app/alembic.ini","upgrade","head"],\n' \
+    ' [sys.executable,"-m","alembic","-c","/app/alembic.ini","upgrade","heads"]\n' \
+    ']\n' \
+    'migrated=False\n' \
+    'for i,c in enumerate(cmds):\n' \
+    ' try:\n' \
+    '  subprocess.run(c,check=True)\n' \
+    '  print(f"[run] migration attempt {i} succeeded", flush=True)\n' \
+    '  migrated=True\n' \
+    '  break\n' \
+    ' except Exception as e:\n' \
+    '  print(f"[run] migration attempt {i} failed: {e}", flush=True)\n' \
+    'if not migrated:\n' \
+    ' print("[run][WARN] migrations did not succeed; continuing anyway", flush=True)\n' \
+    'uvicorn_cmd=[sys.executable,"-m","uvicorn","app.main:app","--host","0.0.0.0","--port","8000","--proxy-headers","--forwarded-allow-ips=*"]\n' \
+    'print("[run] exec:", " ".join(uvicorn_cmd), flush=True)\n' \
+    'os.execvp(uvicorn_cmd[0], uvicorn_cmd)\n' > /build/run_app.py
+
+# -------- runtime --------
+FROM python:3.11-slim AS runtime
+ENV PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/app
+
+# Install runtime system libs required by psycopg & scientific stack
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        libpq5 ca-certificates libssl3 libffi8 libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Non-root user
+RUN useradd -m -u 10001 appuser
+WORKDIR /app
+
+# Install wheels (no build tooling kept)
+COPY --from=builder /build/wheels /wheels
+RUN python -m pip install --no-cache-dir /wheels/* \
+ && rm -rf /wheels
+
+# Copy application code
+COPY --from=builder /build/app /app/app
+COPY --from=builder /build/alembic /app/alembic
+COPY --from=builder /build/alembic.ini /app/alembic.ini
+COPY --from=builder /build/run_app.py /run_app.py
+
+ENV PYTHONPATH=/app
+USER appuser
+EXPOSE 8000
+
+# Use uvicorn if that's current behavior; adjust module:app if different
+CMD ["python", "/run_app.py"]

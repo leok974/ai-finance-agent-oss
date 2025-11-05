@@ -43,6 +43,9 @@
   [switch]$StackOnly,
   [switch]$Prune,
   [switch]$PurgeEdge,
+  [switch]$PurgeEdgeQuick,     # targeted Cloudflare purge of critical URLs
+  [switch]$PurgeEdgeAll,       # purge entire Cloudflare zone (prompts unless forced)
+  [switch]$PurgeEdgeAllForce,  # with -PurgeEdgeAll: skip confirmation
   [string]$Services = 'backend,nginx,agui'
 )
 
@@ -134,6 +137,34 @@ try {
       }
       catch {
         Write-Warn "Purge failed: $($_.Exception.Message)"
+      }
+    }
+  }
+
+  if ($PurgeEdgeQuick) {
+    Write-Step 'Cloudflare purge (quick targeted)'
+    if (-not $env:CLOUDFLARE_ZONE_ID -or (-not $env:CLOUDFLARE_API_TOKEN -and (-not $env:CLOUDFLARE_GLOBAL_KEY -or -not $env:CLOUDFLARE_EMAIL))) {
+      Write-Warn 'Skipping quick purge: set CLOUDFLARE_ZONE_ID and CLOUDFLARE_API_TOKEN (or CLOUDFLARE_GLOBAL_KEY + CLOUDFLARE_EMAIL)'
+    } else {
+      try {
+        & (Join-Path $PSScriptRoot 'purge-cf-quick.ps1') | Out-Host
+      } catch {
+        Write-Warn "Quick purge failed: $($_.Exception.Message)"
+      }
+    }
+  }
+
+  if ($PurgeEdgeAll) {
+    Write-Step 'Cloudflare purge (ENTIRE zone)'
+    if (-not $env:CLOUDFLARE_ZONE_ID -or (-not $env:CLOUDFLARE_API_TOKEN -and (-not $env:CLOUDFLARE_GLOBAL_KEY -or -not $env:CLOUDFLARE_EMAIL))) {
+      Write-Warn 'Skipping full purge: set CLOUDFLARE_ZONE_ID and CLOUDFLARE_API_TOKEN (or CLOUDFLARE_GLOBAL_KEY + CLOUDFLARE_EMAIL)'
+    } else {
+      try {
+        $args = @('-Everything')
+        if ($PurgeEdgeAllForce) { $args += '-Force' }
+        & (Join-Path $PSScriptRoot 'purge-cf-quick.ps1') @args | Out-Host
+      } catch {
+        Write-Warn "Full purge failed: $($_.Exception.Message)"
       }
     }
   }

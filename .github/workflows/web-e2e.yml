@@ -1,0 +1,75 @@
+name: web-e2e
+
+on:
+  push:
+    paths: ["apps/web/**", "deploy/nginx.conf", "docker-compose.prod.yml", "docker-compose.prod.override.yml"]
+  pull_request:
+    paths: ["apps/web/**", "deploy/nginx.conf", "docker-compose.prod.yml", "docker-compose.prod.override.yml"]
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install web deps + build SPA
+        working-directory: apps/web
+        run: |
+          corepack enable
+          pnpm install --frozen-lockfile
+          pnpm build
+
+      - name: Build and start nginx + backend + postgres
+        run: |
+          docker compose -f docker-compose.prod.yml -f docker-compose.prod.override.yml build nginx backend postgres
+          docker compose -f docker-compose.prod.yml -f docker-compose.prod.override.yml up -d nginx backend postgres
+
+      - name: Wait for services
+        run: |
+          for i in {1..40}; do
+            code=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1/ready || true)
+            if [ "$code" = "200" ]; then echo "backend ready"; break; fi
+            sleep 2
+          done
+          curl -sI http://127.0.0.1/ | grep -i "Content-Security-Policy"
+
+      - name: Install Playwright
+        working-directory: apps/web
+        run: |
+          pnpm exec playwright install --with-deps
+
+      - name: Assert no /api/agent shim in nginx config (optional)
+        run: |
+          if docker compose -f docker-compose.prod.yml -f docker-compose.prod.override.yml \
+            exec -T nginx sh -lc "nginx -T 2>&1 | grep -q '/api/agent'"; then
+            echo "Found legacy /api/agent directive in nginx config"; exit 1; fi
+
+      - name: Run Playwright guards (no redirect + CSP snapshot + legacy path absent)
+        working-directory: apps/web
+        env:
+          BASE_URL: http://127.0.0.1
+        run: |
+          pnpm exec playwright test -g "Edge headers & POST behavior"
+          pnpm exec playwright test tests/e2e/csp-and-no-redirect.spec.ts -g "legacy /api/agent/* path should NOT exist"
+          pnpm exec playwright test tests/e2e/ingest-upload.spec.ts
+
+      - name: Run ingest negative and large-file tests
+        working-directory: apps/web
+        env:
+          BASE_URL: http://127.0.0.1
+        run: |
+          pnpm exec playwright test tests/e2e/ingest-upload.spec.ts -g "malformed"
+          pnpm exec playwright test tests/e2e/ingest-upload.spec.ts -g "too large"
+
+      - name: Upload Playwright report (always)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: apps/web/playwright-report
+          if-no-files-found: ignore

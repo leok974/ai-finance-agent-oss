@@ -1,0 +1,197 @@
+# AlertManager Routing Configuration for KMS Crypto Alerts
+# Include this file from your main AlertManager config or merge these routes
+
+route:
+  # Default receiver for unmatched alerts
+  receiver: kms-default
+
+  # Group alerts by these labels to reduce noise
+  group_by: ['alertname', 'env', 'job']
+
+  # How long to wait before sending the first notification for a group
+  group_wait: 30s
+
+  # How long to wait before sending notifications about new alerts in an existing group
+  group_interval: 5m
+
+  # How long to wait before repeating notifications for the same alert
+  repeat_interval: 2h
+
+  # Child routes for specific alert patterns
+  routes:
+    # Route all KMS-related alerts to security team
+    - match_re:
+        alertname: "^KMS.*"
+      receiver: kms-security
+      group_by: ['alertname', 'env', 'job']
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 2h
+      continue: true  # Also send to default receiver if needed
+
+    # Critical KMS alerts - immediate notification
+    - match:
+        severity: critical
+      match_re:
+        alertname: "^KMS.*"
+      receiver: kms-critical
+      group_by: ['alertname', 'env', 'job']
+      group_wait: 10s  # Faster response for critical
+      group_interval: 2m
+      repeat_interval: 30m
+      continue: false  # Don't fall through to other receivers
+
+receivers:
+  # Default no-op receiver
+  - name: kms-default
+    webhook_configs: []
+
+  # Security team - standard KMS alerts
+  - name: kms-security
+    slack_configs:
+      - channel: "#security-ops"
+        send_resolved: true
+        title: "[{{ .Status | toUpper }}] {{ .CommonLabels.alertname }}"
+        title_link: "https://github.com/leok974/ai-finance-agent-oss/blob/main/docs/KMS_OPERATIONS.md#runbook-{{ .CommonLabels.alertname | toLower }}"
+        text: |
+          *Alert:* {{ .CommonLabels.alertname }}
+          *Environment:* {{ .CommonLabels.env }}
+          *Service:* {{ .CommonLabels.job }}
+          *Severity:* {{ .CommonLabels.severity }}
+
+          *Summary:* {{ .CommonAnnotations.summary }}
+          *Description:* {{ .CommonAnnotations.description }}
+
+          *Runbook:* https://github.com/leok974/ai-finance-agent-oss/blob/main/docs/KMS_OPERATIONS.md#runbook
+          *Dashboard:* https://grafana.ledger-mind.org/d/kms-crypto-health
+        color: '{{ if eq .Status "firing" }}danger{{ else }}good{{ end }}'
+        icon_emoji: ':lock:'
+        username: 'KMS Alert Bot'
+
+    email_configs:
+      - to: "secops@ledger-mind.org"
+        from: "alerts@ledger-mind.org"
+        smarthost: "smtp.sendgrid.net:587"
+        auth_username: "apikey"
+        auth_password: "${SENDGRID_API_KEY}"
+        send_resolved: true
+        headers:
+          Subject: "[{{ .Status | toUpper }}] KMS Alert: {{ .CommonLabels.alertname }} ({{ .CommonLabels.env }})"
+        html: |
+          <h2>KMS Crypto Alert</h2>
+          <p><strong>Status:</strong> {{ .Status | toUpper }}</p>
+          <p><strong>Alert:</strong> {{ .CommonLabels.alertname }}</p>
+          <p><strong>Environment:</strong> {{ .CommonLabels.env }}</p>
+          <p><strong>Service:</strong> {{ .CommonLabels.job }}</p>
+          <p><strong>Severity:</strong> {{ .CommonLabels.severity }}</p>
+
+          <h3>Summary</h3>
+          <p>{{ .CommonAnnotations.summary }}</p>
+
+          <h3>Description</h3>
+          <p>{{ .CommonAnnotations.description }}</p>
+
+          <h3>Actions</h3>
+          <ul>
+            <li><a href="https://github.com/leok974/ai-finance-agent-oss/blob/main/docs/KMS_OPERATIONS.md#runbook">View Runbook</a></li>
+            <li><a href="https://grafana.ledger-mind.org/d/kms-crypto-health">View Dashboard</a></li>
+            <li><a href="https://api.ledger-mind.org/healthz">Check Health Endpoint</a></li>
+          </ul>
+
+  # Critical alerts - page on-call engineer
+  - name: kms-critical
+    slack_configs:
+      - channel: "#security-critical"
+        send_resolved: true
+        title: "🚨 [CRITICAL] {{ .CommonLabels.alertname }}"
+        title_link: "https://github.com/leok974/ai-finance-agent-oss/blob/main/docs/KMS_OPERATIONS.md#runbook-{{ .CommonLabels.alertname | toLower }}"
+        text: |
+          <!channel> *CRITICAL KMS SECURITY ALERT*
+
+          *Alert:* {{ .CommonLabels.alertname }}
+          *Environment:* {{ .CommonLabels.env }}
+          *Service:* {{ .CommonLabels.job }}
+
+          *Summary:* {{ .CommonAnnotations.summary }}
+          *Description:* {{ .CommonAnnotations.description }}
+
+          *Immediate Actions Required:*
+          1. Check health: https://api.ledger-mind.org/healthz
+          2. Follow runbook: https://github.com/leok974/ai-finance-agent-oss/blob/main/docs/KMS_OPERATIONS.md#runbook
+          3. Check dashboard: https://grafana.ledger-mind.org/d/kms-crypto-health
+        color: 'danger'
+        icon_emoji: ':rotating_light:'
+        username: 'KMS Critical Alert'
+
+    email_configs:
+      - to: "oncall@ledger-mind.org, secops@ledger-mind.org"
+        from: "critical-alerts@ledger-mind.org"
+        smarthost: "smtp.sendgrid.net:587"
+        auth_username: "apikey"
+        auth_password: "${SENDGRID_API_KEY}"
+        send_resolved: true
+        headers:
+          Subject: "🚨 [CRITICAL] KMS Alert: {{ .CommonLabels.alertname }} ({{ .CommonLabels.env }})"
+          Priority: "urgent"
+          Importance: "high"
+        html: |
+          <div style="background-color: #ff0000; color: white; padding: 10px; margin-bottom: 20px;">
+            <h1>🚨 CRITICAL KMS SECURITY ALERT</h1>
+          </div>
+
+          <h2>Alert Details</h2>
+          <table style="border-collapse: collapse; width: 100%;">
+            <tr><td><strong>Status:</strong></td><td>{{ .Status | toUpper }}</td></tr>
+            <tr><td><strong>Alert:</strong></td><td>{{ .CommonLabels.alertname }}</td></tr>
+            <tr><td><strong>Environment:</strong></td><td>{{ .CommonLabels.env }}</td></tr>
+            <tr><td><strong>Service:</strong></td><td>{{ .CommonLabels.job }}</td></tr>
+            <tr><td><strong>Time:</strong></td><td>{{ .StartsAt }}</td></tr>
+          </table>
+
+          <h3>Summary</h3>
+          <p style="background-color: #fff3cd; padding: 10px; border-left: 4px solid #ff0000;">
+            {{ .CommonAnnotations.summary }}
+          </p>
+
+          <h3>Description</h3>
+          <p>{{ .CommonAnnotations.description }}</p>
+
+          <h3>Immediate Actions Required</h3>
+          <ol>
+            <li><a href="https://api.ledger-mind.org/healthz">Check Health Endpoint</a></li>
+            <li><a href="https://github.com/leok974/ai-finance-agent-oss/blob/main/docs/KMS_OPERATIONS.md#runbook">Follow Runbook</a></li>
+            <li><a href="https://grafana.ledger-mind.org/d/kms-crypto-health">View Dashboard</a></li>
+            <li>Check backend logs: <code>docker logs ai-finance-backend-1 --tail 100</code></li>
+          </ol>
+
+    # Optional: PagerDuty integration for critical alerts
+    # pagerduty_configs:
+    #   - routing_key: "${PAGERDUTY_INTEGRATION_KEY}"
+    #     severity: "critical"
+    #     description: "{{ .CommonAnnotations.summary }}"
+    #     details:
+    #       alertname: "{{ .CommonLabels.alertname }}"
+    #       env: "{{ .CommonLabels.env }}"
+    #       job: "{{ .CommonLabels.job }}"
+    #       description: "{{ .CommonAnnotations.description }}"
+    #       runbook_url: "https://github.com/leok974/ai-finance-agent-oss/blob/main/docs/KMS_OPERATIONS.md#runbook"
+
+# Inhibition rules - suppress redundant alerts
+inhibit_rules:
+  # If backend is down, suppress crypto-specific alerts
+  - source_match:
+      alertname: 'KMSHealthChecksFailing'
+    target_match_re:
+      alertname: '^KMS(CryptoModeNotKMS|CryptoNotReady|DecryptionErrorsBurst)$'
+    equal: ['env', 'job']
+
+  # If crypto mode is wrong, suppress "not ready" alerts (mode issue is root cause)
+  - source_match:
+      alertname: 'KMSCryptoModeNotKMS'
+    target_match:
+      alertname: 'KMSCryptoNotReady'
+    equal: ['env', 'job']
+
+# Templates for customizing notifications
+templates:
+  - '/etc/alertmanager/templates/*.tmpl'
