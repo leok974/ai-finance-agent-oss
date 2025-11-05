@@ -67,6 +67,14 @@ secrets/gcp-sa.json
 secrets/*.gcp-sa.json
 *.gcp-sa.json
 
+# Never commit SA keys (comprehensive patterns)
+*.sa.json
+*gcp*key*.json
+*service-account*.json
+gcp-dbt-sa.json
+*-credentials.json
+*-sa-key.json
+
 ### pnpm cache and logs
 **/.pnpm-store/
 pnpm-debug.log

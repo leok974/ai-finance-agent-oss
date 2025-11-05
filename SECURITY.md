@@ -132,6 +132,96 @@ Please include the term "SECURITY" in any subject lines or advisory titles.
 |------|--------|
 | 2025-09-26 | Initial SECURITY.md added (distroless + runtime hardening baseline). |
 | 2025-09-26 | Added hardened Nginx containers section & liveness separation. |
+| 2025-11-05 | **SECURITY INCIDENT**: GCP Service Account key leaked - immediate remediation |
+
+---
+
+## 13. Security Incidents
+
+### Secret Incident 2025-11-05
+
+**Summary**: GCP Service Account key leaked in commit history
+
+**Timeline**:
+- **2025-11-05 (Detection)**: Service account key `gcp-dbt-sa.json` discovered in repository
+- **Key ID**: `5b0a36412e9b3b7a019af3dcce31769f29126fd2`
+- **Service Account**: `dbt-runner@ledgermind-ml-analytics.iam.gserviceaccount.com`
+
+**Remediation Actions**:
+1. ✅ GCP key disabled via `gcloud iam service-accounts keys disable`
+2. ✅ GCP key deleted via `gcloud iam service-accounts keys delete`
+3. ⏳ Git history rewrite with `git filter-repo --invert-paths --path gcp-dbt-sa.json`
+4. ⏳ Force-push to remove key from all branches
+5. ✅ GitHub Secret Scanning + Push Protection enabled
+6. ✅ Pre-commit hooks hardened with gitleaks + detect-secrets
+7. ✅ Migrated to OIDC (Workload Identity Federation) - no static keys
+8. ✅ `.gitignore` updated with comprehensive SA key patterns
+
+**Post-Incident Verification**:
+- [ ] Confirm GCP key disabled & deleted
+- [ ] Force-push performed after merge
+- [ ] Secret scanning + push protection enabled
+- [ ] Re-run CI green with OIDC
+- [ ] Cloud Logging audit for suspicious activity
+- [ ] GitHub Actions artifacts deleted for affected runs
+
+**Root Cause**: Developer accidentally committed service account JSON during dbt setup.
+
+**Prevention**:
+- Pre-commit hooks now block all GCP service account keys
+- GitHub push protection enabled
+- All CI/CD migrated to OIDC (no static keys)
+- `.gitignore` patterns strengthened
+- Team training on credential management
+
+---
+
+## 14. No Static Keys Policy
+
+**Effective 2025-11-05**: This repository does **not** allow static service account keys.
+
+**For GCP Authentication**:
+- Use Workload Identity Federation (OIDC) in GitHub Actions
+- Store only `GCP_WIF_PROVIDER` in repo secrets (no JSON keys)
+- Example: `.github/workflows/dbt-oidc.yml`
+
+**For Local Development**:
+- Use `gcloud auth application-default login` (ADC)
+- Never commit `*-sa.json` or `*-credentials.json` files
+
+### Pre-Commit Setup
+
+```bash
+# One-time setup
+pip install pre-commit
+pre-commit install
+
+# Initialize detect-secrets baseline
+detect-secrets scan > .secrets.baseline
+
+# Verify
+pre-commit run -a
+```
+
+### Emergency Key Rotation
+
+If a key is leaked:
+
+```bash
+# 1. Disable immediately
+SA_EMAIL="your-sa@project.iam.gserviceaccount.com"
+KEY_ID="leaked-key-id"
+gcloud iam service-accounts keys disable "$KEY_ID" --iam-account "$SA_EMAIL"
+
+# 2. Delete permanently
+gcloud iam service-accounts keys delete "$KEY_ID" --iam-account "$SA_EMAIL" --quiet
+
+# 3. Audit usage
+gcloud logging read "protoPayload.authenticationInfo.principalEmail=$SA_EMAIL" \
+  --limit 100 --format json
+
+# 4. Purge from Git (consult SECURITY.md incident procedure)
+```
 
 ---
 *Document generated to provide auditors, recruiters, and contributors a one‑page security posture snapshot. Keep concise; update when material controls change.*

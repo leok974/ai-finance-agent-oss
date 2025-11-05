@@ -1,14 +1,47 @@
-title = "LedgerMind gitleaks rules"
+title = "LedgerMind OSS – Secrets Policy"
+
+[[rules]]
+id = "gcp-service-account-json"
+description = "GCP Service Account private key JSON detected"
+regex = '''(?i)"type"\s*:\s*"service_account".*"private_key_id"\s*:\s*"[0-9a-f]{10,}".*"private_key"\s*:\s*"-----BEGIN PRIVATE KEY-----'''
+tags = ["gcp","secret","high"]
+[rules.allowlist]
+paths = ["tests/fixtures/"]
+
+[[rules]]
+id = "pem-private-key"
+description = "Generic PEM private key"
+regex = '''-----BEGIN (EC|RSA|DSA|OPENSSH|PRIVATE) KEY-----'''
+tags = ["key","pem","secret","high"]
+[rules.allowlist]
+paths = ["ops/nginx/certs/yourcert/"]
+
+[[rules]]
+id = "generic-api-key"
+description = "Generic API key pattern"
+regex = '''(?i)(api[_-]?key|apikey|secret[_-]?key)\s*[:=]\s*['"][0-9a-zA-Z]{20,}['"]'''
+tags = ["api","secret","medium"]
+
+[[rules]]
+id = "slack-token"
+description = "Slack tokens"
+regex = '''xox[baprs]-[0-9]{10,13}-[0-9]{10,13}-[a-zA-Z0-9]{24,}'''
+tags = ["slack","token","high"]
+
+[[rules]]
+id = "aws-access-key"
+description = "AWS Access Key ID"
+regex = '''(A3T[A-Z0-9]|AKIA|AGPA|AIDA|AROA|AIPA|ANPA|ANVA|ASIA)[A-Z0-9]{16}'''
+tags = ["aws","secret","high"]
 
 [allowlist]
-  description = "Allow generated caches and sample artifacts"
-  files = [
-    "apps/web/.env.production.example",
-    "ops/nginx/certs/yourcert/privkey.pem"
-  ]
-  paths = [
-    '.pnpm-store/',
-    'apps/web/.pnpm-store/',
-    'playwright-report/',
-    'apps/web/playwright-report/'
-  ]
+description = "Allow generated caches and sample artifacts"
+files = [
+  "apps/web/.env.production.example",
+]
+paths = [
+  '.pnpm-store/',
+  'apps/web/.pnpm-store/',
+  'playwright-report/',
+  'apps/web/playwright-report/'
+]
