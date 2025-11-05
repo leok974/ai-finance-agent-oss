@@ -157,19 +157,28 @@ jobs:
       - name: Run gitleaks
         uses: gitleaks/gitleaks-action@v2
         with:
-          args: detect --source . --no-banner --report-path gitleaks-report.json
+          args: "--no-banner --redact --report-format sarif --report-path gitleaks.sarif --config=.gitleaks.toml"
       - name: Upload gitleaks report
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: gitleaks-report-${{ github.sha }}
-          path: gitleaks-report.json
+          path: gitleaks.sarif
           retention-days: 7
+
+  detect-secrets:
+    name: detect-secrets baseline validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - run: pipx install detect-secrets
+      - run: detect-secrets scan --baseline .secrets.baseline
 
   summary:
     name: Summary
     runs-on: ubuntu-latest
-    needs: [lint-dockerfiles, trivy-fs, trivy-image, sbom, gitleaks]
+    needs: [lint-dockerfiles, trivy-fs, trivy-image, sbom, gitleaks, detect-secrets]
     steps:
       - name: Report
         run: |

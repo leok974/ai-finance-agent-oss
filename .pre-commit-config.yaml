@@ -21,6 +21,11 @@ repos:
         entry: python scripts/precommit/block_secret_files.py
         language: python
         stages: [pre-commit]
+      - id: block-service-account-json
+        name: Block service account JSON files
+        entry: bash -c 'if git diff --cached --name-only | grep -Ei "(service[-_ ]?account|gcp).*\.json"; then echo "Blocked service account JSON path"; exit 1; fi'
+        language: system
+        pass_filenames: false
       - id: grafana-dashboard-validate
         name: Validate Grafana ML dashboard ($prom + required queries)
         language: python
