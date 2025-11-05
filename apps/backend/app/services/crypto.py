@@ -8,16 +8,22 @@ from typing import Optional
 try:  # optional dependency during hermetic tests
     from cryptography.hazmat.primitives.ciphers.aead import AESGCM  # type: ignore
 except Exception:  # pragma: no cover - fallback stub
+
     class _StubAESGCM:
         def __init__(self, key: bytes):
             self._key = key
-        def encrypt(self, nonce: bytes, data: bytes, aad: Optional[bytes]):  # naive XOR stub (NOT secure)
+
+        def encrypt(
+            self, nonce: bytes, data: bytes, aad: Optional[bytes]
+        ):  # naive XOR stub (NOT secure)
             return data[::-1] + b".stub"
+
         def decrypt(self, nonce: bytes, data: bytes, aad: Optional[bytes]):
             if data.endswith(b".stub"):
                 core = data[:-5]
                 return core[::-1]
             return data
+
     AESGCM = _StubAESGCM  # type: ignore
 
 
@@ -67,7 +73,9 @@ class EnvelopeCrypto:
         ct = self._kek_aead.encrypt(nonce, dek, aad)
         return ct, nonce
 
-    def unwrap_dek(self, wrapped: bytes, nonce: bytes, aad: Optional[bytes] = None) -> bytes:
+    def unwrap_dek(
+        self, wrapped: bytes, nonce: bytes, aad: Optional[bytes] = None
+    ) -> bytes:
         return self._kek_aead.decrypt(nonce, wrapped, aad)
 
     # --- Data encryption with DEK ---------------------------------------
@@ -76,13 +84,17 @@ class EnvelopeCrypto:
         return os.urandom(32)
 
     @staticmethod
-    def aesgcm_encrypt(dek: bytes, plaintext: bytes, aad: Optional[bytes] = None) -> tuple[bytes, bytes]:
+    def aesgcm_encrypt(
+        dek: bytes, plaintext: bytes, aad: Optional[bytes] = None
+    ) -> tuple[bytes, bytes]:
         aead = AESGCM(dek)
         nonce = os.urandom(12)
         ct = aead.encrypt(nonce, plaintext, aad)
         return ct, nonce
 
     @staticmethod
-    def aesgcm_decrypt(dek: bytes, ciphertext: bytes, nonce: bytes, aad: Optional[bytes] = None) -> bytes:
+    def aesgcm_decrypt(
+        dek: bytes, ciphertext: bytes, nonce: bytes, aad: Optional[bytes] = None
+    ) -> bytes:
         aead = AESGCM(dek)
         return aead.decrypt(nonce, ciphertext, aad)

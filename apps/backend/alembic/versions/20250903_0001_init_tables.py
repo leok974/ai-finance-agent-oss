@@ -4,8 +4,6 @@ Revision ID: 20250903_0001
 Revises:
 Create Date: 2025-09-03
 """
-from alembic import op
-import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision = "20250903_0001"
@@ -17,6 +15,7 @@ depends_on = None
 # This repo has two historical init migrations. The other init (7d9707fac06d)
 # is the authoritative baseline. We keep this revision in history but skip it
 # to avoid duplicate table creation when rebuilding dev databases.
+
 
 def upgrade():
     # TEMP NO-OP:

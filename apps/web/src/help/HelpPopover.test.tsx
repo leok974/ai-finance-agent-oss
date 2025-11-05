@@ -81,4 +81,3 @@ test('renders No data badge when reason present', async () => {
   await screen.findByText('No data for selection');
   expect(screen.getByText('No data')).toBeInTheDocument();
 });
-

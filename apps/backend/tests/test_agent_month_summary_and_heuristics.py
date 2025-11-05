@@ -1,5 +1,6 @@
 # NOTE: Placed in apps/backend/tests for default pytest discovery.
-import os, datetime as dt
+import os
+import datetime as dt
 import pytest
 from app.services.txns_nl_query import parse_nl_query
 
@@ -7,10 +8,12 @@ pytestmark = pytest.mark.httpapi
 
 HERMETIC = os.getenv("HERMETIC") == "1"
 
+
 @pytest.mark.skipif(HERMETIC, reason="HTTP client not available in hermetic mode")
 def test_merchant_heuristic_verbs_not_captured(client):
     nlq = parse_nl_query("Give me Starbucks spend")
     assert nlq.merchants == ["Starbucks"], nlq.merchants
+
 
 @pytest.mark.skipif(HERMETIC, reason="HTTP client not available in hermetic mode")
 def test_merchant_heuristic_short_tokens_filtered():
@@ -18,10 +21,12 @@ def test_merchant_heuristic_short_tokens_filtered():
     assert any(m.lower() == "ups" for m in nlq.merchants)
     assert not any(m.lower() == "go" for m in nlq.merchants)
 
+
 @pytest.mark.skipif(HERMETIC, reason="HTTP client not available in hermetic mode")
 def test_month_summary_endpoint(client):
     from app.db import get_db
     from app.orm_models import Transaction
+
     db = next(get_db())
     month = dt.date.today().strftime("%Y-%m")
     base = dt.date.today().replace(day=10)
@@ -31,7 +36,11 @@ def test_month_summary_endpoint(client):
         ("Starbucks", -4.50, 2),
     ]
     for m, amt, off in fixtures:
-        db.add(Transaction(merchant_canonical=m, amount=amt, date=base + dt.timedelta(days=off)))
+        db.add(
+            Transaction(
+                merchant_canonical=m, amount=amt, date=base + dt.timedelta(days=off)
+            )
+        )
     db.commit()
     r = client.get(f"/agent/summary/month?month={month}")
     assert r.status_code == 200
@@ -42,24 +51,31 @@ def test_month_summary_endpoint(client):
     assert pytest.approx(data["net"], rel=1e-3) == 3200.0 - 124.90
     assert data["top_merchant"]["name"].lower() in {"wholefoods", "starbucks"}
 
+
 @pytest.mark.skipif(HERMETIC, reason="HTTP client not available in hermetic mode")
 def test_month_summary_empty_month(client):
     """Request a future month with no transactions and expect zeroed summary and null top_merchant."""
-    future_month = (dt.date.today().replace(day=1) + dt.timedelta(days=40)).strftime("%Y-%m")
+    future_month = (dt.date.today().replace(day=1) + dt.timedelta(days=40)).strftime(
+        "%Y-%m"
+    )
     r = client.get(f"/agent/summary/month?month={future_month}")
     assert r.status_code == 200
     data = r.json()
-    assert data["month"] == future_month or data["month"] is None  # If validation rejects future month we allow None
+    assert (
+        data["month"] == future_month or data["month"] is None
+    )  # If validation rejects future month we allow None
     assert data["income"] == 0.0
     assert data["expenses"] == 0.0
     assert data["net"] == 0.0
     assert data["top_merchant"] in (None, {})
+
 
 @pytest.mark.skipif(HERMETIC, reason="HTTP client not available in hermetic mode")
 def test_month_summary_tie_break_top_merchant(client):
     """Two merchants with identical spend should yield deterministic top_merchant (lexical ascending fallback)."""
     from app.db import get_db
     from app.orm_models import Transaction
+
     db = next(get_db())
     # Use an isolated future month to avoid interference from other tests' data
     month_date = dt.date.today().replace(day=1) + dt.timedelta(days=70)
@@ -75,7 +91,11 @@ def test_month_summary_tie_break_top_merchant(client):
         ("AlphaStore", -50.00, 1),
     ]
     for m, amt, off in fixtures:
-        db.add(Transaction(merchant_canonical=m, amount=amt, date=base + dt.timedelta(days=off)))
+        db.add(
+            Transaction(
+                merchant_canonical=m, amount=amt, date=base + dt.timedelta(days=off)
+            )
+        )
     db.commit()
     r = client.get(f"/agent/summary/month?month={month}")
     assert r.status_code == 200

@@ -29,11 +29,21 @@ def upgrade() -> None:
 
     # Drop the foreign key constraint if it exists
     # Note: Constraint name may vary; check your database
-    try:
+    # Query if constraint exists first to avoid transaction poisoning
+    connection = op.get_bind()
+    result = connection.execute(
+        sa.text(
+            """
+            SELECT constraint_name
+            FROM information_schema.table_constraints
+            WHERE table_name = 'feedback'
+            AND constraint_type = 'FOREIGN KEY'
+            AND constraint_name = 'feedback_txn_id_fkey'
+        """
+        )
+    )
+    if result.fetchone():
         op.drop_constraint("feedback_txn_id_fkey", "feedback", type_="foreignkey")
-    except Exception:
-        # Constraint might not exist or have different name
-        pass
 
     # Make txn_id nullable (it becomes a weak reference)
     op.alter_column("feedback", "txn_id", existing_type=sa.Integer(), nullable=True)

@@ -8,7 +8,7 @@ echo "=== ML Suggestions API Smoke Test ==="
 echo ""
 
 # Configuration
-BASE_URL="${API_BASE_URL:-http://localhost:8000}"
+BASE_URL="${API_BASE_URL:-http://localhost}"
 TXN_ID="${TEST_TXN_ID:-999001}"
 
 echo "Using BASE_URL: $BASE_URL"
@@ -17,9 +17,9 @@ echo ""
 
 # 1) Test suggestions endpoint
 echo "1) Testing suggestions endpoint..."
-SUGGEST_RESPONSE=$(curl -s -X POST "$BASE_URL/agent/tools/suggestions" \
-  -H 'Content-Type: application/json' \
-  -d "{\"txn_ids\":[\"$TXN_ID\"],\"top_k\":3,\"mode\":\"auto\"}")
+SUGGEST_RESPONSE=$(curl -s -X POST "$BASE_URL/ml/suggestions" \
+  -H "Content-Type: application/json" \
+  -d "{\"txn_ids\": [\"$TXN_ID\"], \"top_k\": 3, \"mode\": \"auto\"}")
 
 echo "$SUGGEST_RESPONSE" | jq '.'
 
@@ -37,7 +37,7 @@ echo ""
 
 # 2) Test feedback endpoint (accept)
 echo "2) Testing feedback endpoint (accept action)..."
-FEEDBACK_RESPONSE=$(curl -s -X POST "$BASE_URL/agent/tools/suggestions/feedback" \
+FEEDBACK_RESPONSE=$(curl -s -X POST "$BASE_URL/ml/suggestions/feedback" \
   -H 'Content-Type: application/json' \
   -d "{\"event_id\":\"$EVENT_ID\",\"action\":\"accept\",\"reason\":\"test_automation\"}")
 
@@ -54,14 +54,14 @@ echo ""
 
 # 3) Test feedback endpoint (reject)
 echo "3) Testing another suggestion for reject flow..."
-SUGGEST_RESPONSE2=$(curl -s -X POST "$BASE_URL/agent/tools/suggestions" \
+SUGGEST_RESPONSE2=$(curl -s -X POST "$BASE_URL/ml/suggestions" \
   -H 'Content-Type: application/json' \
   -d "{\"txn_ids\":[\"999002\"],\"top_k\":3,\"mode\":\"auto\"}")
 
 EVENT_ID2=$(echo "$SUGGEST_RESPONSE2" | jq -r '.items[0].event_id // empty')
 
 if [ -n "$EVENT_ID2" ]; then
-  REJECT_RESPONSE=$(curl -s -X POST "$BASE_URL/agent/tools/suggestions/feedback" \
+  REJECT_RESPONSE=$(curl -s -X POST "$BASE_URL/ml/suggestions/feedback" \
     -H 'Content-Type: application/json' \
     -d "{\"event_id\":\"$EVENT_ID2\",\"action\":\"reject\",\"reason\":\"test_automation\"}")
 

@@ -9,24 +9,45 @@ from app.transactions import Transaction
 import pandas as pd
 
 HEURISTIC_MAP: List[Tuple[str, str]] = [
-    ("STARBUCKS", "Dining out"), ("DUNKIN", "Dining out"), ("MCDONALD", "Dining out"), ("UBER EATS", "Dining out"),
-    ("UBER", "Transport"), ("LYFT", "Transport"), ("SHELL", "Transport"), ("EXXON", "Transport"),
-    ("AMAZON", "Shopping"), ("TARGET", "Shopping"),
-    ("WALMART", "Groceries"), ("KROGER", "Groceries"), ("SAFEWAY", "Groceries"), ("COSTCO", "Groceries"),
-    ("NETFLIX", "Subscriptions"), ("SPOTIFY", "Subscriptions"), ("HULU", "Subscriptions"),
-    ("APPLE.COM/BILL", "Subscriptions"), ("GOOGLE*", "Subscriptions"),
+    ("STARBUCKS", "Dining out"),
+    ("DUNKIN", "Dining out"),
+    ("MCDONALD", "Dining out"),
+    ("UBER EATS", "Dining out"),
+    ("UBER", "Transport"),
+    ("LYFT", "Transport"),
+    ("SHELL", "Transport"),
+    ("EXXON", "Transport"),
+    ("AMAZON", "Shopping"),
+    ("TARGET", "Shopping"),
+    ("WALMART", "Groceries"),
+    ("KROGER", "Groceries"),
+    ("SAFEWAY", "Groceries"),
+    ("COSTCO", "Groceries"),
+    ("NETFLIX", "Subscriptions"),
+    ("SPOTIFY", "Subscriptions"),
+    ("HULU", "Subscriptions"),
+    ("APPLE.COM/BILL", "Subscriptions"),
+    ("GOOGLE*", "Subscriptions"),
 ]
 
-def _fetch_unlabeled(db: Session, month: Optional[str], limit: int) -> List[Transaction]:
+
+def _fetch_unlabeled(
+    db: Session, month: Optional[str], limit: int
+) -> List[Transaction]:
     unlabeled_cond = (
-        (Transaction.category.is_(None)) |
-        (func.trim(Transaction.category) == "") |
-        (func.lower(Transaction.category) == "unknown")
+        (Transaction.category.is_(None))
+        | (func.trim(Transaction.category) == "")
+        | (func.lower(Transaction.category) == "unknown")
     )
     q = db.query(Transaction).filter(unlabeled_cond)
     if month:
         q = q.filter(Transaction.month == month)
-    return q.order_by(Transaction.date.desc(), Transaction.id.desc()).limit(int(limit)).all()
+    return (
+        q.order_by(Transaction.date.desc(), Transaction.id.desc())
+        .limit(int(limit))
+        .all()
+    )
+
 
 def _build_features(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
     texts: List[str] = []
@@ -41,6 +62,7 @@ def _build_features(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
         nums.append([sign, mag])
     return {"text": texts, "num": nums}
 
+
 def _heuristic_guess(merchant: str, description: str) -> Optional[str]:
     blob = ((merchant or "") + " " + (description or "")).upper()
     for needle, cat in HEURISTIC_MAP:
@@ -53,11 +75,14 @@ def _heuristic_guess(merchant: str, description: str) -> Optional[str]:
                 return cat
     return None
 
-def _dedup_sorted(categories: List[Tuple[str, float]], topk: int) -> List[Tuple[str, float]]:
+
+def _dedup_sorted(
+    categories: List[Tuple[str, float]], topk: int
+) -> List[Tuple[str, float]]:
     seen = set()
     out: List[Tuple[str, float]] = []
     for c, p in categories:
-        if c in seen: 
+        if c in seen:
             continue
         seen.add(c)
         out.append((c, float(p)))
@@ -65,7 +90,10 @@ def _dedup_sorted(categories: List[Tuple[str, float]], topk: int) -> List[Tuple[
             break
     return out
 
-def suggest_for_unknowns(db: Session, month: Optional[str], limit: int = 50, topk: int = 3) -> List[Dict[str, Any]]:
+
+def suggest_for_unknowns(
+    db: Session, month: Optional[str], limit: int = 50, topk: int = 3
+) -> List[Dict[str, Any]]:
     rows = _fetch_unlabeled(db, month, limit)
     if not rows:
         return []
@@ -87,9 +115,13 @@ def suggest_for_unknowns(db: Session, month: Optional[str], limit: int = 50, top
             num1.append(math.log1p(abs(amt)))
 
         # Detect pipeline front-end: ColumnTransformer expects DataFrame; FeatureUnion expects dict
-        features = getattr(getattr(pipe, "named_steps", {}), "get", lambda *_: None)("pre")
+        features = getattr(getattr(pipe, "named_steps", {}), "get", lambda *_: None)(
+            "pre"
+        )
         if features is None:
-            features = getattr(getattr(pipe, "named_steps", {}), "get", lambda *_: None)("features")
+            features = getattr(
+                getattr(pipe, "named_steps", {}), "get", lambda *_: None
+            )("features")
 
         X_input: Any
         if features is not None and features.__class__.__name__ == "ColumnTransformer":
@@ -107,25 +139,37 @@ def suggest_for_unknowns(db: Session, month: Optional[str], limit: int = 50, top
             classes = list(getattr(pipe, "classes_", []))
 
         for i, t in enumerate(rows):
-            pairs = sorted(zip(classes, probas[i].tolist()), key=lambda tt: tt[1], reverse=True)
+            pairs = sorted(
+                zip(classes, probas[i].tolist()), key=lambda tt: tt[1], reverse=True
+            )
             # Never surface 'Unknown'
             pairs = [(c, s) for (c, s) in pairs if c != "Unknown"]
             pairs = _dedup_sorted(pairs, topk)
             if not pairs:
                 continue
-            results.append({
-                "txn_id": t.id,
-                "merchant": t.merchant,
-                "description": t.description,
-                "amount": float(t.amount or 0.0),
-                "month": t.month,
-                "candidates": [{"label": c, "confidence": float(s)} for c, s in pairs],
-                "explain_url": f"/txns/{t.id}/explain",
-            })
+            results.append(
+                {
+                    "txn_id": t.id,
+                    "merchant": t.merchant,
+                    "description": t.description,
+                    "amount": float(t.amount or 0.0),
+                    "month": t.month,
+                    "candidates": [
+                        {"label": c, "confidence": float(s)} for c, s in pairs
+                    ],
+                    "explain_url": f"/txns/{t.id}/explain",
+                }
+            )
         return results
 
     # Fallback when no model yet
-    FALLBACK_BUCKETS = ["Groceries", "Dining out", "Shopping", "Transport", "Subscriptions"]
+    FALLBACK_BUCKETS = [
+        "Groceries",
+        "Dining out",
+        "Shopping",
+        "Transport",
+        "Subscriptions",
+    ]
     for t in rows:
         best = _heuristic_guess(t.merchant or "", t.description or "")
         ordered: List[Tuple[str, float]] = []
@@ -133,18 +177,25 @@ def suggest_for_unknowns(db: Session, month: Optional[str], limit: int = 50, top
             ordered.append((best, 0.9))
             ordered += [(c, 0.25) for c in FALLBACK_BUCKETS if c != best]
         else:
-            ordered = [(c, 0.34 if idx == 0 else 0.22) for idx, c in enumerate(FALLBACK_BUCKETS)]
+            ordered = [
+                (c, 0.34 if idx == 0 else 0.22)
+                for idx, c in enumerate(FALLBACK_BUCKETS)
+            ]
         ordered = [(c, s) for (c, s) in ordered if c != "Unknown"]
         ordered = _dedup_sorted(ordered, topk)
         if not ordered:
             continue
-        results.append({
-            "txn_id": t.id,
-            "merchant": t.merchant,
-            "description": t.description,
-            "amount": float(t.amount or 0.0),
-            "month": t.month,
-            "candidates": [{"label": c, "confidence": float(p)} for c, p in ordered],
-            "explain_url": f"/txns/{t.id}/explain",
-        })
+        results.append(
+            {
+                "txn_id": t.id,
+                "merchant": t.merchant,
+                "description": t.description,
+                "amount": float(t.amount or 0.0),
+                "month": t.month,
+                "candidates": [
+                    {"label": c, "confidence": float(p)} for c, p in ordered
+                ],
+                "explain_url": f"/txns/{t.id}/explain",
+            }
+        )
     return results

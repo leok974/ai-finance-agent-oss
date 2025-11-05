@@ -1,6 +1,17 @@
 from typing import Iterable, Tuple
 
-INCOME_KEYWORDS = {"payroll", "salary", "deposit", "paycheck", "refund", "rebate", "interest", "dividend", "income"}
+INCOME_KEYWORDS = {
+    "payroll",
+    "salary",
+    "deposit",
+    "paycheck",
+    "refund",
+    "rebate",
+    "interest",
+    "dividend",
+    "income",
+}
+
 
 def _looks_like_income(desc: str) -> bool:
     if not desc:
@@ -8,7 +19,10 @@ def _looks_like_income(desc: str) -> bool:
     d = desc.lower()
     return any(k in d for k in INCOME_KEYWORDS)
 
-def detect_positive_expense_format(rows: Iterable[Tuple[float, str]], sample_size: int = 200, threshold: float = 0.7) -> bool:
+
+def detect_positive_expense_format(
+    rows: Iterable[Tuple[float, str]], sample_size: int = 200, threshold: float = 0.7
+) -> bool:
     """
     Heuristic: if the majority of *expense-like* rows are positive, assume CSV uses positive expenses.
     rows: iterable of (amount, description)

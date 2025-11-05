@@ -13,9 +13,13 @@ from sqlalchemy import select, update
 from io import TextIOWrapper
 import csv
 import datetime as dt
+import logging
 from ..db import get_db
 from app.transactions import Transaction
 from app.services.ingest_utils import detect_positive_expense_format
+from app.services.metrics import INGEST_REQUESTS, INGEST_ERRORS
+
+logger = logging.getLogger(__name__)
 
 MAX_UPLOAD_MB = 5  # adjust to your spec; 12MB test should 413
 
@@ -50,12 +54,22 @@ async def ingest_csv(
     **Important**: When `replace=True`, only transaction data is deleted.
     ML training data (feedback, rules) is preserved for continuous learning.
     """
+    # Track all ingest requests for SLO monitoring
+    phase = "replace" if replace else "append"
+    INGEST_REQUESTS.labels(phase=phase).inc()
+
     if replace:
-        # ONLY delete transactions - preserve ML training assets
-        # feedback.txn_id is now nullable, so feedback survives transaction deletion
-        # rules, ml_feedback, merchant_overrides remain intact
-        db.query(Transaction).delete()
-        db.commit()
+        # Delete transactions; DB cascades handle cleanup:
+        # - suggestion_events deleted via FK CASCADE
+        # - suggestion_feedback.event_id set to NULL via FK SET NULL
+        # - rules, merchant_overrides remain intact
+        try:
+            db.query(Transaction).delete()
+            db.commit()
+        except Exception:
+            # Track replace failures for monitoring/alerting
+            INGEST_ERRORS.labels(phase="replace").inc()
+            raise
         # keep legacy in-memory state in sync
         try:
             from ..main import app

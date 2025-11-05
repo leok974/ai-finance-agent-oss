@@ -16,7 +16,9 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.execute("CREATE INDEX IF NOT EXISTS idx_transactions_enc_label ON transactions (enc_label)")
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS idx_transactions_enc_label ON transactions (enc_label)"
+    )
 
 
 def downgrade() -> None:

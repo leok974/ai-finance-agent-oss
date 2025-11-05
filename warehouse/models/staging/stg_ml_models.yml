@@ -1,0 +1,65 @@
+version: 2
+
+models:
+  - name: stg_transactions
+    description: "Staging layer for transactions with consistent naming"
+    columns:
+      - name: txn_id
+        description: "Transaction primary key"
+        tests:
+          - not_null
+          - unique
+      - name: txn_date
+        description: "Transaction date"
+        tests:
+          - not_null
+      - name: amount
+        description: "Transaction amount (negative for expenses)"
+        tests:
+          - not_null
+
+  - name: stg_transaction_labels
+    description: "Staging layer for golden truth labels"
+    columns:
+      - name: txn_id
+        description: "Transaction ID"
+        tests:
+          - not_null
+          - unique
+          - relationships:
+              to: ref('stg_transactions')
+              field: txn_id
+      - name: label
+        description: "Category label"
+        tests:
+          - not_null
+      - name: source
+        description: "Label origin (human, rule, import)"
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['human', 'rule', 'import']
+
+  - name: stg_ml_features
+    description: "Staging layer for ML feature vectors"
+    columns:
+      - name: txn_id
+        description: "Transaction ID"
+        tests:
+          - not_null
+          - unique
+          - relationships:
+              to: ref('stg_transactions')
+              field: txn_id
+      - name: ts_month
+        description: "Month bucket for time-based splits"
+        tests:
+          - not_null
+      - name: amount
+        description: "Original amount from transaction"
+        tests:
+          - not_null
+      - name: abs_amount
+        description: "Absolute value of amount"
+        tests:
+          - not_null

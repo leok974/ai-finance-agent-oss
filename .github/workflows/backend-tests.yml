@@ -33,4 +33,3 @@ jobs:
         working-directory: apps/backend
         run: |
           python -m pytest -q tests/test_agent_tools_suggestions.py
-

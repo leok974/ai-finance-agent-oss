@@ -105,4 +105,3 @@ if ($indexHeaders -match "Cache-Control:\s*(?<value>.+)") {
 }
 
 Write-Host "`nAll checks completed." -ForegroundColor Green
-

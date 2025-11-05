@@ -5,15 +5,16 @@ Revises: 20250909_feedback_created_at_not_null, b4068fc306b1
 Create Date: 2025-09-09 19:06:53.331963
 
 """
-from typing import Sequence, Union
 
-from alembic import op
-import sqlalchemy as sa
+from typing import Sequence, Union
 
 
 # revision identifiers, used by Alembic.
-revision: str = 'c4a739e0f055'
-down_revision: Union[str, Sequence[str], None] = ('20250909_feedback_created_at_not_null', 'b4068fc306b1')
+revision: str = "c4a739e0f055"
+down_revision: Union[str, Sequence[str], None] = (
+    "20250909_feedback_created_at_not_null",
+    "b4068fc306b1",
+)
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

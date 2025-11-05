@@ -17,7 +17,8 @@ def _ingest(csv_text: str):
 
 def test_budget_summary_and_check_basic_flow():
     month = "2025-08"
-    csv = textwrap.dedent(f"""\
+    csv = textwrap.dedent(
+        f"""\
         date,month,merchant,description,amount,category
         2025-08-01,{month},Salary,August payroll,5000.00,Income
         2025-08-02,{month},Costco,Groceries,-120.00,Groceries
@@ -26,7 +27,8 @@ def test_budget_summary_and_check_basic_flow():
         2025-08-05,{month},Trader Joes,Groceries,-65.25,Groceries
         2025-08-06,{month},Spotify,Family plan,-15.99,Subscriptions
         2025-08-07,{month},Mystery,Unknown spend,-12.34,
-    """)
+    """
+    )
     _ingest(csv)
 
     # 1) Summary
@@ -44,7 +46,9 @@ def test_budget_summary_and_check_basic_flow():
     labels = [c["category"] for c in by_cat]
     # In some installs, /ingest ignores CSV category → everything starts as Unknown.
     # We only require that the endpoint aggregates categories and includes Unknown.
-    assert isinstance(labels, list) and labels, "Expected at least one category in summary"
+    assert (
+        isinstance(labels, list) and labels
+    ), "Expected at least one category in summary"
     assert "Unknown" in labels
 
     # top_merchants likewise structured
@@ -54,8 +58,16 @@ def test_budget_summary_and_check_basic_flow():
     assert "Costco" in mnames or "Trader Joes" in mnames
 
     # 2) Budget check
-    limits = {"Groceries": 200.0, "Transport": 50.0, "Shopping": 100.0, "Subscriptions": 20.0}
-    r2 = client.post("/agent/tools/budget/check", json={"month": month, "limits": limits, "include_unknown": True})
+    limits = {
+        "Groceries": 200.0,
+        "Transport": 50.0,
+        "Shopping": 100.0,
+        "Subscriptions": 20.0,
+    }
+    r2 = client.post(
+        "/agent/tools/budget/check",
+        json={"month": month, "limits": limits, "include_unknown": True},
+    )
     assert r2.status_code == 200, r2.text
     chk = r2.json()
     assert chk["month"] == month

@@ -1,0 +1,14 @@
+ledgermind:
+  target: pg_local
+  outputs:
+    pg_local:
+      type: postgres
+      host: postgres
+      user: myuser
+      password: "4c9248fc7d7d477d919ccc431b1bbd36!PgA1"
+      port: 5432
+      dbname: finance
+      schema: public
+      threads: 4
+      connect_timeout: 10
+      keepalives_idle: 0

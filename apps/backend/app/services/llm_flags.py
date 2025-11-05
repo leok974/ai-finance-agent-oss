@@ -1,13 +1,16 @@
 import os
 from typing import Literal, Dict
 
+
 def _env_bool(name: str, default: bool = False) -> bool:
     v = os.getenv(name)
     if v is None:
         return default
     return str(v).strip().lower() in {"1", "true", "yes", "on"}
 
+
 Mode = Literal["help", "explain", "chat", "other"]
+
 
 def llm_policy(mode: Mode = "other") -> Dict[str, bool]:
     """Central policy decision for allowing LLM usage.
@@ -36,5 +39,9 @@ def llm_policy(mode: Mode = "other") -> Dict[str, bool]:
     if env != "prod" and allow_dev:
         return {"allow": True, "forced": False, "globally_disabled": False}
     # production default (disable when debug)
-    allow_prod = (env == "prod" and not debug)
-    return {"allow": allow_prod, "forced": False, "globally_disabled": False if allow_prod else False}
+    allow_prod = env == "prod" and not debug
+    return {
+        "allow": allow_prod,
+        "forced": False,
+        "globally_disabled": False if allow_prod else False,
+    }

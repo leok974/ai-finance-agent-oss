@@ -1,10 +1,11 @@
 """init tables
 
 Revision ID: 7d9707fac06d
-Revises: 
+Revises:
 Create Date: 2025-09-03 12:07:03.334556
 
 """
+
 from typing import Sequence, Union
 
 from alembic import op
@@ -12,7 +13,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = '7d9707fac06d'
+revision: str = "7d9707fac06d"
 down_revision: Union[str, Sequence[str], None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -32,8 +33,18 @@ def upgrade() -> None:
         sa.Column("raw_category", sa.String(length=128), nullable=True),
         sa.Column("account", sa.String(length=128), nullable=True),
         sa.Column("month", sa.String(length=7), nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("(CURRENT_TIMESTAMP)"), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.text("(CURRENT_TIMESTAMP)"), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("(CURRENT_TIMESTAMP)"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("(CURRENT_TIMESTAMP)"),
+            nullable=False,
+        ),
         sa.UniqueConstraint("date", "amount", "description", name="uq_txn_dedup"),
     )
 
@@ -41,14 +52,26 @@ def upgrade() -> None:
     op.create_table(
         "rules",
         sa.Column("id", sa.Integer(), primary_key=True),
-        sa.Column("merchant", sa.String(length=255), nullable=True),  # allow early compatibility
+        sa.Column(
+            "merchant", sa.String(length=255), nullable=True
+        ),  # allow early compatibility
         sa.Column("description", sa.Text(), nullable=True),
         sa.Column("pattern", sa.String(length=256), nullable=True),
         sa.Column("target", sa.String(length=32), nullable=True),
         sa.Column("category", sa.String(length=128), nullable=True),
         sa.Column("active", sa.Boolean(), server_default="1", nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("(CURRENT_TIMESTAMP)"), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.text("(CURRENT_TIMESTAMP)"), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("(CURRENT_TIMESTAMP)"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("(CURRENT_TIMESTAMP)"),
+            nullable=False,
+        ),
     )
 
     # user_labels
@@ -57,7 +80,12 @@ def upgrade() -> None:
         sa.Column("id", sa.Integer(), primary_key=True),
         sa.Column("txn_id", sa.Integer(), nullable=False),
         sa.Column("category", sa.String(length=128), nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("(CURRENT_TIMESTAMP)"), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("(CURRENT_TIMESTAMP)"),
+            nullable=False,
+        ),
     )
 
 

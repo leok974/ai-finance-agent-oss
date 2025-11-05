@@ -21,7 +21,9 @@ def test_help_mode_rephrase_and_cache(monkeypatch):
 
     monkeypatch.setattr(detect, "try_llm_rephrase_summary", fake_rephrase)
     monkeypatch.setattr(llm_mod, "reset_fallback_provider", lambda: None, raising=False)
-    monkeypatch.setattr(llm_mod, "get_last_fallback_provider", lambda: None, raising=False)
+    monkeypatch.setattr(
+        llm_mod, "get_last_fallback_provider", lambda: None, raising=False
+    )
 
     body = {"mode": "explain"}
     first = client.post("/agent/describe/cards.top_merchants", json=body)
@@ -58,7 +60,9 @@ def test_help_mode_rephrase_disabled(monkeypatch):
 
     monkeypatch.setattr(detect, "try_llm_rephrase_summary", fake_rephrase)
     monkeypatch.setattr(llm_mod, "reset_fallback_provider", lambda: None, raising=False)
-    monkeypatch.setattr(llm_mod, "get_last_fallback_provider", lambda: None, raising=False)
+    monkeypatch.setattr(
+        llm_mod, "get_last_fallback_provider", lambda: None, raising=False
+    )
 
     r = client.post("/agent/describe/cards.top_merchants", json={"mode": "explain"})
     assert r.status_code == 200

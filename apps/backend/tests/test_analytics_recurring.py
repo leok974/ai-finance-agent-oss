@@ -3,11 +3,36 @@ from app.transactions import Transaction
 
 def seed(db):
     from datetime import date
+
     rows = [
-        Transaction(date=date(2025,6,5), amount=-12, merchant="Spotify", category="Subscriptions", month="2025-06"),
-        Transaction(date=date(2025,7,5), amount=-12, merchant="Spotify", category="Subscriptions", month="2025-07"),
-        Transaction(date=date(2025,8,5), amount=-12, merchant="Spotify", category="Subscriptions", month="2025-08"),
-        Transaction(date=date(2025,8,10), amount=2000, merchant="ACME", category="Salary", month="2025-08"),
+        Transaction(
+            date=date(2025, 6, 5),
+            amount=-12,
+            merchant="Spotify",
+            category="Subscriptions",
+            month="2025-06",
+        ),
+        Transaction(
+            date=date(2025, 7, 5),
+            amount=-12,
+            merchant="Spotify",
+            category="Subscriptions",
+            month="2025-07",
+        ),
+        Transaction(
+            date=date(2025, 8, 5),
+            amount=-12,
+            merchant="Spotify",
+            category="Subscriptions",
+            month="2025-08",
+        ),
+        Transaction(
+            date=date(2025, 8, 10),
+            amount=2000,
+            merchant="ACME",
+            category="Salary",
+            month="2025-08",
+        ),
     ]
     db.add_all(rows)
     db.commit()

@@ -3,6 +3,7 @@ import datetime as dt
 
 pytestmark = pytest.mark.agent_tools
 
+
 # Reuse the Session factory from conftest via its exposed fixture
 @pytest.fixture
 def db_session(_SessionLocal):
@@ -12,19 +13,35 @@ def db_session(_SessionLocal):
     finally:
         s.close()
 
+
 def test_apply_all_active_rules_flow(client, db_session):
     from app.orm_models import Transaction, Rule
 
     # Seed a couple of unlabeled txns for a month
-    t1 = Transaction(date=dt.date(2025, 8, 3), month="2025-08",
-                     merchant="Starbucks", description="Latte",
-                     amount=-5.25, category=None)
-    t2 = Transaction(date=dt.date(2025, 8, 5), month="2025-08",
-                     merchant="STARBUCKS #1234", description="Iced coffee",
-                     amount=-4.10, category="")  # unlabeled
-    t3 = Transaction(date=dt.date(2025, 8, 8), month="2025-08",
-                     merchant="Grocery Mart", description="food",
-                     amount=-30.00, category="Groceries")  # already labeled
+    t1 = Transaction(
+        date=dt.date(2025, 8, 3),
+        month="2025-08",
+        merchant="Starbucks",
+        description="Latte",
+        amount=-5.25,
+        category=None,
+    )
+    t2 = Transaction(
+        date=dt.date(2025, 8, 5),
+        month="2025-08",
+        merchant="STARBUCKS #1234",
+        description="Iced coffee",
+        amount=-4.10,
+        category="",
+    )  # unlabeled
+    t3 = Transaction(
+        date=dt.date(2025, 8, 8),
+        month="2025-08",
+        merchant="Grocery Mart",
+        description="food",
+        amount=-30.00,
+        category="Groceries",
+    )  # already labeled
     db_session.add_all([t1, t2, t3])
     db_session.commit()
 

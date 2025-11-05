@@ -1,11 +1,9 @@
-import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
-from app.utils.auth import create_tokens, set_auth_cookies
+from app.utils.auth import create_tokens
 from app.orm_models import User
 from app.utils.auth import hash_password, _ensure_roles  # type: ignore
-from app.db import get_db
 
 client = TestClient(app)
 
@@ -20,7 +18,9 @@ def test_auth_status_with_cookie(db_session):
     # Create a user directly in the DB
     email = "status_user@example.com"
     user = User(email=email, password_hash=hash_password("pw"))
-    db_session.add(user); db_session.commit(); db_session.refresh(user)
+    db_session.add(user)
+    db_session.commit()
+    db_session.refresh(user)
     _ensure_roles(db_session, user, ["user"])  # ensure role mapping consistent
 
     # Mint tokens

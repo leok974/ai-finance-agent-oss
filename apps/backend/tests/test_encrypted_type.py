@@ -50,10 +50,15 @@ def test_encrypted_type_tamper_detect():
         sid = obj.id
     # tamper with stored ciphertext
     with engine.begin() as conn:
-        row = conn.execute(text("select secret from secrets_test where id=:id"), {"id": sid}).fetchone()
+        row = conn.execute(
+            text("select secret from secrets_test where id=:id"), {"id": sid}
+        ).fetchone()
         blob: bytes = row[0]
         tampered = blob[:-1] + bytes([blob[-1] ^ 0x01])
-        conn.execute(text("update secrets_test set secret=:blob where id=:id"), {"blob": tampered, "id": sid})
+        conn.execute(
+            text("update secrets_test set secret=:blob where id=:id"),
+            {"blob": tampered, "id": sid},
+        )
     with Session(engine) as s:
         try:
             _ = s.get(Secret, sid).secret

@@ -1,9 +1,10 @@
-import pytest
 from datetime import datetime, timezone
 from uuid import uuid4
 
+
 def _mk_txn(db, merchant="Starbucks", amount=-5.0):
     from app.transactions import Transaction
+
     today = datetime.now(timezone.utc).date()
     row = Transaction(
         date=today,
@@ -20,13 +21,18 @@ def _mk_txn(db, merchant="Starbucks", amount=-5.0):
     db.commit()
     return row
 
+
 def _accept(client, txn_id, merchant, category):
-    return client.post("/ml/feedback", json={
-        "txn_id": txn_id,
-        "merchant": merchant,
-        "category": category,
-        "action": "accept",
-    })
+    return client.post(
+        "/ml/feedback",
+        json={
+            "txn_id": txn_id,
+            "merchant": merchant,
+            "category": category,
+            "action": "accept",
+        },
+    )
+
 
 def test_list_suggestions_after_threshold(client, db_session):
     txn = _mk_txn(db_session, merchant="Blue Bottle")
@@ -46,6 +52,7 @@ def test_list_suggestions_after_threshold(client, db_session):
     assert sug["support"] >= 3
     assert 0.0 <= sug["positive_rate"] <= 1.0
 
+
 def test_accept_suggestion_creates_rule(client, db_session):
     txn = _mk_txn(db_session, merchant="Pret A Manger")
     for _ in range(3):
@@ -64,13 +71,16 @@ def test_accept_suggestion_creates_rule(client, db_session):
     assert body["ok"] is True
     assert "rule_id" in body
 
+
 def test_dismiss_suggestion(client, db_session):
     txn = _mk_txn(db_session, merchant="Costa Coffee")
     for _ in range(3):
         r = _accept(client, txn.id, "Costa Coffee - Canary", "Coffee")
         assert r.status_code == 200
 
-    r = client.get("/rules/suggestions?merchant_norm=costa coffee - canary&category=Coffee")
+    r = client.get(
+        "/rules/suggestions?merchant_norm=costa coffee - canary&category=Coffee"
+    )
     sug_id = r.json()[0]["id"]
 
     r = client.post(f"/rules/suggestions/{sug_id}/dismiss")

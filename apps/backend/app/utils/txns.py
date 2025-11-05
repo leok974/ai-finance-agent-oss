@@ -15,7 +15,9 @@ def txn_to_dict(t) -> Dict[str, Any]:
         "raw_category": getattr(t, "raw_category", None),
         "account": getattr(t, "account", None),
         "month": getattr(t, "month", None),
-        "date": (getattr(t, "date", None).isoformat() if getattr(t, "date", None) else None),
+        "date": (
+            getattr(t, "date", None).isoformat() if getattr(t, "date", None) else None
+        ),
         "created_at": getattr(t, "created_at", None),
         "updated_at": getattr(t, "updated_at", None),
     }

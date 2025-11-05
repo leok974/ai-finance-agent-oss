@@ -1,0 +1,41 @@
+name: help-why
+on:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: actions/setup-python@v5
+        with: 
+          python-version: '3.11'
+      
+      - name: Start services (backend + redis)
+        run: |
+          docker compose -f docker-compose.prod.yml up -d backend redis || true
+          sleep 10
+          
+      - name: Wait for backend to be healthy
+        run: |
+          for i in {1..30}; do
+            if docker compose -f docker-compose.prod.yml exec -T backend python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/ready', timeout=5)"; then
+              echo "✅ Backend is healthy"
+              break
+            fi
+            echo "Waiting for backend... ($i/30)"
+            sleep 2
+          done
+          
+      - name: Validate Help panels
+        env:
+          BASE_URL: http://localhost:8000
+        run: |
+          python scripts/validate_help_panels.py
+          
+      - name: Logs on failure
+        if: failure()
+        run: |
+          docker compose -f docker-compose.prod.yml logs backend --tail=100

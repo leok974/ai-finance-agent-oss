@@ -5,13 +5,43 @@ from app.orm_models import Transaction
 def seed_august(db):
     db.query(Transaction).delete()
     db.commit()
+
     def m(d: date) -> str:
         return f"{d.year:04d}-{d.month:02d}"
+
     rows = [
-        Transaction(date=date(2025, 8, 1), merchant="Shop A", category="Misc", amount=-10.00, description="A1", month=m(date(2025, 8, 1))),
-        Transaction(date=date(2025, 8, 7), merchant="Shop B", category="Misc", amount=-20.00, description="B1", month=m(date(2025, 8, 7))),
-        Transaction(date=date(2025, 8, 14), merchant="Shop C", category="Misc", amount=-30.00, description="C1", month=m(date(2025, 8, 14))),
-        Transaction(date=date(2025, 8, 21), merchant="Employer", category="Income", amount=200.00, description="Pay", month=m(date(2025, 8, 21))),
+        Transaction(
+            date=date(2025, 8, 1),
+            merchant="Shop A",
+            category="Misc",
+            amount=-10.00,
+            description="A1",
+            month=m(date(2025, 8, 1)),
+        ),
+        Transaction(
+            date=date(2025, 8, 7),
+            merchant="Shop B",
+            category="Misc",
+            amount=-20.00,
+            description="B1",
+            month=m(date(2025, 8, 7)),
+        ),
+        Transaction(
+            date=date(2025, 8, 14),
+            merchant="Shop C",
+            category="Misc",
+            amount=-30.00,
+            description="C1",
+            month=m(date(2025, 8, 14)),
+        ),
+        Transaction(
+            date=date(2025, 8, 21),
+            merchant="Employer",
+            category="Income",
+            amount=200.00,
+            description="Pay",
+            month=m(date(2025, 8, 21)),
+        ),
     ]
     db.add_all(rows)
     db.commit()

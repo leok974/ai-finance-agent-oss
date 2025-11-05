@@ -1,7 +1,7 @@
 from typing import List, Literal, Dict, Any
 from fastapi import APIRouter, Depends
 from app.utils.csrf import csrf_protect
-from pydantic import BaseModel, Field, conint
+from pydantic import BaseModel, Field
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -48,8 +48,6 @@ class ApplyResp(BaseModel):
     rule: Dict[str, Any]
 
 
-
-
 def _unlabeled_condition():
     return (
         (Transaction.category.is_(None))
@@ -61,7 +59,9 @@ def _unlabeled_condition():
 @router.post("/test", response_model=TestResp)
 def test_rule(body: RuleBody, db: Session = Depends(get_db)) -> TestResp:
     like = f"%{body.pattern}%"
-    column = Transaction.merchant if body.target == "merchant" else Transaction.description
+    column = (
+        Transaction.merchant if body.target == "merchant" else Transaction.description
+    )
 
     q = (
         db.query(Transaction)
@@ -71,11 +71,7 @@ def test_rule(body: RuleBody, db: Session = Depends(get_db)) -> TestResp:
 
     total = q.count()
 
-    sample_rows = (
-        q.order_by(Transaction.id.asc())
-        .limit(min(50, body.limit))
-        .all()
-    )
+    sample_rows = q.order_by(Transaction.id.asc()).limit(min(50, body.limit)).all()
 
     sample = [
         HitDTO(
@@ -102,7 +98,9 @@ def test_rule(body: RuleBody, db: Session = Depends(get_db)) -> TestResp:
 @router.post("/apply", response_model=ApplyResp, dependencies=[Depends(csrf_protect)])
 def apply_rule(body: RuleBody, db: Session = Depends(get_db)) -> ApplyResp:
     like = f"%{body.pattern}%"
-    column = Transaction.merchant if body.target == "merchant" else Transaction.description
+    column = (
+        Transaction.merchant if body.target == "merchant" else Transaction.description
+    )
 
     # By default, only act on unlabeled; change to hit everything by dropping _unlabeled_condition()
     q = (
@@ -130,5 +128,3 @@ def apply_rule(body: RuleBody, db: Session = Depends(get_db)) -> ApplyResp:
         category=body.category,
         rule={"pattern": body.pattern, "target": body.target},
     )
-
-

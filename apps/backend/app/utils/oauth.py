@@ -1,9 +1,13 @@
 import os
-from authlib.integrations.starlette_client import OAuth # pyright: ignore[reportMissingImports]
+from authlib.integrations.starlette_client import (
+    OAuth,
+)  # pyright: ignore[reportMissingImports]
 from fastapi import Request
+
 
 def env(key: str, default: str | None = None) -> str | None:
     return os.environ.get(key, default)
+
 
 oauth = OAuth()
 oauth.register(
@@ -24,6 +28,7 @@ oauth.register(
     api_base_url="https://www.googleapis.com/oauth2/v3/",
     client_kwargs={"scope": "openid email profile", "prompt": "consent"},
 )
+
 
 def absolute_url(request: Request, path: str) -> str:
     base = str(request.base_url).rstrip("/")

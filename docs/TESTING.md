@@ -84,4 +84,3 @@ def test_explain_stub(client):
 - [VERIFY_PROD](VERIFY_PROD.md)
 - [ARCHITECTURE](ARCHITECTURE.md)
 - [CONTRIBUTING](CONTRIBUTING.md) (if present)
-

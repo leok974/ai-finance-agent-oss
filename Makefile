@@ -427,34 +427,72 @@ smoke-ml:
 	  (echo "❌ ML suggestions smoke FAILED" && exit 1)
 
 # ------------------------------------------------------------------
-# ML Phase 2: Production Training Pipeline
+# ML Phase 2: Production Training Pipeline with Calibration & Canary
 # ------------------------------------------------------------------
-.PHONY: ml-features ml-train ml-status ml-predict ml-smoke
+.PHONY: ml-features ml-train ml-eval ml-status ml-predict ml-smoke ml-thresholds ml-canary ml-tests ml-dash-import
 
 ## Build features for last 180 days
 ml-features:
 	docker compose exec backend python -m app.ml.feature_build --days 180
 
-## Train model with LightGBM (auto-deploys if F1 >= threshold)
+## Train model with LightGBM + calibration (auto-deploys if F1 >= threshold)
 ml-train:
 	docker compose exec backend python -c "from app.ml.train import run_train; import json; print(json.dumps(run_train(limit=200000), indent=2))"
 
-## Check deployed model status
+## Eval-only mode: train but don't deploy (for threshold tuning)
+ml-eval:
+	docker compose exec backend python -c "from app.ml.train import run_train; import os; os.environ['ML_DEPLOY_THRESHOLD_F1']='999'; import json; print(json.dumps(run_train(limit=200000), indent=2))"
+
+## Check deployed model status + calibration info
 ml-status:
 	@curl -s http://localhost:8000/ml/v2/model/status | jq
+
+## Get current suggestion thresholds configuration
+ml-thresholds:
+	@docker compose exec backend python -c "from app import config; import json; print(json.dumps({'shadow': config.SUGGEST_ENABLE_SHADOW, 'canary': config.SUGGEST_USE_MODEL_CANARY, 'thresholds': config.SUGGEST_THRESHOLDS, 'calibration': config.ML_CALIBRATION_ENABLED}, indent=2))"
+
+## Show current canary percentage
+ml-canary:
+	@docker compose exec backend python -c "from app import config; print(f'Canary: {config.SUGGEST_USE_MODEL_CANARY}')"
+
+## Run ML canary unit tests
+ml-tests:
+	docker compose -f docker-compose.prod.yml exec -T backend pytest -q apps/backend/tests/test_ml_canary_thresholds.py apps/backend/tests/test_ml_calibration.py
+
+## Verify calibrator artifact exists when enabled
+ml-verify-calibration:
+	docker compose -f docker-compose.prod.yml exec -T backend \
+	  python -m app.scripts.verify_calibrator
+
+## Import ML canary dashboard to Grafana (requires GRAFANA_URL + GRAFANA_API_KEY)
+ml-dash-import:
+	@echo "Importing ML Canary dashboard to Grafana..."
+	@curl -sS -H "Authorization: Bearer $$GRAFANA_API_KEY" -H "Content-Type: application/json" \
+	  -X POST "$$GRAFANA_URL/api/dashboards/db" \
+	  --data-binary @ops/grafana/dashboards/ml-canary-overview.json | jq
+
+## Import ML source freshness dashboard to Grafana (requires GRAFANA_URL + GRAFANA_API_KEY)
+ml-dash-import-freshness:
+	@echo "Importing ML Source Freshness dashboard to Grafana..."
+	@curl -sS -H "Authorization: Bearer $$GRAFANA_API_KEY" -H "Content-Type: application/json" \
+	  -X POST "$$GRAFANA_URL/api/dashboards/db" \
+	  --data-binary @ops/grafana/dashboards/ml-source-freshness.json | jq
 
 ## Predict category for sample transaction
 ml-predict:
 	@echo '{"abs_amount": 42.5, "merchant":"STARBUCKS", "channel":"pos", "hour_of_day":18, "dow":5, "is_weekend":true, "is_subscription":false, "norm_desc":"starbucks store"}' \
 	| curl -s -H "Content-Type: application/json" -d @- http://localhost:8000/ml/v2/predict | jq
 
-## Run full ML smoke test (features → train → predict)
+## Run full ML smoke test (features → train → predict + metrics)
 ml-smoke:
-	@echo "🧪 ML Phase 2 smoke test..."
+	@echo "🧪 ML Phase 2 smoke test with calibration + canary..."
 	@$(MAKE) ml-features && \
 	 $(MAKE) ml-train && \
 	 $(MAKE) ml-status && \
+	 $(MAKE) ml-thresholds && \
 	 $(MAKE) ml-predict && \
+	 echo "📊 Checking metrics:" && \
+	 curl -s http://localhost:8000/metrics | grep "lm_ml_predictions_total\|lm_ml_fallback_total\|lm_suggest_compare_total" && \
 	 echo "✅ ML Phase 2 smoke test PASSED"
 
 # ------------------------------------------------------------------
@@ -484,3 +522,59 @@ precommit-autoupdate:
 precommit-validate-dashboards:
 	@pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/validate-dashboards.ps1 || \
 	 python scripts/validate_grafana_dashboard.py ops/grafana/**/*.json
+
+# ------------------------------------------------------------------
+# Database Freshness Exporter (Prometheus Pushgateway)
+# ------------------------------------------------------------------
+.PHONY: freshness-push
+
+## Push source table freshness metrics to Prometheus Pushgateway
+freshness-push:
+	@echo "📊 Pushing source freshness metrics to Pushgateway..."
+	docker run --rm --network shared-ollama \
+	  -v $$PWD/ops/exporters:/work -w /work \
+	  -e PGHOST=$${PGHOST:-postgres} \
+	  -e PGPORT=$${PGPORT:-5432} \
+	  -e PGUSER=$${PGUSER:-myuser} \
+	  -e PGPASSWORD=$${PGPASSWORD:-mypassword} \
+	  -e PGDATABASE=$${PGDATABASE:-finance} \
+	  -e PGSCHEMA=$${PGSCHEMA:-public} \
+	  -e FRESHNESS_TABLES=$${FRESHNESS_TABLES:-transactions,transaction_labels,ml_features} \
+	  -e FRESHNESS_TIMESTAMP_COL=$${FRESHNESS_TIMESTAMP_COL:-updated_at} \
+	  -e PUSHGATEWAY_URL=$${PUSHGATEWAY_URL:-http://pushgateway:9091} \
+	  -e PUSH_JOB_NAME=$${PUSH_JOB_NAME:-dbt_source_freshness} \
+	  -e PUSH_INSTANCE=$${PUSH_INSTANCE:-local} \
+	  python:3.11-slim bash -lc " \
+	    pip install -q -r requirements.txt && \
+	    python db_freshness_push.py \
+	  "
+
+# ------------------------------------------------------------------
+# Help Panel Validation
+# ------------------------------------------------------------------
+.PHONY: help-why help-why-soft help-why-skip help-selftest help-cache-bust
+
+## Validate Help panels (strict - fails if any panel returns empty 'why')
+help-why:
+	@echo "Validating Help panels (strict)..."
+	@python scripts/validate_help_panels.py
+
+## Validate Help panels (soft - warns but doesn't fail)
+help-why-soft:
+	@echo "Validating Help panels (soft)..."
+	@set HELP_VALIDATE_SOFT=1 && python scripts/validate_help_panels.py
+
+## Skip Help panel validation (always passes)
+help-why-skip:
+	@echo "Skipping validation via env..."
+	@set HELP_VALIDATE_SKIP=1 && python scripts/validate_help_panels.py
+
+## Test selftest endpoint (fast CI-ready validation)
+help-selftest:
+	@MONTH=$${MONTH:-$$(date +%Y-%m)}; \
+	curl -sf "http://localhost:8000/agent/describe/_selftest?month=$$MONTH" | jq
+
+## Clear help cache (useful for testing prompt changes)
+help-cache-bust:
+	@curl -sf -X POST "http://localhost:8000/agent/describe/_cache/clear" | jq
+

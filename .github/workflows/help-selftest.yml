@@ -1,0 +1,61 @@
+name: Help Selftest
+on:
+  pull_request:
+  workflow_dispatch:
+jobs:
+  selftest:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: postgres
+          POSTGRES_DB: finance
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd="pg_isready -U postgres"
+          --health-interval=5s --health-timeout=5s --health-retries=20
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd="redis-cli ping || exit 1"
+          --health-interval=5s --health-timeout=5s --health-retries=20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install backend
+        working-directory: apps/backend
+        run: |
+          python -m pip install -U pip
+          pip install -r requirements.txt
+
+      - name: Boot app
+        working-directory: apps/backend
+        env:
+          DATABASE_URL: postgresql+psycopg2://postgres:postgres@localhost:5432/finance
+          REDIS_URL: redis://localhost:6379/0
+          HELP_USE_RAG: "0"
+          HELP_CACHE_TTL_SEC: "600"
+        run: |
+          python -m alembic upgrade head
+          uvicorn app.main:app --host 0.0.0.0 --port 8000 &
+          for i in {1..60}; do curl -fsS http://localhost:8000/ready && break || sleep 1; done
+
+      - name: Selftest (current month)
+        run: |
+          MONTH=$(date +%Y-%m)
+          curl -fsS "http://localhost:8000/agent/describe/_selftest?month=$MONTH" | jq -e '.all_ok == true'
+
+      - name: Month validation (negative test)
+        run: |
+          set +e
+          code=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:8000/agent/describe/charts.month_merchants?month=2025-13")
+          test "$code" = "422"

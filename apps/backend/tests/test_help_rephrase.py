@@ -25,7 +25,9 @@ def test_help_describe_allows_body_rephrase_flag(monkeypatch):
 
     monkeypatch.setattr(detect, "try_llm_rephrase_summary", fake_rephrase)
     monkeypatch.setattr(llm_mod, "reset_fallback_provider", lambda: None, raising=False)
-    monkeypatch.setattr(llm_mod, "get_last_fallback_provider", lambda: None, raising=False)
+    monkeypatch.setattr(
+        llm_mod, "get_last_fallback_provider", lambda: None, raising=False
+    )
 
     response = client.post(
         "/agent/describe/top_merchants",
@@ -52,7 +54,9 @@ def test_help_describe_cache_distinguishes_rephrase(monkeypatch):
 
     monkeypatch.setattr(detect, "try_llm_rephrase_summary", fake_rephrase)
     monkeypatch.setattr(llm_mod, "reset_fallback_provider", lambda: None, raising=False)
-    monkeypatch.setattr(llm_mod, "get_last_fallback_provider", lambda: None, raising=False)
+    monkeypatch.setattr(
+        llm_mod, "get_last_fallback_provider", lambda: None, raising=False
+    )
 
     # Explicitly request no rephrase on the first call so we exercise the upgrade path.
     base = client.post("/agent/describe/top_merchants", json={"mode": "learn"})
@@ -84,7 +88,9 @@ def test_help_describe_fallback_provider(monkeypatch):
 
     monkeypatch.setattr(detect, "try_llm_rephrase_summary", fake_rephrase)
     monkeypatch.setattr(llm_mod, "reset_fallback_provider", lambda: None, raising=False)
-    monkeypatch.setattr(llm_mod, "get_last_fallback_provider", lambda: "azure", raising=False)
+    monkeypatch.setattr(
+        llm_mod, "get_last_fallback_provider", lambda: "azure", raising=False
+    )
 
     response = client.post(
         "/agent/describe/top_merchants",

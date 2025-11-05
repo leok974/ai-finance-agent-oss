@@ -32,4 +32,3 @@ describe('QuickChips', () => {
 		expect(ev.detail).toEqual({ type: 'nl_search', query: 'show kpis' });
 	});
 });
-

@@ -1227,7 +1227,7 @@ CSSOM.CSSValueExpression.prototype._parseJSComment = function(token, idx) {
  * @return {Object|false}
  *					- idx:
  *					- text:
- *					or 
+ *					or
  *					false
  *
  */
@@ -1254,14 +1254,14 @@ CSSOM.CSSValueExpression.prototype._parseJSString = function(token, idx, sep) {
  * @return {Object|false}
  *				- idx:
  *				- regExp:
- *				or 
+ *				or
  *				false
  */
 
 /*
 
 all legal RegExp
- 
+
 /a/
 (/a/)
 [/a/]
@@ -1892,7 +1892,7 @@ CSSOM.parse = function parse(token) {
 							hasAncestors = false;
 						}
 					}
-					
+
 					if (!hasAncestors) {
 						currentScope.__ends = i + 1;
 						styleSheet.cssRules.push(currentScope);
@@ -1991,5 +1991,3 @@ CSSOM.clone = function clone(stylesheet) {
 	return cloned;
 
 };
-
-

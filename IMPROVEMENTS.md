@@ -14,7 +14,7 @@
 if req.intent == "explain_txn" and not req.txn_id and "txn" not in ctx:
     # Parse user message for transaction hints
     parsed_info = parse_txn_from_message(last_user_msg)
-    
+
     # Fallback: use latest transaction for month
     fallback_txn = latest_txn_for_month(db, ctx["month"])
     if fallback_txn:
@@ -42,7 +42,7 @@ model = MODEL_ALIASES.get(req.model, req.model) if req.model else "gpt-oss-20b"
 # Enhanced citations with comprehensive context mapping
 for key, citation_type in [
     ("summary", "summary"),
-    ("rules", "rules"), 
+    ("rules", "rules"),
     ("top_merchants", "merchants"),
     ("alerts", "alerts"),
     ("insights", "insights"),
@@ -53,18 +53,18 @@ for key, citation_type in [
         citations.append({"type": citation_type, "count": count})
 
 # Special handling for transactions with ID
-if ctx.get("txn"): 
+if ctx.get("txn"):
     citations.append({"type": "txn", "id": ctx["txn"].get("id")})
 ```
 
 ## 🚀 User Experience Impact
 
-**Before**: 
+**Before**:
 - "Explain transaction 123" ✅
 - "Explain this coffee charge" ❌ (required txn_id)
 
 **After**:
-- "Explain transaction 123" ✅ (explicit ID)  
+- "Explain transaction 123" ✅ (explicit ID)
 - "Explain this $4.50 coffee charge" ✅ (fallback to latest)
 - "Explain this charge" ✅ (fallback to latest)
 
@@ -86,7 +86,7 @@ Added comprehensive tests in `test_agent_chat.py`:
 3. **`MODEL_ALIASES`** - Centralized model name mapping
 
 ### Backward Compatibility:
-- ✅ All existing API contracts maintained  
+- ✅ All existing API contracts maintained
 - ✅ Explicit `txn_id` still works as before
 - ✅ Default model handling preserved
 - ✅ Legacy citation format still included

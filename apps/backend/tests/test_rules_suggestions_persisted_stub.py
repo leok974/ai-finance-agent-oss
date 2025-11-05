@@ -1,17 +1,29 @@
-from datetime import datetime, timedelta, date
+from datetime import timedelta, date
 from app.utils.time import utc_now
 
 
 def seed_feedback(db):
     from app.orm_models import Feedback, Transaction
+
     now = utc_now()
     # Create a transaction to attach feedback to
-    t = Transaction(date=date(2025, 8, 6), merchant="Starbucks", category="", amount=-5.0, description="Coffee")
+    t = Transaction(
+        date=date(2025, 8, 6),
+        merchant="Starbucks",
+        category="",
+        amount=-5.0,
+        description="Coffee",
+    )
     db.add(t)
     db.commit()
     db.refresh(t)
     for i in range(3):
-        fb = Feedback(txn_id=t.id, label="Dining out", created_at=now - timedelta(days=i * 3), source="accept")
+        fb = Feedback(
+            txn_id=t.id,
+            label="Dining out",
+            created_at=now - timedelta(days=i * 3),
+            source="accept",
+        )
         db.add(fb)
     db.commit()
 
@@ -22,7 +34,9 @@ def test_persisted_autofill_accept_dismiss(client, db_session):
     # Autofill on first GET
     r = client.get("/rules/suggestions/persistent?autofill=true").json()
     assert "suggestions" in r and len(r["suggestions"]) >= 1
-    sug = next(s for s in r["suggestions"] if s.get("merchant", "").lower() == "starbucks")
+    sug = next(
+        s for s in r["suggestions"] if s.get("merchant", "").lower() == "starbucks"
+    )
 
     # Accept it
     sid = sug["id"]

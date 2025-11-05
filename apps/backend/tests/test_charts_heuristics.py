@@ -11,8 +11,6 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 from app.db import Base, get_db  # we'll override get_db
-from app.orm_models import UserLabel  # ensure metadata is loaded
-from app.models import Transaction, Rule
 
 
 @pytest.fixture()
@@ -24,7 +22,9 @@ def client():
         connect_args={"check_same_thread": False},
         poolclass=StaticPool,
     )
-    TestingSessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, future=True)
+    TestingSessionLocal = sessionmaker(
+        bind=engine, autoflush=False, autocommit=False, future=True
+    )
 
     # Create tables once for the test DB
     Base.metadata.create_all(bind=engine)
@@ -62,11 +62,13 @@ def _almost(a, b, eps=1e-6):
 
 def test_income_spend_heuristic_employer_vs_starbucks(client: TestClient):
     # Employer should be classified as income; Starbucks as spend (LIKE-based heuristic)
-    csv = dedent("""\
+    csv = dedent(
+        """\
         date,amount,merchant,description,account,category
         2025-08-05,2000.00,Employer,Paycheck,Checking,
         2025-08-06,6.25,Starbucks,Coffee,Visa,
-    """)
+    """
+    )
     _ingest_csv(client, csv)
 
     r = client.get("/charts/month_summary")
@@ -89,12 +91,14 @@ def test_income_spend_heuristic_employer_vs_starbucks(client: TestClient):
 
 
 def test_month_merchants_defaults_latest(client: TestClient):
-    csv = dedent("""\
+    csv = dedent(
+        """\
         date,amount,merchant,description,account,category
         2025-08-02,12.50,Chipotle,Burrito,Visa,
         2025-08-03,8.99,Amazon,USB-C,Visa,
         2025-08-04,47.60,Shell,Gas,Visa,
-    """)
+    """
+    )
     _ingest_csv(client, csv)
 
     r = client.get("/charts/month_merchants")  # no ?month
@@ -108,11 +112,13 @@ def test_month_merchants_defaults_latest(client: TestClient):
 
 
 def test_month_flows_defaults_latest_and_shape(client: TestClient):
-    csv = dedent("""\
+    csv = dedent(
+        """\
         date,amount,merchant,description,account,category
         2025-08-10,15.99,Netflix,Subscription,Visa,
         2025-08-11,23.10,Uber,Ride,Visa,
-    """)
+    """
+    )
     _ingest_csv(client, csv)
 
     r = client.get("/charts/month_flows")  # no ?month
@@ -125,7 +131,9 @@ def test_month_flows_defaults_latest_and_shape(client: TestClient):
         assert {"date", "in", "out", "net", "merchant"} <= set(point.keys())
         assert point["in"] >= 0.0
         assert point["out"] >= 0.0
-        assert math.isclose(point["net"], point["in"] - point["out"], rel_tol=1e-6, abs_tol=1e-6)
+        assert math.isclose(
+            point["net"], point["in"] - point["out"], rel_tol=1e-6, abs_tol=1e-6
+        )
 
 
 def test_income_spend_heuristic_refund_and_reimbursement(client: TestClient):
@@ -177,13 +185,15 @@ date,amount,merchant,description,account,category
 
 def test_month_merchants_spend_positive(client: TestClient):
     # Seed some data
-    csv = dedent("""
+    csv = dedent(
+        """
         date,amount,merchant,description,account,category
         2025-08-02,12.50,Chipotle,Burrito,Visa,
         2025-08-03,8.99,Amazon,USB-C,Visa,
         2025-08-04,47.60,Shell,Gas,Visa,
         2025-08-05,2000.00,Employer,Paycheck,Checking,
-    """)
+    """
+    )
     _ingest_csv(client, csv)
 
     res = client.get("/charts/month_merchants")
@@ -207,7 +217,9 @@ def test_spending_trends_normalized(client: TestClient):
     assert isinstance(rows, list)
     for r in rows:
         assert all(k in r for k in ("income", "spending", "net"))
-        assert all(isinstance(r[k], (int, float)) for k in ("income", "spending", "net"))
+        assert all(
+            isinstance(r[k], (int, float)) for k in ("income", "spending", "net")
+        )
         # spending is positive magnitude; net = income - spending
         assert r["spending"] >= 0
         assert abs(r["net"] - (r["income"] - r["spending"])) < 1e-6

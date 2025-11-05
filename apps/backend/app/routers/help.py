@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 """Unified Help endpoint providing deterministic 'what' and LLM (with fallback) 'why'.
 
 Behavior:
@@ -8,7 +9,9 @@ Behavior:
 - Returns 304 when If-None-Match matches current ETag and not expired
 - Never 500 for expected LLM failures: falls back deterministically
 """
-import hashlib, json, os
+import hashlib
+import json
+import os
 from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, Optional
 
@@ -28,12 +31,14 @@ HELP_TTL_SECONDS = int(os.getenv("HELP_TTL_SECONDS", "86400"))  # 24h default
 REPHRASE_VERSION = os.getenv("REPHRASE_VERSION", "v1")
 MODEL_TAG = os.getenv("PRIMARY_MODEL_TAG", os.getenv("DEFAULT_LLM_MODEL", "model"))
 
+
 class HelpReq(BaseModel):
     card_id: str = Field(min_length=1, max_length=128)
     mode: str  # "what" | "why"
     month: Optional[str] = None
     deterministic_ctx: Dict[str, Any]
     base_text: Optional[str] = None  # required when mode == why
+
 
 class _CardPurpose:
     MAP = {
@@ -45,6 +50,7 @@ class _CardPurpose:
     @classmethod
     def what(cls, cid: str) -> str:
         return cls.MAP.get(cid, "Explains what this card displays and how to use it.")
+
 
 def _fingerprint(ctx: Dict[str, Any], base: Optional[str]) -> str:
     h = hashlib.sha256()
@@ -58,15 +64,19 @@ def _fingerprint(ctx: Dict[str, Any], base: Optional[str]) -> str:
         h.update(base.encode())
     return h.hexdigest()
 
+
 def _now() -> datetime:
     return datetime.now(timezone.utc)
+
 
 def _build_key(req: HelpReq, fp: str) -> str:
     month = req.month or "na"
     return f"{req.card_id}:{req.mode}:{month}:{REPHRASE_VERSION}:{MODEL_TAG}:{fp}"
 
+
 def _deterministic_why_fallback(base: str) -> str:
     return f"{base} (Explained without AI due to a temporary model issue.)"
+
 
 def _cache_lookup(db: Session, key: str) -> Optional[HelpCache]:
     """Lookup cache entry (synchronous). Returns None if missing or expired.
@@ -75,7 +85,9 @@ def _cache_lookup(db: Session, key: str) -> Optional[HelpCache]:
     un-awaited coroutine warnings and simplify monkeypatching in tests.
     """
     try:
-        row = db.execute(select(HelpCache).where(HelpCache.cache_key == key)).scalar_one_or_none()
+        row = db.execute(
+            select(HelpCache).where(HelpCache.cache_key == key)
+        ).scalar_one_or_none()
     except Exception:
         return None
     if not row:
@@ -84,9 +96,12 @@ def _cache_lookup(db: Session, key: str) -> Optional[HelpCache]:
         return None
     return row
 
+
 def _upsert_cache(db: Session, key: str, etag: str, payload: Dict[str, Any]):
     exp = _now() + timedelta(seconds=HELP_TTL_SECONDS)
-    existing = db.execute(select(HelpCache).where(HelpCache.cache_key == key)).scalar_one_or_none()
+    existing = db.execute(
+        select(HelpCache).where(HelpCache.cache_key == key)
+    ).scalar_one_or_none()
     if existing:
         db.execute(
             update(HelpCache)
@@ -95,18 +110,27 @@ def _upsert_cache(db: Session, key: str, etag: str, payload: Dict[str, Any]):
         )
     else:
         db.execute(
-            insert(HelpCache).values(cache_key=key, etag=etag, payload=payload, expires_at=exp)
+            insert(HelpCache).values(
+                cache_key=key, etag=etag, payload=payload, expires_at=exp
+            )
         )
 
+
 @router.post("")
-def help_endpoint(req: HelpReq, if_none_match: str | None = Header(default=None), db: Session = Depends(get_db)):
+def help_endpoint(
+    req: HelpReq,
+    if_none_match: str | None = Header(default=None),
+    db: Session = Depends(get_db),
+):
     # Validate mode
     if req.mode not in {"what", "why"}:
         raise HTTPException(400, "mode must be 'what' or 'why'")
     if req.mode == "why" and not req.base_text:
         raise HTTPException(400, "base_text required for mode=why")
 
-    fp = _fingerprint(req.deterministic_ctx, req.base_text if req.mode == "why" else None)
+    fp = _fingerprint(
+        req.deterministic_ctx, req.base_text if req.mode == "why" else None
+    )
     key = _build_key(req, fp)
 
     row = _cache_lookup(db, key)
@@ -119,20 +143,41 @@ def help_endpoint(req: HelpReq, if_none_match: str | None = Header(default=None)
     # Miss: generate content
     if req.mode == "what":
         text = _CardPurpose.what(req.card_id)
-        payload: Dict[str, Any] = {"mode": "what", "source": "deterministic", "text": text}
+        payload: Dict[str, Any] = {
+            "mode": "what",
+            "source": "deterministic",
+            "text": text,
+        }
     else:  # why
         assert req.base_text
         try:
-            sys_msg = {"role": "system", "content": "Rewrite clearly in one short paragraph. Do not invent data."}
-            usr_msg = {"role": "user", "content": json.dumps({"summary": req.base_text, "context": req.deterministic_ctx})}
+            sys_msg = {
+                "role": "system",
+                "content": "Rewrite clearly in one short paragraph. Do not invent data.",
+            }
+            usr_msg = {
+                "role": "user",
+                "content": json.dumps(
+                    {"summary": req.base_text, "context": req.deterministic_ctx}
+                ),
+            }
             reply, _trace = call_local_llm(model=MODEL_TAG, messages=[sys_msg, usr_msg])
             text = (reply or "").strip()
-            payload = {"mode": "why", "source": "llm", "text": text or _deterministic_why_fallback(req.base_text)}
+            payload = {
+                "mode": "why",
+                "source": "llm",
+                "text": text or _deterministic_why_fallback(req.base_text),
+            }
             if not text:
                 payload["source"] = "fallback"
         except Exception as e:  # noqa: BLE001
             text = _deterministic_why_fallback(req.base_text)
-            payload = {"mode": "why", "source": "fallback", "text": text, "error": str(getattr(e, "detail", e))}
+            payload = {
+                "mode": "why",
+                "source": "fallback",
+                "text": text,
+                "error": str(getattr(e, "detail", e)),
+            }
 
     etag = hashlib.md5(payload["text"].encode()).hexdigest()
     _upsert_cache(db, key, etag, payload)

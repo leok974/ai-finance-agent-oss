@@ -46,6 +46,7 @@ AAD = b"txn:v1"
 class Transaction(Base):
     __tablename__ = "transactions"
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    tenant_id: Mapped[int | None] = mapped_column(Integer, index=True, nullable=True)
     date: Mapped[Date] = mapped_column(Date, index=True)
     merchant: Mapped[str | None] = mapped_column(String(256), index=True)
     description: Mapped[str | None] = mapped_column(Text)
@@ -162,6 +163,20 @@ class Transaction(Base):
     )
     # NOTE: Feedback relationship removed - feedback now decoupled from transaction lifecycle
     # Feedback persists even when transactions are deleted (ML training data preservation)
+
+    # ML training relationships
+    label = relationship(
+        "TransactionLabel",
+        back_populates="transaction",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )
+    features = relationship(
+        "MLFeature",
+        back_populates="transaction",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )
 
     @validates("merchant")
     def _on_merchant_set(self, key, value):

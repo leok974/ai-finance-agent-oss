@@ -12,15 +12,18 @@ from app.transactions import Transaction
 
 UNLABELED = {"", "Unknown", None}
 
+
 def latest_month_from_data(db: Session) -> Optional[str]:
     row = db.query(Transaction).order_by(Transaction.date.desc()).first()
     return row.date.strftime("%Y-%m") if row and row.date else None
+
 
 def prev_month(month: str) -> str:
     y, m = map(int, month.split("-"))
     d = dt.date(y, m, 1)
     prev = (d.replace(day=1) - dt.timedelta(days=1)).replace(day=1)
     return prev.strftime("%Y-%m")
+
 
 @dataclass
 class MonthAgg:
@@ -34,11 +37,13 @@ class MonthAgg:
     unknown_spend_count: int
     large_transactions: List[Dict[str, Any]]
 
+
 def _safe_pct(curr: float, prev: float) -> Optional[float]:
     # JSON-safe percentage; None when prev == 0 to avoid inf
     if prev == 0:
         return None
     return (curr - prev) / abs(prev)
+
 
 def _abs_amount(x: Any) -> float:
     try:
@@ -46,18 +51,18 @@ def _abs_amount(x: Any) -> float:
     except Exception:
         return 0.0
 
+
 def _sum_dict(items: List[Tuple[str, float]]) -> Dict[str, float]:
     out: Dict[str, float] = defaultdict(float)
     for k, v in items:
         out[k] += float(v or 0.0)
     return dict(out)
 
+
 def load_month(db: Session, month: str, large_limit: int = 10) -> MonthAgg:
     # Pull all txns for month
     txns: List[Transaction] = (
-        db.query(Transaction)
-          .filter(Transaction.month == month)
-          .all()
+        db.query(Transaction).filter(Transaction.month == month).all()
     )
 
     income = 0.0
@@ -74,9 +79,9 @@ def load_month(db: Session, month: str, large_limit: int = 10) -> MonthAgg:
             income += amt
         else:
             spend += -amt  # spend as positive number
-        cat_key = (t.category or "Unknown")
+        cat_key = t.category or "Unknown"
         by_cat_items.append((cat_key, _abs_amount(amt) if amt < 0 else 0.0))
-        merch_key = (t.merchant or "Unknown")
+        merch_key = t.merchant or "Unknown"
         by_merch_items.append((merch_key, _abs_amount(amt) if amt < 0 else 0.0))
         if (t.category in UNLABELED) and amt < 0:
             unknown_amount += -amt
@@ -90,14 +95,16 @@ def load_month(db: Session, month: str, large_limit: int = 10) -> MonthAgg:
     spenders.sort(key=lambda x: _abs_amount(x.amount), reverse=True)
     large = []
     for t in spenders[:large_limit]:
-        large.append({
-            "id": t.id,
-            "date": t.date.isoformat() if t.date else None,
-            "merchant": t.merchant,
-            "description": t.description,
-            "amount": float(t.amount or 0.0),
-            "category": t.category,
-        })
+        large.append(
+            {
+                "id": t.id,
+                "date": t.date.isoformat() if t.date else None,
+                "merchant": t.merchant,
+                "description": t.description,
+                "amount": float(t.amount or 0.0),
+                "category": t.category,
+            }
+        )
 
     return MonthAgg(
         month=month,
@@ -111,6 +118,7 @@ def load_month(db: Session, month: str, large_limit: int = 10) -> MonthAgg:
         large_transactions=large,
     )
 
+
 def _delta_map(curr: Dict[str, float], prev: Dict[str, float]) -> List[Dict[str, Any]]:
     # Produce a sorted list of deltas by key (desc by abs delta)
     keys = set(curr) | set(prev)
@@ -118,15 +126,18 @@ def _delta_map(curr: Dict[str, float], prev: Dict[str, float]) -> List[Dict[str,
     for k in keys:
         c = float(curr.get(k, 0.0))
         p = float(prev.get(k, 0.0))
-        rows.append({
-            "key": k,
-            "curr": c,
-            "prev": p,
-            "delta": c - p,
-            "pct": _safe_pct(c, p),
-        })
+        rows.append(
+            {
+                "key": k,
+                "curr": c,
+                "prev": p,
+                "delta": c - p,
+                "pct": _safe_pct(c, p),
+            }
+        )
     rows.sort(key=lambda r: abs(r["delta"]), reverse=True)
     return rows
+
 
 def detect_anomalies(
     cat_deltas: List[Dict[str, Any]],
@@ -139,6 +150,7 @@ def detect_anomalies(
     Very simple anomalies: big increases vs prior month.
     min_pct = 0.5 -> +50% or more (when prev>0). If prev==0, require curr>=min_amount.
     """
+
     def _flagged(rows: List[Dict[str, Any]]):
         flagged: List[Dict[str, Any]] = []
         for r in rows:
@@ -156,6 +168,7 @@ def detect_anomalies(
         "categories": _flagged(cat_deltas),
         "merchants": _flagged(merch_deltas),
     }
+
 
 def build_expanded_insights(
     db: Session,
@@ -182,7 +195,12 @@ def build_expanded_insights(
     try:
         pm = prev_month(resolved)
         # Only load if previous month actually exists (has rows)
-        prev_has = db.query(func.count(Transaction.id)).filter(Transaction.month == pm).scalar() or 0
+        prev_has = (
+            db.query(func.count(Transaction.id))
+            .filter(Transaction.month == pm)
+            .scalar()
+            or 0
+        )
         prev = load_month(db, pm, large_limit=large_limit) if prev_has else None
     except Exception:
         prev = None
@@ -190,20 +208,37 @@ def build_expanded_insights(
     # Top categories/merchants (spend)
     top_cats = sorted(
         [{"category": k, "amount": v} for k, v in curr.by_category.items()],
-        key=lambda x: x["amount"], reverse=True
+        key=lambda x: x["amount"],
+        reverse=True,
     )[:5]
     top_merch = sorted(
         [{"merchant": k, "amount": v} for k, v in curr.by_merchant.items()],
-        key=lambda x: x["amount"], reverse=True
+        key=lambda x: x["amount"],
+        reverse=True,
     )[:5]
 
     # MoM summary deltas
     mom = None
     if prev:
         mom = {
-            "income": {"curr": curr.income, "prev": prev.income, "delta": curr.income - prev.income, "pct": _safe_pct(curr.income, prev.income)},
-            "spend":  {"curr": curr.spend,  "prev": prev.spend,  "delta": curr.spend  - prev.spend,  "pct": _safe_pct(curr.spend,  prev.spend)},
-            "net":    {"curr": curr.net,    "prev": prev.net,    "delta": curr.net    - prev.net,    "pct": _safe_pct(curr.net,    prev.net)},
+            "income": {
+                "curr": curr.income,
+                "prev": prev.income,
+                "delta": curr.income - prev.income,
+                "pct": _safe_pct(curr.income, prev.income),
+            },
+            "spend": {
+                "curr": curr.spend,
+                "prev": prev.spend,
+                "delta": curr.spend - prev.spend,
+                "pct": _safe_pct(curr.spend, prev.spend),
+            },
+            "net": {
+                "curr": curr.net,
+                "prev": prev.net,
+                "delta": curr.net - prev.net,
+                "pct": _safe_pct(curr.net, prev.net),
+            },
         }
 
     # Deltas by category/merchant for anomaly detection
@@ -216,7 +251,10 @@ def build_expanded_insights(
         "prev_month": prev.month if prev else None,
         "summary": {"income": curr.income, "spend": curr.spend, "net": curr.net},
         "mom": mom,  # may be None if no previous month
-        "unknown_spend": {"count": curr.unknown_spend_count, "amount": curr.unknown_spend_amount},
+        "unknown_spend": {
+            "count": curr.unknown_spend_count,
+            "amount": curr.unknown_spend_amount,
+        },
         "top_categories": top_cats,
         "top_merchants": top_merch,
         "large_transactions": curr.large_transactions,

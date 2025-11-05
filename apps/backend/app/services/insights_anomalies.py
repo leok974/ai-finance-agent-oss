@@ -8,14 +8,16 @@ from sqlalchemy import func, and_
 
 from app.orm_models import Transaction
 
+
 @dataclass
 class Anomaly:
     category: str
     current: float
     median: float
     pct_from_median: float  # e.g., +0.42 = +42%, -0.20 = -20%
-    sample_size: int        # months used for median
-    direction: str          # "high" | "low"
+    sample_size: int  # months used for median
+    direction: str  # "high" | "low"
+
 
 def _parse_month(ym: str) -> Tuple[int, int]:
     """Parse YYYY-MM into (year, month). Raises ValueError on invalid input."""
@@ -27,10 +29,14 @@ def _parse_month(ym: str) -> Tuple[int, int]:
         raise ValueError("month must be between 01 and 12")
     return y, m
 
+
 def _next_month_start(y: int, m: int) -> date:
     return date(y + (1 if m == 12 else 0), (1 if m == 12 else m + 1), 1)
 
-def _month_bounds(db: Session, target_month: str | None = None) -> Tuple[date, date] | None:
+
+def _month_bounds(
+    db: Session, target_month: str | None = None
+) -> Tuple[date, date] | None:
     """Return (start_of_month, start_of_next_month) for target_month or latest month if None."""
     if target_month:
         try:
@@ -45,20 +51,28 @@ def _month_bounds(db: Session, target_month: str | None = None) -> Tuple[date, d
     if not max_dt:
         return None
     start = date(max_dt.year, max_dt.month, 1)
-    end   = _next_month_start(max_dt.year, max_dt.month)
+    end = _next_month_start(max_dt.year, max_dt.month)
     return (start, end)
+
 
 def _abs_spend(amount: float) -> float:
     return float(abs(amount or 0.0))
 
-def compute_category_monthly_totals(db: Session, months: int, window_end: date) -> Dict[str, Dict[str, float]]:
+
+def compute_category_monthly_totals(
+    db: Session, months: int, window_end: date
+) -> Dict[str, Dict[str, float]]:
     """
     Returns category -> { "YYYY-MM" -> total_spend_positive } for last N full months (including current month-to-date).
     Expenses only (amount < 0). Unknown/empty categories skipped.
     """
     # Earliest date to include, relative to provided window_end (start of next month)
     # Include from first day (N-1) months ago up to window_end.
-    y, m = (window_end.year, window_end.month - 1) if window_end.month > 1 else (window_end.year - 1, 12)
+    y, m = (
+        (window_end.year, window_end.month - 1)
+        if window_end.month > 1
+        else (window_end.year - 1, 12)
+    )
     earliest_y, earliest_m = y, m
     for _ in range(months - 1):
         earliest_m -= 1
@@ -69,14 +83,18 @@ def compute_category_monthly_totals(db: Session, months: int, window_end: date) 
     # window_end is provided by caller (start of next month for the anchor month)
 
     # Month key expression varies by dialect; reuse in group_by as well
-    is_sqlite = (db.bind and getattr(db.bind.dialect, "name", "") == "sqlite")
-    month_expr = (func.strftime("%Y-%m", Transaction.date) if is_sqlite else func.to_char(Transaction.date, "YYYY-MM")).label("ym")
+    is_sqlite = db.bind and getattr(db.bind.dialect, "name", "") == "sqlite"
+    month_expr = (
+        func.strftime("%Y-%m", Transaction.date)
+        if is_sqlite
+        else func.to_char(Transaction.date, "YYYY-MM")
+    ).label("ym")
 
     rows = (
         db.query(
             Transaction.category,
             month_expr,
-            func.sum(func.abs(Transaction.amount)).label("total")
+            func.sum(func.abs(Transaction.amount)).label("total"),
         )
         .filter(
             and_(
@@ -97,6 +115,7 @@ def compute_category_monthly_totals(db: Session, months: int, window_end: date) 
         data.setdefault(cat, {})[ym] = float(total or 0.0)
     return data
 
+
 def _median(xs: List[float]) -> float:
     n = len(xs)
     if n == 0:
@@ -106,6 +125,7 @@ def _median(xs: List[float]) -> float:
     if n % 2 == 1:
         return float(xs[mid])
     return float((xs[mid - 1] + xs[mid]) / 2.0)
+
 
 def compute_anomalies(
     db: Session,

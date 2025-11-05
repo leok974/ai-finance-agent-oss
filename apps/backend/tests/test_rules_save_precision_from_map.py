@@ -1,9 +1,13 @@
-import json, subprocess, sys
+import json
+import subprocess
+import sys
 import pytest
 
 
 def _map():
-    out = subprocess.check_output([sys.executable, "scripts/map_rules_router.py"], text=True)
+    out = subprocess.check_output(
+        [sys.executable, "scripts/map_rules_router.py"], text=True
+    )
     return json.loads(out)
 
 
@@ -12,12 +16,16 @@ def _no_500(r):
 
 
 @pytest.mark.usefixtures("auth_client")
-@pytest.mark.xfail(reason="mapper subprocess flaky; guarded until stabilized", strict=False)
+@pytest.mark.xfail(
+    reason="mapper subprocess flaky; guarded until stabilized", strict=False
+)
 def test_rules_save_precision_http(auth_client, monkeypatch):
     data = _map()
     route = None
     for r in data.get("routes", []):
-        if (r.get("path") or "").endswith("/agent/tools/rules/save") and r.get("method") in {"POST", "PUT", "PATCH"}:
+        if (r.get("path") or "").endswith("/agent/tools/rules/save") and r.get(
+            "method"
+        ) in {"POST", "PUT", "PATCH"}:
             route = r
             break
     if not route:
@@ -35,10 +43,34 @@ def test_rules_save_precision_http(auth_client, monkeypatch):
 
     payload = {
         "rules": [
-            {"id": "seed-1", "name": "Seed+", "pattern": "aldi|kroger|wholefoods", "category": "groceries", "enabled": True},
-            {"id": "new-1", "name": "Dining", "pattern": "chipotle|pizza", "category": "restaurants", "enabled": True},
-            {"id": "dup-1", "name": "CoffeeA", "pattern": "coffee", "category": "restaurants", "enabled": True},
-            {"id": "dup-1", "name": "CoffeeB", "pattern": "espresso", "category": "restaurants", "enabled": True},
+            {
+                "id": "seed-1",
+                "name": "Seed+",
+                "pattern": "aldi|kroger|wholefoods",
+                "category": "groceries",
+                "enabled": True,
+            },
+            {
+                "id": "new-1",
+                "name": "Dining",
+                "pattern": "chipotle|pizza",
+                "category": "restaurants",
+                "enabled": True,
+            },
+            {
+                "id": "dup-1",
+                "name": "CoffeeA",
+                "pattern": "coffee",
+                "category": "restaurants",
+                "enabled": True,
+            },
+            {
+                "id": "dup-1",
+                "name": "CoffeeB",
+                "pattern": "espresso",
+                "category": "restaurants",
+                "enabled": True,
+            },
         ],
         "dry_run": True,
         "replace": False,

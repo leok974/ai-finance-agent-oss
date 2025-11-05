@@ -9,6 +9,7 @@ from ..database import get_db
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/meta", tags=["meta"])
 
+
 def _safe_alembic_info(db: Session):
     """Never raise. Returns dict with optional code_error."""
     # Current DB revision via Alembic runtime (lazy import)
@@ -18,6 +19,7 @@ def _safe_alembic_info(db: Session):
 
     try:
         from alembic.runtime.migration import MigrationContext
+
         conn = db.connection()
         context = MigrationContext.configure(conn)
         db_rev = context.get_current_revision()
@@ -57,14 +59,18 @@ def _safe_alembic_info(db: Session):
             mod_file = getattr(mod, "__file__", None) if mod else None
             filename = Path(mod_file).name if mod_file else None
 
-            recent.append({
-                "revision": r.revision,
-                "down_revision": r.down_revision,
-                "is_head": r.is_head,
-                "branch_labels": list(r.branch_labels or []),
-                "message": (getattr(r, "doc", None) or getattr(r, "message", None) or ""),
-                "filename": filename,
-            })
+            recent.append(
+                {
+                    "revision": r.revision,
+                    "down_revision": r.down_revision,
+                    "is_head": r.is_head,
+                    "branch_labels": list(r.branch_labels or []),
+                    "message": (
+                        getattr(r, "doc", None) or getattr(r, "message", None) or ""
+                    ),
+                    "filename": filename,
+                }
+            )
 
     except Exception as e:
         code_error = f"alembic_code_error: {e}"
@@ -77,6 +83,7 @@ def _safe_alembic_info(db: Session):
         "recent_migrations": recent,
         "code_error": code_error,
     }
+
 
 @router.get("/meta/info")  # optional: keep both /meta/info and /meta for safety
 @router.get("/info")
@@ -92,6 +99,10 @@ def meta_info(db: Session = Depends(get_db)):
         log.exception("GET /meta/info failed")
         # Never 500; return ok:false so UI can render once and stop retrying
         return JSONResponse(
-            {"ok": False, "engine": str(getattr(getattr(db, "bind", None), "engine", "")), "error": str(e)},
+            {
+                "ok": False,
+                "engine": str(getattr(getattr(db, "bind", None), "engine", "")),
+                "error": str(e),
+            },
             status_code=200,
         )

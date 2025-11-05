@@ -11,17 +11,65 @@ from app.orm_models import Transaction
 def seed_basic_expenses(db: Session):
     rows: List[Transaction] = [
         # Groceries: 400, 450, 500
-        Transaction(date=date(2025, 6, 5), merchant="Costco", description="", category="Groceries", amount=-400),
-        Transaction(date=date(2025, 7, 5), merchant="Trader Joes", description="", category="Groceries", amount=-450),
-        Transaction(date=date(2025, 8, 5), merchant="Whole Foods", description="", category="Groceries", amount=-500),
+        Transaction(
+            date=date(2025, 6, 5),
+            merchant="Costco",
+            description="",
+            category="Groceries",
+            amount=-400,
+        ),
+        Transaction(
+            date=date(2025, 7, 5),
+            merchant="Trader Joes",
+            description="",
+            category="Groceries",
+            amount=-450,
+        ),
+        Transaction(
+            date=date(2025, 8, 5),
+            merchant="Whole Foods",
+            description="",
+            category="Groceries",
+            amount=-500,
+        ),
         # Transport: 120, 160, 200
-        Transaction(date=date(2025, 6, 10), merchant="Uber", description="", category="Transport", amount=-120),
-        Transaction(date=date(2025, 7, 10), merchant="Lyft", description="", category="Transport", amount=-160),
-        Transaction(date=date(2025, 8, 10), merchant="Uber", description="", category="Transport", amount=-200),
+        Transaction(
+            date=date(2025, 6, 10),
+            merchant="Uber",
+            description="",
+            category="Transport",
+            amount=-120,
+        ),
+        Transaction(
+            date=date(2025, 7, 10),
+            merchant="Lyft",
+            description="",
+            category="Transport",
+            amount=-160,
+        ),
+        Transaction(
+            date=date(2025, 8, 10),
+            merchant="Uber",
+            description="",
+            category="Transport",
+            amount=-200,
+        ),
         # Income (should be excluded)
-        Transaction(date=date(2025, 8, 1), merchant="Employer", description="", category="Income", amount=3000),
+        Transaction(
+            date=date(2025, 8, 1),
+            merchant="Employer",
+            description="",
+            category="Income",
+            amount=3000,
+        ),
         # Unknown (excluded)
-        Transaction(date=date(2025, 8, 2), merchant="Mystery", description="", category="Unknown", amount=-50),
+        Transaction(
+            date=date(2025, 8, 2),
+            merchant="Mystery",
+            description="",
+            category="Unknown",
+            amount=-50,
+        ),
     ]
     db.add_all(rows)
     db.commit()
@@ -69,8 +117,12 @@ def test_budget_apply_upsert_and_filters(db_session: Session, client: TestClient
     r5 = client.get("/budget/list")
     assert r5.status_code == 200
     listing2 = r5.json()
-    assert pytest.approx(450.0, abs=0.01) == listing2["Groceries"], "Groceries unchanged"
-    assert pytest.approx(180.0, abs=0.01) == listing2["Transport"], "Transport updated to p75"
+    assert (
+        pytest.approx(450.0, abs=0.01) == listing2["Groceries"]
+    ), "Groceries unchanged"
+    assert (
+        pytest.approx(180.0, abs=0.01) == listing2["Transport"]
+    ), "Transport updated to p75"
 
     # Apply median_plus_10 excluding Groceries; only Transport should change
     r6 = client.post(

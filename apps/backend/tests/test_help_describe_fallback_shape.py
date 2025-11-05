@@ -1,4 +1,5 @@
-import os, pytest
+import pytest
+
 pytestmark = pytest.mark.httpapi
 from fastapi.testclient import TestClient
 from app.main import app
@@ -20,7 +21,9 @@ def test_help_describe_identical_output(monkeypatch):
 
     monkeypatch.setattr(detect, "try_llm_rephrase_summary", fake_rephrase)
     monkeypatch.setattr(llm_mod, "reset_fallback_provider", lambda: None, raising=False)
-    monkeypatch.setattr(llm_mod, "get_last_fallback_provider", lambda: None, raising=False)
+    monkeypatch.setattr(
+        llm_mod, "get_last_fallback_provider", lambda: None, raising=False
+    )
 
     r = client.post("/agent/describe/top_merchants", json={"mode": "explain"})
     assert r.status_code == 200
@@ -44,7 +47,9 @@ def test_help_describe_model_unavailable(monkeypatch):
 
     monkeypatch.setattr(detect, "try_llm_rephrase_summary", fake_rephrase)
     monkeypatch.setattr(llm_mod, "reset_fallback_provider", lambda: None, raising=False)
-    monkeypatch.setattr(llm_mod, "get_last_fallback_provider", lambda: None, raising=False)
+    monkeypatch.setattr(
+        llm_mod, "get_last_fallback_provider", lambda: None, raising=False
+    )
 
     r = client.post("/agent/describe/top_merchants", json={"mode": "explain"})
     assert r.status_code == 200
@@ -65,7 +70,9 @@ def test_help_describe_polished(monkeypatch):
 
     monkeypatch.setattr(detect, "try_llm_rephrase_summary", fake_rephrase)
     monkeypatch.setattr(llm_mod, "reset_fallback_provider", lambda: None, raising=False)
-    monkeypatch.setattr(llm_mod, "get_last_fallback_provider", lambda: None, raising=False)
+    monkeypatch.setattr(
+        llm_mod, "get_last_fallback_provider", lambda: None, raising=False
+    )
 
     r = client.post("/agent/describe/top_merchants", json={"mode": "explain"})
     assert r.status_code == 200

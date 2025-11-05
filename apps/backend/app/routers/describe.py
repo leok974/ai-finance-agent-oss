@@ -10,10 +10,20 @@ from app.utils import llm as llm_mod
 from app.analytics_emit import emit_fallback
 from app.services import help_cache
 from app.utils.filters import hash_filters
-import json, threading, os, logging
+from app.utils.cache import cache_get, cache_set
+import json
+import threading
+import os
+import logging
 from app.services.llm_flags import llm_policy
-from app.metrics import help_describe_requests, help_describe_rephrased, help_describe_fallbacks
+from app.metrics import (
+    help_describe_requests,
+    help_describe_rephrased,
+    help_describe_fallbacks,
+)
 from app.services.help_copy import get_static_help_for_panel
+from app.services.explain import explain_month_merchants
+from app.metrics_ml import lm_help_requests_total
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -26,18 +36,47 @@ class DescribeRequest(BaseModel):
     filters: Optional[Dict[str, Any]] = None
     meta: Optional[Dict[str, Any]] = None
     data: Optional[Any] = None  # tiny preview slice
-    rephrase: Optional[bool] = Field(default=None, description="Back-compat flag for explain mode")
-    mode: Optional[ModeType] = Field(default=None, description='Explicitly request "learn" or "explain" mode')
+    rephrase: Optional[bool] = Field(
+        default=None, description="Back-compat flag for explain mode"
+    )
+    mode: Optional[ModeType] = Field(
+        default=None, description='Explicitly request "learn" or "explain" mode'
+    )
+
 
 ## cache now handled by app.services.help_cache
 
+
 def _deterministic(panel_id: str, req: DescribeRequest, db: Session) -> str:
-    # Minimal deterministic descriptions. Extend with panel-specific logic.
+    """
+    Deterministic descriptions with panel-specific heuristic logic.
+    Extended with real transaction analysis where available.
+    """
     month = req.month or "(current month)"
+    
+    # Use real transaction analysis for merchant spending
+    if panel_id in {"charts.month_merchants", "top_merchants"}:
+        if req.month:
+            try:
+                result = explain_month_merchants(db, req.month)
+                # Combine what + why for explain mode
+                parts = []
+                if result.get("what"):
+                    parts.append(result["what"])
+                if result.get("why"):
+                    parts.append(result["why"])
+                return " ".join(parts) if parts else f"Top merchants ranked by spend for {month}."
+            except Exception as e:
+                logger.warning(f"explain_month_merchants failed: {e}")
+                return f"Top merchants ranked by spend for {month}."
+    
+    # Original fallbacks for other panels
     if panel_id in {"overview.metrics.totalSpend", "total_spend"}:
         return f"Total spend shows all outgoing amounts for {month}."
     if panel_id.startswith("anomalies"):
-        return f"Highlights categories with unusual spend in {month} vs recent baseline."
+        return (
+            f"Highlights categories with unusual spend in {month} vs recent baseline."
+        )
     if panel_id.startswith("cards.insights"):
         return f"Narrative insights derived from your transactions for {month}."
     if panel_id.startswith("top_categories"):
@@ -45,6 +84,7 @@ def _deterministic(panel_id: str, req: DescribeRequest, db: Session) -> str:
     if panel_id.startswith("top_merchants"):
         return f"Top merchants ranked by spend for {month}."
     return f"Contextual help for {panel_id} in {month}."
+
 
 def _summarize_for_prompt(data: Any) -> str:
     try:
@@ -63,8 +103,10 @@ def _summarize_for_prompt(data: Any) -> str:
     except Exception:
         return "(unavailable)"
 
+
 def _policy():
     return llm_policy("help")
+
 
 # Explicit export (shim removed)
 __all__ = ["describe_panel"]
@@ -87,6 +129,7 @@ def _record_metrics(
     if rephrased and help_describe_rephrased:
         help_describe_rephrased.labels(panel=panel_id, provider=provider_name).inc()
 
+
 @router.post("/agent/describe/{panel_id}")
 def describe_panel(
     panel_id: str,
@@ -94,12 +137,18 @@ def describe_panel(
     rephrase_q: Optional[bool] = Query(None),
     db: Session = Depends(get_db),
 ):
-    body_fields = getattr(req, "model_fields_set", getattr(req, "__fields_set__", set()))
+    body_fields = getattr(
+        req, "model_fields_set", getattr(req, "__fields_set__", set())
+    )
     body_has_rephrase = "rephrase" in body_fields
 
     rephrase_flag = settings.HELP_REPHRASE_DEFAULT
     if body_has_rephrase:
-        rephrase_flag = bool(req.rephrase) if req.rephrase is not None else settings.HELP_REPHRASE_DEFAULT
+        rephrase_flag = (
+            bool(req.rephrase)
+            if req.rephrase is not None
+            else settings.HELP_REPHRASE_DEFAULT
+        )
     elif rephrase_q is not None:
         rephrase_flag = bool(rephrase_q)
 
@@ -158,7 +207,9 @@ def describe_panel(
     was_rephrased = False
     llm_called = False
     reasons: List[str] = []
-    fallback_reason = "none"  # model_unavailable | identical_output | rate_limited | none
+    fallback_reason = (
+        "none"  # model_unavailable | identical_output | rate_limited | none
+    )
     effective_unavailable = False
 
     # no-data fast path when a preview slice explicitly indicates empty data
@@ -230,7 +281,9 @@ def describe_panel(
             cleaned = new_text.strip()
             SENTINEL = "The language model is temporarily unavailable."
             if cleaned:
-                if cleaned.startswith("[polished]") or (cleaned != base and cleaned != SENTINEL):
+                if cleaned.startswith("[polished]") or (
+                    cleaned != base and cleaned != SENTINEL
+                ):
                     text = cleaned
                     was_rephrased = True
                 else:
@@ -261,14 +314,19 @@ def describe_panel(
             effective_unavailable = True
 
         if provider.startswith("fallback-"):
+
             def _emit() -> None:
                 try:
                     emit_fallback(
                         {
                             "rid": key[:12],
                             "provider": provider,
-                            "requested_model": getattr(settings, "DEFAULT_LLM_MODEL", "gpt-oss:20b"),
-                            "fallback_model": getattr(settings, "DEFAULT_LLM_MODEL", "gpt-oss:20b"),
+                            "requested_model": getattr(
+                                settings, "DEFAULT_LLM_MODEL", "gpt-oss:20b"
+                            ),
+                            "fallback_model": getattr(
+                                settings, "DEFAULT_LLM_MODEL", "gpt-oss:20b"
+                            ),
                         }
                     )
                 except Exception:
@@ -289,11 +347,22 @@ def describe_panel(
         "effective_unavailable": effective_unavailable,
     }
     help_cache.set_(key, payload)
-    _record_metrics(panel_id, "explain", payload["llm_called"], payload["rephrased"], payload["provider"])
-    if (not payload["rephrased"]) and payload.get("fallback_reason") not in (None, "none"):
+    _record_metrics(
+        panel_id,
+        "explain",
+        payload["llm_called"],
+        payload["rephrased"],
+        payload["provider"],
+    )
+    if (not payload["rephrased"]) and payload.get("fallback_reason") not in (
+        None,
+        "none",
+    ):
         if help_describe_fallbacks:
             try:
-                help_describe_fallbacks.labels(panel=panel_id, reason=payload["fallback_reason"]).inc()
+                help_describe_fallbacks.labels(
+                    panel=panel_id, reason=payload["fallback_reason"]
+                ).inc()
             except Exception:
                 pass
     logger.info(

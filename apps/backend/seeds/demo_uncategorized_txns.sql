@@ -1,25 +1,22 @@
 -- Demo seed data for ML suggestions testing
 -- Creates 5 uncategorized transactions across common merchants for UI validation
 
--- Note: Adjust column names and table structure to match your actual schema
--- Transaction IDs use sequential integers for simplicity
-
-INSERT INTO transactions (id, account_id, merchant, description, amount, currency, date, category)
+INSERT INTO transactions (id, merchant, description, amount, date, category, account, month)
 VALUES
   -- Grocery transaction (should suggest "Groceries")
-  (999001, 1, 'HARRIS TEETER #0085', 'Weekly groceries', -64.17, 'USD', CURRENT_DATE - INTERVAL '1 day', NULL),
+  (999001, 'HARRIS TEETER #0085', 'Weekly groceries', -64.17, CURRENT_DATE - INTERVAL '1 day', NULL, 'checking', TO_CHAR(CURRENT_DATE - INTERVAL '1 day', 'YYYY-MM')),
 
   -- Food delivery (should suggest "Dining")
-  (999002, 1, 'DD *DOORDASH POPEYES', 'Lunch order', -18.29, 'USD', CURRENT_DATE - INTERVAL '2 days', NULL),
+  (999002, 'DD *DOORDASH POPEYES', 'Lunch order', -18.29, CURRENT_DATE - INTERVAL '2 days', NULL, 'checking', TO_CHAR(CURRENT_DATE - INTERVAL '2 days', 'YYYY-MM')),
 
   -- Online shopping (should suggest "Shopping")
-  (999003, 1, 'AMAZON.COM*N419L0K01', 'USB-C hub', -27.95, 'USD', CURRENT_DATE - INTERVAL '3 days', NULL),
+  (999003, 'AMAZON.COM*N419L0K01', 'USB-C hub', -27.95, CURRENT_DATE - INTERVAL '3 days', NULL, 'checking', TO_CHAR(CURRENT_DATE - INTERVAL '3 days', 'YYYY-MM')),
 
   -- Transfer (should suggest "Transfer")
-  (999004, 1, 'Zelle', 'Zelle To Friend for rent split', -120.00, 'USD', CURRENT_DATE - INTERVAL '1 day', NULL),
+  (999004, 'Zelle', 'Zelle To Friend for rent split', -120.00, CURRENT_DATE - INTERVAL '1 day', NULL, 'checking', TO_CHAR(CURRENT_DATE - INTERVAL '1 day', 'YYYY-MM')),
 
   -- Income deposit (should suggest "Income")
-  (999005, 1, 'DIRECT DEPOSIT', 'INTERNET XFR FRM SAVGS for PC upgrade', 500.00, 'USD', CURRENT_DATE - INTERVAL '4 days', NULL)
+  (999005, 'DIRECT DEPOSIT', 'INTERNET XFR FRM SAVGS for PC upgrade', 500.00, CURRENT_DATE - INTERVAL '4 days', NULL, 'checking', TO_CHAR(CURRENT_DATE - INTERVAL '4 days', 'YYYY-MM'))
 
 ON CONFLICT (id) DO NOTHING;
 

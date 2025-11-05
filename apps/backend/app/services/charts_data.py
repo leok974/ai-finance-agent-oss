@@ -10,6 +10,7 @@ from app.transactions import Transaction
 
 # --- Month helpers ------------------------------------------------------------
 
+
 def latest_month_str(db: Session) -> str | None:
     """Return YYYY-MM for the latest transaction date, or None."""
     max_d = db.execute(select(func.max(Transaction.date))).scalar()
@@ -25,7 +26,9 @@ def month_bounds(yyyymm: str) -> tuple[_date, _date]:
     return first, first_next
 
 
-def resolve_window(db: Session, month: Optional[str], start: Optional[str], end: Optional[str]) -> tuple[_date, _date]:
+def resolve_window(
+    db: Session, month: Optional[str], start: Optional[str], end: Optional[str]
+) -> tuple[_date, _date]:
     """
     Priority:
       1) If start & end given -> parse as YYYY-MM-DD (inclusive)
@@ -48,6 +51,7 @@ def resolve_window(db: Session, month: Optional[str], start: Optional[str], end:
 
 
 # --- Heuristics reused from charts router ------------------------------------
+
 
 def _is_transfer(lower_cat, lower_merc):
     lower_rawcat = func.lower(func.coalesce(Transaction.raw_category, ""))
@@ -80,8 +84,14 @@ def income_case():
     lower_desc = func.lower(func.coalesce(Transaction.description, ""))
     income_keywords = _income_keywords(lower_merc, lower_desc)
     return case(
-        (and_(~_is_transfer(lower_cat, lower_merc), lower_cat.in_(["income"])), Transaction.amount),
-        (and_(~_is_transfer(lower_cat, lower_merc), income_keywords), Transaction.amount),
+        (
+            and_(~_is_transfer(lower_cat, lower_merc), lower_cat.in_(["income"])),
+            Transaction.amount,
+        ),
+        (
+            and_(~_is_transfer(lower_cat, lower_merc), income_keywords),
+            Transaction.amount,
+        ),
         else_=0.0,
     )
 
@@ -92,12 +102,20 @@ def spend_case():
     lower_desc = func.lower(func.coalesce(Transaction.description, ""))
     income_keywords = _income_keywords(lower_merc, lower_desc)
     return case(
-        (and_(~_is_transfer(lower_cat, lower_merc), ~income_keywords, ~lower_cat.in_(["income"])), Transaction.amount),
+        (
+            and_(
+                ~_is_transfer(lower_cat, lower_merc),
+                ~income_keywords,
+                ~lower_cat.in_(["income"]),
+            ),
+            Transaction.amount,
+        ),
         else_=0.0,
     )
 
 
 # --- Data aggregations used by both charts and exports ------------------------
+
 
 def get_month_summary(db: Session, month: str) -> Dict[str, Any]:
     start, end = month_bounds(month)
@@ -173,12 +191,19 @@ def get_month_merchants(db: Session, month: str, limit: int = 10) -> Dict[str, A
     return {
         "month": month,
         "merchants": [
-            {"merchant": (m or "(unknown)"), "amount": float(a or 0.0), "n": int(n or 0)} for (m, a, n) in rows
+            {
+                "merchant": (m or "(unknown)"),
+                "amount": float(a or 0.0),
+                "n": int(n or 0),
+            }
+            for (m, a, n) in rows
         ],
     }
 
 
-def get_month_categories(db: Session, month: str, limit: int = 50) -> list[dict[str, Any]]:
+def get_month_categories(
+    db: Session, month: str, limit: int = 50
+) -> list[dict[str, Any]]:
     """Category spend aggregation (expenses only), descending by total spend."""
     start, end = month_bounds(month)
     spend_abs = func.sum(func.abs(Transaction.amount)).label("spend")
@@ -209,15 +234,17 @@ def get_month_flows(db: Session, month: str) -> Dict[str, Any]:
         .order_by(Transaction.date)
     ).all()
     series = []
-    for (d, a, m) in rows:
+    for d, a, m in rows:
         amt = float(a or 0.0)
-        series.append({
-            "date": d.isoformat(),
-            "in": amt if amt > 0 else 0.0,
-            "out": abs(amt) if amt < 0 else 0.0,
-            "net": amt,
-            "merchant": m,
-        })
+        series.append(
+            {
+                "date": d.isoformat(),
+                "in": amt if amt > 0 else 0.0,
+                "out": abs(amt) if amt < 0 else 0.0,
+                "net": amt,
+                "merchant": m,
+            }
+        )
     return {"month": month, "series": series}
 
 
@@ -275,18 +302,16 @@ def get_category_timeseries(db: Session, category: str, months: int = 6):
         # Prefer ANSI via to_char on Postgres
         ym = func.to_char(Transaction.date, "YYYY-MM")
 
-    rows = (
-        db.execute(
-            select(ym.label("ym"), func.sum(func.abs(Transaction.amount)).label("amt"))
-            .where(
-                Transaction.date >= earliest,
-                Transaction.date < end,
-                Transaction.category == category,
-                Transaction.amount < 0,
-            )
-            .group_by(ym)
-            .order_by(ym.asc())
-        ).all()
-    )
+    rows = db.execute(
+        select(ym.label("ym"), func.sum(func.abs(Transaction.amount)).label("amt"))
+        .where(
+            Transaction.date >= earliest,
+            Transaction.date < end,
+            Transaction.category == category,
+            Transaction.amount < 0,
+        )
+        .group_by(ym)
+        .order_by(ym.asc())
+    ).all()
     series = [{"month": k, "amount": float(v or 0.0)} for k, v in rows]
     return series

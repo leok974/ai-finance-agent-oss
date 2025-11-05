@@ -35,8 +35,8 @@ export function SuggestionChip({
       className={cn(
         'group inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-all',
         isHighConfidence
-          ? 'border-green-200 bg-green-50 text-green-700 hover:border-green-300'
-          : 'border-blue-200 bg-blue-50 text-blue-700 hover:border-blue-300',
+          ? 'border-emerald-500/50 bg-emerald-50 text-emerald-700 hover:border-emerald-500'
+          : 'border-slate-300/40 bg-slate-50 text-slate-700 hover:border-slate-400',
         disabled && 'opacity-50 cursor-not-allowed',
         !disabled && 'cursor-pointer hover:shadow-sm',
         className
@@ -45,7 +45,16 @@ export function SuggestionChip({
     >
       <Sparkles className="h-3 w-3 opacity-70" />
       <span data-testid="suggestion-label" className="font-semibold">{candidate.label}</span>
-      <span className="opacity-60 text-[10px]">{confidencePercent}%</span>
+      <span
+        className={cn(
+          "text-[10px] px-1.5 py-0.5 rounded font-medium",
+          isHighConfidence
+            ? "bg-emerald-500/10 text-emerald-700"
+            : "bg-slate-500/10 text-slate-600"
+        )}
+      >
+        {confidencePercent}%
+      </span>
 
       {!disabled && (
         <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity ml-1">

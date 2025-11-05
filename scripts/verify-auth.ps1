@@ -10,5 +10,5 @@ Invoke-RestMethod -Method POST -Uri "$Base/auth/login" -WebSession $ses `
 $me = Invoke-RestMethod -Method GET -Uri "$Base/auth/me" -WebSession $ses
 $ms = Invoke-RestMethod -Method GET -Uri "$Base/charts/month_summary" -WebSession $ses
 
-Write-Host ("✅ Login OK. user=" + $me.email + " roles=" + ($me.roles -join ",")) 
+Write-Host ("✅ Login OK. user=" + $me.email + " roles=" + ($me.roles -join ","))
 Write-Host ("month=" + $ms.month + " total_spend=" + $ms.total_spend)

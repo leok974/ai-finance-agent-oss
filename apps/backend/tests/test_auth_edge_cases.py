@@ -1,7 +1,10 @@
 # Auth edge-case tests to pin unauthenticated / CSRF behaviors without relying on implementation internals.
 
+
 def test_auth_me_unauthenticated_is_401(client):
-    r = client.get("/auth/me")  # prefix is /auth (no /api) in current router configuration
+    r = client.get(
+        "/auth/me"
+    )  # prefix is /auth (no /api) in current router configuration
     # Accept 200 if a default test user/session is auto-provisioned; else expect 401/403/404.
     assert r.status_code in (200, 401, 403, 404)
     assert r.status_code < 500

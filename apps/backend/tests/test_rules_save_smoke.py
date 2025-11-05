@@ -3,6 +3,7 @@
 
 PATH = "/agent/tools/rules/save"
 
+
 def _post(client, payload: dict, qs: str = ""):
     url = PATH + (qs or "")
     return client.post(url, json=payload)
@@ -34,8 +35,20 @@ def test_rules_save_minimal_plausible_rule_no_500(client):
 def test_rules_save_multiple_rules_and_flags_no_500(client):
     payload = {
         "rules": [
-            {"id": "r1", "name": "Groceries", "pattern": "wholefoods|trader joes", "category": "groceries", "enabled": True},
-            {"id": "r2", "name": "Transport", "pattern": "uber|lyft", "category": "transport", "enabled": True},
+            {
+                "id": "r1",
+                "name": "Groceries",
+                "pattern": "wholefoods|trader joes",
+                "category": "groceries",
+                "enabled": True,
+            },
+            {
+                "id": "r2",
+                "name": "Transport",
+                "pattern": "uber|lyft",
+                "category": "transport",
+                "enabled": True,
+            },
         ],
         "dry_run": True,
         "replace": False,

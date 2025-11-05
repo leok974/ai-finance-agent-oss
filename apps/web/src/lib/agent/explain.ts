@@ -10,6 +10,8 @@ export type ExplainResponse = {
   reply?: string;
   text?: string;
   sources?: Array<{ title?: string; url?: string }>;
+  reasons?: string[];  // ["rag", "llm", "heuristic", "fallback"]
+  grounded?: boolean;  // True if RAG/LLM was used, false if heuristic only
 };
 
 export type ExplainParams = {
@@ -39,7 +41,7 @@ export async function fetchCardExplain(
     if (params.metricId) payload.metric_id = params.metricId;
     if (params.ctx) payload.ctx = params.ctx;
 
-    const data = await fetchJSON<ExplainResponse>('agent/describe', {
+    const data = await fetchJSON<ExplainResponse>(`agent/describe/${encodeURIComponent(params.cardId)}`, {
       method: 'POST',
       body: JSON.stringify(payload),
       signal,
@@ -48,6 +50,8 @@ export async function fetchCardExplain(
     return {
       explain: data?.explain ?? data?.why ?? data?.reply ?? data?.text,
       sources: data?.sources,
+      reasons: data?.reasons,
+      grounded: data?.grounded,
     };
   } catch {
     return {};

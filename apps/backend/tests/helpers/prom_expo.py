@@ -8,6 +8,7 @@ Features:
 
 Intended for lightweight assertions; not a full parser.
 """
+
 from __future__ import annotations
 import re
 from typing import Dict, Iterator, Optional, Tuple
@@ -21,7 +22,10 @@ _SAMPLE_RE = re.compile(
     re.VERBOSE,
 )
 
-_LABEL_RE = re.compile(r'''\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*=\s*"((?:\\.|[^"\\])*)"\s*(?:,|$)''')
+_LABEL_RE = re.compile(
+    r"""\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*=\s*"((?:\\.|[^"\\])*)"\s*(?:,|$)"""
+)
+
 
 def _parse_labels(s: str) -> Dict[str, str]:
     labels: Dict[str, str] = {}
@@ -35,6 +39,7 @@ def _parse_labels(s: str) -> Dict[str, str]:
         labels[key] = val
         i = m.end()
     return labels
+
 
 def iter_samples(text: str, metric: str) -> Iterator[Tuple[Dict[str, str], float]]:
     for line in text.splitlines():
@@ -50,8 +55,10 @@ def iter_samples(text: str, metric: str) -> Iterator[Tuple[Dict[str, str], float
         value = float(m.group("value"))
         yield labels, value
 
+
 def count_unlabeled(text: str, metric: str) -> int:
     return sum(1 for labels, _ in iter_samples(text, metric) if not labels)
+
 
 def count_labeled(text: str, metric: str, **must_match: str) -> int:
     n = 0
@@ -60,23 +67,32 @@ def count_labeled(text: str, metric: str, **must_match: str) -> int:
             n += 1
     return n
 
+
 def value_for(text: str, metric: str, **labels_match: str) -> Optional[float]:
     for labels, v in iter_samples(text, metric):
         if all(labels.get(k) == v_ for k, v_ in labels_match.items()):
             return v
     return None
 
+
 # ---------- Histogram helpers ----------
-def histogram_bucket(text: str, metric_base: str, le: str, **extra: str) -> Optional[float]:
+def histogram_bucket(
+    text: str, metric_base: str, le: str, **extra: str
+) -> Optional[float]:
     """Return the cumulative count for <metric_base>_bucket{le="..."} if present."""
     return value_for(text, f"{metric_base}_bucket", le=le, **extra)
+
 
 def histogram_sum(text: str, metric_base: str, **extra: str) -> Optional[float]:
     return value_for(text, f"{metric_base}_sum", **extra)
 
+
 def histogram_count(text: str, metric_base: str, **extra: str) -> Optional[float]:
     return value_for(text, f"{metric_base}_count", **extra)
 
+
 # ---------- Summary helpers ----------
-def summary_quantile(text: str, metric_base: str, quantile: str, **extra: str) -> Optional[float]:
+def summary_quantile(
+    text: str, metric_base: str, quantile: str, **extra: str
+) -> Optional[float]:
     return value_for(text, metric_base, quantile=quantile, **extra)

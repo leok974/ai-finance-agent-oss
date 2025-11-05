@@ -1,7 +1,10 @@
 import io
 import textwrap
 import pytest
-pytestmark = pytest.mark.skip(reason="Legacy /ml/* endpoints removed; use /agent/tools/*")
+
+pytestmark = pytest.mark.skip(
+    reason="Legacy /ml/* endpoints removed; use /agent/tools/*"
+)
 from fastapi.testclient import TestClient
 
 from app.main import app
@@ -18,14 +21,16 @@ def _ingest(csv_text: str):
 @pytest.mark.order(1)
 def test_ml_suggest_happy_path_and_status_classes():
     # 1) Seed labeled rows for training (no 'Unknown')
-    labeled_csv = textwrap.dedent("""\
+    labeled_csv = textwrap.dedent(
+        """\
         date,month,merchant,description,amount,category
         2025-08-10,2025-08,Costco,Groceries run,-85.40,Groceries
         2025-08-12,2025-08,Starbucks,Latte,-5.25,Shopping
         2025-08-13,2025-08,Uber,Ride home,-17.80,Transport
         2025-08-14,2025-08,Spotify,Family plan,-15.99,Subscriptions
         2025-08-15,2025-08,Delta,Flight,-250.00,Travel
-    """)
+    """
+    )
     _ingest(labeled_csv)
 
     # 2) Train model (small params for speed)
@@ -42,12 +47,14 @@ def test_ml_suggest_happy_path_and_status_classes():
 
     # 4) Seed unlabeled rows to get suggestions
     # Use near-duplicates of trained merchants/descriptions so model can score them
-    unlabeled_csv = textwrap.dedent("""\
+    unlabeled_csv = textwrap.dedent(
+        """\
         date,month,merchant,description,amount,category
         2025-08-16,2025-08,Starbucks,Latte,-4.95,
         2025-08-17,2025-08,Uber,Ride to office,-19.80,
         2025-08-18,2025-08,Costco,Groceries run,-92.10,
-    """)
+    """
+    )
     _ingest(unlabeled_csv)
 
     # 5) Call /ml/suggest
@@ -75,4 +82,6 @@ def test_ml_suggest_happy_path_and_status_classes():
         assert "txn_id" in item
         labels = labels_from_item(item)
         assert labels, f"No candidates in suggestion item: {item}"
-        assert all(l != "Unknown" for l in labels), f"Found 'Unknown' in candidates: {labels}"
+        assert all(
+            l != "Unknown" for l in labels
+        ), f"Found 'Unknown' in candidates: {labels}"

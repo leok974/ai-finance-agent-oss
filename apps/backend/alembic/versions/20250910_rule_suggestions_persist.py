@@ -17,11 +17,12 @@ down_revision = "abe2433f913d"
 branch_labels = None
 depends_on = None
 
+
 def upgrade():
-        # No-op placeholder
-        pass
+    # No-op placeholder
+    pass
 
 
 def downgrade():
-        # No-op placeholder
-        pass
+    # No-op placeholder
+    pass

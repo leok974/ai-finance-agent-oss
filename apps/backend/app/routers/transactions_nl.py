@@ -10,7 +10,12 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.services.txns_nl_query import NLQuery, DEFAULT_LIMIT, parse_nl_query, run_txn_query
+from app.services.txns_nl_query import (
+    NLQuery,
+    DEFAULT_LIMIT,
+    parse_nl_query,
+    run_txn_query,
+)
 from app.utils.auth import get_current_user
 
 router = APIRouter(
@@ -55,7 +60,9 @@ def _parse_float(value: Any) -> Optional[float]:
         raise ValueError("Invalid amount filter") from exc
 
 
-def _parse_int(value: Any, *, default: int, minimum: int = 1, maximum: Optional[int] = None) -> int:
+def _parse_int(
+    value: Any, *, default: int, minimum: int = 1, maximum: Optional[int] = None
+) -> int:
     if value is None or value == "":
         return default
     try:
@@ -78,7 +85,9 @@ def _infer_preset_from_query(q: str) -> Optional[str]:
     return None
 
 
-def _infer_preset_from_range(start: Optional[date], end: Optional[date], today: date) -> Optional[str]:
+def _infer_preset_from_range(
+    start: Optional[date], end: Optional[date], today: date
+) -> Optional[str]:
     if not start or not end:
         return None
     month_start = date(today.year, today.month, 1)
@@ -99,7 +108,9 @@ def _nlq_from_filters(data: Dict[str, Any]) -> NLQuery:
     min_amount = _parse_float(data.get("min_amount"))
     max_amount = _parse_float(data.get("max_amount"))
     intent = str(data.get("intent") or "list")
-    limit = _parse_int(data.get("limit"), default=DEFAULT_LIMIT, minimum=1, maximum=1000)
+    limit = _parse_int(
+        data.get("limit"), default=DEFAULT_LIMIT, minimum=1, maximum=1000
+    )
 
     nlq = NLQuery(
         merchants=merchants,
@@ -121,7 +132,11 @@ def _nlq_from_filters(data: Dict[str, Any]) -> NLQuery:
         setattr(nlq, "page", _parse_int(page, default=1, minimum=1))
     page_size = data.get("page_size")
     if page_size is not None:
-        setattr(nlq, "page_size", _parse_int(page_size, default=limit, minimum=1, maximum=1000))
+        setattr(
+            nlq,
+            "page_size",
+            _parse_int(page_size, default=limit, minimum=1, maximum=1000),
+        )
 
     preset = date_block.get("preset") if isinstance(date_block, dict) else None
     if isinstance(preset, str) and preset:
@@ -199,7 +214,9 @@ def transactions_nl(req: TxnNLRequest, db: Session = Depends(get_db)) -> TxnNLRe
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     today = date.today()
-    date_preset = getattr(nlq, "date_preset", None) or _infer_preset_from_range(nlq.start, nlq.end, today)
+    date_preset = getattr(nlq, "date_preset", None) or _infer_preset_from_range(
+        nlq.start, nlq.end, today
+    )
     if date_preset:
         setattr(nlq, "date_preset", date_preset)
 
@@ -221,14 +238,19 @@ def transactions_nl(req: TxnNLRequest, db: Session = Depends(get_db)) -> TxnNLRe
         if widened_total > 0:
             suggestion_filters = _nlq_to_filters_dict(widened_nlq)
             return TxnNLResponse(
-                reply="No matches **this month**. I found **{count}** in the **last 90 days**. Tap a suggestion to view them.".format(count=widened_total),
+                reply="No matches **this month**. I found **{count}** in the **last 90 days**. Tap a suggestion to view them.".format(
+                    count=widened_total
+                ),
                 rephrased=False,
                 meta={
                     "total": 0,
                     "suggestions": [
                         {
                             "label": "View last 90 days",
-                            "action": {"type": "nl_search_filters", "filters": suggestion_filters},
+                            "action": {
+                                "type": "nl_search_filters",
+                                "filters": suggestion_filters,
+                            },
                         }
                     ],
                 },
@@ -236,9 +258,13 @@ def transactions_nl(req: TxnNLRequest, db: Session = Depends(get_db)) -> TxnNLRe
 
     reply_text = "Query completed."
     if intent == "list":
-        reply_text = f"Found **{total}** matching transaction{'s' if total != 1 else ''}."
+        reply_text = (
+            f"Found **{total}** matching transaction{'s' if total != 1 else ''}."
+        )
     elif intent == "count":
-        reply_text = f"Counted **{total}** matching transaction{'s' if total != 1 else ''}."
+        reply_text = (
+            f"Counted **{total}** matching transaction{'s' if total != 1 else ''}."
+        )
     elif intent == "sum":
         total_abs = float((result_payload.get("result") or {}).get("total_abs", 0))
         reply_text = f"Total spend: **${total_abs:,.2f}**."

@@ -1,7 +1,10 @@
 import io
 import textwrap
 import pytest
-pytestmark = pytest.mark.skip(reason="Legacy /ml/* endpoints removed; use /agent/tools/*")
+
+pytestmark = pytest.mark.skip(
+    reason="Legacy /ml/* endpoints removed; use /agent/tools/*"
+)
 from fastapi.testclient import TestClient
 
 from app.main import app
@@ -18,12 +21,14 @@ def _ingest(csv_text: str):
 @pytest.mark.order(1)
 def test_ml_suggest_returns_empty_list_when_no_unlabeled():
     # Seed only labeled rows for a month; no unlabeled entries are ingested.
-    labeled_csv = textwrap.dedent("""\
+    labeled_csv = textwrap.dedent(
+        """\
         date,month,merchant,description,amount,category
         2025-08-10,2025-08,Costco,Groceries run,-85.40,Groceries
         2025-08-12,2025-08,Starbucks,Latte,-5.25,Shopping
         2025-08-13,2025-08,Uber,Ride home,-17.80,Transport
-    """)
+    """
+    )
     _ingest(labeled_csv)
 
     # 2) Train the model (optional) — only if route exists
@@ -50,4 +55,6 @@ def test_ml_suggest_returns_empty_list_when_no_unlabeled():
     assert "month" in payload and "suggestions" in payload, f"Bad shape: {payload}"
     assert payload["month"] == month
     assert isinstance(payload["suggestions"], list)
-    assert payload["suggestions"] == [], f"Expected empty suggestions, got: {payload['suggestions']}"
+    assert (
+        payload["suggestions"] == []
+    ), f"Expected empty suggestions, got: {payload['suggestions']}"

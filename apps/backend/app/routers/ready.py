@@ -4,6 +4,7 @@ from app.status_utils import check_db, check_migrations
 
 router = APIRouter()
 
+
 @router.get("/ready")
 def ready():
     db_url = os.getenv("DATABASE_URL", "")
@@ -15,5 +16,6 @@ def ready():
         "db": db.__dict__ if db else {"ok": False, "error": "missing_url"},
         "migrations": mig.__dict__,
     }
+
 
 __all__ = ["router"]

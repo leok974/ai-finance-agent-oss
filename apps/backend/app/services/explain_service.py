@@ -26,7 +26,9 @@ def _to_ts(dt_val) -> float:
         return 0.0
 
 
-def _sources_signature(db: Session, txn: Transaction, mcanon: Optional[str]) -> Tuple[Any, ...]:
+def _sources_signature(
+    db: Session, txn: Transaction, mcanon: Optional[str]
+) -> Tuple[Any, ...]:
     """Compute a signature representing the latest modification time across inputs.
     Includes: txn.updated_at, max Rule.updated_at, max Feedback.created_at for merchant group,
     and max Transaction.updated_at within the similar-merchant window.
@@ -74,14 +76,11 @@ def _sources_signature(db: Session, txn: Transaction, mcanon: Optional[str]) -> 
         try:
             day_ref: date = txn.date or date.today()
             start_date = day_ref - timedelta(days=365)
-            q_t = (
-                db.query(func.max(Transaction.updated_at))
-                .filter(
-                    and_(
-                        Transaction.id != txn.id,
-                        _merchant_filter_expr(),
-                        Transaction.date >= start_date,
-                    )
+            q_t = db.query(func.max(Transaction.updated_at)).filter(
+                and_(
+                    Transaction.id != txn.id,
+                    _merchant_filter_expr(),
+                    Transaction.date >= start_date,
                 )
             )
             tmax = q_t.scalar()
@@ -123,7 +122,9 @@ def _rule_matches_txn(rule: Rule, txn: Transaction) -> bool:
     if getattr(rule, "merchant", None):
         ok = ok and ((txn.merchant or "").lower().find(rule.merchant.lower()) >= 0)
     if getattr(rule, "description", None):
-        ok = ok and ((txn.description or "").lower().find(rule.description.lower()) >= 0)
+        ok = ok and (
+            (txn.description or "").lower().find(rule.description.lower()) >= 0
+        )
     if getattr(rule, "pattern", None):
         patt = rule.pattern.lower()
         ok = ok and (
@@ -135,10 +136,7 @@ def _rule_matches_txn(rule: Rule, txn: Transaction) -> bool:
 
 def _find_matching_rule(db: Session, txn: Transaction) -> Optional[Rule]:
     rules: List[Rule] = (
-        db.query(Rule)
-        .filter(Rule.active.is_(True))
-        .order_by(Rule.id.asc())
-        .all()
+        db.query(Rule).filter(Rule.active.is_(True)).order_by(Rule.id.asc()).all()
     )
     for r in rules:
         try:
@@ -149,7 +147,9 @@ def _find_matching_rule(db: Session, txn: Transaction) -> Optional[Rule]:
     return None
 
 
-def _similar_txns_summary(db: Session, txn: Transaction, mcanon: Optional[str]) -> Dict[str, Any]:
+def _similar_txns_summary(
+    db: Session, txn: Transaction, mcanon: Optional[str]
+) -> Dict[str, Any]:
     if not mcanon:
         return {"total": 0, "by_category": [], "recent_samples": []}
 
@@ -199,13 +199,19 @@ def _similar_txns_summary(db: Session, txn: Transaction, mcanon: Optional[str]) 
 
     total = sum(by_cat.values())
     by_category = [
-        {"category": k, "count": v, "share": (float(v) / float(total)) if total else 0.0}
+        {
+            "category": k,
+            "count": v,
+            "share": (float(v) / float(total)) if total else 0.0,
+        }
         for k, v in sorted(by_cat.items(), key=lambda kv: kv[1], reverse=True)
     ]
     return {"total": total, "by_category": by_category, "recent_samples": samples}
 
 
-def _feedback_summary(db: Session, txn: Transaction, mcanon: Optional[str]) -> Dict[str, Any]:
+def _feedback_summary(
+    db: Session, txn: Transaction, mcanon: Optional[str]
+) -> Dict[str, Any]:
     # Feedback for the specific transaction
     own: List[Dict[str, Any]] = []
     try:
@@ -238,8 +244,11 @@ def _feedback_summary(db: Session, txn: Transaction, mcanon: Optional[str]) -> D
                     or_(
                         Transaction.merchant_canonical == mcanon,
                         Transaction.merchant_canonical.like(f"{mcanon}%"),
-                        Transaction.merchant_canonical == (mcanon.split(" ")[0] if " " in mcanon else mcanon),
-                        Transaction.merchant_canonical.like(f"{(mcanon.split(' ')[0] if ' ' in mcanon else mcanon)}%"),
+                        Transaction.merchant_canonical
+                        == (mcanon.split(" ")[0] if " " in mcanon else mcanon),
+                        Transaction.merchant_canonical.like(
+                            f"{(mcanon.split(' ')[0] if ' ' in mcanon else mcanon)}%"
+                        ),
                     )
                 )
                 .group_by(Feedback.label)
@@ -256,15 +265,22 @@ def _feedback_summary(db: Session, txn: Transaction, mcanon: Optional[str]) -> D
         {"label": k, "count": v, "share": (float(v) / float(total)) if total else 0.0}
         for k, v in sorted(agg.items(), key=lambda kv: kv[1], reverse=True)
     ]
-    return {"txn_feedback": own, "merchant_feedback": {"total": total, "by_label": by_label}}
+    return {
+        "txn_feedback": own,
+        "merchant_feedback": {"total": total, "by_label": by_label},
+    }
 
 
-def compute_explain_evidence(db: Session, txn_id: int) -> Tuple[Transaction, Dict[str, Any]]:
+def compute_explain_evidence(
+    db: Session, txn_id: int
+) -> Tuple[Transaction, Dict[str, Any]]:
     txn = db.get(Transaction, txn_id)
     if not txn:
         raise ValueError("Transaction not found")
 
-    mcanon = getattr(txn, "merchant_canonical", None) or canonicalize_merchant(txn.merchant)
+    mcanon = getattr(txn, "merchant_canonical", None) or canonicalize_merchant(
+        txn.merchant
+    )
     rule = _find_matching_rule(db, txn)
     similar = _similar_txns_summary(db, txn, mcanon)
     fb = _feedback_summary(db, txn, mcanon)
@@ -287,7 +303,9 @@ def compute_explain_evidence(db: Session, txn_id: int) -> Tuple[Transaction, Dic
     return txn, evidence
 
 
-def _pick_candidates(txn: Transaction, evidence: Dict[str, Any]) -> List[Dict[str, Any]]:
+def _pick_candidates(
+    txn: Transaction, evidence: Dict[str, Any]
+) -> List[Dict[str, Any]]:
     cands: List[Dict[str, Any]] = []
     # 1) Strong rule signal
     rm = evidence.get("rule_match")
@@ -302,20 +320,28 @@ def _pick_candidates(txn: Transaction, evidence: Dict[str, Any]) -> List[Dict[st
         if top and top.get("category") and top.get("share"):
             # Map share -> confidence in a soft way
             conf = min(0.9, 0.6 + 0.4 * float(top["share"]))
-            cand = {"label": top["category"], "confidence": float(conf), "source": "history"}
+            cand = {
+                "label": top["category"],
+                "confidence": float(conf),
+                "source": "history",
+            }
             # Avoid duplicating same label if rule already pushed it
             if not any(x["label"] == cand["label"] for x in cands):
                 cands.append(cand)
 
     # Ensure we never output Unknown
-    cands = [c for c in cands if c.get("label") and str(c["label"]).lower() != "unknown"]
+    cands = [
+        c for c in cands if c.get("label") and str(c["label"]).lower() != "unknown"
+    ]
     # At least return the current txn.category if it's not Unknown to ground the response
     if not cands and (txn.category and txn.category.lower() != "unknown"):
         cands.append({"label": txn.category, "confidence": 0.5, "source": "current"})
     return cands[:3]
 
 
-def render_deterministic_reasoning(txn: Transaction, evidence: Dict[str, Any], candidates: List[Dict[str, Any]]) -> str:
+def render_deterministic_reasoning(
+    txn: Transaction, evidence: Dict[str, Any], candidates: List[Dict[str, Any]]
+) -> str:
     pieces: List[str] = []
     # Always anchor on canonical merchant
     mcanon = evidence.get("merchant_norm")
@@ -362,7 +388,9 @@ def render_deterministic_reasoning(txn: Transaction, evidence: Dict[str, Any], c
     return " ".join(pieces) if pieces else "No strong signals found; keeping it simple."
 
 
-def try_llm_polish(rationale: str, txn: Transaction, evidence: Dict[str, Any]) -> Optional[str]:
+def try_llm_polish(
+    rationale: str, txn: Transaction, evidence: Dict[str, Any]
+) -> Optional[str]:
     """Optional LLM rephrase; safe fallback to deterministic text respecting llm_policy."""
     pol = llm_policy("explain")
     if not pol.get("allow"):
@@ -371,6 +399,7 @@ def try_llm_polish(rationale: str, txn: Transaction, evidence: Dict[str, Any]) -
         return None
     try:
         from app.utils import llm as llm_mod
+
         prompt = (
             "Rewrite this explanation to be concise and friendly. "
             "Do not change any numbers or categories. Keep 1-2 sentences max.\n\n"
@@ -390,7 +419,9 @@ def try_llm_polish(rationale: str, txn: Transaction, evidence: Dict[str, Any]) -
         return None
 
 
-def build_explain_response(db: Session, txn_id: int, use_llm: bool = False, allow_llm: Optional[bool] = None) -> Dict[str, Any]:
+def build_explain_response(
+    db: Session, txn_id: int, use_llm: bool = False, allow_llm: Optional[bool] = None
+) -> Dict[str, Any]:
     """Build explanation response.
     use_llm: legacy flag kept for backwards compatibility.
     allow_llm: authoritative flag (if provided) controlling whether LLM path is attempted.
@@ -425,6 +456,7 @@ def build_explain_response(db: Session, txn_id: int, use_llm: bool = False, allo
     if use_llm and pol.get("allow"):
         try:
             from app.utils import llm as llm_mod
+
             prompt = (
                 "Rewrite this explanation to be concise and friendly. "
                 "Do not change any numbers or categories. Keep 1-2 sentences max.\n\n"
@@ -433,7 +465,10 @@ def build_explain_response(db: Session, txn_id: int, use_llm: bool = False, allo
             reply, _trace = llm_mod.call_local_llm(
                 model=getattr(settings, "DEFAULT_LLM_MODEL", "gpt-oss:20b"),
                 messages=[
-                    {"role": "system", "content": "You are a helpful finance assistant."},
+                    {
+                        "role": "system",
+                        "content": "You are a helpful finance assistant.",
+                    },
                     {"role": "user", "content": prompt},
                 ],
                 temperature=0.2,
@@ -464,7 +499,9 @@ def build_explain_response(db: Session, txn_id: int, use_llm: bool = False, allo
     return resp
 
 
-def _suggest_actions(txn: Transaction, evidence: Dict[str, Any], candidates: List[Dict[str, Any]]) -> List[str]:
+def _suggest_actions(
+    txn: Transaction, evidence: Dict[str, Any], candidates: List[Dict[str, Any]]
+) -> List[str]:
     acts: List[str] = []
     if evidence.get("rule_match"):
         acts.append("Apply this rule to similar transactions")

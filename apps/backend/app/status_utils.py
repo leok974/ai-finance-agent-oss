@@ -107,7 +107,7 @@ def check_crypto_via_env() -> CryptoStatus:
 
     Replace with a real provider (e.g., kms_client.status()) when available.
     """
-    enabled = os.getenv("ENCRYPTION_ENABLED", "0").lower() in {"1","true","yes","on"}
+    enabled = os.getenv("ENCRYPTION_ENABLED", "0").lower() in {"1", "true", "yes", "on"}
     label = os.getenv("ACTIVE_DEK_LABEL")
     if not enabled:
         # Explicitly disabled — report healthy 'disabled' mode so readiness doesn't fail

@@ -5,11 +5,13 @@ pure logic tests in hermetic mode. Implements a forward/backward compatible
 ``pytest_ignore_collect`` that tolerates both pytest<9 and pytest>=9 calling
 conventions.
 """
+
 import os
 from pathlib import Path
 from typing import Any
 
 HERMETIC = os.getenv("HERMETIC") == "1"
+
 
 def _as_path(obj: Any) -> Path:
     try:
@@ -20,11 +22,20 @@ def _as_path(obj: Any) -> Path:
     except Exception:  # pragma: no cover - defensive
         return Path("")
 
+
 def _is_env_path(p: Path) -> bool:
     s = str(p)
-    return (".venv" in s) or ("site-packages" in s) or ("dist-packages" in s) or ("/usr/" in s) or ("\\usr\\" in s)
+    return (
+        (".venv" in s)
+        or ("site-packages" in s)
+        or ("dist-packages" in s)
+        or ("/usr/" in s)
+        or ("\\usr\\" in s)
+    )
+
 
 _HTTP_HINTS = ("test_api", "test_router", "routers", "test_fastapi")
+
 
 def _looks_httpy(p: Path) -> bool:
     name = p.name.lower()
@@ -36,6 +47,7 @@ def _looks_httpy(p: Path) -> bool:
     if "app" in parts and "tests" in parts and ("api" in parts or "router" in parts):
         return True
     return False
+
 
 def pytest_ignore_collect(*args, **kwargs) -> bool:  # type: ignore
     """Pytest hook to skip certain files in hermetic mode (dual signature).

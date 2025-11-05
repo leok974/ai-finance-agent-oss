@@ -1,6 +1,6 @@
 import app.env_bootstrap  # earliest import: loads DATABASE_URL from file secret if provided
-from fastapi import FastAPI, APIRouter, Response
-from fastapi.responses import RedirectResponse
+from fastapi import FastAPI, APIRouter, Response, Request
+from fastapi.responses import RedirectResponse, JSONResponse
 from .startup_guard import require_db_or_exit
 from contextlib import asynccontextmanager
 import asyncio
@@ -85,6 +85,7 @@ from app.routers import agent_tools_budget as agent_tools_budget_router
 from app.routers import agent_tools_insights as agent_tools_insights_router
 from app.routers import agent_actions as agent_actions_router
 from app.routers import dev_overlay as dev_overlay_router
+from app.routers import agent_describe as agent_describe_router  # NEW: contextual help
 from app.routes import csp as csp_routes
 from app.routes import (
     metrics as metrics_routes,
@@ -95,6 +96,7 @@ from app.routes import (
 from .utils.state import load_state, save_state
 import logging
 import time
+import traceback
 
 try:
     import orjson  # type: ignore
@@ -259,6 +261,33 @@ app = FastAPI(
     redoc_url="/redoc",
     lifespan=None,  # will attach below
 )
+
+
+# Reset OpenAPI schema cache on startup to ensure fresh schema from current models
+@app.on_event("startup")
+async def _reset_openapi_cache():
+    """Ensure /openapi.json is rebuilt from current models on each cold start."""
+    app.openapi_schema = None
+
+
+# Global exception handler to log unhandled errors (prevents silent 500s)
+logger = logging.getLogger("uvicorn.error")
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    """Log unhandled exceptions with full traceback."""
+    logger.error(
+        "Unhandled exception in API request %s %s:\n%s",
+        request.method,
+        request.url.path,
+        "".join(traceback.format_exc()),
+    )
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal server error"},
+    )
+
 
 # Production safety check: forbid dev credentials in prod environment
 if settings.APP_ENV == "prod" or settings.ENV == "prod":
@@ -466,6 +495,8 @@ app.add_middleware(SecurityHeaders)
 _metrics_attached = False
 try:  # Prefer full instrumentation if library available
     from prometheus_fastapi_instrumentator import Instrumentator  # type: ignore
+
+    # Force import of services.metrics to ensure counters are registered before exposure
 
     Instrumentator().instrument(app).expose(
         app, endpoint="/metrics", include_in_schema=False
@@ -744,6 +775,15 @@ async def lifespan(app: FastAPI):
     _detect_migration_divergence(app)
     await _startup_load_state()
     app.state._bg_tasks = []
+
+    # Prime Prometheus metrics so they appear in /metrics even before first sample
+    try:
+        from app.metrics import prime_metrics
+
+        prime_metrics()
+    except Exception:
+        pass  # Metrics are optional
+
     # Start analytics retention loop in prod if enabled
     try:
         if os.environ.get("APP_ENV", os.environ.get("ENV", "dev")).lower() == "prod":
@@ -801,6 +841,10 @@ app.include_router(ingest.router, prefix="")
 app.include_router(txns.router, prefix="/txns", tags=["txns"])
 app.include_router(rules.router)
 app.include_router(ml.router)
+# ML Phase 2: Production training pipeline
+from app.routers import ml_v2
+
+app.include_router(ml_v2.router)
 app.include_router(report.router, prefix="", tags=["report"])
 app.include_router(budget.router, prefix="/budget", tags=["budget"])
 # Also mount /budgets for temp overlay endpoints
@@ -845,6 +889,7 @@ app.include_router(categorize_admin_router.router)
 app.include_router(meta.router)
 app.include_router(agent_txns.router)  # NEW
 app.include_router(agent_plan_router.router)
+app.include_router(agent_describe_router.router)  # NEW: contextual help
 # Analytics endpoints (agent tools)
 app.include_router(analytics.router)
 app.include_router(analytics_receiver.router)
@@ -1023,7 +1068,6 @@ try:
 except Exception:  # pragma: no cover
     _HttpxReadTimeout = None  # type: ignore
 import requests as _requests
-from fastapi.responses import JSONResponse
 
 if _HttpxReadTimeout is not None:
 

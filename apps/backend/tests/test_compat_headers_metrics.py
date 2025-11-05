@@ -3,6 +3,7 @@ from app.main import app
 
 client = TestClient(app)
 
+
 def test_deprecation_headers_present():
     r = client.get("/api/charts/month-summary")
     assert r.status_code == 200
@@ -30,5 +31,9 @@ def test_metrics_source_probe_and_client():
     rc = client.get("/api/rules")
     assert rc.status_code == 200
     metrics_text = client.get("/metrics").text
-    assert 'compat_endpoint_hits_total{path="/api/rules",source="probe"}' in metrics_text
-    assert 'compat_endpoint_hits_total{path="/api/rules",source="client"}' in metrics_text
+    assert (
+        'compat_endpoint_hits_total{path="/api/rules",source="probe"}' in metrics_text
+    )
+    assert (
+        'compat_endpoint_hits_total{path="/api/rules",source="client"}' in metrics_text
+    )

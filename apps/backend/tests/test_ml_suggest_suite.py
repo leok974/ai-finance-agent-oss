@@ -1,11 +1,16 @@
 import io
 import textwrap
 import pytest
-pytestmark = pytest.mark.skip(reason="Legacy /ml/* endpoints removed; use /agent/tools/*")
+
+pytestmark = pytest.mark.skip(
+    reason="Legacy /ml/* endpoints removed; use /agent/tools/*"
+)
 from fastapi.testclient import TestClient
 
 # Mark entire module as ML-related tests
-pytestmark = pytest.mark.skip(reason="Legacy /ml/* endpoints removed; use /agent/tools/*")
+pytestmark = pytest.mark.skip(
+    reason="Legacy /ml/* endpoints removed; use /agent/tools/*"
+)
 
 from app.main import app
 
@@ -22,7 +27,9 @@ def _maybe_train():
     # Train only if the app exposes /ml/train
     try:
         spec = client.get("/openapi.json")
-        if spec.status_code == 200 and "/ml/train" in (spec.json() or {}).get("paths", {}):
+        if spec.status_code == 200 and "/ml/train" in (spec.json() or {}).get(
+            "paths", {}
+        ):
             r = client.post("/ml/train", json={"min_samples": 1, "test_size": 0.2})
             assert r.status_code == 200, r.text
     except Exception:
@@ -35,8 +42,12 @@ def _bulk_label(ids: list[int], category: str) -> bool:
         return True
     try:
         spec = client.get("/openapi.json")
-        if spec.status_code == 200 and "/txns/categorize" in (spec.json() or {}).get("paths", {}):
-            r = client.post("/txns/categorize", json={"txn_ids": ids, "category": category})
+        if spec.status_code == 200 and "/txns/categorize" in (spec.json() or {}).get(
+            "paths", {}
+        ):
+            r = client.post(
+                "/txns/categorize", json={"txn_ids": ids, "category": category}
+            )
             return r.status_code == 200
     except Exception:
         pass
@@ -67,25 +78,29 @@ def test_ml_suggest_happy_path_returns_candidates():
     month = "2025-08"
 
     # Seed labeled rows (for model context)
-    labeled_csv = textwrap.dedent("""\
+    labeled_csv = textwrap.dedent(
+        """\
         date,month,merchant,description,amount,category
         2025-08-10,2025-08,Costco,Groceries run,-85.40,Groceries
         2025-08-12,2025-08,Starbucks,Latte,-5.25,Shopping
         2025-08-13,2025-08,Uber,Ride home,-17.80,Transport
         2025-08-14,2025-08,Spotify,Family plan,-15.99,Subscriptions
         2025-08-15,2025-08,Delta,Flight,-250.00,Travel
-    """)
+    """
+    )
     _ingest(labeled_csv)
 
     _maybe_train()
 
     # Unlabeled rows deliberately similar to training items
-    unlabeled_csv = textwrap.dedent(f"""\
+    unlabeled_csv = textwrap.dedent(
+        f"""\
         date,month,merchant,description,amount,category
         2025-08-16,{month},Starbucks,Latte,-4.95,
         2025-08-17,{month},Uber,Ride to office,-19.80,
         2025-08-18,{month},Costco,Groceries run,-92.10,
-    """)
+    """
+    )
     _ingest(unlabeled_csv)
 
     r = client.get(f"/ml/suggest?month={month}&limit=10&topk=3")
@@ -101,8 +116,14 @@ def test_ml_suggest_happy_path_returns_candidates():
     for item in items:
         cands = item.get("candidates") or item.get("topk") or []
         assert cands, f"No candidates for item: {item}"
-        labels = [(c.get("label") or c.get("category")) for c in cands if (c.get("label") or c.get("category"))]
-        assert labels and all(lbl != "Unknown" for lbl in labels), f"Unexpected 'Unknown' in {labels}"
+        labels = [
+            (c.get("label") or c.get("category"))
+            for c in cands
+            if (c.get("label") or c.get("category"))
+        ]
+        assert labels and all(
+            lbl != "Unknown" for lbl in labels
+        ), f"Unexpected 'Unknown' in {labels}"
 
 
 @pytest.mark.order(3)
@@ -111,24 +132,28 @@ def test_ml_suggest_label_then_empty():
     month = "2025-08"
 
     # Baseline
-    labeled_csv = textwrap.dedent("""\
+    labeled_csv = textwrap.dedent(
+        """\
         date,month,merchant,description,amount,category
         2025-08-10,2025-08,Costco,Groceries run,-85.40,Groceries
         2025-08-12,2025-08,Starbucks,Latte,-5.25,Shopping
         2025-08-13,2025-08,Uber,Ride home,-17.80,Transport
         2025-08-14,2025-08,Spotify,Family plan,-15.99,Subscriptions
-    """)
+    """
+    )
     _ingest(labeled_csv)
 
     _maybe_train()
 
     # New rows that are likely to show up as suggestible
-    unlabeled_csv = textwrap.dedent(f"""\
+    unlabeled_csv = textwrap.dedent(
+        f"""\
         date,month,merchant,description,amount,category
         2025-08-16,{month},Trader Joes,Groceries,-42.10,
         2025-08-17,{month},Uber,Ride to airport,-22.30,
         2025-08-18,{month},Amazon,Household,-34.99,
-    """)
+    """
+    )
     _ingest(unlabeled_csv)
 
     # First call: whatever appears, label via public API (bulk preferred)
@@ -152,4 +177,6 @@ def test_ml_suggest_label_then_empty():
     p2 = r2.json()
     assert isinstance(p2, dict)
     assert p2.get("month") == month
-    assert p2.get("suggestions") == [], f"Expected empty suggestions, got: {p2.get('suggestions')}"
+    assert (
+        p2.get("suggestions") == []
+    ), f"Expected empty suggestions, got: {p2.get('suggestions')}"

@@ -1,13 +1,45 @@
 from app.transactions import Transaction
 
+
 def seed(db):
     from datetime import date
+
     rows = [
-        Transaction(date=date(2025,6,2), amount=-120, merchant="Grocer", category="Groceries", month="2025-06"),
-        Transaction(date=date(2025,7,6), amount=-180, merchant="Grocer", category="Groceries", month="2025-07"),
-        Transaction(date=date(2025,8,4), amount=-150, merchant="Grocer", category="Groceries", month="2025-08"),
-        Transaction(date=date(2025,8,10), amount=-90, merchant="Cafe", category="Dining", month="2025-08"),
-        Transaction(date=date(2025,8,15), amount=2500, merchant="ACME", category="Salary", month="2025-08"),
+        Transaction(
+            date=date(2025, 6, 2),
+            amount=-120,
+            merchant="Grocer",
+            category="Groceries",
+            month="2025-06",
+        ),
+        Transaction(
+            date=date(2025, 7, 6),
+            amount=-180,
+            merchant="Grocer",
+            category="Groceries",
+            month="2025-07",
+        ),
+        Transaction(
+            date=date(2025, 8, 4),
+            amount=-150,
+            merchant="Grocer",
+            category="Groceries",
+            month="2025-08",
+        ),
+        Transaction(
+            date=date(2025, 8, 10),
+            amount=-90,
+            merchant="Cafe",
+            category="Dining",
+            month="2025-08",
+        ),
+        Transaction(
+            date=date(2025, 8, 15),
+            amount=2500,
+            merchant="ACME",
+            category="Salary",
+            month="2025-08",
+        ),
     ]
     db.add_all(rows)
     db.commit()

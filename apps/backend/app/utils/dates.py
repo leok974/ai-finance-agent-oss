@@ -2,6 +2,7 @@
 from typing import Optional
 import datetime as dt
 
+
 def latest_month_from_txns(txns) -> Optional[str]:
     """
     Given a list of transactions with "date" fields (YYYY-MM-DD),
@@ -19,5 +20,5 @@ def latest_month_from_txns(txns) -> Optional[str]:
                 # Fallback to string slicing for malformed dates
                 if len(date_str) >= 7:
                     months.add(date_str[:7])
-    
+
     return max(months) if months else None

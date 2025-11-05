@@ -59,11 +59,6 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-import os
-import secrets
-from sqlalchemy import text
-from app.db import get_db
-from google.cloud import kms_v1
 
 
 def main() -> None:
@@ -121,4 +116,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
- 

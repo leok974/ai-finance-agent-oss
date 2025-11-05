@@ -3,6 +3,7 @@ from pydantic import BaseModel, ConfigDict
 from datetime import date
 from typing import Optional
 
+
 class TxnOut(BaseModel):
     id: int
     date: date
@@ -14,6 +15,7 @@ class TxnOut(BaseModel):
     month: str
 
     model_config = ConfigDict(from_attributes=True)
+
 
 class RuleIn(BaseModel):
     pattern: str

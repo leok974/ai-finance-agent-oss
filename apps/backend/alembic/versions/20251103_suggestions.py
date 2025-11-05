@@ -22,14 +22,13 @@ def upgrade() -> None:
     op.create_table(
         "suggestion_events",
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
-        sa.Column("txn_id", postgresql.UUID(as_uuid=True), nullable=False, index=True),
+        sa.Column("txn_id", sa.Integer(), nullable=False, index=True),
         sa.Column("model_id", sa.String(), nullable=True),
         sa.Column("features_hash", sa.String(), nullable=True),
         sa.Column("candidates", postgresql.JSONB(), nullable=False),
         sa.Column("mode", sa.String(), nullable=False),
         sa.Column("created_at", sa.DateTime(), nullable=False),
     )
-    op.create_index("ix_suggestion_events_txn_id", "suggestion_events", ["txn_id"])
 
     # Create suggestion_feedback table
     op.create_table(
@@ -47,13 +46,8 @@ def upgrade() -> None:
             ["suggestion_events.id"],
         ),
     )
-    op.create_index(
-        "ix_suggestion_feedback_event_id", "suggestion_feedback", ["event_id"]
-    )
 
 
 def downgrade() -> None:
-    op.drop_index("ix_suggestion_feedback_event_id", table_name="suggestion_feedback")
     op.drop_table("suggestion_feedback")
-    op.drop_index("ix_suggestion_events_txn_id", table_name="suggestion_events")
     op.drop_table("suggestion_events")

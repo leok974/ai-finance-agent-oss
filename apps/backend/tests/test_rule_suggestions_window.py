@@ -8,6 +8,7 @@ from app.services.rule_suggestions import (
     WINDOW_DAYS,
 )
 
+
 def _mk_txn(db, merchant="TestCo #1", amount=-5.0, day_offset=0):
     dt = datetime.now(timezone.utc) + timedelta(days=day_offset)
     tx = Transaction(
@@ -25,6 +26,7 @@ def _mk_txn(db, merchant="TestCo #1", amount=-5.0, day_offset=0):
     db.refresh(tx)
     return tx
 
+
 def _add_fb(db, txn_id: int, category="Coffee", source="accept", days_ago=0):
     ts = datetime.now(timezone.utc) - timedelta(days=days_ago)
     fb = Feedback(
@@ -37,6 +39,7 @@ def _add_fb(db, txn_id: int, category="Coffee", source="accept", days_ago=0):
     db.flush()
     db.refresh(fb)
     return fb
+
 
 def test_window_includes_recent_and_excludes_old(db_session):
     # Ensure default window
@@ -59,6 +62,7 @@ def test_window_includes_recent_and_excludes_old(db_session):
     assert sug.merchant_norm == mnorm
     assert sug.category == "Coffee"
 
+
 def test_outside_window_only_no_suggestion(db_session):
     tx = _mk_txn(db_session, merchant="Cafe Beta")
     mnorm = canonicalize_merchant(tx.merchant)
@@ -69,6 +73,7 @@ def test_outside_window_only_no_suggestion(db_session):
 
     sug = evaluate_candidate(db_session, mnorm, "Coffee")
     assert sug is None, "Old feedback should not trigger a suggestion"
+
 
 def test_cutoff_is_inclusive(db_session):
     tx = _mk_txn(db_session, merchant="Cafe Gamma")

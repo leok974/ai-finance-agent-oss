@@ -1,7 +1,9 @@
 from app.services import help_cache as hc
 
+
 def test_evictions_counter_increments():
-    hc.clear(); hc.reset_stats()
+    hc.clear()
+    hc.reset_stats()
     hc._set_ttl_for_tests(300.0)  # ensure normal default
     hc.set_("k", {"text": "v"})
     assert hc.stats()["size"] == 1
@@ -10,4 +12,6 @@ def test_evictions_counter_increments():
     assert st["evictions"] == 1
     assert st["misses"] >= 1
     # cleanup
-    hc.clear(); hc.reset_stats(); hc._set_ttl_for_tests(300.0)
+    hc.clear()
+    hc.reset_stats()
+    hc._set_ttl_for_tests(300.0)

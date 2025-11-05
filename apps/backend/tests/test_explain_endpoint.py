@@ -1,7 +1,4 @@
-import os
-import re
-import pytest
-from datetime import date, datetime, timedelta
+from datetime import date
 from app.utils.time import utc_now
 
 from app.transactions import Transaction
@@ -48,7 +45,13 @@ def test_200_and_evidence_counts(client, db_session):
     t0 = _mk_txn(db_session, merchant="Starbucks", description="coffee", amount=-5.25)
     # similar historical
     for i in range(3):
-        ti = _mk_txn(db_session, merchant="Starbucks", description=f"drink {i}", amount=-3.0 - i, category="Dining out")
+        ti = _mk_txn(
+            db_session,
+            merchant="Starbucks",
+            description=f"drink {i}",
+            amount=-3.0 - i,
+            category="Dining out",
+        )
         _mk_feedback(db_session, ti.id, "Dining out")
 
     resp = client.get(f"/txns/{t0.id}/explain")
@@ -66,10 +69,18 @@ def test_200_and_evidence_counts(client, db_session):
 
 
 def test_deterministic_includes_canon_and_top(client, db_session):
-    t0 = _mk_txn(db_session, merchant="Target Store", description="shoes", amount=-25.00)
+    t0 = _mk_txn(
+        db_session, merchant="Target Store", description="shoes", amount=-25.00
+    )
     # history signals
     for i in range(2):
-        _ = _mk_txn(db_session, merchant="Target", description=f"item {i}", amount=-10 - i, category="Shopping")
+        _ = _mk_txn(
+            db_session,
+            merchant="Target",
+            description=f"item {i}",
+            amount=-10 - i,
+            category="Shopping",
+        )
 
     resp = client.get(f"/txns/{t0.id}/explain")
     assert resp.status_code == 200
@@ -85,7 +96,9 @@ def test_deterministic_includes_canon_and_top(client, db_session):
 
 def test_dev_allow_no_llm_skips_llm(client, db_session, monkeypatch):
     monkeypatch.setenv("DEV_ALLOW_NO_LLM", "1")
-    t0 = _mk_txn(db_session, merchant="Netflix", description="subscription", amount=-15.0)
+    t0 = _mk_txn(
+        db_session, merchant="Netflix", description="subscription", amount=-15.0
+    )
     resp = client.get(f"/txns/{t0.id}/explain?use_llm=1")
     assert resp.status_code == 200
     body = resp.json()
@@ -106,12 +119,19 @@ def test_llm_mode_with_mock(client, db_session, monkeypatch):
             return text, []
 
     import app.utils.llm as llm_mod
+
     monkeypatch.setattr(llm_mod, "call_local_llm", _DummyLLM.call_local_llm)
 
     t0 = _mk_txn(db_session, merchant="Target", description="toys", amount=-32.0)
     # history to steer to Shopping
     for i in range(2):
-        _ = _mk_txn(db_session, merchant="Target", description=f"item {i}", amount=-10 - i, category="Shopping")
+        _ = _mk_txn(
+            db_session,
+            merchant="Target",
+            description=f"item {i}",
+            amount=-10 - i,
+            category="Shopping",
+        )
 
     resp = client.get(f"/txns/{t0.id}/explain?use_llm=1")
     assert resp.status_code == 200

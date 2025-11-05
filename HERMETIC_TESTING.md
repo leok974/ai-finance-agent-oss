@@ -57,7 +57,7 @@ def seeded_txn_id(_SessionLocal):
 def test_agent_chat_legacy_redirects(monkeypatch):
     from app.utils import llm as llm_mod
     monkeypatch.setattr(llm_mod, "call_local_llm", _fake_llm)
-    
+
     client = TestClient(app)
     r = client.post("/agent/gpt", json={
         "messages": [{"role": "user", "content": "test"}]
@@ -83,13 +83,13 @@ def test_something(monkeypatch, seeded_txn_id):
     # 1. Import and mock the LLM module
     from app.utils import llm as llm_mod
     monkeypatch.setattr(llm_mod, "call_local_llm", _fake_llm)
-    
+
     # 2. Create test client
     client = TestClient(app)
-    
+
     # 3. Make request
     r = client.post("/agent/chat", json={...})
-    
+
     # 4. Assert results
     assert r.status_code == 200
     j = r.json()

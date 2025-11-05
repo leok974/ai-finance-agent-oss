@@ -1,0 +1,14 @@
+version: 2
+
+models:
+  - name: mart_suggestions_feedback_daily
+    description: "Daily accept/reject counts and accept-rate (incremental)."
+    columns:
+      - name: created_date
+        tests: [not_null]
+      - name: feedback_events
+        tests: [not_null]
+      - name: accepts
+      - name: rejects
+      - name: accept_rate
+        description: "Accept rate: accepts / (accepts + rejects)"

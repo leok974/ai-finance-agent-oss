@@ -14,17 +14,71 @@ def seed_minimal_data(db: Session):
     """
     rows = [
         # 2025-06
-        {"date": dt.date(2025, 6, 5),  "amount": 3000.0, "merchant": "ACME CO", "category": "Income", "month": "2025-06"},
-        {"date": dt.date(2025, 6, 8),  "amount": -120.0, "merchant": "GROCER",  "category": "Groceries", "month": "2025-06"},
-        {"date": dt.date(2025, 6, 12), "amount": -60.0,  "merchant": "UBER",    "category": "Transport", "month": "2025-06"},
+        {
+            "date": dt.date(2025, 6, 5),
+            "amount": 3000.0,
+            "merchant": "ACME CO",
+            "category": "Income",
+            "month": "2025-06",
+        },
+        {
+            "date": dt.date(2025, 6, 8),
+            "amount": -120.0,
+            "merchant": "GROCER",
+            "category": "Groceries",
+            "month": "2025-06",
+        },
+        {
+            "date": dt.date(2025, 6, 12),
+            "amount": -60.0,
+            "merchant": "UBER",
+            "category": "Transport",
+            "month": "2025-06",
+        },
         # 2025-07
-        {"date": dt.date(2025, 7, 5),  "amount": 3200.0, "merchant": "ACME CO", "category": "Income", "month": "2025-07"},
-        {"date": dt.date(2025, 7, 9),  "amount": -150.0, "merchant": "GROCER",  "category": "Groceries", "month": "2025-07"},
-        {"date": dt.date(2025, 7, 18), "amount": -80.0,  "merchant": "UBER",    "category": "Transport", "month": "2025-07"},
+        {
+            "date": dt.date(2025, 7, 5),
+            "amount": 3200.0,
+            "merchant": "ACME CO",
+            "category": "Income",
+            "month": "2025-07",
+        },
+        {
+            "date": dt.date(2025, 7, 9),
+            "amount": -150.0,
+            "merchant": "GROCER",
+            "category": "Groceries",
+            "month": "2025-07",
+        },
+        {
+            "date": dt.date(2025, 7, 18),
+            "amount": -80.0,
+            "merchant": "UBER",
+            "category": "Transport",
+            "month": "2025-07",
+        },
         # 2025-08
-        {"date": dt.date(2025, 8, 5),  "amount": 3100.0, "merchant": "ACME CO", "category": "Income", "month": "2025-08"},
-        {"date": dt.date(2025, 8, 10), "amount": -140.0, "merchant": "GROCER",  "category": "Groceries", "month": "2025-08"},
-        {"date": dt.date(2025, 8, 24), "amount": -90.0,  "merchant": "UBER",    "category": "Transport", "month": "2025-08"},
+        {
+            "date": dt.date(2025, 8, 5),
+            "amount": 3100.0,
+            "merchant": "ACME CO",
+            "category": "Income",
+            "month": "2025-08",
+        },
+        {
+            "date": dt.date(2025, 8, 10),
+            "amount": -140.0,
+            "merchant": "GROCER",
+            "category": "Groceries",
+            "month": "2025-08",
+        },
+        {
+            "date": dt.date(2025, 8, 24),
+            "amount": -90.0,
+            "merchant": "UBER",
+            "category": "Transport",
+            "month": "2025-08",
+        },
     ]
 
     for r in rows:
@@ -52,9 +106,7 @@ def _post_chat(client, text: str):
     return client.post(
         "/agent/chat",
         json={"messages": [{"role": "user", "content": text}]},
-        headers={
-            "X-CSRF-Token": client.cookies.get("csrf_token", "test")
-        }
+        headers={"X-CSRF-Token": client.cookies.get("csrf_token", "test")},
     )
 
 
@@ -82,5 +134,11 @@ def test_agent_chat_routes_to_analytics_kpis_e2e(client, db_session):
     assert payload.get("mode") == "analytics.kpis"
     data = payload.get("data") or payload.get("result") or {}
     kpis = data.get("kpis") or {}
-    for k in ["avg_inflows", "avg_outflows", "avg_net", "savings_rate", "income_volatility"]:
+    for k in [
+        "avg_inflows",
+        "avg_outflows",
+        "avg_net",
+        "savings_rate",
+        "income_volatility",
+    ]:
         assert k in kpis

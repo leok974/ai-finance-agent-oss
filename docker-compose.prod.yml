@@ -20,6 +20,22 @@ services:
         aliases:
           - postgres
 
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--save", "60", "1000", "--loglevel", "warning"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    ports:
+      - "127.0.0.1:6379:6379"
+    restart: unless-stopped
+    networks:
+      - shared-ollama
+
   backend:
     build:
       context: ./apps/backend
@@ -71,6 +87,12 @@ services:
       BACKEND_BRANCH: ${BACKEND_BRANCH:-unknown}
       BACKEND_COMMIT: ${BACKEND_COMMIT:-unknown}
       SUGGESTIONS_ENABLED: "1"
+      # Help/RAG
+      HELP_USE_RAG: "${HELP_USE_RAG:-1}"
+      RAG_TOP_K: "${RAG_TOP_K:-6}"
+      RAG_MIN_SCORE: "${RAG_MIN_SCORE:-0.15}"
+      HELP_CACHE_TTL_SEC: "${HELP_CACHE_TTL_SEC:-600}"
+      REDIS_URL: "redis://redis:6379/0"
     entrypoint: []
     command: >
       python -m uvicorn app.main:app
@@ -223,6 +245,55 @@ services:
     networks:
       - shared-ollama
 
+  # Prometheus Pushgateway for metrics collection
+  pushgateway:
+    image: prom/pushgateway:latest
+    restart: unless-stopped
+    ports:
+      - "9091:9091"
+    networks:
+      - shared-ollama
+    command:
+      - '--web.enable-admin-api'
+      - '--push.disable-consistency-check'
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9091/-/healthy"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  # Database freshness exporter (run manually or via cron)
+  freshness-exporter:
+    image: python:3.11-slim
+    restart: "no"
+    working_dir: /work
+    command: >
+      bash -lc "pip install -q -r requirements.txt &&
+                python db_freshness_push.py"
+    environment:
+      PGHOST: postgres
+      PGPORT: 5432
+      PGUSER: myuser
+      PGPASSWORD_FILE: /run/secrets/db_password
+      PGDATABASE: finance
+      PGSCHEMA: public
+      FRESHNESS_TABLES: transactions,transaction_labels,ml_features
+      FRESHNESS_TIMESTAMP_COL: updated_at
+      PUSHGATEWAY_URL: http://pushgateway:9091
+      PUSH_JOB_NAME: dbt_source_freshness
+      PUSH_INSTANCE: prod
+    volumes:
+      - ./ops/exporters:/work
+    secrets:
+      - db_password
+    networks:
+      - shared-ollama
+    depends_on:
+      postgres:
+        condition: service_healthy
+      pushgateway:
+        condition: service_healthy
+
   # Sidecar to present 127.0.0.1:11434 inside backend netns, forwarding to ollama service
 
   agui:
@@ -250,6 +321,7 @@ networks:
 
 volumes:
   pgdata:
+  redis_data:
   certbot_www:
   letsencrypt:
   # removed named volume 'ollama' in favor of bind mount for model store stability

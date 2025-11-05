@@ -46,6 +46,9 @@ ENV GIT_BRANCH=${GIT_BRANCH} GIT_COMMIT=${GIT_COMMIT} BUILD_TIME=${BUILD_TIME} \
     PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 WORKDIR /app
 
+# Install runtime dependencies for LightGBM (libgomp for OpenMP)
+RUN apt-get update && apt-get install -y --no-install-recommends libgomp1 && rm -rf /var/lib/apt/lists/*
+
 # Copy installed site-packages & app
 COPY --from=builder /usr/local/lib/python3.11 /usr/local/lib/python3.11
 COPY --from=builder /w/src /app

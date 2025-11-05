@@ -5,12 +5,16 @@ import os
 from datetime import date
 
 import pytest
-from sqlalchemy import text
 
 from app.services.crypto import EnvelopeCrypto
 from app.core.crypto_state import set_crypto, set_active_label, set_write_label
 from app.orm_models import Transaction, EncryptionKey
-from app.scripts.dek_rotation import begin_new_dek, rotation_status, run_rotation, finalize_rotation
+from app.scripts.dek_rotation import (
+    begin_new_dek,
+    rotation_status,
+    run_rotation,
+    finalize_rotation,
+)
 
 
 def _ensure_key(db, label: str) -> None:
@@ -29,7 +33,9 @@ def _ensure_key(db, label: str) -> None:
 @pytest.mark.rotation
 def test_dek_rotation_finalize_smoke(db_session):
     # Stable KEK (ensure both env names point to same value)
-    if not os.getenv("ENCRYPTION_MASTER_KEY_BASE64") and not os.getenv("MASTER_KEK_B64"):
+    if not os.getenv("ENCRYPTION_MASTER_KEY_BASE64") and not os.getenv(
+        "MASTER_KEK_B64"
+    ):
         kek = base64.b64encode(os.urandom(32)).decode()
         os.environ.setdefault("ENCRYPTION_MASTER_KEY_BASE64", kek)
         os.environ.setdefault("MASTER_KEK_B64", kek)
@@ -43,7 +49,9 @@ def test_dek_rotation_finalize_smoke(db_session):
     set_write_label("active")
     N = 3
     for i in range(N):
-        t = Transaction(merchant_canonical=f"m{i}", amount=1 + i, date=date(2024, 1, 1+i))
+        t = Transaction(
+            merchant_canonical=f"m{i}", amount=1 + i, date=date(2024, 1, 1 + i)
+        )
         t.description_text = f"d{i}"
         db_session.add(t)
     db_session.commit()

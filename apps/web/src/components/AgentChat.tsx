@@ -97,7 +97,7 @@ export default function AgentChat() {
     setMessages(next);
     setInput("");
     setLoading(true);
-    
+
     try {
       const req: AgentChatRequest = {
         messages: next.filter(m => m.role !== "system").map(m => ({
@@ -110,7 +110,7 @@ export default function AgentChat() {
       if (selectedModel) {
         (req as any).model = selectedModel;
       }
-      
+
       const resp: AgentChatResponse = await agentChat(req);
       if ((resp as any).mode === "nl_txns") {
         const lastUser = next.slice().reverse().find(m => m.role === 'user');

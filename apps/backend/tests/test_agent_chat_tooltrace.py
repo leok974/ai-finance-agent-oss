@@ -6,9 +6,27 @@ from sqlalchemy import text as sql_text
 
 def seed_minimal_data(db: Session):
     rows = [
-        {"date": dt.date(2025, 6, 5),  "amount": 3000.0, "merchant": "ACME", "category": "Income", "month": "2025-06"},
-        {"date": dt.date(2025, 7, 5),  "amount": 3100.0, "merchant": "ACME", "category": "Income", "month": "2025-07"},
-        {"date": dt.date(2025, 8, 5),  "amount": 3200.0, "merchant": "ACME", "category": "Income", "month": "2025-08"},
+        {
+            "date": dt.date(2025, 6, 5),
+            "amount": 3000.0,
+            "merchant": "ACME",
+            "category": "Income",
+            "month": "2025-06",
+        },
+        {
+            "date": dt.date(2025, 7, 5),
+            "amount": 3100.0,
+            "merchant": "ACME",
+            "category": "Income",
+            "month": "2025-07",
+        },
+        {
+            "date": dt.date(2025, 8, 5),
+            "amount": 3200.0,
+            "merchant": "ACME",
+            "category": "Income",
+            "month": "2025-08",
+        },
     ]
     for r in rows:
         db.execute(

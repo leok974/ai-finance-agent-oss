@@ -1,7 +1,10 @@
 from typing import List, Dict, Any
 from fastapi.testclient import TestClient
 import pytest
-pytestmark = pytest.mark.skip(reason="Legacy /ml/* endpoints removed; use /agent/tools/*")
+
+pytestmark = pytest.mark.skip(
+    reason="Legacy /ml/* endpoints removed; use /agent/tools/*"
+)
 
 from app.main import app  # noqa
 
@@ -11,6 +14,7 @@ def _set_txns(items: List[Dict[str, Any]]):
 
 
 # ---------- /budget/check ----------
+
 
 def test_budget_check_empty_returns_400_or_empty_payload():
     original_txns = getattr(app.state, "txns", [])
@@ -40,9 +44,30 @@ def test_budget_check_with_data_returns_items():
     original_txns = getattr(app.state, "txns", [])
     # Provide a tiny dataset with expenses in categories likely covered by your default rules
     sample = [
-        {"id": 1, "date": "2025-08-02", "amount": -50.00, "merchant": "Grocer", "description": "Food", "category": "Groceries"},
-        {"id": 2, "date": "2025-08-05", "amount": -25.00, "merchant": "Uber", "description": "Ride", "category": "Transport"},
-        {"id": 3, "date": "2025-08-06", "amount": 120.00, "merchant": "Payroll", "description": "Paycheck", "category": "Income"},
+        {
+            "id": 1,
+            "date": "2025-08-02",
+            "amount": -50.00,
+            "merchant": "Grocer",
+            "description": "Food",
+            "category": "Groceries",
+        },
+        {
+            "id": 2,
+            "date": "2025-08-05",
+            "amount": -25.00,
+            "merchant": "Uber",
+            "description": "Ride",
+            "category": "Transport",
+        },
+        {
+            "id": 3,
+            "date": "2025-08-06",
+            "amount": 120.00,
+            "merchant": "Payroll",
+            "description": "Paycheck",
+            "category": "Income",
+        },
     ]
     _set_txns(sample)
     try:
@@ -62,6 +87,7 @@ def test_budget_check_with_data_returns_items():
 
 
 # ---------- /txns/unknowns ----------
+
 
 def test_unknowns_empty_returns_400_or_empty_object():
     original_txns = getattr(app.state, "txns", [])
@@ -88,9 +114,30 @@ def test_unknowns_empty_returns_400_or_empty_object():
 def test_unknowns_with_data_returns_uncategorized_list_and_month():
     original_txns = getattr(app.state, "txns", [])
     sample = [
-        {"id": 1, "date": "2025-08-03", "amount": -12.40, "merchant": "Chipotle", "description": "Burrito", "category": "Unknown"},
-        {"id": 2, "date": "2025-08-05", "amount": -30.00, "merchant": "Grocer", "description": "Food", "category": "Groceries"},
-        {"id": 3, "date": "2025-07-31", "amount": -7.99, "merchant": "Coffee", "description": "Latte", "category": "Unknown"},
+        {
+            "id": 1,
+            "date": "2025-08-03",
+            "amount": -12.40,
+            "merchant": "Chipotle",
+            "description": "Burrito",
+            "category": "Unknown",
+        },
+        {
+            "id": 2,
+            "date": "2025-08-05",
+            "amount": -30.00,
+            "merchant": "Grocer",
+            "description": "Food",
+            "category": "Groceries",
+        },
+        {
+            "id": 3,
+            "date": "2025-07-31",
+            "amount": -7.99,
+            "merchant": "Coffee",
+            "description": "Latte",
+            "category": "Unknown",
+        },
     ]
     _set_txns(sample)
     try:
@@ -110,6 +157,7 @@ def test_unknowns_with_data_returns_uncategorized_list_and_month():
 
 
 # ---------- /ml/suggest ----------
+
 
 def test_ml_suggest_empty_returns_400_or_empty_object():
     original_txns = getattr(app.state, "txns", [])
@@ -134,9 +182,30 @@ def test_ml_suggest_empty_returns_400_or_empty_object():
 def test_ml_suggest_with_data_returns_suggestions_and_month():
     original_txns = getattr(app.state, "txns", [])
     sample = [
-        {"id": 1, "date": "2025-08-03", "amount": -12.40, "merchant": "Chipotle", "description": "Burrito", "category": "Unknown"},
-        {"id": 2, "date": "2025-08-05", "amount": -30.00, "merchant": "Grocer", "description": "Food", "category": "Groceries"},
-        {"id": 3, "date": "2025-08-06", "amount": 120.00, "merchant": "Payroll", "description": "Paycheck", "category": "Income"},
+        {
+            "id": 1,
+            "date": "2025-08-03",
+            "amount": -12.40,
+            "merchant": "Chipotle",
+            "description": "Burrito",
+            "category": "Unknown",
+        },
+        {
+            "id": 2,
+            "date": "2025-08-05",
+            "amount": -30.00,
+            "merchant": "Grocer",
+            "description": "Food",
+            "category": "Groceries",
+        },
+        {
+            "id": 3,
+            "date": "2025-08-06",
+            "amount": 120.00,
+            "merchant": "Payroll",
+            "description": "Paycheck",
+            "category": "Income",
+        },
     ]
     _set_txns(sample)
     try:

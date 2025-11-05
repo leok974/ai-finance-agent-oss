@@ -1701,7 +1701,7 @@ export type SuggestRequest = {
 };
 
 export async function getMLSuggestions(body: SuggestRequest): Promise<{ items: SuggestItem[] }> {
-  const r = await fetchJSON('agent/tools/suggestions', {
+  const r = await fetchJSON('ml/suggestions', {
     method: 'POST',
     body: JSON.stringify(body),
   });
@@ -1713,7 +1713,7 @@ export async function sendSuggestionFeedback(
   action: "accept" | "reject" | "undo",
   reason?: string
 ): Promise<{ ok: boolean }> {
-  const r = await fetchJSON('agent/tools/suggestions/feedback', {
+  const r = await fetchJSON('ml/suggestions/feedback', {
     method: 'POST',
     body: JSON.stringify({ event_id, action, reason }),
   });

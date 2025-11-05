@@ -20,19 +20,24 @@ from app.transactions import Transaction
 
 router = APIRouter()
 
+
 @router.get("/report")
 def report(month: str) -> Dict:
     from ..main import app
+
     cat_totals = defaultdict(float)
     for t in app.state.txns:
         if t["date"].startswith(month):
             cat_totals[t.get("category") or "Unknown"] += float(t["amount"])
     total = sum(cat_totals.values())
-    rows = [{"category": c, "amount": round(v,2)} for c,v in sorted(cat_totals.items(), key=lambda x:-x[1])]
-    return {"month": month, "total": round(total,2), "by_category": rows}
+    rows = [
+        {"category": c, "amount": round(v, 2)}
+        for c, v in sorted(cat_totals.items(), key=lambda x: -x[1])
+    ]
+    return {"month": month, "total": round(total, 2), "by_category": rows}
 
 
-@router.get("/report/excel", dependencies=[Depends(require_roles("admin","analyst"))])
+@router.get("/report/excel", dependencies=[Depends(require_roles("admin", "analyst"))])
 def report_excel(
     month: str | None = Query(None, pattern=r"^\d{4}-\d{2}$"),
     start: str | None = Query(None, description="YYYY-MM-DD"),
@@ -63,26 +68,38 @@ def report_excel(
     if include_transactions:
         try:
             import pandas as pd  # local import to avoid test/env issues if pandas optional
-            rows = db.query(
-                Transaction.date,
-                Transaction.merchant,
-                Transaction.description,
-                Transaction.category,
-                Transaction.amount,
-            ).filter(
-                Transaction.date >= start_d,
-                Transaction.date <= end_d,
-            ).order_by(Transaction.date.asc()).all()
-            txns_df = pd.DataFrame([
-                {
-                    "date": r[0].isoformat() if getattr(r[0], "isoformat", None) else str(r[0]),
-                    "merchant": r[1],
-                    "description": r[2],
-                    "category": r[3],
-                    "amount": float(r[4] or 0.0),
-                }
-                for r in rows
-            ])
+
+            rows = (
+                db.query(
+                    Transaction.date,
+                    Transaction.merchant,
+                    Transaction.description,
+                    Transaction.category,
+                    Transaction.amount,
+                )
+                .filter(
+                    Transaction.date >= start_d,
+                    Transaction.date <= end_d,
+                )
+                .order_by(Transaction.date.asc())
+                .all()
+            )
+            txns_df = pd.DataFrame(
+                [
+                    {
+                        "date": (
+                            r[0].isoformat()
+                            if getattr(r[0], "isoformat", None)
+                            else str(r[0])
+                        ),
+                        "merchant": r[1],
+                        "description": r[2],
+                        "category": r[3],
+                        "amount": float(r[4] or 0.0),
+                    }
+                    for r in rows
+                ]
+            )
         except Exception:
             txns_df = None
 
@@ -108,7 +125,7 @@ def report_excel(
     )
 
 
-@router.get("/report/pdf", dependencies=[Depends(require_roles("admin","analyst"))])
+@router.get("/report/pdf", dependencies=[Depends(require_roles("admin", "analyst"))])
 def report_pdf(
     month: str | None = Query(None, pattern=r"^\d{4}-\d{2}$"),
     start: str | None = Query(None, description="YYYY-MM-DD"),

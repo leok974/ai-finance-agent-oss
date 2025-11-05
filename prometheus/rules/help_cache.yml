@@ -1,0 +1,15 @@
+groups:
+  - name: help-cache
+    rules:
+      - alert: HelpCacheLowHitRatio
+        expr: |
+          sum(rate(lm_help_requests_total{cache="hit"}[10m])) /
+          clamp_min(sum(rate(lm_help_requests_total{cache!~""}[10m])), 1)
+          < 0.2
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Help cache hit-ratio < 20%"
+          description: "Investigate Redis or cache keys. Current 10m hit-ratio: {{ $value | printf \"%.2f\" }}"
+

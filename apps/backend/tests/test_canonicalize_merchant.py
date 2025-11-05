@@ -1,5 +1,6 @@
 from app.utils.text import canonicalize_merchant
 
+
 def test_basic_canonicalization():
     assert canonicalize_merchant("  Starbucks Store #123 ") == "starbucks store 123"
 

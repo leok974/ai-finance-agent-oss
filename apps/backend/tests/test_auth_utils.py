@@ -1,18 +1,25 @@
 import os
 import time
 import pytest
-from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi import FastAPI, Depends, status
 from fastapi.testclient import TestClient
 
 from app.utils import auth as auth_utils
-from app.db import get_db
 from app.orm_models import User
 
 # NOTE: We rely on real hashing but use in-memory DB via existing session fixture (if provided by conftest)
 
 # Helper to forge a token with custom exp and/or secret
 
-def make_token(sub: str = "user@test", roles=None, exp_offset_seconds: int = 60, secret: str = None, issuer=None, audience=None):
+
+def make_token(
+    sub: str = "user@test",
+    roles=None,
+    exp_offset_seconds: int = 60,
+    secret: str = None,
+    issuer=None,
+    audience=None,
+):
     roles = roles or ["user"]
     now = int(time.time())
     payload = {
@@ -24,7 +31,9 @@ def make_token(sub: str = "user@test", roles=None, exp_offset_seconds: int = 60,
         "iss": issuer or os.getenv("AUTH_ISSUER", "finance-agent"),
         "aud": audience or os.getenv("AUTH_AUDIENCE", "finance-agent-app"),
     }
-    secret = secret or os.getenv("AUTH_SECRET", getattr(auth_utils.settings, "AUTH_SECRET", "dev-secret"))
+    secret = secret or os.getenv(
+        "AUTH_SECRET", getattr(auth_utils.settings, "AUTH_SECRET", "dev-secret")
+    )
     return auth_utils._sign_jwt(payload, secret)
 
 
@@ -60,7 +69,9 @@ def test_decode_token_bad_audience(monkeypatch):
     assert "audience" in str(exc.value).lower()
 
 
-def test_get_current_user_missing_csrf_header(monkeypatch, db_session):  # db_session assumed from existing test infra
+def test_get_current_user_missing_csrf_header(
+    monkeypatch, db_session
+):  # db_session assumed from existing test infra
     app = FastAPI()
 
     # Create a real user in DB

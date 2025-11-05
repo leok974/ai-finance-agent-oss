@@ -7,7 +7,16 @@ import app.services.rule_suggestions as rs
 
 def _txn(db, merchant="Cafe X", amount=-5.00, days_ago=0, category=None):
     d = (datetime.now(timezone.utc) - timedelta(days=days_ago)).date()
-    t = Transaction(date=d, merchant=merchant, description="coffee", amount=amount, category=category, raw_category=None, account=None, month=d.strftime("%Y-%m"))
+    t = Transaction(
+        date=d,
+        merchant=merchant,
+        description="coffee",
+        amount=amount,
+        category=category,
+        raw_category=None,
+        account=None,
+        month=d.strftime("%Y-%m"),
+    )
     db.add(t)
     db.flush()
     return t

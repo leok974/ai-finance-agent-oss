@@ -4,12 +4,14 @@ from app.utils.time import utc_now
 
 # Backwards-compatible, expanded helpers for consistent structured replies & empty states.
 
+
 def make_chip(label: str, action: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """UI chip with optional structured action."""
     chip = {"label": label}
     if action:
         chip["action"] = action
     return chip
+
 
 def reply(
     text: str,
@@ -39,7 +41,10 @@ def reply(
         payload["meta"] = m
     return payload
 
-def no_data_msg(period_label: str, *, tool: str, tips: Optional[List[str]] = None) -> Dict[str, Any]:
+
+def no_data_msg(
+    period_label: str, *, tool: str, tips: Optional[List[str]] = None
+) -> Dict[str, Any]:
     """Legacy-style no-data message retained for existing callers."""
     tips = tips or [
         "Switch to Insights: Expanded (last 60 days)",
@@ -48,8 +53,9 @@ def no_data_msg(period_label: str, *, tool: str, tips: Optional[List[str]] = Non
     ]
     suggestions = [make_chip(t) for t in tips]
     text = (
-        f"I didn't find enough data to run **{tool}** for {period_label}."\
-        + "\nTry one of these:\n- " + "\n- ".join(tips)
+        f"I didn't find enough data to run **{tool}** for {period_label}."
+        + "\nTry one of these:\n- "
+        + "\n- ".join(tips)
     )
     return reply(
         text,
@@ -57,6 +63,7 @@ def no_data_msg(period_label: str, *, tool: str, tips: Optional[List[str]] = Non
         suggestions=suggestions,
         meta={"reason": "no_data", "tool": tool},
     )
+
 
 def no_data_kpis(month_str: str) -> Dict[str, Any]:
     text = (
@@ -67,8 +74,18 @@ def no_data_kpis(month_str: str) -> Dict[str, Any]:
         "- Connect another account"
     )
     suggestions = [
-        make_chip("Insights: Expanded (60d)", {"type": "tool", "mode": "insights.expanded", "args": {"lookback_days": 60}}),
-        make_chip("Last 3 months", {"type": "tool", "mode": "analytics.kpis", "args": {"lookback_months": 3}}),
+        make_chip(
+            "Insights: Expanded (60d)",
+            {
+                "type": "tool",
+                "mode": "insights.expanded",
+                "args": {"lookback_days": 60},
+            },
+        ),
+        make_chip(
+            "Last 3 months",
+            {"type": "tool", "mode": "analytics.kpis", "args": {"lookback_months": 3}},
+        ),
         make_chip("Change month", {"type": "ui", "action": "open-month-picker"}),
     ]
     return reply(
@@ -98,6 +115,7 @@ def no_data_kpis_optional(month: Optional[str] = None) -> Dict[str, Any]:
         meta={"reason": "not_enough_data"},
     )
 
+
 def no_data_anomalies(month_str: str) -> Dict[str, Any]:
     text = (
         f"No anomalies detected for **{month_str}**.\n"
@@ -107,9 +125,18 @@ def no_data_anomalies(month_str: str) -> Dict[str, Any]:
         "- Lower the minimum amount (e.g., **$25**)"
     )
     suggestions = [
-        make_chip("Lower threshold (0.3)", {"type": "tool", "mode": "insights.anomalies", "args": {"threshold": 0.3}}),
-        make_chip("Last 60 days", {"type": "tool", "mode": "insights.anomalies", "args": {"months": 2}}),
-        make_chip("Min ≥ $25", {"type": "tool", "mode": "insights.anomalies", "args": {"min": 25}}),
+        make_chip(
+            "Lower threshold (0.3)",
+            {"type": "tool", "mode": "insights.anomalies", "args": {"threshold": 0.3}},
+        ),
+        make_chip(
+            "Last 60 days",
+            {"type": "tool", "mode": "insights.anomalies", "args": {"months": 2}},
+        ),
+        make_chip(
+            "Min ≥ $25",
+            {"type": "tool", "mode": "insights.anomalies", "args": {"min": 25}},
+        ),
     ]
     return reply(
         text,
@@ -117,6 +144,7 @@ def no_data_anomalies(month_str: str) -> Dict[str, Any]:
         suggestions=suggestions,
         meta={"reason": "no_anomalies"},
     )
+
 
 __all__ = [
     "make_chip",

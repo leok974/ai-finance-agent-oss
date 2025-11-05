@@ -20,7 +20,9 @@ def _legacy_route_to_tool_by_path() -> Optional[Callable]:
     if not legacy.exists():
         return None
     try:
-        spec = spec_from_file_location("app.services._agent_tools_legacy_fallback", legacy)
+        spec = spec_from_file_location(
+            "app.services._agent_tools_legacy_fallback", legacy
+        )
         if not spec or not spec.loader:
             return None
         m = module_from_spec(spec)
@@ -30,7 +32,9 @@ def _legacy_route_to_tool_by_path() -> Optional[Callable]:
         return None
 
 
-def route_to_tool_with_fallback(user_text: str, *, ctx: Any, db=None) -> Optional[Dict[str, Any]]:
+def route_to_tool_with_fallback(
+    user_text: str, *, ctx: Any, db=None
+) -> Optional[Dict[str, Any]]:
     """Attempt normal route_to_tool; on None, try reload; then legacy path.
     Accepts db optionally for forward compatibility; passes through when signature matches.
     """

@@ -8,7 +8,9 @@ import pytest
 def _make_csv(rows):
     buf = io.StringIO()
     w = csv.writer(buf)
-    w.writerow(["date", "merchant", "description", "amount"])  # adjust if ingest schema changes
+    w.writerow(
+        ["date", "merchant", "description", "amount"]
+    )  # adjust if ingest schema changes
     w.writerows(rows)
     return buf.getvalue().encode()
 
@@ -20,10 +22,14 @@ def test_unknown_to_categorized_removes_from_unknowns(client):
     categorize it, then verify it no longer appears.
     """
     d = date(2025, 8, 12).isoformat()
-    csv_bytes = _make_csv([
-        [d, "Test Coffee", "Latte", "-4.50"],
-    ])
-    r = client.post("/ingest?replace=true", files={"file": ("one.csv", csv_bytes, "text/csv")})
+    csv_bytes = _make_csv(
+        [
+            [d, "Test Coffee", "Latte", "-4.50"],
+        ]
+    )
+    r = client.post(
+        "/ingest?replace=true", files={"file": ("one.csv", csv_bytes, "text/csv")}
+    )
     assert r.status_code == 200, r.text
     body = r.json()
     assert body.get("ok") is True
@@ -36,7 +42,15 @@ def test_unknown_to_categorized_removes_from_unknowns(client):
     assert r.status_code == 200, r.text
     unknowns = r.json().get("unknowns") or []
     assert len(unknowns) >= 1
-    target = next((u for u in unknowns if u.get("merchant") == "Test Coffee" and "Latte" in (u.get("description") or "")), None)
+    target = next(
+        (
+            u
+            for u in unknowns
+            if u.get("merchant") == "Test Coffee"
+            and "Latte" in (u.get("description") or "")
+        ),
+        None,
+    )
     assert target and target.get("id"), f"Unknown not found in list: {unknowns}"
     txn_id = target["id"]
 
@@ -46,4 +60,6 @@ def test_unknown_to_categorized_removes_from_unknowns(client):
     r = client.get(f"/txns/unknowns?month={month}")
     assert r.status_code == 200, r.text
     unknowns_after = r.json().get("unknowns") or []
-    assert all(u.get("id") != txn_id for u in unknowns_after), f"Txn {txn_id} still present in unknowns"
+    assert all(
+        u.get("id") != txn_id for u in unknowns_after
+    ), f"Txn {txn_id} still present in unknowns"

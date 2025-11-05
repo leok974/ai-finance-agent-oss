@@ -13,12 +13,15 @@ from app.orm_models import Transaction  # assumes existing ORM model
 
 # ---- helpers -----------------------------------------------------
 
+
 def _month_bounds(year: int, month: int) -> Tuple[date, date]:
     last_day = monthrange(year, month)[1]
     return date(year, month, 1), date(year, month, last_day)
 
+
 def _this_month_bounds(today: date) -> Tuple[date, date]:
     return _month_bounds(today.year, today.month)
+
 
 def _last_month_bounds(today: date) -> Tuple[date, date]:
     y, m = today.year, today.month - 1
@@ -27,9 +30,11 @@ def _last_month_bounds(today: date) -> Tuple[date, date]:
         m = 12
     return _month_bounds(y, m)
 
+
 # ---- parsing -----------------------------------------------------
 
 _CURRENCY = r"(?:\$?\s?([\d{1,3}(?:,\d{3})*]+(?:\.\d{1,2})?))"
+
 
 @dataclass
 class NLQuery:
@@ -42,7 +47,9 @@ class NLQuery:
     intent: str  # "list" | "sum" | "count" | "top_merchants" | "top_categories"
     limit: int
 
+
 DEFAULT_LIMIT = 50
+
 
 def parse_nl_query(q: str, today: Optional[date] = None) -> NLQuery:
     """
@@ -130,7 +137,9 @@ def parse_nl_query(q: str, today: Optional[date] = None) -> NLQuery:
             pass
 
     # between YYYY-MM-DD and YYYY-MM-DD
-    m = re.search(r"between\s+(\d{4}-\d{2}-\d{2})\s+(?:and|to)\s+(\d{4}-\d{2}-\d{2})", q_low)
+    m = re.search(
+        r"between\s+(\d{4}-\d{2}-\d{2})\s+(?:and|to)\s+(\d{4}-\d{2}-\d{2})", q_low
+    )
     if m:
         start = datetime.strptime(m.group(1), "%Y-%m-%d").date()
         end = datetime.strptime(m.group(2), "%Y-%m-%d").date()
@@ -146,10 +155,21 @@ def parse_nl_query(q: str, today: Optional[date] = None) -> NLQuery:
 
     # --- merchants (naive, then heuristically cleaned): capture words after key prepositions or quoted tokens
     merchants: List[str] = []
-    merchants += re.findall(r'"([^"]+)"', q)  # quoted multi-word merchants (preserve case)
+    merchants += re.findall(
+        r'"([^"]+)"', q
+    )  # quoted multi-word merchants (preserve case)
 
     # Heuristic control lists
-    VERB_LEADS = {"give", "show", "list", "summarize", "tell", "display", "provide", "get"}
+    VERB_LEADS = {
+        "give",
+        "show",
+        "list",
+        "summarize",
+        "tell",
+        "display",
+        "provide",
+        "get",
+    }
     SHORT_KEEP = {"ups", "ibm", "h&m", "ubs"}  # short brand/merchant codes we allow
 
     def _is_noise(tok: str) -> bool:
@@ -189,7 +209,8 @@ def parse_nl_query(q: str, today: Optional[date] = None) -> NLQuery:
     # Remove tokens that are actually time/window keywords mistakenly captured
     if merchants:
         merchants = [
-            t for t in merchants
+            t
+            for t in merchants
             if not re.match(r"^(between|in|last|this)\b", t.strip().lower())
         ]
 
@@ -208,7 +229,7 @@ def parse_nl_query(q: str, today: Optional[date] = None) -> NLQuery:
     if not merchants:
         # fallback: single capitalized token(s); exclude verbs/noise
         solo = re.findall(r"\b([A-Z][A-Za-z0-9&\-]{2,})\b", q)
-        months = {datetime(2000, m, 1).strftime("%B") for m in range(1,13)}
+        months = {datetime(2000, m, 1).strftime("%B") for m in range(1, 13)}
         candidates = [s for s in solo if s not in months]
         merchants = [s for s in candidates if not _is_noise(s)]
 
@@ -227,12 +248,17 @@ def parse_nl_query(q: str, today: Optional[date] = None) -> NLQuery:
     return NLQuery(
         merchants=merchants[:5],
         categories=categories[:5],
-        start=start, end=end,
-        min_amount=min_amount, max_amount=max_amount,
-        intent=intent, limit=limit
+        start=start,
+        end=end,
+        min_amount=min_amount,
+        max_amount=max_amount,
+        intent=intent,
+        limit=limit,
     )
 
+
 # ---- executor ----------------------------------------------------
+
 
 def run_txn_query(db: Session, nlq: NLQuery) -> Dict[str, Any]:
     """
@@ -274,21 +300,33 @@ def run_txn_query(db: Session, nlq: NLQuery) -> Dict[str, Any]:
         if q_filters:
             q = q.filter(*q_filters)
         total = q.scalar() or 0.0
-        return {"intent": "sum", "filters": _filters_dump(nlq), "result": {"total_abs": float(total)}}
+        return {
+            "intent": "sum",
+            "filters": _filters_dump(nlq),
+            "result": {"total_abs": float(total)},
+        }
 
     if nlq.intent == "count":
         q = db.query(Transaction)
         if q_filters:
             q = q.filter(*q_filters)
         cnt = q.count()
-        return {"intent": "count", "filters": _filters_dump(nlq), "result": {"count": cnt}}
+        return {
+            "intent": "count",
+            "filters": _filters_dump(nlq),
+            "result": {"count": cnt},
+        }
 
     if nlq.intent == "average":
         q = db.query(func.avg(func.abs(Transaction.amount)))
         if q_filters:
             q = q.filter(*q_filters)
         avg_ = q.scalar() or 0.0
-        return {"intent": "average", "filters": _filters_dump(nlq), "result": {"average_abs": float(avg_)}}
+        return {
+            "intent": "average",
+            "filters": _filters_dump(nlq),
+            "result": {"average_abs": float(avg_)},
+        }
 
     # small helper to build series aggregations by a group expression
     def _series(group_expr, label_name: str):
@@ -297,14 +335,28 @@ def run_txn_query(db: Session, nlq: NLQuery) -> Dict[str, Any]:
         if q_filters:
             q2 = q2.filter(*q_filters)
         rows = q2.group_by(group_expr).order_by(group_expr.asc()).all()
-        return [{"bucket": getattr(r, label_name), "spend": float(getattr(r, "spend", 0) or 0)} for r in rows]
+        return [
+            {
+                "bucket": getattr(r, label_name),
+                "spend": float(getattr(r, "spend", 0) or 0),
+            }
+            for r in rows
+        ]
 
     if nlq.intent == "by_day":
         # Use SQLite strftime when available, else date() for portability
         dialect = getattr(getattr(db, "bind", None), "dialect", None)
         is_sqlite = bool(dialect and getattr(dialect, "name", "") == "sqlite")
-        group = func.strftime("%Y-%m-%d", Transaction.date) if is_sqlite else func.date(Transaction.date)
-        return {"intent": "by_day", "filters": _filters_dump(nlq), "result": _series(group, "day")}
+        group = (
+            func.strftime("%Y-%m-%d", Transaction.date)
+            if is_sqlite
+            else func.date(Transaction.date)
+        )
+        return {
+            "intent": "by_day",
+            "filters": _filters_dump(nlq),
+            "result": _series(group, "day"),
+        }
 
     if nlq.intent == "by_week":
         dialect = getattr(getattr(db, "bind", None), "dialect", None)
@@ -315,26 +367,39 @@ def run_txn_query(db: Session, nlq: NLQuery) -> Dict[str, Any]:
         else:
             # ISO week in Postgres
             group = func.to_char(Transaction.date, 'IYYY-"W"IW')
-        return {"intent": "by_week", "filters": _filters_dump(nlq), "result": _series(group, "week")}
+        return {
+            "intent": "by_week",
+            "filters": _filters_dump(nlq),
+            "result": _series(group, "week"),
+        }
 
     if nlq.intent == "by_month":
         dialect = getattr(getattr(db, "bind", None), "dialect", None)
         is_sqlite = bool(dialect and getattr(dialect, "name", "") == "sqlite")
-        group = func.strftime("%Y-%m", Transaction.date) if is_sqlite else func.to_char(Transaction.date, "YYYY-MM")
-        return {"intent": "by_month", "filters": _filters_dump(nlq), "result": _series(group, "month")}
+        group = (
+            func.strftime("%Y-%m", Transaction.date)
+            if is_sqlite
+            else func.to_char(Transaction.date, "YYYY-MM")
+        )
+        return {
+            "intent": "by_month",
+            "filters": _filters_dump(nlq),
+            "result": _series(group, "month"),
+        }
 
     if nlq.intent == "top_merchants":
-        merchant_col = func.coalesce(Transaction.merchant_canonical, Transaction.merchant).label("merchant")
+        merchant_col = func.coalesce(
+            Transaction.merchant_canonical, Transaction.merchant
+        ).label("merchant")
         spend_col = func.sum(func.abs(Transaction.amount)).label("spend")
 
         q = db.query(merchant_col, spend_col)
         if q_filters:
             q = q.filter(*q_filters)
 
-        rows = (q.group_by(merchant_col)
-                 .order_by(spend_col.desc())
-                 .limit(nlq.limit)
-                 .all())
+        rows = (
+            q.group_by(merchant_col).order_by(spend_col.desc()).limit(nlq.limit).all()
+        )
 
         # Filter out None merchants defensively and coerce to strings
         result = [
@@ -342,7 +407,11 @@ def run_txn_query(db: Session, nlq: NLQuery) -> Dict[str, Any]:
             for r in rows
             if r.merchant is not None
         ]
-        return {"intent": "top_merchants", "filters": _filters_dump(nlq), "result": result}
+        return {
+            "intent": "top_merchants",
+            "filters": _filters_dump(nlq),
+            "result": result,
+        }
 
     if nlq.intent == "top_categories":
         cat_col = Transaction.category.label("category")
@@ -352,17 +421,21 @@ def run_txn_query(db: Session, nlq: NLQuery) -> Dict[str, Any]:
         if q_filters:
             q = q.filter(*q_filters)
 
-        rows = (q.group_by(cat_col)
-                 .order_by(spend_col.desc())
-                 .limit(nlq.limit)
-                 .all())
+        rows = q.group_by(cat_col).order_by(spend_col.desc()).limit(nlq.limit).all()
 
         result = [
-            {"category": (r.category or "(Uncategorized)"), "spend": float(r.spend or 0)}
+            {
+                "category": (r.category or "(Uncategorized)"),
+                "spend": float(r.spend or 0),
+            }
             for r in rows
             if r.category is not None
         ]
-        return {"intent": "top_categories", "filters": _filters_dump(nlq), "result": result}
+        return {
+            "intent": "top_categories",
+            "filters": _filters_dump(nlq),
+            "result": result,
+        }
 
     # default: list
     q = db.query(Transaction)
@@ -370,14 +443,23 @@ def run_txn_query(db: Session, nlq: NLQuery) -> Dict[str, Any]:
         q = q.filter(*q_filters)
     # pagination
     page = getattr(nlq, "page", 1) if hasattr(nlq, "page") else 1
-    page_size = getattr(nlq, "page_size", nlq.limit) if hasattr(nlq, "page_size") else nlq.limit
-    items = (q.order_by(Transaction.date.desc())
-               .offset((page - 1) * page_size)
-               .limit(page_size)
-               .all())
+    page_size = (
+        getattr(nlq, "page_size", nlq.limit) if hasattr(nlq, "page_size") else nlq.limit
+    )
+    items = (
+        q.order_by(Transaction.date.desc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+        .all()
+    )
     filters_dump = _filters_dump(nlq)
     filters_dump.update({"page": page, "page_size": page_size})
-    return {"intent": "list", "filters": filters_dump, "result": [_txn_dump(t) for t in items]}
+    return {
+        "intent": "list",
+        "filters": filters_dump,
+        "result": [_txn_dump(t) for t in items],
+    }
+
 
 def _txn_dump(t: Transaction) -> Dict[str, Any]:
     return {
@@ -389,6 +471,7 @@ def _txn_dump(t: Transaction) -> Dict[str, Any]:
         "description": t.description,
         "merchant_canonical": getattr(t, "merchant_canonical", None),
     }
+
 
 def _filters_dump(nlq: NLQuery) -> Dict[str, Any]:
     return {

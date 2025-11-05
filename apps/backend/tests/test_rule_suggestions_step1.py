@@ -10,7 +10,13 @@ from app.services.rule_suggestions import (
 )
 
 
-def _mk_txn(db, merchant: str, amount: float = -5.0, dt: datetime | None = None, category: str | None = None):
+def _mk_txn(
+    db,
+    merchant: str,
+    amount: float = -5.0,
+    dt: datetime | None = None,
+    category: str | None = None,
+):
     now = dt or datetime.now(timezone.utc)
     t = Transaction(
         date=now.date(),

@@ -13,6 +13,7 @@ class RequestIdMiddleware(BaseHTTPMiddleware):
       2. Generated UUID4
     Sets contextvar for downstream logging and injects header in response.
     """
+
     async def dispatch(self, request: Request, call_next):  # type: ignore[override]
         rid = request.headers.get("X-Request-ID") or str(uuid.uuid4())
         token = rid_ctx.set(rid)

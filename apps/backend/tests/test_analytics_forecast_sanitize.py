@@ -1,10 +1,8 @@
-import math
-import pytest
-
 from app.services.analytics_forecast import _sanitize_sequence, _jitter_if_constant
 
+
 def test_sanitize_sequence_replaces_nan_and_inf():
-    seq = [1.0, float('nan'), float('inf'), None, 2.5]
+    seq = [1.0, float("nan"), float("inf"), None, 2.5]
     cleaned = _sanitize_sequence(seq, last_obs=1.0)
     # After first element, every invalid value should be replaced by previous valid
     # Expected progression: [1.0, 1.0, 1.0, 1.0, 2.5]

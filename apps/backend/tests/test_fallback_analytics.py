@@ -4,6 +4,7 @@ import app.analytics_emit as ae
 
 client = TestClient(app)
 
+
 def test_fallback_emits(monkeypatch):
     called = {}
 
@@ -26,7 +27,10 @@ def test_fallback_emits(monkeypatch):
 
     monkeypatch.setattr(llm, "call_local_llm", fake_call_local_llm)
 
-    resp = client.post("/agent/chat", json={"messages":[{"role":"user","content":"hi"}], "force_llm": True})
+    resp = client.post(
+        "/agent/chat",
+        json={"messages": [{"role": "user", "content": "hi"}], "force_llm": True},
+    )
     assert resp.status_code == 200
     # BackgroundTasks runs within TestClient lifecycle; our fake should be called
     assert called.get("provider") == "openai"

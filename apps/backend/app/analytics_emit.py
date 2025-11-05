@@ -1,4 +1,7 @@
-import time, os, json, logging
+import time
+import os
+import json
+import logging
 from typing import Dict, Any
 
 log = logging.getLogger("analytics")
@@ -6,6 +9,7 @@ log = logging.getLogger("analytics")
 # Flags: enable analytics logging and optional DB sink
 ANALYTICS_ENABLED = os.getenv("ANALYTICS_ENABLED", "1") not in ("0", "false", "False")
 ANALYTICS_DB = os.getenv("ANALYTICS_DB", "0") in ("1", "true", "True")
+
 
 def emit_fallback(props: Dict[str, Any]) -> None:
     """Fire-and-forget analytics event for LLM fallback.
@@ -31,6 +35,7 @@ def emit_fallback(props: Dict[str, Any]) -> None:
     if ANALYTICS_DB:
         try:
             from app.services.analytics_sink import store_event
+
             store_event(record)
         except Exception:
             pass

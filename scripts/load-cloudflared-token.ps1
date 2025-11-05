@@ -49,7 +49,7 @@ if ($dotCount -lt 2) {
   throw "Token appears invalid: dot count $dotCount (expected >=2). Did you copy ONLY the value after --token from the Cloudflare UI?"
 }
 if ($dotCount -gt 4) {
-  Write-Warning "Unusual token dot count: $dotCount (>4). Verify you didn't concatenate multiple lines." 
+  Write-Warning "Unusual token dot count: $dotCount (>4). Verify you didn't concatenate multiple lines."
 }
 
 $prefix = $Token.Substring(0, [Math]::Min(10, $Token.Length))

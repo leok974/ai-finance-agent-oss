@@ -141,5 +141,3 @@ $manifestHeaders = Invoke-CurlHead -Url $manifestUrl
 Assert-ContentType -Url $manifestUrl -Headers $manifestHeaders -ExpectedPrefix 'application/manifest+json'
 
 Write-Host '[static-smoke] All static MIME checks passed' -ForegroundColor Cyan
-
-

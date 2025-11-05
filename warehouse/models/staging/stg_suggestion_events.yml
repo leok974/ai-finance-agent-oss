@@ -1,0 +1,16 @@
+version: 2
+
+models:
+  - name: stg_suggestion_events
+    description: "Staging view of suggestion events with date extraction."
+    columns:
+      - name: event_id
+        tests: [not_null, unique]
+      - name: txn_id
+        tests: [not_null]
+      - name: mode
+        tests:
+          - accepted_values:
+              values: ["heuristic", "model", "auto"]
+      - name: created_date
+        tests: [not_null]

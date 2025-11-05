@@ -5,6 +5,7 @@ from sqlalchemy import and_
 from app.orm_models import RuleSuggestionPersisted as RSP
 from app.services.rule_suggestions import mine_suggestions
 
+
 def to_dict(r: RSP) -> Dict:
     return {
         "id": r.id,
@@ -20,16 +21,24 @@ def to_dict(r: RSP) -> Dict:
         "updated_at": r.updated_at.isoformat() if r.updated_at else None,
     }
 
+
 def list_persisted(db: Session) -> List[Dict]:
     rows = db.query(RSP).order_by(RSP.status.desc(), RSP.updated_at.desc()).all()
     return [to_dict(r) for r in rows]
 
-def upsert_from_mined(db: Session, window_days: int, min_count: int, max_results: int) -> int:
-    mined = mine_suggestions(db, window_days=window_days, min_count=min_count, max_results=max_results)
+
+def upsert_from_mined(
+    db: Session, window_days: int, min_count: int, max_results: int
+) -> int:
+    mined = mine_suggestions(
+        db, window_days=window_days, min_count=min_count, max_results=max_results
+    )
     now = utc_now()
     updated = 0
     for s in mined:
-        obj = db.query(RSP).filter(and_(RSP.merchant == s["merchant"], RSP.category == s["category"]))
+        obj = db.query(RSP).filter(
+            and_(RSP.merchant == s["merchant"], RSP.category == s["category"])
+        )
         row = obj.one_or_none()
         if row:
             row.count = s.get("count")
@@ -54,6 +63,7 @@ def upsert_from_mined(db: Session, window_days: int, min_count: int, max_results
     db.commit()
     return updated
 
+
 def set_status(db: Session, sid: int, status: str) -> Dict:
     row = db.query(RSP).filter(RSP.id == sid).one_or_none()
     if not row:
@@ -63,6 +73,7 @@ def set_status(db: Session, sid: int, status: str) -> Dict:
     db.commit()
     db.refresh(row)
     return to_dict(row)
+
 
 def clear_non_new(db: Session) -> int:
     rows = db.query(RSP).filter(RSP.status != "new").all()

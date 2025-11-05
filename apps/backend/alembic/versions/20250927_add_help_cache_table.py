@@ -4,13 +4,13 @@ Revision ID: 20250927_add_help_cache
 Revises: 20250925_ae_partial_idx_fallback
 Create Date: 2025-09-27
 """
+
 from alembic import op
 import sqlalchemy as sa
-from sqlalchemy import text
 
 # revision identifiers, used by Alembic.
-revision = '20250927_add_help_cache'
-down_revision = '20250925_ae_partial_idx_fallback'
+revision = "20250927_add_help_cache"
+down_revision = "20250925_ae_partial_idx_fallback"
 branch_labels = None
 depends_on = None
 
@@ -21,6 +21,7 @@ def upgrade() -> None:
 
     if is_pg:
         from sqlalchemy.dialects import postgresql as pg
+
         op.create_table(
             "help_cache",
             sa.Column("id", sa.Integer, primary_key=True),
@@ -28,8 +29,18 @@ def upgrade() -> None:
             sa.Column("etag", sa.String(64), nullable=False),
             sa.Column("payload", pg.JSONB, nullable=False),
             sa.Column("expires_at", sa.DateTime(timezone=True), nullable=False),
-            sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
-            sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+            sa.Column(
+                "created_at",
+                sa.DateTime(timezone=True),
+                server_default=sa.text("now()"),
+                nullable=False,
+            ),
+            sa.Column(
+                "updated_at",
+                sa.DateTime(timezone=True),
+                server_default=sa.text("now()"),
+                nullable=False,
+            ),
         )
     else:
         op.create_table(
@@ -48,7 +59,9 @@ def upgrade() -> None:
     op.create_index("ix_help_cache_etag", "help_cache", ["etag"])
     op.create_index("ix_help_cache_expires_at", "help_cache", ["expires_at"])
     # Composite for eviction scans
-    op.create_index("ix_help_cache_expires_key", "help_cache", ["expires_at", "cache_key"])
+    op.create_index(
+        "ix_help_cache_expires_key", "help_cache", ["expires_at", "cache_key"]
+    )
 
 
 def downgrade() -> None:

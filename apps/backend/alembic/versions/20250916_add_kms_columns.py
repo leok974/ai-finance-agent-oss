@@ -22,26 +22,33 @@ def upgrade():
     inspector = sa.inspect(bind)
     cols = set()
     try:
-        cols = {c['name'] for c in inspector.get_columns('encryption_keys')}
+        cols = {c["name"] for c in inspector.get_columns("encryption_keys")}
     except Exception:
         pass
-    if 'wrap_scheme' not in cols:
-        op.add_column("encryption_keys", sa.Column("wrap_scheme", sa.Text(), nullable=True))
-    if 'kms_key_id' not in cols:
-        op.add_column("encryption_keys", sa.Column("kms_key_id", sa.Text(), nullable=True))
+    if "wrap_scheme" not in cols:
+        op.add_column(
+            "encryption_keys", sa.Column("wrap_scheme", sa.Text(), nullable=True)
+        )
+    if "kms_key_id" not in cols:
+        op.add_column(
+            "encryption_keys", sa.Column("kms_key_id", sa.Text(), nullable=True)
+        )
 
     # Best-effort backfill for current active row
     kms_key = os.getenv("GCP_KMS_KEY")
     if kms_key:
         try:
-            bind.execute(text(
-                """
+            bind.execute(
+                text(
+                    """
                 UPDATE encryption_keys
                    SET wrap_scheme = COALESCE(wrap_scheme,'gcp_kms'),
                        kms_key_id  = COALESCE(kms_key_id,:k)
                  WHERE label='active'
                 """
-            ), {"k": kms_key})
+                ),
+                {"k": kms_key},
+            )
         except Exception:
             pass
 

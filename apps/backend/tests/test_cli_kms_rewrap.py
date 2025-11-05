@@ -38,15 +38,15 @@ class _FakeKMS:
 @pytest.mark.crypto
 def test_cli_kek_to_kms_rewrap(monkeypatch, capsys):
     # Set stable KEK for initial active key creation
-    monkeypatch.setenv("ENCRYPTION_MASTER_KEY_BASE64", base64.b64encode(os.urandom(32)).decode())
+    monkeypatch.setenv(
+        "ENCRYPTION_MASTER_KEY_BASE64", base64.b64encode(os.urandom(32)).decode()
+    )
 
     # Stub KMS wrapper used by CLI and rotation helpers
     fake = _FakeKMS()
     monkeypatch.setenv("GCP_KMS_KEY", "projects/p/locations/l/keyRings/r/cryptoKeys/k")
     # Provide a fake google.cloud.kms_v1 before importing wrapper
-    kms_v1_fake = types.SimpleNamespace(
-        KeyManagementServiceClient=lambda: fake
-    )
+    kms_v1_fake = types.SimpleNamespace(KeyManagementServiceClient=lambda: fake)
     google_cloud_fake = types.SimpleNamespace(kms_v1=kms_v1_fake)
     google_fake = types.SimpleNamespace(cloud=google_cloud_fake)
     monkeypatch.setitem(sys.modules, "google", google_fake)
@@ -63,7 +63,9 @@ def test_cli_kek_to_kms_rewrap(monkeypatch, capsys):
     # Parse last row to ensure fields present (some DBs may differ in order)
     last = ast.literal_eval(status_lines[-1])
     assert "wlen" in last and "nlen" in last
-    assert last.get("label") in {"active", "rotating"} or isinstance(last.get("label"), str)
+    assert last.get("label") in {"active", "rotating"} or isinstance(
+        last.get("label"), str
+    )
 
     # Perform KMS rewrap (in-place): unwrap via KEK, wrap via KMS, nonce becomes empty
     out = _run_cli(monkeypatch, capsys, "kek-rewrap-gcp")

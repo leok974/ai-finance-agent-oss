@@ -94,4 +94,3 @@ echo "$resp" | grep -qi 'ping' || fail "Chat echo missing"
 Maintain this document as you add/remove critical health surfaces. Keep the scripts minimal; push complex logic into dedicated test suites instead of smoke scripts.
 
 See also: [DEPLOY_CHECKLIST](DEPLOY_CHECKLIST.md) for structured pre/post deploy flow.
-

@@ -2,11 +2,14 @@ import itertools
 
 PATH = "/agent/tools/rules/save"
 
+
 def _post(client, payload: dict):
     return client.post(PATH, json=payload)
 
+
 def _no_500(r):
     assert r.status_code < 500, f"unexpected 5xx: {r.status_code}\n{r.text}"
+
 
 def test_rules_save_flag_matrix_no_500(client):
     # try 4 combinations to walk both flags’ branches
@@ -14,8 +17,20 @@ def test_rules_save_flag_matrix_no_500(client):
     for i, (dry_run, replace) in enumerate(combos, start=1):
         payload = {
             "rules": [
-                {"id": f"m{i}-1", "name": "Coffee", "pattern": "coffee|espresso", "category": "restaurants", "enabled": True},
-                {"id": f"m{i}-2", "name": "Ride",   "pattern": "uber|lyft",       "category": "transport",   "enabled": True},
+                {
+                    "id": f"m{i}-1",
+                    "name": "Coffee",
+                    "pattern": "coffee|espresso",
+                    "category": "restaurants",
+                    "enabled": True,
+                },
+                {
+                    "id": f"m{i}-2",
+                    "name": "Ride",
+                    "pattern": "uber|lyft",
+                    "category": "transport",
+                    "enabled": True,
+                },
             ],
             "dry_run": dry_run,
             "replace": replace,

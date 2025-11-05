@@ -26,8 +26,20 @@ def _assert_no_500(r):
         (
             {
                 "rules": [
-                    {"id": "dup", "name": "A", "pattern": "coffee", "category": "restaurants", "enabled": True},
-                    {"id": "dup", "name": "B", "pattern": "tea", "category": "restaurants", "enabled": True},
+                    {
+                        "id": "dup",
+                        "name": "A",
+                        "pattern": "coffee",
+                        "category": "restaurants",
+                        "enabled": True,
+                    },
+                    {
+                        "id": "dup",
+                        "name": "B",
+                        "pattern": "tea",
+                        "category": "restaurants",
+                        "enabled": True,
+                    },
                 ]
             },
         ),

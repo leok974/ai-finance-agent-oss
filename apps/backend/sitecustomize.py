@@ -7,12 +7,17 @@ Environment variables:
   HERMETIC_FORCE_STUB=mod1,mod2  -> always use our stub even if real pkg exists
   HERMETIC_DEBUG=1               -> emit debug lines to stderr
 """
+
 from __future__ import annotations
-import sys, os, importlib, importlib.util
+import sys
+import os
+import importlib
+import importlib.util
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 STUBS = ROOT / "app" / "_stubs"
+
 
 def _dbg(msg: str):  # pragma: no cover - debug utility
     if os.getenv("HERMETIC_DEBUG") == "1":
@@ -21,8 +26,11 @@ def _dbg(msg: str):  # pragma: no cover - debug utility
         except Exception:
             pass
 
+
 def _force_stub(modname: str, filename: str | None = None):
-    wanted = {s.strip() for s in os.getenv("HERMETIC_FORCE_STUB", "").split(",") if s.strip()}
+    wanted = {
+        s.strip() for s in os.getenv("HERMETIC_FORCE_STUB", "").split(",") if s.strip()
+    }
     real_present = False
     if modname not in wanted:
         try:
@@ -48,6 +56,7 @@ def _force_stub(modname: str, filename: str | None = None):
         _dbg(f"stubbed {modname} -> {path}")
     except Exception as e:  # pragma: no cover
         _dbg(f"failed executing stub {modname}: {e}")
+
 
 # Always stub annotated_types early (pydantic imports it at module import time)
 _force_stub("annotated_types")
@@ -83,4 +92,3 @@ if hermetic:
         _dbg(f"failed stubbing fastapi.testclient: {e}")
 
 # Additional stubs could be added here if future hermetic gaps arise.
-

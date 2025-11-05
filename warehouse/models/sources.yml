@@ -1,0 +1,137 @@
+version: 2
+
+sources:
+  - name: app
+    description: "Operational DB mirrored to warehouse (or direct connection)."
+    schema: public
+    freshness:
+      warn_after: {count: 2, period: day}
+      error_after: {count: 5, period: day}
+    loaded_at_field: updated_at
+    tables:
+      - name: suggestion_events
+        description: "Suggestion events emitted by API (mode, source, candidates, features hash)."
+        columns:
+          - name: id
+            tests: [not_null]
+          - name: txn_id
+            tests: [not_null]
+          - name: model_id
+          - name: features_hash
+          - name: candidates
+          - name: mode
+            tests:
+              - accepted_values:
+                  values: ["heuristic", "model", "auto"]
+          - name: created_at
+            tests: [not_null]
+
+      - name: suggestion_feedback
+        description: "User feedback on ML suggestions with enhanced schema (txn_id, label, confidence)."
+        columns:
+          - name: id
+            tests: [not_null, unique]
+          - name: event_id
+            description: "Optional link to suggestion_events (nullable)"
+          - name: txn_id
+            description: "Transaction ID for analytics joins"
+            tests: [not_null]
+          - name: action
+            description: "User action (accept/reject)"
+            tests:
+              - accepted_values:
+                  values: ["accept", "reject"]
+          - name: label
+            description: "Category label that was accepted or rejected"
+            tests: [not_null]
+          - name: confidence
+            description: "Optional confidence score"
+          - name: reason
+            description: "Optional user explanation"
+          - name: user_id
+            description: "Optional user identifier"
+          - name: created_at
+            tests: [not_null]
+
+      - name: transactions
+        description: "Core transactions table from the app."
+        loaded_at_field: created_at
+        columns:
+          - name: id
+            tests: [not_null]
+          - name: category
+          - name: date
+          - name: amount
+          - name: merchant
+
+      - name: model_registry
+        description: "Registered ML models with phase/notes."
+        columns:
+          - name: id
+            tests: [not_null]
+          - name: model_id
+            tests: [not_null, unique]
+          - name: phase
+          - name: created_at
+          - name: notes
+          - name: commit_sha
+          - name: artifact_uri
+
+      - name: transaction_labels
+        description: "Golden truth labels for ML training (human-approved categories)."
+        loaded_at_field: updated_at
+        columns:
+          - name: txn_id
+            tests: [not_null, unique]
+          - name: label
+            tests: [not_null]
+          - name: source
+            description: "Label source (human, rule, import)"
+            tests:
+              - accepted_values:
+                  values: ["human", "rule", "import"]
+          - name: created_at
+            tests: [not_null]
+          - name: updated_at
+            tests: [not_null]
+
+      - name: ml_features
+        description: "Point-in-time feature vectors for ML training."
+        loaded_at_field: created_at
+        columns:
+          - name: txn_id
+            tests: [not_null, unique]
+          - name: ts_month
+            description: "Month bucket (yyyy-mm-01) for leakage-safe time splits"
+            tests: [not_null]
+          - name: amount
+            tests: [not_null]
+          - name: abs_amount
+            tests: [not_null]
+          - name: merchant
+          - name: mcc
+          - name: channel
+          - name: hour_of_day
+          - name: dow
+            description: "Day of week (0=Monday)"
+          - name: is_weekend
+          - name: is_subscription
+          - name: norm_desc
+          - name: tokens
+
+      - name: ml_training_runs
+        description: "Training run audit log with metrics and artifacts."
+        columns:
+          - name: run_id
+            tests: [not_null, unique]
+          - name: started_at
+            tests: [not_null]
+          - name: finished_at
+          - name: feature_count
+          - name: train_size
+          - name: test_size
+          - name: f1_macro
+          - name: accuracy
+          - name: class_count
+          - name: model_uri
+          - name: notes

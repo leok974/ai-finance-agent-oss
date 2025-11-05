@@ -1,0 +1,78 @@
+{
+  "dashboard": {
+    "title": "LedgerMind — ML Source Freshness",
+    "tags": ["ledgermind","ml","freshness","dbt"],
+    "time": { "from": "now-24h", "to": "now" },
+    "templating": {
+      "list": [
+        { "type": "datasource", "name": "prom", "query": "prometheus", "label": "Prometheus", "hide": 0 }
+      ]
+    },
+    "panels": [
+      {
+        "type": "stat",
+        "title": "transactions freshness (hours)",
+        "gridPos": {"x":0,"y":0,"w":8,"h":4},
+        "targets": [
+          {
+            "expr": "max(time() - max by(table) (dbt_source_loaded_at_seconds{table=\"transactions\"})) / 3600",
+            "datasource": {"type":"prometheus","uid":"${prom}"}
+          }
+        ],
+        "options": { "reduceOptions": {"calcs":["lastNotNull"]}, "colorMode":"value" },
+        "thresholds": { "mode": "absolute", "steps": [{"color":"green","value":null},{"color":"yellow","value":48},{"color":"red","value":120}] }
+      },
+      {
+        "type": "stat",
+        "title": "transaction_labels freshness (hours)",
+        "gridPos": {"x":8,"y":0,"w":8,"h":4},
+        "targets": [
+          {
+            "expr": "max(time() - max by(table) (dbt_source_loaded_at_seconds{table=\"transaction_labels\"})) / 3600",
+            "datasource": {"type":"prometheus","uid":"${prom}"}
+          }
+        ],
+        "options": { "reduceOptions": {"calcs":["lastNotNull"]}, "colorMode":"value" },
+        "thresholds": { "mode": "absolute", "steps": [{"color":"green","value":null},{"color":"yellow","value":48},{"color":"red","value":120}] }
+      },
+      {
+        "type": "stat",
+        "title": "ml_features freshness (hours)",
+        "gridPos": {"x":16,"y":0,"w":8,"h":4},
+        "targets": [
+          {
+            "expr": "max(time() - max by(table) (dbt_source_loaded_at_seconds{table=\"ml_features\"})) / 3600",
+            "datasource": {"type":"prometheus","uid":"${prom}"}
+          }
+        ],
+        "options": { "reduceOptions": {"calcs":["lastNotNull"]}, "colorMode":"value" },
+        "thresholds": { "mode": "absolute", "steps": [{"color":"green","value":null},{"color":"yellow","value":48},{"color":"red","value":120}] }
+      },
+      {
+        "type": "timeseries",
+        "title": "Source freshness (hours, last 24h)",
+        "gridPos": {"x":0,"y":4,"w":24,"h":8},
+        "targets": [
+          {
+            "expr": "(time() - max by(table) (dbt_source_loaded_at_seconds{table=\"transactions\"})) / 3600",
+            "legendFormat": "transactions",
+            "datasource": {"type":"prometheus","uid":"${prom}"}
+          },
+          {
+            "expr": "(time() - max by(table) (dbt_source_loaded_at_seconds{table=\"transaction_labels\"})) / 3600",
+            "legendFormat": "transaction_labels",
+            "datasource": {"type":"prometheus","uid":"${prom}"}
+          },
+          {
+            "expr": "(time() - max by(table) (dbt_source_loaded_at_seconds{table=\"ml_features\"})) / 3600",
+            "legendFormat": "ml_features",
+            "datasource": {"type":"prometheus","uid":"${prom}"}
+          }
+        ]
+      }
+    ],
+    "schemaVersion": 39,
+    "version": 1
+  },
+  "overwrite": true
+}

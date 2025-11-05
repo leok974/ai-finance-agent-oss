@@ -9,6 +9,7 @@ from app.orm_models import Transaction, EncryptionKey, EncryptionSettings
 # Candidate AAD values attempted for legacy ciphertexts
 AAD_CANDIDATES: List[Optional[bytes]] = [b"txn:v1", None, b"dek"]
 
+
 def _to_bytes(x):
     if x is None:
         return None
@@ -18,12 +19,16 @@ def _to_bytes(x):
         return bytes(x)
     return x if isinstance(x, (bytes, bytearray)) else None
 
+
 def _unwrap_dek(db: Session, label: str) -> bytes:
-    row = db.execute(select(EncryptionKey).where(EncryptionKey.label == label)).scalar_one()
+    row = db.execute(
+        select(EncryptionKey).where(EncryptionKey.label == label)
+    ).scalar_one()
     try:
         return EnvelopeCrypto.unwrap_dek(row.wrapped_dek, aad=None)
     except Exception:
         return EnvelopeCrypto.unwrap_dek(row.wrapped_dek, aad=b"dek")
+
 
 def _try_decrypt_any(dek: bytes, ct: bytes) -> Optional[bytes]:
     for aad in AAD_CANDIDATES:
@@ -33,8 +38,10 @@ def _try_decrypt_any(dek: bytes, ct: bytes) -> Optional[bytes]:
             continue
     return None
 
+
 def _encrypt_with(dek: bytes, pt: bytes) -> bytes:
     return EnvelopeCrypto.encrypt(dek, pt, aad=b"txn:v1")
+
 
 def run_rotation(db: Session, batch_size: int = 500) -> Dict[str, Any]:
     """
@@ -44,7 +51,10 @@ def run_rotation(db: Session, batch_size: int = 500) -> Dict[str, Any]:
     allow_label_only = (
         os.getenv("PYTEST_CURRENT_TEST") is not None
         or (os.getenv("APP_ENV", "").lower() in {"ci", "test", "tests"})
-        or (os.getenv("CRYPTO_ROTATION_LABEL_ONLY_FALLBACK", "0").lower() in {"1", "true", "yes"})
+        or (
+            os.getenv("CRYPTO_ROTATION_LABEL_ONLY_FALLBACK", "0").lower()
+            in {"1", "true", "yes"}
+        )
     )
 
     settings = db.execute(select(EncryptionSettings).limit(1)).scalar_one_or_none()

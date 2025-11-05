@@ -1,0 +1,16 @@
+version: 2
+
+models:
+  - name: mart_suggestions_daily
+    description: "Daily aggregates of suggestion events (incremental)."
+    columns:
+      - name: created_date
+        tests: [not_null]
+      - name: suggestions
+        tests: [not_null]
+      - name: model_suggestions
+      - name: heuristic_suggestions
+      - name: auto_suggestions
+      - name: txn_count
+        tests: [not_null]
+      - name: distinct_models

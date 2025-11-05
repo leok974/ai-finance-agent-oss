@@ -1,13 +1,17 @@
 from fastapi import APIRouter, Request, Depends, HTTPException
-import os
 
 try:
-    from app.utils.auth import get_current_user as require_authenticated_user  # reuse existing auth
+    from app.utils.auth import (
+        get_current_user as require_authenticated_user,
+    )  # reuse existing auth
 except Exception:  # pragma: no cover
+
     def require_authenticated_user():  # type: ignore
         raise HTTPException(status_code=500, detail="auth not available")
 
+
 router = APIRouter(prefix="/auth", tags=["auth-debug"])  # shares /auth namespace
+
 
 @router.get("/debug")
 async def auth_debug(request: Request, _user=Depends(require_authenticated_user)):

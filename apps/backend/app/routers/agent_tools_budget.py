@@ -1,5 +1,4 @@
-from typing import Dict, List, Optional, Literal
-from dataclasses import asdict, dataclass
+from typing import Dict, List, Optional
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field, conint, confloat
 from sqlalchemy import func, case, desc
@@ -20,8 +19,12 @@ class MonthParam(BaseModel):
 class BudgetCheckBody(BaseModel):
     month: str = Field(..., description="YYYY-MM")
     # category -> monthly limit (positive number, e.g., 300 means $300 max spend for that category)
-    limits: Dict[str, confloat(ge=0)] = Field(default_factory=dict, description="Mapping category -> monthly limit")
-    include_unknown: bool = False  # if True, treat Unknown as a budgeted category when provided
+    limits: Dict[str, confloat(ge=0)] = Field(
+        default_factory=dict, description="Mapping category -> monthly limit"
+    )
+    include_unknown: bool = (
+        False  # if True, treat Unknown as a budgeted category when provided
+    )
 
 
 class CategorySpend(BaseModel):
@@ -39,8 +42,8 @@ class MerchantSpend(BaseModel):
 class SummaryResponse(BaseModel):
     month: str
     total_outflows: float  # sum of negative amounts as positive dollars
-    total_inflows: float   # sum of positive amounts
-    net: float             # inflows - outflows
+    total_inflows: float  # sum of positive amounts
+    net: float  # inflows - outflows
     unknown_count: int
     by_category: List[CategorySpend]
     top_merchants: List[MerchantSpend]
@@ -63,7 +66,11 @@ class BudgetCheckResponse(BaseModel):
 # ---------- Helpers ----------
 def _unknown_cond():
     # None / '' / 'Unknown' (case-insensitive) are considered unknown
-    return (Transaction.category.is_(None)) | (func.trim(Transaction.category) == "") | (func.lower(Transaction.category) == "unknown")
+    return (
+        (Transaction.category.is_(None))
+        | (func.trim(Transaction.category) == "")
+        | (func.lower(Transaction.category) == "unknown")
+    )
 
 
 def _month_filter(q, month: Optional[str]):
@@ -74,7 +81,9 @@ def _month_filter(q, month: Optional[str]):
 
 def _abs_outflow():
     # Convert negative amounts to positive 'spend' for aggregation
-    return func.sum(func.abs(case((Transaction.amount < 0, Transaction.amount), else_=0.0)))
+    return func.sum(
+        func.abs(case((Transaction.amount < 0, Transaction.amount), else_=0.0))
+    )
 
 
 def _abs_inflow():
@@ -86,12 +95,15 @@ def _abs_inflow():
 @router.post("/summary", response_model=SummaryResponse)
 def budget_summary(body: MonthParam, db: Session = Depends(get_db)) -> SummaryResponse:
     # Totals
-    base = _month_filter(db.query(
-        _abs_outflow().label("outflows"),
-        _abs_inflow().label("inflows"),
-        func.sum(Transaction.amount).label("net_raw"),
-        func.sum(case((_unknown_cond(), 1), else_=0)).label("unknowns")
-    ), body.month)
+    base = _month_filter(
+        db.query(
+            _abs_outflow().label("outflows"),
+            _abs_inflow().label("inflows"),
+            func.sum(Transaction.amount).label("net_raw"),
+            func.sum(case((_unknown_cond(), 1), else_=0)).label("unknowns"),
+        ),
+        body.month,
+    )
 
     totals = base.one()
     total_out = float(totals.outflows or 0.0)
@@ -100,33 +112,53 @@ def budget_summary(body: MonthParam, db: Session = Depends(get_db)) -> SummaryRe
     unknown_count = int(totals.unknowns or 0)
 
     # By category (outflows only)
-    cat_q = _month_filter(
-        db.query(
-            func.coalesce(func.nullif(Transaction.category, ""), "Unknown").label("category"),
-            _abs_outflow().label("spend"),
-            func.sum(case((Transaction.amount != 0, 1), else_=0)).label("txns"),
-        ).group_by("category"),
-        body.month,
-    ).order_by(desc("spend")).limit(body.top_n)
+    cat_q = (
+        _month_filter(
+            db.query(
+                func.coalesce(func.nullif(Transaction.category, ""), "Unknown").label(
+                    "category"
+                ),
+                _abs_outflow().label("spend"),
+                func.sum(case((Transaction.amount != 0, 1), else_=0)).label("txns"),
+            ).group_by("category"),
+            body.month,
+        )
+        .order_by(desc("spend"))
+        .limit(body.top_n)
+    )
 
     by_category = [
-        CategorySpend(category=row.category, spend=float(row.spend or 0.0), txns=int(row.txns or 0))
+        CategorySpend(
+            category=row.category,
+            spend=float(row.spend or 0.0),
+            txns=int(row.txns or 0),
+        )
         for row in cat_q.all()
         if (row.spend or 0.0) > 0
     ]
 
     # Top merchants (outflows only)
-    merch_q = _month_filter(
-        db.query(
-            func.coalesce(func.nullif(Transaction.merchant, ""), "Unknown").label("merchant"),
-            _abs_outflow().label("spend"),
-            func.sum(case((Transaction.amount != 0, 1), else_=0)).label("txns"),
-        ).group_by("merchant"),
-        body.month,
-    ).order_by(desc("spend")).limit(body.top_n)
+    merch_q = (
+        _month_filter(
+            db.query(
+                func.coalesce(func.nullif(Transaction.merchant, ""), "Unknown").label(
+                    "merchant"
+                ),
+                _abs_outflow().label("spend"),
+                func.sum(case((Transaction.amount != 0, 1), else_=0)).label("txns"),
+            ).group_by("merchant"),
+            body.month,
+        )
+        .order_by(desc("spend"))
+        .limit(body.top_n)
+    )
 
     top_merchants = [
-        MerchantSpend(merchant=row.merchant, spend=float(row.spend or 0.0), txns=int(row.txns or 0))
+        MerchantSpend(
+            merchant=row.merchant,
+            spend=float(row.spend or 0.0),
+            txns=int(row.txns or 0),
+        )
         for row in merch_q.all()
         if (row.spend or 0.0) > 0
     ]
@@ -143,16 +175,24 @@ def budget_summary(body: MonthParam, db: Session = Depends(get_db)) -> SummaryRe
 
 
 @router.post("/check", response_model=BudgetCheckResponse)
-def budget_check(body: BudgetCheckBody, db: Session = Depends(get_db)) -> BudgetCheckResponse:
+def budget_check(
+    body: BudgetCheckBody, db: Session = Depends(get_db)
+) -> BudgetCheckResponse:
     # Spend by category for the month (outflows only)
     q = _month_filter(
         db.query(
-            func.coalesce(func.nullif(Transaction.category, ""), "Unknown").label("category"),
+            func.coalesce(func.nullif(Transaction.category, ""), "Unknown").label(
+                "category"
+            ),
             _abs_outflow().label("spend"),
         ).group_by("category"),
         body.month,
     )
-    cat_spend = {row.category: float(row.spend or 0.0) for row in q.all() if (row.spend or 0.0) > 0}
+    cat_spend = {
+        row.category: float(row.spend or 0.0)
+        for row in q.all()
+        if (row.spend or 0.0) > 0
+    }
 
     items: List[BudgetItem] = []
     total_limit = 0.0
@@ -165,29 +205,37 @@ def budget_check(body: BudgetCheckBody, db: Session = Depends(get_db)) -> Budget
             utilization = spend / float(limit)
         else:
             utilization = 1.0 if spend > 0 else 0.0
-        items.append(BudgetItem(
-            category=cat,
-            limit=float(limit),
-            spend=spend,
-            remaining=remaining,
-            utilization=utilization,
-        ))
+        items.append(
+            BudgetItem(
+                category=cat,
+                limit=float(limit),
+                spend=spend,
+                remaining=remaining,
+                utilization=utilization,
+            )
+        )
         total_limit += float(limit)
         total_spend += spend
 
     # Optionally include "Unknown" as budgeted if provided in limits or requested explicitly
     if body.include_unknown and "Unknown" not in body.limits:
         unk_spend = cat_spend.get("Unknown", 0.0)
-        items.append(BudgetItem(
-            category="Unknown",
-            limit=0.0,
-            spend=unk_spend,
-            remaining=-unk_spend,
-            utilization=1.0 if unk_spend > 0 else 0.0,
-        ))
+        items.append(
+            BudgetItem(
+                category="Unknown",
+                limit=0.0,
+                spend=unk_spend,
+                remaining=-unk_spend,
+                utilization=1.0 if unk_spend > 0 else 0.0,
+            )
+        )
         total_spend += unk_spend
 
-    totals_util = (total_spend / total_limit) if total_limit > 0 else (1.0 if total_spend > 0 else 0.0)
+    totals_util = (
+        (total_spend / total_limit)
+        if total_limit > 0
+        else (1.0 if total_spend > 0 else 0.0)
+    )
     totals = {
         "spend": total_spend,
         "limit": total_limit,

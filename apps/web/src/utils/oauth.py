@@ -22,6 +22,7 @@ oauth.register(
     client_kwargs={"scope": "openid email profile", "prompt": "consent"},
 )
 
+
 def absolute_url(request: Request, path: str) -> str:
     base = str(request.base_url).rstrip("/")
     return base + path

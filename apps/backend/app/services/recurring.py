@@ -5,19 +5,24 @@ from sqlalchemy.orm import Session
 from app.transactions import Transaction
 from app.orm_models import RecurringSeries
 
+
 def _infer_cadence(sorted_dates: List[date]) -> str:
     if len(sorted_dates) < 3:
         return "unknown"
     # crude distance histogram in days
-    diffs = [(sorted_dates[i] - sorted_dates[i-1]).days for i in range(1, len(sorted_dates))]
+    diffs = [
+        (sorted_dates[i] - sorted_dates[i - 1]).days
+        for i in range(1, len(sorted_dates))
+    ]
     avg = sum(diffs) / len(diffs)
     if 26 <= avg <= 35:  # monthly-ish
         return "monthly"
-    if 6 <= avg <= 8:    # weekly-ish
+    if 6 <= avg <= 8:  # weekly-ish
         return "weekly"
     if 350 <= avg <= 380:
         return "yearly"
     return "unknown"
+
 
 def scan_recurring(db: Session, month: str | None = None) -> int:
     """
@@ -37,13 +42,15 @@ def scan_recurring(db: Session, month: str | None = None) -> int:
     upserts = 0
     for m, rows in by_merchant.items():
         # cluster amounts within small variance (e.g., ±5%)
-        amounts = [float(abs(r.amount)) for r in rows]  # subs are usually charges (negative), use abs
+        amounts = [
+            float(abs(r.amount)) for r in rows
+        ]  # subs are usually charges (negative), use abs
         if not amounts:
             continue
         avg_amt = sum(amounts) / len(amounts)
         # accept only if stdev small relative to mean (quick proxy)
         variance = sum((a - avg_amt) ** 2 for a in amounts) / len(amounts)
-        stdev = variance ** 0.5
+        stdev = variance**0.5
         if avg_amt <= 0:
             continue
         if stdev / avg_amt > 0.15:  # >15% variation -> weak candidate
@@ -65,9 +72,7 @@ def scan_recurring(db: Session, month: str | None = None) -> int:
             next_due = last_seen + timedelta(days=365)
 
         existing = (
-            db.query(RecurringSeries)
-            .filter(RecurringSeries.merchant == m)
-            .first()
+            db.query(RecurringSeries).filter(RecurringSeries.merchant == m).first()
         )
         sample_txn_id = rows[-1].id if rows else None
         if existing:

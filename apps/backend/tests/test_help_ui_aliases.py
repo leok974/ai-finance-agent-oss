@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 from fastapi.testclient import TestClient
-from app.main import app
 
 # Use the shared client fixture wiring from tests/conftest.py
 
+
 def _post_describe(client: TestClient, key: str):
-    return client.post("/agent/tools/help/ui/describe", json={"key": key, "with_context": False}).json()
+    return client.post(
+        "/agent/tools/help/ui/describe", json={"key": key, "with_context": False}
+    ).json()
 
 
 def test_help_aliases_return_same_payload(client: TestClient):

@@ -40,7 +40,6 @@ UI_HELP = {
         "tips": ["Seasonality is common (e.g., holidays)."],
         "gotchas": ["Sparse months can make the line jumpy."],
     },
-
     # Cards / panels
     "cards.month_summary": {
         "title": "Month Summary",
@@ -74,7 +73,9 @@ UI_HELP = {
     "cards.cashflow": {
         "title": "Cashflow",
         "what": "Snapshot of money in vs out this month.",
-        "how_to_read": ["Watch the gap between in and out; that’s your savings rate proxy."],
+        "how_to_read": [
+            "Watch the gap between in and out; that’s your savings rate proxy."
+        ],
         "tips": ["Compare to last month for momentum."],
         "gotchas": ["One-offs can skew this—check anomalies if it looks off."],
     },
@@ -171,35 +172,37 @@ UI_HELP = {
 }
 
 # Backfill additional keys used by the frontend so unknown keys don't degrade UX
-UI_HELP.update({
-    "cards.overview": {
-        "title": "Overview (Month Summary)",
-        "what": "Totals for the selected month: inflows, outflows, and net.",
-        "how_to_read": [
-            "Net = inflows − outflows. Positive = saved, negative = overspent.",
-            "Use alongside Cashflow to understand drivers.",
-        ],
-        "tips": ["If something looks off, open Anomalies for this month."],
-        "gotchas": ["Transfers may inflate inflows if present in your data."],
-    },
-    "charts.top_categories": {
-        "title": "Top Categories (This Month)",
-        "what": "Bar chart of spending by category for the selected month.",
-        "how_to_read": [
-            "Bars are sorted by spend; taller bar = more spend.",
-            "Hover for amount and share of total outflows.",
-        ],
-        "tips": ["Use this to spot categories to trim (pair with What-If)."],
-        "gotchas": ["“Unknown” = transactions without a category label."],
-    },
-    "charts.daily_flows": {
-        "title": "Daily Flows (This Month)",
-        "what": "Line chart of daily inflows, outflows, and net across the month.",
-        "how_to_read": [
-            "Green ≈ inflows, red ≈ outflows, blue ≈ net per day.",
-            "Look for spikes and end-of-month trends.",
-        ],
-        "tips": ["Run Anomalies if you see a spike."],
-        "gotchas": ["Sparse days can make lines jagged."],
-    },
-})
+UI_HELP.update(
+    {
+        "cards.overview": {
+            "title": "Overview (Month Summary)",
+            "what": "Totals for the selected month: inflows, outflows, and net.",
+            "how_to_read": [
+                "Net = inflows − outflows. Positive = saved, negative = overspent.",
+                "Use alongside Cashflow to understand drivers.",
+            ],
+            "tips": ["If something looks off, open Anomalies for this month."],
+            "gotchas": ["Transfers may inflate inflows if present in your data."],
+        },
+        "charts.top_categories": {
+            "title": "Top Categories (This Month)",
+            "what": "Bar chart of spending by category for the selected month.",
+            "how_to_read": [
+                "Bars are sorted by spend; taller bar = more spend.",
+                "Hover for amount and share of total outflows.",
+            ],
+            "tips": ["Use this to spot categories to trim (pair with What-If)."],
+            "gotchas": ["“Unknown” = transactions without a category label."],
+        },
+        "charts.daily_flows": {
+            "title": "Daily Flows (This Month)",
+            "what": "Line chart of daily inflows, outflows, and net across the month.",
+            "how_to_read": [
+                "Green ≈ inflows, red ≈ outflows, blue ≈ net per day.",
+                "Look for spikes and end-of-month trends.",
+            ],
+            "tips": ["Run Anomalies if you see a spike."],
+            "gotchas": ["Sparse days can make lines jagged."],
+        },
+    }
+)

@@ -3,8 +3,6 @@ from datetime import date
 from sqlalchemy.orm import Session
 
 from app.orm_models import Transaction
-from app.db import get_db
-from app.main import app
 
 
 def test_patch_amount_ok_rounds_and_persists(client, db_session: Session):
@@ -21,7 +19,9 @@ def test_patch_amount_ok_rounds_and_persists(client, db_session: Session):
     db_session.commit()
     db_session.refresh(txn)
 
-    r = client.patch(f"/txns/edit/{txn.id}", json={"amount": "12.30"}, headers={"X-CSRF-Token": "x"})
+    r = client.patch(
+        f"/txns/edit/{txn.id}", json={"amount": "12.30"}, headers={"X-CSRF-Token": "x"}
+    )
     assert r.status_code in (200, 403), r.text  # allow possible CSRF block outside dev
     if r.status_code == 403:
         # If CSRF blocked (e.g., different env), skip verification

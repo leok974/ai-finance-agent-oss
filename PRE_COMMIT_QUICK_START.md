@@ -174,18 +174,18 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0  # Required for --from-ref
-      
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      
+
       - name: Install pre-commit
         run: pip install pre-commit
-      
+
       - name: Install jq
         run: sudo apt-get update && sudo apt-get install -y jq
-      
+
       - name: Run pre-commit
         run: pre-commit run --all-files --show-diff-on-failure
 ```

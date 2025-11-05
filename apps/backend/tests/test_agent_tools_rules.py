@@ -17,17 +17,25 @@ def _ingest(csv_text: str):
 
 def test_rules_test_and_apply_flow():
     month = "2025-08"
-    csv = textwrap.dedent(f"""\
+    csv = textwrap.dedent(
+        f"""\
         date,month,merchant,description,amount,category
         2025-08-10,{month},Uber,Ride home,-17.80,
         2025-08-11,{month},Uber,Ride to office,-12.30,Unknown
         2025-08-12,{month},Starbucks,Latte,-5.25,
         2025-08-13,{month},Amazon,Household,-34.99,
-    """)
+    """
+    )
     _ingest(csv)
 
     # 1) test rule: merchant contains "uber"
-    body = {"pattern": "uber", "target": "merchant", "category": "Transport", "month": month, "limit": 100}
+    body = {
+        "pattern": "uber",
+        "target": "merchant",
+        "category": "Transport",
+        "month": month,
+        "limit": 100,
+    }
     r1 = client.post("/agent/tools/rules/test", json=body)
     assert r1.status_code == 200, r1.text
     preview = r1.json()
@@ -48,7 +56,9 @@ def test_rules_test_and_apply_flow():
 
     # 3) verify those now no longer appear as unlabeled
     #    (Search via agent transaction tool if present, else simply re-test rule and confirm updated count trends to 0)
-    r3 = client.post("/agent/tools/rules/apply", json=body)  # re-apply: should have nothing left to update
+    r3 = client.post(
+        "/agent/tools/rules/apply", json=body
+    )  # re-apply: should have nothing left to update
     assert r3.status_code == 200
     applied2 = r3.json()
     assert applied2["updated"] == 0

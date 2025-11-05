@@ -1,0 +1,132 @@
+name: ML Training Pipeline
+
+on:
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: 'Row limit for training (default: all from last 180 days)'
+        required: false
+        type: number
+  schedule:
+    - cron: "23 3 * * *"  # Daily at 3:23 AM UTC
+
+env:
+  ML_DEPLOY_THRESHOLD_F1: "0.72"
+  ML_CALIBRATION_ENABLED: "1"
+  DATABASE_URL: postgresql://myuser:password@postgres:5432/finance
+
+jobs:
+  train:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Build and start services
+        run: |
+          docker compose -f docker-compose.prod.yml up -d backend postgres
+      
+      - name: Wait for PostgreSQL
+        run: |
+          echo "⏳ Waiting for PostgreSQL to be ready..."
+          for i in {1..30}; do
+            docker compose -f docker-compose.prod.yml exec -T postgres \
+              pg_isready -U myuser -d finance && break || sleep 2
+          done
+          echo "✅ PostgreSQL is ready"
+      
+      - name: Check feature count
+        id: features
+        run: |
+          COUNT=$(docker compose -f docker-compose.prod.yml exec -T postgres \
+            psql -U myuser -d finance -t -c "SELECT COUNT(*) FROM ml_features")
+          echo "feature_count=$COUNT" >> $GITHUB_OUTPUT
+          echo "📊 Features available: $COUNT"
+      
+      - name: Build features (if needed)
+        if: steps.features.outputs.feature_count < 100
+        run: |
+          echo "🔨 Building features for last 180 days..."
+          docker compose -f docker-compose.prod.yml exec -T backend \
+            python -m app.ml.feature_build --days 180
+      
+      - name: DBT Source Freshness Check
+        working-directory: warehouse
+        run: |
+          echo "📊 Checking source data freshness..."
+          docker run --rm -t --network shared-ollama \
+            -v "$(pwd)":/work -w /work \
+            ghcr.io/dbt-labs/dbt-postgres:1.7.0 \
+            source freshness --profiles-dir . --project-dir . || echo "⚠️  Some sources may be stale"
+      
+      - name: DBT Tests (Leakage + Contracts)
+        working-directory: warehouse
+        run: |
+          echo "🧪 Running dbt tests (including leakage guards)..."
+          docker run --rm -t --network shared-ollama \
+            -v "$(pwd)":/work -w /work \
+            ghcr.io/dbt-labs/dbt-postgres:1.7.0 \
+            test --profiles-dir . --project-dir .
+      
+      - name: Train model
+        id: train
+        run: |
+          echo "🎓 Training LightGBM model..."
+          LIMIT_ARG=""
+          if [ -n "${{ inputs.limit }}" ]; then
+            LIMIT_ARG="limit=${{ inputs.limit }}"
+          fi
+          
+          docker compose -f docker-compose.prod.yml exec -T backend \
+            python -c "from app.ml.train import run_train; import json; result = run_train($LIMIT_ARG); print(json.dumps(result, indent=2)); exit(0 if result.get('deployed') else 1)" \
+            | tee train_result.json
+          
+          # Extract metrics for outputs
+          F1=$(jq -r '.val_f1_macro' train_result.json)
+          DEPLOYED=$(jq -r '.deployed' train_result.json)
+          echo "f1_score=$F1" >> $GITHUB_OUTPUT
+          echo "deployed=$DEPLOYED" >> $GITHUB_OUTPUT
+      
+      - name: Show model status
+        run: |
+          echo "📈 Model status:"
+          curl -s http://localhost:8000/ml/v2/model/status | jq
+      
+      - name: Verify calibrator artifact (required when enabled)
+        env:
+          ML_CALIBRATION_ENABLED: "1"
+        run: |
+          echo "🔍 Verifying calibrator artifact..."
+          docker compose -f docker-compose.prod.yml exec -T backend \
+            python -m app.scripts.verify_calibrator
+      
+      - name: Test prediction
+        run: |
+          echo "🔮 Testing prediction..."
+          echo '{"abs_amount": 50.0, "merchant":"STARBUCKS", "channel":"pos", "hour_of_day":8, "dow":1, "is_weekend":false, "is_subscription":false, "norm_desc":"starbucks coffee"}' \
+            | curl -s -H "Content-Type: application/json" -d @- http://localhost:8000/ml/v2/predict \
+            | jq
+      
+      - name: Upload training results
+        uses: actions/upload-artifact@v3
+        with:
+          name: training-results
+          path: train_result.json
+      
+      - name: Check deployment
+        if: steps.train.outputs.deployed == 'true'
+        run: |
+          echo "✅ Model deployed! F1 score: ${{ steps.train.outputs.f1_score }}"
+      
+      - name: Deployment failed
+        if: steps.train.outputs.deployed != 'true'
+        run: |
+          echo "⚠️  Model NOT deployed. F1 score: ${{ steps.train.outputs.f1_score }} (threshold: $ML_DEPLOY_THRESHOLD_F1)"
+          exit 0  # Don't fail workflow
+
+      - name: Stop services
+        if: always()
+        run: |
+          docker compose -f docker-compose.prod.yml down

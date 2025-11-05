@@ -8,14 +8,17 @@ AUTH_REFRESH = "/auth/refresh"
 
 # --- tiny helpers ------------------------------------------------------------
 
+
 def _jwt_lib():
     """Try PyJWT first, then python-jose. Return (name, module) or (None, None)."""
     try:
         import jwt as pyjwt  # PyJWT
+
         return ("pyjwt", pyjwt)
     except Exception:
         try:
             from jose import jwt as jose_jwt  # python-jose
+
             return ("jose", jose_jwt)
         except Exception:
             return (None, None)
@@ -27,13 +30,21 @@ def _make_jwt(payload: dict, secret: str, alg: str = "HS256"):
         pytest.skip("No JWT library (PyJWT or python-jose) available to sign tokens")
     if libname == "pyjwt":
         token = lib.encode(payload, secret, algorithm=alg)
-        return token.decode() if hasattr(token, "decode") else token  # PyJWT may return bytes on older versions
+        return (
+            token.decode() if hasattr(token, "decode") else token
+        )  # PyJWT may return bytes on older versions
     return lib.encode(payload, secret, algorithm=alg)  # python-jose
 
 
 def _candidate_secrets():
     """Best-effort search for a signing secret in environment."""
-    for k in ("JWT_SECRET", "AUTH_SECRET", "SECRET_KEY", "APP_SECRET_KEY", "LM_JWT_SECRET"):
+    for k in (
+        "JWT_SECRET",
+        "AUTH_SECRET",
+        "SECRET_KEY",
+        "APP_SECRET_KEY",
+        "LM_JWT_SECRET",
+    ):
         v = os.getenv(k)
         if v:
             return v
@@ -51,7 +62,9 @@ def _force_unauth(client):
     except Exception:
         pass
 
+
 # --- tests -------------------------------------------------------------------
+
 
 def test_bearer_missing_or_blank_token_is_unauthorized(client):
     _force_unauth(client)
@@ -86,17 +99,24 @@ def test_bearer_malformed_jwt_is_unauthorized(client):
 def test_bearer_bad_signature_is_unauthorized(client):
     _force_unauth(client)
     # Sign with a key that *should not* match the server’s secret
-    token = _make_jwt({"sub": "user@example.com", "exp": int(time.time()) + 300}, "not-the-server-secret")
+    token = _make_jwt(
+        {"sub": "user@example.com", "exp": int(time.time()) + 300},
+        "not-the-server-secret",
+    )
     r = client.get(AUTH_ME, headers={"Authorization": f"Bearer {token}"})
     _assert_no_500(r)
     assert r.status_code in (401, 403, 404)
 
 
-@pytest.mark.skipif(_candidate_secrets() is None, reason="No server signing secret available in env")
+@pytest.mark.skipif(
+    _candidate_secrets() is None, reason="No server signing secret available in env"
+)
 def test_bearer_expired_token_is_rejected(client):
     _force_unauth(client)
     secret = _candidate_secrets()
-    expired = _make_jwt({"sub": "user@example.com", "exp": int(time.time()) - 60}, secret)
+    expired = _make_jwt(
+        {"sub": "user@example.com", "exp": int(time.time()) - 60}, secret
+    )
     r = client.get(AUTH_ME, headers={"Authorization": f"Bearer {expired}"})
     _assert_no_500(r)
     # Expect unauthorized (expired path)
@@ -111,7 +131,9 @@ def test_refresh_with_csrf_mismatch_or_missing_is_forbidden(client):
     for name in cookie_names:
         _force_unauth(client)
         # Mismatch CSRF header
-        r1 = client.post(AUTH_REFRESH, headers={"X-CSRF-Token": "mismatch"}, cookies={name: bogus})
+        r1 = client.post(
+            AUTH_REFRESH, headers={"X-CSRF-Token": "mismatch"}, cookies={name: bogus}
+        )
         _assert_no_500(r1)
         assert r1.status_code in (401, 403, 404)
 

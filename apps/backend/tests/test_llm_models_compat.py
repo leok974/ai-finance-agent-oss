@@ -9,4 +9,6 @@ async def test_llm_models_shim(asgi_client):
 
     assert "models_ok" in data
     assert "path" in data
-    assert any(k in data for k in ("primary", "fallback", "provider")), "Expected provider metadata in response"
+    assert any(
+        k in data for k in ("primary", "fallback", "provider")
+    ), "Expected provider metadata in response"

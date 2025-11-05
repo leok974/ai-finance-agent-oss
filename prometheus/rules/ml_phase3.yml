@@ -1,0 +1,58 @@
+groups:
+  - name: ml-phase3
+    interval: 30s
+    rules:
+      - alert: MLHighDisagreement
+        expr: (sum(rate(lm_suggest_compare_total{agree="False"}[15m])) / clamp_min(sum(rate(lm_suggest_compare_total[15m])),1)) > 0.25
+        for: 10m
+        labels:
+          severity: warning
+          component: ml-canary
+        annotations:
+          summary: "High rules-vs-ML disagreement (>25%)"
+          description: "Model predictions disagree with rule-based suggestions more than 25% of the time over the last 15 minutes"
+          runbook: "https://github.com/leok974/ai-finance-agent-oss/blob/main/ML_CANARY_DEPLOYMENT.md#troubleshooting"
+
+      - alert: MLLowCoverage
+        expr: (sum(rate(lm_ml_predictions_total{accepted="True"}[15m])) / clamp_min(sum(rate(lm_ml_predictions_total[15m])),1)) < 0.60
+        for: 20m
+        labels:
+          severity: warning
+          component: ml-canary
+        annotations:
+          summary: "Low ML coverage (<60%)"
+          description: "Model acceptance rate is below 60% - most predictions falling back to rules"
+          runbook: "https://github.com/leok974/ai-finance-agent-oss/blob/main/ML_CANARY_DEPLOYMENT.md#tuning-thresholds"
+
+      - alert: MLPredictLatencyHigh
+        expr: histogram_quantile(0.95, sum by (le) (rate(lm_ml_predict_latency_seconds_bucket[10m]))) > 0.15
+        for: 10m
+        labels:
+          severity: warning
+          component: ml-canary
+        annotations:
+          summary: "High model predict latency (p95 > 150ms)"
+          description: "95th percentile prediction latency exceeds 150ms - may impact user experience"
+          runbook: "https://github.com/leok974/ai-finance-agent-oss/blob/main/ML_CANARY_DEPLOYMENT.md#high-latency"
+
+      - alert: MLFallbackSpike
+        expr: (sum(rate(lm_ml_fallback_total[10m])) / clamp_min(sum(rate(lm_ml_predictions_total[10m])),1)) > 0.40
+        for: 10m
+        labels:
+          severity: critical
+          component: ml-canary
+        annotations:
+          summary: "Fallback spike (>40% of predictions)"
+          description: "More than 40% of predictions falling back to rules - check model availability and thresholds"
+          runbook: "https://github.com/leok974/ai-finance-agent-oss/blob/main/ML_CANARY_DEPLOYMENT.md#model-not-loading"
+
+      - alert: MLModelUnavailable
+        expr: sum(rate(ml_predict_requests_total{available="False"}[5m])) / clamp_min(sum(rate(ml_predict_requests_total[5m])),1) > 0.10
+        for: 5m
+        labels:
+          severity: critical
+          component: ml-canary
+        annotations:
+          summary: "ML model unavailable (>10% of requests)"
+          description: "Model is unavailable for more than 10% of prediction requests"
+          runbook: "https://github.com/leok974/ai-finance-agent-oss/blob/main/ML_CANARY_DEPLOYMENT.md#model-not-loading"
