@@ -1,0 +1,191 @@
+{
+  "host": "app.ledger-mind.org",
+  "ts": "2025-09-30T17:35:51.9796452-04:00",
+  "endpoints": {
+    "ready": {
+      "code": "200",
+      "latency_ms": 1812,
+      "status": "up",
+      "severity": "warn"
+    },
+    "llm_health": {
+      "code": "200",
+      "latency_ms": 267,
+      "status": "up",
+      "severity": "ok"
+    },
+    "healthz": {
+      "code": "200",
+      "latency_ms": 260,
+      "status": "up",
+      "severity": "ok"
+    },
+    "healthz_headers": {
+      "url": "https://app.ledger-mind.org/api/healthz",
+      "code": "200",
+      "content_length": 643,
+      "transfer_encoding": null,
+      "content_type": null,
+      "has_length": true,
+      "not_chunked": true,
+      "duplicates": null,
+      "raw": [
+        "HTTP/1.1 200 OK",
+        "Date: Tue, 30 Sep 2025 21:36:01 GMT",
+        "Content-Type: application/json",
+        "Content-Length: 643",
+        "Connection: keep-alive",
+        "content-security-policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' wss:; frame-ancestors 'none'; base-uri 'self';",
+        "permissions-policy: geolocation=(), microphone=(), camera=()",
+        "permissions-policy: camera=(), microphone=(), geolocation=()",
+        "referrer-policy: strict-origin-when-cross-origin",
+        "referrer-policy: strict-origin-when-cross-origin",
+        "Server: cloudflare",
+        "strict-transport-security: max-age=63072000; includeSubDomains; preload",
+        "x-content-type-options: nosniff",
+        "x-content-type-options: nosniff",
+        "x-frame-options: DENY",
+        "x-request-id: 9b7324ae-0a1d-424f-8bf4-e69569a2e57d",
+        "cf-cache-status: DYNAMIC",
+        "Nel: {\"report_to\":\"cf-nel\",\"success_fraction\":0.0,\"max_age\":604800}",
+        "Report-To: {\"group\":\"cf-nel\",\"max_age\":604800,\"endpoints\":[{\"url\":\"https://a.nel.cloudflare.com/report/v4?s=5RvuN8QsqP6Y17niJdZ5e%2FzDFSi9IhBfsCLhnJ5JgFoimR8Mtrdvb%2FiFztM1%2FiPV%2Bnvt1lbRsxynjCCv9Asg85j%2FumR1Hm8AywRHvAkU78%2B2SHRBSDlmDZ3ES%2FPi3Qw%3D\"}]}",
+        "CF-RAY: 9876da78d86ce2ca-IAD",
+        "alt-svc: h3=\":443\"; ma=86400",
+        ""
+      ]
+    },
+    "healthz_dup_headers": [],
+    "health_simple": {
+      "code": "200",
+      "latency_ms": 569,
+      "status": "up",
+      "severity": "ok"
+    },
+    "agui_ping": {
+      "code": "200",
+      "latency_ms": 159,
+      "status": "up",
+      "severity": "ok"
+    },
+    "up": {
+      "code": "204",
+      "latency_ms": 712,
+      "status": "up",
+      "severity": "ok"
+    },
+    "edge_classified": [
+      {
+        "url": "https://app.ledger-mind.org/_up",
+        "http": "204",
+        "exit": 0,
+        "class": "ok",
+        "stderr": "",
+        "note": null
+      },
+      {
+        "url": "https://app.ledger-mind.org/api/healthz",
+        "http": "200",
+        "exit": 0,
+        "class": "ok",
+        "stderr": "",
+        "note": null
+      },
+      {
+        "url": "https://app.ledger-mind.org/api/ready",
+        "http": "200",
+        "exit": 0,
+        "class": "ok",
+        "stderr": "",
+        "note": null
+      },
+      {
+        "url": "https://app.ledger-mind.org/api/live",
+        "http": "204",
+        "exit": 0,
+        "class": "ok",
+        "stderr": "",
+        "note": null
+      }
+    ],
+    "live": {
+      "code": "204",
+      "latency_ms": 1581,
+      "status": "up",
+      "severity": "warn"
+    }
+  },
+  "llm": {
+    "models_error": "unavailable",
+    "echo_ok": false
+  },
+  "tunnel": {
+    "ha_max": 4.0,
+    "ha_min": 4.0,
+    "metrics_present": true,
+    "ha_connection_series": [
+      4.0
+    ],
+    "status": "ok"
+  },
+  "conflicts": {
+    "critical": []
+  },
+  "dns": {
+    "ok": true,
+    "latency_ms": 397,
+    "ipv4": [
+      "172.67.176.45",
+      "104.21.31.95"
+    ]
+  },
+  "tls": {},
+  "assets": {
+    "index_csp_present": false,
+    "index_csp": null,
+    "css": {
+      "path": "/assets/index-C304Ijv-.css",
+      "ok": false,
+      "code": "200",
+      "mime": null,
+      "length": null,
+      "note": "missing_mime"
+    },
+    "js": {
+      "path": "/assets/index-lRRY7jmS.js",
+      "ok": false,
+      "code": "200",
+      "mime": null,
+      "length": null,
+      "note": "missing_mime"
+    },
+    "probe_ok": false
+  },
+  "auth": {
+    "exit_code": 1,
+    "ok": false,
+    "challenged": false,
+    "mode": null,
+    "email": "probe@example.com",
+    "raw": null
+  },
+  "summary": {
+    "critical": [
+      "auth"
+    ],
+    "warnings": [
+      "ready",
+      "live"
+    ],
+    "ok": false
+  },
+  "local_tls": null,
+  "critical": [
+    "auth"
+  ],
+  "timestamp": "2025-09-30T17:35:51.9796452-04:00",
+  "probes": {
+    "up": 204,
+    "healthz": 200,
+    "ready": 200
+  }
+}

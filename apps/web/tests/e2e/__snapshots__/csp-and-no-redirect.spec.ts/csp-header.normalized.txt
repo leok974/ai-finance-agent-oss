@@ -1,0 +1,1 @@
+default-src 'self'; script-src 'self' sha256-<HASH>'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' https://app.ledger-mind.org wss://app.ledger-mind.org https://static.cloudflareinsights.com https://cloudflareinsights.com; base-uri 'self'; form-action 'self'; frame-ancestors 'self'

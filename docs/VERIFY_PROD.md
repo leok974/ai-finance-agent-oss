@@ -111,3 +111,52 @@ For structured pre/post steps see: [DEPLOY_CHECKLIST](DEPLOY_CHECKLIST.md)
 
 ---
 Maintainer Note: If you see the HTTPS origin lines reappear in `cloudflared/config.yml`, re-apply the diff from commit enabling http://nginx:80 to prevent 502 regressions.
+
+## 11. Analytics Verification (Events & Metrics)
+
+### Flags
+Ensure production build includes:
+```
+VITE_SUGGESTIONS_ENABLED=1
+VITE_ANALYTICS_ENABLED=1
+# Optional sampling (0-100)
+# VITE_ANALYTICS_SAMPLE_PCT=50
+```
+
+### Event POST
+```
+curl -s -o /dev/null -w "HTTP%{http_code}\n" \
+  -X POST https://app.ledger-mind.org/agent/analytics/event \
+  -H "content-type: application/json" \
+  -d '{"event":"smoke","props":{"k":"v"}}'
+```
+Expect: `HTTP204`.
+
+### Metrics Increment
+```
+curl -s https://app.ledger-mind.org/metrics | Select-String analytics_events_total
+```
+Confirm `analytics_events_total{event="smoke"}` count increases (may need two posts).
+
+### Oversized Rejection (16KiB cap)
+```
+python - <<'PY'
+import requests, json
+blob = 'x' * (17*1024)
+r = requests.post('https://app.ledger-mind.org/agent/analytics/event', json={'event':'big','props':{'blob':blob}})
+print('oversize status', r.status_code)
+PY
+```
+Expect: 413.
+
+### PromQL Starters
+```
+sum(increase(analytics_events_total[24h])) by (event)
+histogram_quantile(0.95, sum by (le) (increase(analytics_event_size_bytes_bucket[1d])))
+sum(increase(analytics_events_total{event="suggestion_create_success"}[1h]))
+  / ignoring(event)
+  sum(increase(analytics_events_total{event="suggestion_create_attempt"}[1h]))
+```
+
+### Sampling Note
+If `VITE_ANALYTICS_SAMPLE_PCT < 100`, adjust expectations proportionally when comparing attempt vs. success counts.

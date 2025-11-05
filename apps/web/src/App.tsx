@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useCallback, useEffect, useRef } from "react";
+import React, { useState, useCallback, useEffect, useRef, Suspense } from "react";
 import { MonthContext } from "./context/MonthContext";
 import UploadCsv from "./components/UploadCsv";
 import UnknownsPanel from "./components/UnknownsPanel";
@@ -8,7 +8,7 @@ import { AgentResultRenderer } from "./components/AgentResultRenderers";
 import { emitToastSuccess } from "@/lib/toast-helpers";
 import { t } from '@/lib/i18n';
 // import RulesPanel from "./components/RulesPanel";
-import { getAlerts, getMonthSummary, getMonthMerchants, getMonthFlows, getHealthz, api, agentTools, fetchLatestMonth } from './lib/api'
+import { getAlerts, getMonthSummary, getHealthz, agentTools, fetchLatestMonth } from './lib/api'
 import { flags } from "@/lib/flags";
 import AboutDrawer from './components/AboutDrawer';
 import RulesPanel from "./components/RulesPanel";
@@ -26,14 +26,14 @@ import TopEmptyBanner from "./components/TopEmptyBanner";
 import NetActivityBlip from "@/components/NetActivityBlip";
 import LoginForm from "@/components/LoginForm";
 import AccountMenu from "@/components/AccountMenu";
-import { useAuth } from "@/state/auth";
+import { useAuth, useIsAdmin } from "@/state/auth";
+import { useChartsStore } from "@/state/charts";
 // import AgentChat from "./components/AgentChat"; // legacy chat bubble disabled
 import { setGlobalMonth } from "./state/month";
 // Providers are applied at the top-level (main.tsx)
 import RuleSuggestionsPersistentPanel from "@/components/RuleSuggestionsPersistentPanel";
 import InsightsAnomaliesCard from "./components/InsightsAnomaliesCard";
 import ErrorBoundary from "@/components/ErrorBoundary";
-import DevBadge from "@/components/dev/DevBadge";
 import HelpMode from "@/components/HelpMode";
 import AppHelpMode from "./AppHelpMode";
 import HelpExplainListener from "@/components/HelpExplainListener";
@@ -43,9 +43,13 @@ import TransactionsDrawer from "@/components/TransactionsDrawer";
 import Brand from "@/components/Brand";
 import TransactionsButton from "@/components/header/TransactionsButton";
 import MonthPicker from "@/components/header/MonthPicker";
-import DevMenu from "@/components/dev/DevMenu";
+import DevMenu from "@/features/dev/DevMenu";
 import logoPng from "@/assets/ledgermind-lockup-1024.png";
 import { useLlmStore } from '@/state/llmStore';
+
+// Lazy-load admin panels (only load when accessed)
+const AdminRulesPanel = React.lazy(() => import("@/components/admin/AdminRulesPanel"));
+const AdminKnowledgePanel = React.lazy(() => import("@/components/admin/AdminKnowledgePanel"));
 
 // Log frontend version info
 console.info("[Web] branch=", __WEB_BRANCH__, "commit=", __WEB_COMMIT__);
@@ -54,18 +58,22 @@ console.info("[Web] branch=", __WEB_BRANCH__, "commit=", __WEB_COMMIT__);
 const App: React.FC = () => {
   const [devDockOpen, setDevDockOpen] = useState<boolean>(() => (import.meta as any).env?.VITE_DEV_UI === '1' || localStorage.getItem('DEV_DOCK') !== '0');
   const devUI = useDevUI();
+  const isAdmin = useIsAdmin();
   const [month, setMonth] = useState<string>("");
   const [ready, setReady] = useState<boolean>(false);
   const [refreshKey, setRefreshKey] = useState<number>(0);
   // Legacy report removed: using expanded insights and charts exclusively
   const [insights, setInsights] = useState<any>(null)
-  const [alerts, setAlerts] = useState<any>(null)
+  const [_alerts, setAlerts] = useState<any>(null)
   const [empty, setEmpty] = useState<boolean>(false)
   const [bannerDismissed, setBannerDismissed] = useState<boolean>(false)
   const [txPanelOpen, setTxPanelOpen] = useState<boolean>(false)
+  const [adminRulesOpen, setAdminRulesOpen] = useState<boolean>(false)
+  const [adminKnowledgeOpen, setAdminKnowledgeOpen] = useState<boolean>(false)
   const booted = useRef(false)
   const [dbRev, setDbRev] = useState<string | null>(null);
   const [inSync, setInSync] = useState<boolean | undefined>(undefined);
+  const refetchAllCharts = useChartsStore((state) => state.refetchAll);
 
   // Keyboard toggles: Ctrl+Alt+D soft session toggle (no reload), Ctrl+Shift+D hard persistent toggle (reload)
   useEffect(() => {
@@ -129,13 +137,13 @@ const App: React.FC = () => {
       console.info('[boot] skipping charts prefetch (core not ready)');
       return;
     }
-    void Promise.allSettled([
-      agentTools.chartsSummary({ month }),
-      agentTools.chartsMerchants({ month, limit: 10 }),
-      agentTools.chartsFlows({ month }),
-      agentTools.chartsSpendingTrends({ month, months_back: 6 }),
-    ]);
-  }, [authOk, month]);
+    // Use charts store to fetch and normalize all chart data
+    void refetchAllCharts(month).then(() => {
+      console.log('[boot] charts prefetch completed for month:', month);
+    });
+    // Also prefetch spending trends separately (not in store yet)
+    void agentTools.chartsSpendingTrends({ month, months_back: 6 });
+  }, [authOk, month, refetchAllCharts]);
 
   // Log DB health once after CORS/DB are good (boot complete) and capture db revision
   useEffect(() => {
@@ -200,7 +208,7 @@ const App: React.FC = () => {
             width={40}
             height={40}
             decoding="async"
-            fetchPriority="high"
+            fetchpriority="high"
             className="mr-2 h-10 w-10 rounded-[8px] ring-1 ring-white/10"
           />
           <span className="text-xl font-semibold">LedgerMind</span>
@@ -228,15 +236,21 @@ const App: React.FC = () => {
             <AboutDrawer showButton={false} />
             <TransactionsButton open={txPanelOpen} onOpen={() => setTxPanelOpen(true)} />
             <MonthPicker value={month} onChange={(m)=>{ setMonth(m); setGlobalMonth(m); }} />
-            {flags.dev && <DevMenu />}
             {flags.dev && (
-              <DevBadge
-                // show branch/commit if available via globals
-                branch={String((globalThis as any).__WEB_BRANCH__ ?? '')}
-                commit={String((globalThis as any).__WEB_COMMIT__ ?? '')}
+              <DevMenu
+                adminRulesOpen={adminRulesOpen}
+                onToggleAdminRules={() => setAdminRulesOpen(!adminRulesOpen)}
+                adminKnowledgeOpen={adminKnowledgeOpen}
+                onToggleAdminKnowledge={() => setAdminKnowledgeOpen(!adminKnowledgeOpen)}
                 openDevDock={devDockOpen}
                 onToggleDevDock={() => {
-                  const next = !devDockOpen; setDevDockOpen(next); try { localStorage.setItem('DEV_DOCK', next ? '1' : '0'); } catch (_err) { /* intentionally empty: swallow to render empty-state */ }
+                  const next = !devDockOpen;
+                  setDevDockOpen(next);
+                  try {
+                    localStorage.setItem('DEV_DOCK', next ? '1' : '0');
+                  } catch (_err) {
+                    /* intentionally empty: swallow to render empty-state */
+                  }
                 }}
               />
             )}
@@ -277,7 +291,7 @@ const App: React.FC = () => {
         <div className="section">
           <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
             <UnknownsPanel month={month} refreshKey={refreshKey} />
-            <SuggestionsPanel />
+            <SuggestionsPanel month={month} />
           </div>
         </div>
 
@@ -287,6 +301,30 @@ const App: React.FC = () => {
             <RuleSuggestionsPersistentPanel />
           </ErrorBoundary>
         </div>
+
+        {/* Admin: Knowledge + Category Rules (dev-only, admin-only) */}
+        {flags.dev && isAdmin && adminRulesOpen && (
+          <div className="section">
+            <Suspense fallback={
+              <div className="p-4 text-sm text-muted-foreground">
+                Loading admin tools…
+              </div>
+            }>
+              <AdminRulesPanel />
+            </Suspense>
+          </div>
+        )}
+        {flags.dev && isAdmin && adminKnowledgeOpen && (
+          <div className="section">
+            <Suspense fallback={
+              <div className="p-4 text-sm text-muted-foreground">
+                Loading admin tools…
+              </div>
+            }>
+              <AdminKnowledgePanel />
+            </Suspense>
+          </div>
+        )}
 
         {/* Rules + Rule Tester + ML Status */}
         <div className="section">

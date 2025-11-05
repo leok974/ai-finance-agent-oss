@@ -1,0 +1,113 @@
+{
+"folders": [
+{ "name": "Web", "path": "apps/web" },
+{ "name": "API", "path": "apps/backend" }
+],
+"settings": {
+"files.exclude": {
+"/node_modules": true,
+"/dist": true,
+"/.vite": true,
+"/.cache": true,
+"/.pytest_cache": true,
+"/pycache": true,
+"/.coverage": true,
+"/playwright-report": true,
+"/test-results": true
+},
+"search.exclude": {
+"/node_modules": true,
+"/dist": true,
+"/.vite": true,
+"/.cache": true,
+"/.pytest_cache": true,
+"/pycache": true,
+"/.coverage": true,
+"/playwright-report": true,
+"/test-results": true
+},
+"editor.formatOnSave": true,
+"eslint.enable": true,
+"eslint.workingDirectories": [{ "mode": "auto" }],
+"typescript.tsdk": "node_modules/typescript/lib",
+"python.defaultInterpreterPath": ".venv\Scripts\python.exe"
+},
+"extensions": {
+"recommendations": [
+"dbaeumer.vscode-eslint",
+"esbenp.prettier-vscode",
+"bradlc.vscode-tailwindcss",
+"ms-python.python",
+"ms-python.vscode-pylance",
+"ms-playwright.playwright",
+"ms-azuretools.vscode-docker",
+"yzhang.markdown-all-in-one"
+]
+},
+"tasks": {
+"version": "2.0.0",
+"options": {
+"cwd": "${workspaceFolder}",
+"shell": { "executable": "powershell.exe", "args": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command"] }
+},
+"tasks": [
+{
+"label": "web:dev",
+"type": "shell",
+"options": { "cwd": "${workspaceFolder:Web}" },
+"command": "if (Test-Path pnpm-lock.yaml) { pnpm dev } else { npm run dev }",
+"problemMatcher": ["$tsc"]
+},
+{
+"label": "api:dev",
+"type": "shell",
+"options": { "cwd": "${workspaceFolder}" },
+"command": "uvicorn apps.backend.app.main:app --host 127.0.0.1 --port 8000 --reload",
+"problemMatcher": ["$pytest-python"]
+},
+{
+"label": "e2e:smoke",
+"type": "shell",
+"options": { "cwd": "${workspaceFolder:Web}" },
+"command": "pnpm dlx playwright install; if (Test-Path pnpm-lock.yaml) { pnpm test:e2e } else { npm run test:e2e }",
+"problemMatcher": []
+},
+{
+"label": "api:test",
+"type": "shell",
+"options": { "cwd": "${workspaceFolder:API}" },
+"command": "pytest -q",
+"problemMatcher": ["$pytest-python"]
+},
+{
+"label": "lint",
+"type": "shell",
+"options": { "cwd": "${workspaceFolder:Web}" },
+"command": "if (Test-Path pnpm-lock.yaml) { pnpm lint } else { npm run lint }",
+"problemMatcher": ["$eslint-stylish"]
+}
+]
+},
+"launch": {
+"version": "0.2.0",
+"configurations": [
+{
+"type": "pwa-chrome",
+"request": "launch",
+"name": "Launch Web (Chrome)",
+"url": "http://localhost:5173",
+"webRoot": "${workspaceFolder:Web}"
+},
+{
+"name": "Python: FastAPI (uvicorn module)",
+"type": "python",
+"request": "launch",
+"module": "uvicorn",
+"args": ["apps.backend.app.main:app", "--host", "127.0.0.1", "--port", "8000", "--reload"],
+"cwd": "${workspaceFolder}",
+"console": "integratedTerminal",
+"justMyCode": true
+}
+]
+}
+}

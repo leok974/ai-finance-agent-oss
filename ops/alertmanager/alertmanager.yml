@@ -1,0 +1,65 @@
+# AlertManager Main Configuration
+# Minimal working configuration - expand when adding email/Slack
+
+global:
+  resolve_timeout: 5m
+
+# Routing tree
+route:
+  receiver: 'default'
+  group_by: ['alertname', 'env', 'job']
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+
+  routes:
+    # KMS critical alerts route
+    - match_re:
+        alertname: '^KMS.*'
+      continue: false
+      receiver: 'kms-critical'
+      group_wait: 10s
+      group_interval: 2m
+      repeat_interval: 30m
+      routes:
+        # Warning severity goes to separate receiver
+        - match:
+            severity: warning
+          receiver: 'kms-security'
+          group_wait: 30s
+          group_interval: 5m
+          repeat_interval: 2h
+
+# Receivers (console logging only - expand with email/Slack when ready)
+receivers:
+  - name: 'default'
+    # Default receiver - logs to console
+
+  - name: 'kms-security'
+    # KMS security alerts - add email/Slack config here when ready
+    # Example:
+    # email_configs:
+    #   - to: 'secops@ledger-mind.org'
+    #     from: 'alerts@ledger-mind.org'
+    #     smarthost: 'smtp.sendgrid.net:587'
+    #     auth_username: 'apikey'
+    #     auth_password: 'YOUR_KEY_HERE'
+
+  - name: 'kms-critical'
+    # KMS critical alerts - add email/Slack config here when ready
+
+# Inhibit rules - prevent alert storms
+inhibit_rules:
+  # If backend is completely down, suppress crypto alerts
+  - source_match:
+      alertname: 'KMSHealthChecksFailing'
+    target_match_re:
+      alertname: '^KMS(Crypto|Decryption).*'
+    equal: ['env', 'job']
+
+  # If not in KMS mode, suppress crypto ready alerts
+  - source_match:
+      alertname: 'KMSCryptoModeNotKMS'
+    target_match:
+      alertname: 'KMSCryptoNotReady'
+    equal: ['env', 'job']

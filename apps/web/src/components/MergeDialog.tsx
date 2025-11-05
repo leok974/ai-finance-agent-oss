@@ -16,7 +16,7 @@ export default function MergeDialog({ open, onOpenChange, ids, onDone }:{ open:b
         const amounts: number[] = [];
         for (const id of ids) {
           const t = await getTxn(id);
-          amounts.push(Number(t?.amount || 0));
+          amounts.push(Number(t?.amount ?? 0));
         }
         if (!alive) return;
         const signs = amounts.map(a => (a === 0 ? 0 : (a > 0 ? 1 : -1)));

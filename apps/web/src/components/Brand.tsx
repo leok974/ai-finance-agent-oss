@@ -10,7 +10,7 @@ export default function Brand() {
           width={1024}
           height={1024}
           decoding="async"
-          fetchPriority="high"
+          fetchpriority="high"
           draggable={false}
           data-brand-logo
           className="block w-auto object-contain h-24 md:h-28 lg:h-32 xl:h-36 2xl:h-40 !filter-none !mix-blend-normal !opacity-100 translate-y-[1px]"

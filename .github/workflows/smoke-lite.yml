@@ -1,0 +1,58 @@
+name: smoke-lite
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch: {}
+
+jobs:
+  smoke-lite:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install backend minimal deps (requests not required; stdlib urllib)
+        run: |
+          echo "Using stdlib only"
+
+      - name: Launch stack (backend + nginx only)
+        run: |
+          docker compose -f docker-compose.prod.yml up -d --quiet-pull backend nginx postgres ollama agui || docker compose -f docker-compose.prod.yml up -d backend nginx
+          # wait for health
+          for i in {1..30}; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1/version || true);
+            if [ "$code" = "200" ]; then echo "backend up"; break; fi; sleep 2; done
+
+      - name: Run smoke-lite
+        run: |
+          python scripts/smoke-lite.py --base http://127.0.0.1
+
+      - name: KMS Crypto Health Check
+        run: |
+          python scripts/smoke-crypto-kms.py --base-url http://127.0.0.1 --verbose
+        continue-on-error: true
+        id: kms_check
+
+      - name: Show KMS status on failure
+        if: steps.kms_check.outcome == 'failure'
+        run: |
+          echo "::warning::KMS crypto check failed (may be running in env mode for CI)"
+          curl -s http://127.0.0.1/healthz | jq . || curl -s http://127.0.0.1/healthz
+
+      - name: Show metrics head (debug)
+        if: always()
+        run: |
+          curl -s http://127.0.0.1/metrics | head -n 25
+
+      - name: Teardown
+        if: always()
+        run: |
+          docker compose -f docker-compose.prod.yml down -v

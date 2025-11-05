@@ -1,0 +1,39 @@
+{
+"folders": [
+{ "name": "Infra (root)", "path": "." },
+{ "name": "Ops", "path": "ops" },
+{ "name": "Nginx", "path": "nginx" },
+{ "name": "Cloudflared", "path": "cloudflared" },
+{ "name": "Prometheus", "path": "prometheus" }
+],
+"settings": {
+"yaml.schemas": { "kubernetes": "*.yaml" },
+"docker.enableDockerCommands": true
+},
+"extensions": {
+"recommendations": [
+"ms-azuretools.vscode-docker",
+"redhat.vscode-yaml",
+"github.vscode-github-actions",
+"hashicorp.terraform",
+"bierner.markdown-mermaid"
+]
+},
+"tasks": {
+"version": "2.0.0",
+"options": {
+"cwd": "${workspaceFolder}",
+"shell": { "executable": "powershell.exe", "args": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command"] }
+},
+"tasks": [
+{ "label": "dev:up",         "type": "shell", "command": "docker compose -f ops/docker-compose.dev.yml up -d" },
+{ "label": "dev:down",       "type": "shell", "command": "docker compose -f ops/docker-compose.dev.yml down" },
+{ "label": "prod:up",        "type": "shell", "command": "docker compose -f ops/docker-compose.prod.yml up -d" },
+{ "label": "prod:down",      "type": "shell", "command": "docker compose -f ops/docker-compose.prod.yml down" },
+{ "label": "nginx:reload",   "type": "shell", "command": "docker compose -f ops/docker-compose.prod.yml exec nginx nginx -s reload" },
+{ "label": "tunnel:restart", "type": "shell", "command": "docker compose -f ops/docker-compose.prod.yml restart cloudflared" },
+{ "label": "health:origin",  "type": "shell", "command": "cmd /c "curl -I http://ai-finance.int/health && curl -s http://ai-finance-api.int:8000/ready"" },
+{ "label": "health:public",  "type": "shell", "command": "curl -I https://ledger-mind.org/health" }
+]
+}
+}

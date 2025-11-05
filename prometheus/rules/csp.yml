@@ -1,0 +1,9 @@
+groups:
+- name: csp_edge
+  rules:
+  - record: edge_csp_policy_sha_current
+    expr: max by (sha) (edge_csp_policy_sha == 1)
+  - record: edge_csp_policy_length_current
+    expr: max(edge_csp_policy_length)
+  - record: edge_metrics_last_push_seconds
+    expr: max(edge_metrics_timestamp_seconds)

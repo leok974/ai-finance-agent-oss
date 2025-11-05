@@ -1,0 +1,23 @@
+## Cloudflared credentials-file mode configuration
+## Replace the tunnel UUID below if different. Ensure the matching <UUID>.json
+## credentials file resides in this directory (copied from ~/.cloudflared/ after
+## running `cloudflared tunnel create <name>`).
+
+tunnel: 6a9e2d7e-9c48-401b-bdfd-ab219d3d4df5
+credentials-file: /etc/cloudflared/6a9e2d7e-9c48-401b-bdfd-ab219d3d4df5.json
+
+originRequest:
+  connectTimeout: 10s
+  tcpKeepAlive: 30s
+  noHappyEyeballs: true
+  originServerName: ledger-mind.org
+  noTLSVerify: false
+
+ingress:
+  - hostname: app.ledger-mind.org
+    service: http://nginx:80
+  - hostname: ledger-mind.org
+    service: http://nginx:80
+  - hostname: www.ledger-mind.org
+    service: http://nginx:80
+  - service: http_status:404

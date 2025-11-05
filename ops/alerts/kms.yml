@@ -1,0 +1,107 @@
+groups:
+- name: kms
+  rules:
+  # KMS Crypto Health Monitoring
+  # Based on: docs/KMS_OPERATIONS.md
+
+  # Health endpoint check for crypto_mode=kms
+  - alert: KMSModeNotActive
+    expr: crypto_mode{job="backend"} != 1
+    for: 5m
+    labels:
+      severity: critical
+    annotations:
+      summary: "KMS crypto mode not active on {{ $labels.instance }}"
+      detail: "crypto_mode should be 'kms' but is showing different value"
+
+  # Health endpoint check for crypto_ready=true
+  - alert: KMSCryptoNotReady
+    expr: crypto_ready{job="backend"} != 1
+    for: 5m
+    labels:
+      severity: critical
+    annotations:
+      summary: "KMS crypto not ready on {{ $labels.instance }}"
+      detail: "crypto_ready should be true but is false or absent"
+
+  # Grace period filter: allow 1-2 errors during startup (healthcheck probes)
+  - alert: KMSDecryptionErrorsBurst
+    expr: |
+      increase(crypto_decryption_errors_total{job="backend"}[5m]) > 10
+      and
+      time() - process_start_time_seconds{job="backend"} > 120
+    for: 2m
+    labels:
+      severity: warning
+    annotations:
+      summary: "High decryption error rate on {{ $labels.instance }}"
+      detail: "More than 10 decryption errors in 5 minutes (after 2min grace period)"
+      runbook: "Check logs for 'Decryption failed', '403 Permission denied', 'AAD mismatch'"
+
+  # Log pattern monitoring: crypto init failures
+  - alert: KMSInitFailure
+    expr: |
+      increase(crypto_init_failures_total{job="backend"}[10m]) > 0
+    for: 1m
+    labels:
+      severity: critical
+    annotations:
+      summary: "KMS crypto initialization failed on {{ $labels.instance }}"
+      detail: "Backend attempted to initialize crypto but failed"
+      runbook: "Check logs for 'crypto init failed', 'KEK env not set', '403 Permission denied'"
+
+  # Alert threshold: persistent decryption failures
+  - alert: KMSDecryptionFailuresPersistent
+    expr: |
+      rate(crypto_decryption_errors_total{job="backend"}[15m]) > 0.01
+      and
+      time() - process_start_time_seconds{job="backend"} > 300
+    for: 10m
+    labels:
+      severity: critical
+    annotations:
+      summary: "Persistent decryption failures on {{ $labels.instance }}"
+      detail: "Decryption errors sustained for 10+ minutes (after 5min grace period)"
+      runbook: |
+        See: docs/KMS_OPERATIONS.md#troubleshooting
+        1. Check crypto_mode: docker exec ai-finance-backend-1 python -m app.cli crypto-status
+        2. Verify IAM: gcloud kms keys get-iam-policy kek --keyring=ledgermind --location=us-east1
+        3. Check AAD: Compare GCP_KMS_AAD env var with DEK aad field
+
+  # KMS service connectivity
+  - alert: KMSServiceUnreachable
+    expr: |
+      increase(kms_connection_errors_total{job="backend"}[10m]) > 5
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "GCP KMS service unreachable from {{ $labels.instance }}"
+      detail: "Multiple connection failures to GCP Cloud KMS"
+      runbook: "Check network connectivity, GCP service status, service account credentials"
+
+  # Health endpoint unavailable
+  - alert: KMSHealthEndpointDown
+    expr: |
+      up{job="backend"} == 0
+      or
+      probe_success{job="backend-health"} == 0
+    for: 2m
+    labels:
+      severity: critical
+    annotations:
+      summary: "Backend health endpoint down"
+      detail: "Cannot check KMS crypto status - backend may be down"
+
+  # Recording rules for dashboard panels
+  - record: kms:crypto_health_status
+    expr: |
+      (crypto_mode{job="backend"} == 1) * (crypto_ready{job="backend"} == 1)
+
+  - record: kms:decryption_error_rate_5m
+    expr: |
+      rate(crypto_decryption_errors_total{job="backend"}[5m])
+
+  - record: kms:uptime_since_last_crypto_init
+    expr: |
+      time() - crypto_init_timestamp_seconds{job="backend"}

@@ -5,36 +5,62 @@ from alembic.script import ScriptDirectory
 from alembic.config import Config as AlembicConfig
 from alembic.runtime.migration import MigrationContext
 import os
-import json, urllib.request
+import json
+import urllib.request
 
 from app.db import get_db
 from app.transactions import Transaction
 from app.config import settings
 from sqlalchemy.engine import make_url
 from app.core.crypto_state import get_write_label, get_crypto_status
+
+try:
+    from app.metrics import set_crypto_metrics  # optional
+except Exception:  # pragma: no cover
+
+    def set_crypto_metrics(mode):
+        return None
+
+
 try:  # version info (branch/commit) optional
     from app import version as app_version
 except Exception:  # pragma: no cover
+
     class _V:  # fallback placeholder
         GIT_BRANCH = "unknown"
         GIT_COMMIT = "unknown"
+
     app_version = _V()  # type: ignore
 from app.services import dek_rotation as _dek_rotation  # for cached rotation stats
 
 # Lazy/prometheus optional: define counters if prometheus_client is available
 try:  # pragma: no cover - metrics optional
-    from prometheus_client import Counter, Gauge
-    _CRYPTO_READY = Gauge("crypto_ready", "Whether crypto subsystem loaded DEK (1=ready,0=not)")
-    _CRYPTO_MODE = Gauge("crypto_mode_env", "Crypto mode flag (1 if env-wrapped active key)")
+    from prometheus_client import Gauge
+
+    _CRYPTO_READY = Gauge(
+        "crypto_ready", "Whether crypto subsystem loaded DEK (1=ready,0=not)"
+    )
+    _CRYPTO_MODE = Gauge(
+        "crypto_mode_env", "Crypto mode flag (1 if env-wrapped active key)"
+    )
     _CRYPTO_KEYS_TOTAL = Gauge("crypto_keys_total", "Total encryption key rows")
-    _CRYPTO_ACTIVE_LABEL_AGE = Gauge("crypto_active_label_age_seconds", "Approx age (seconds) of active label")
-    _ALEMBIC_DIVERGED = Gauge("alembic_multiple_heads", "1 if multiple Alembic heads detected")
-    _HEALTH_REASON = Gauge("health_reason", "Health reason active flag (1=present)", ["reason", "severity"])  # small bounded label set
+    _CRYPTO_ACTIVE_LABEL_AGE = Gauge(
+        "crypto_active_label_age_seconds", "Approx age (seconds) of active label"
+    )
+    _ALEMBIC_DIVERGED = Gauge(
+        "alembic_multiple_heads", "1 if multiple Alembic heads detected"
+    )
+    _HEALTH_REASON = Gauge(
+        "health_reason", "Health reason active flag (1=present)", ["reason", "severity"]
+    )  # small bounded label set
     _HEALTH_OVERALL = Gauge("health_overall", "Overall health status (1=ok,0=degraded)")
 except Exception:  # pragma: no cover - silently disable
-    _CRYPTO_READY = _CRYPTO_MODE = _CRYPTO_KEYS_TOTAL = _CRYPTO_ACTIVE_LABEL_AGE = _ALEMBIC_DIVERGED = _HEALTH_REASON = _HEALTH_OVERALL = None
+    _CRYPTO_READY = _CRYPTO_MODE = _CRYPTO_KEYS_TOTAL = _CRYPTO_ACTIVE_LABEL_AGE = (
+        _ALEMBIC_DIVERGED
+    ) = _HEALTH_REASON = _HEALTH_OVERALL = None
 
 router = APIRouter(tags=["health"])
+
 
 def _db_ping(db: Session) -> bool:
     try:
@@ -42,6 +68,7 @@ def _db_ping(db: Session) -> bool:
         return True
     except Exception:
         return False
+
 
 def _alembic_status(db: Session):
     # DB revision (from alembic_version)
@@ -55,18 +82,29 @@ def _alembic_status(db: Session):
     try:
         # finds alembic.ini next to your alembic/ folder
         alembic_ini = os.path.join(os.getcwd(), "alembic.ini")
-        cfg = AlembicConfig(alembic_ini) if os.path.exists(alembic_ini) else AlembicConfig()
+        cfg = (
+            AlembicConfig(alembic_ini)
+            if os.path.exists(alembic_ini)
+            else AlembicConfig()
+        )
         script = ScriptDirectory.from_config(cfg)
         heads = script.get_heads()
         code_head = heads[0] if heads else None
     except Exception:
         code_head = None
 
-    return {"db_revision": db_rev, "code_head": code_head, "in_sync": (db_rev == code_head and db_rev is not None)}
+    return {
+        "db_revision": db_rev,
+        "code_head": code_head,
+        "in_sync": (db_rev == code_head and db_rev is not None),
+    }
+
 
 def _ollama_tags():
     try:
-        base_ollama = getattr(settings, "OLLAMA_BASE_URL", "http://ollama:11434").rstrip('/')
+        base_ollama = getattr(
+            settings, "OLLAMA_BASE_URL", "http://ollama:11434"
+        ).rstrip("/")
         url = f"{base_ollama}/api/tags"
         with urllib.request.urlopen(url, timeout=1.0) as resp:
             data = json.loads(resp.read().decode("utf-8", errors="ignore"))
@@ -80,10 +118,13 @@ def _ollama_tags():
     except Exception as e:
         return False, {"error": str(e)}
 
+
 def _ollama_generate_ping(model="gpt-oss:20b"):
     try:
         body = json.dumps({"model": model, "prompt": "ping", "stream": False})
-        base_ollama = getattr(settings, "OLLAMA_BASE_URL", "http://ollama:11434").rstrip('/')
+        base_ollama = getattr(
+            settings, "OLLAMA_BASE_URL", "http://ollama:11434"
+        ).rstrip("/")
         url = f"{base_ollama}/api/generate"
         req = urllib.request.Request(
             url,
@@ -96,6 +137,7 @@ def _ollama_generate_ping(model="gpt-oss:20b"):
             return True, {"reply": data.get("response", "")}
     except Exception as e:
         return False, {"error": str(e)}
+
 
 @router.get("/full")
 def full_health():
@@ -111,7 +153,9 @@ def full_health():
     }
 
 
-def classify_health(reasons, strict: bool | None = None):  # pragma: no cover - simple logic
+def classify_health(
+    reasons, strict: bool | None = None
+):  # pragma: no cover - simple logic
     """Return normalized health classification structure.
     reasons: list of raw reasons (info + warn). We treat crypto_disabled as informational.
     strict: optional override; if None derive from env.
@@ -119,7 +163,12 @@ def classify_health(reasons, strict: bool | None = None):  # pragma: no cover - 
     Also updates Prometheus reason gauges if available.
     """
     if strict is None:
-        strict = os.getenv("CRYPTO_STRICT_STARTUP", "0").lower() in {"1","true","yes","on"}
+        strict = os.getenv("CRYPTO_STRICT_STARTUP", "0").lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }
     info_set = {"crypto_disabled"}
     info_reasons = [r for r in reasons if r in info_set]
     warn_reasons = [r for r in reasons if r not in info_set]
@@ -133,12 +182,25 @@ def classify_health(reasons, strict: bool | None = None):  # pragma: no cover - 
     output_reasons = reasons if strict else warn_reasons
     # Metrics update
     try:
-        from app.routers.health import _HEALTH_REASON, _HEALTH_OVERALL  # circular safe at runtime
+        from app.routers.health import (
+            _HEALTH_REASON,
+            _HEALTH_OVERALL,
+        )  # circular safe at runtime
+
         if _HEALTH_REASON is not None:
-            known = {"alembic_out_of_sync", "multiple_alembic_heads", "crypto_not_ready", "crypto_disabled", "db_unreachable", "models_unreadable"}
+            known = {
+                "alembic_out_of_sync",
+                "multiple_alembic_heads",
+                "crypto_not_ready",
+                "crypto_disabled",
+                "db_unreachable",
+                "models_unreadable",
+            }
             for r in known:
                 sev = "info" if r in info_set else "warn"
-                _HEALTH_REASON.labels(reason=r, severity=sev).set(1.0 if r in reasons else 0.0)
+                _HEALTH_REASON.labels(reason=r, severity=sev).set(
+                    1.0 if r in reasons else 0.0
+                )
         if _HEALTH_OVERALL is not None:
             _HEALTH_OVERALL.set(1.0 if ok_flag else 0.0)
     except Exception:
@@ -150,6 +212,7 @@ def classify_health(reasons, strict: bool | None = None):  # pragma: no cover - 
         "info_reasons": info_reasons,
         "warn_reasons": warn_reasons,
     }
+
 
 @router.get("/healthz")
 def healthz(db: Session = Depends(get_db)):
@@ -168,10 +231,18 @@ def healthz(db: Session = Depends(get_db)):
         current_rev = context.get_current_revision()
         # Code head from alembic scripts
         alembic_ini = os.path.join(os.getcwd(), "alembic.ini")
-        cfg = AlembicConfig(alembic_ini) if os.path.exists(alembic_ini) else AlembicConfig()
+        cfg = (
+            AlembicConfig(alembic_ini)
+            if os.path.exists(alembic_ini)
+            else AlembicConfig()
+        )
         script = ScriptDirectory.from_config(cfg)
         head_rev = script.get_current_head()
-        alembic = {"db_revision": current_rev, "code_head": head_rev, "in_sync": (current_rev == head_rev and current_rev is not None)}
+        alembic = {
+            "db_revision": current_rev,
+            "code_head": head_rev,
+            "in_sync": (current_rev == head_rev and current_rev is not None),
+        }
     except Exception:
         alembic = _alembic_status(db)
     status = "ok" if ok and models_ok and alembic["in_sync"] else "degraded"
@@ -182,7 +253,12 @@ def healthz(db: Session = Depends(get_db)):
     except Exception:
         db_engine = None
     crypto = get_crypto_status(db)
-    crypto_enabled_env = os.getenv("ENCRYPTION_ENABLED", "1").lower() in {"1","true","yes","on"}
+    crypto_enabled_env = os.getenv("ENCRYPTION_ENABLED", "1").lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
     if not crypto_enabled_env:
         # Override to explicit disabled state (even if keys present) to avoid confusion
         crypto = {"ready": False, "mode": "disabled", "label": None, "kms_key_id": None}
@@ -197,7 +273,9 @@ def healthz(db: Session = Depends(get_db)):
     except Exception:
         migration_diverged = None
 
-    reasons = []  # entries: 'alembic_out_of_sync', 'multiple_alembic_heads', 'crypto_not_ready', 'crypto_disabled'
+    reasons = (
+        []
+    )  # entries: 'alembic_out_of_sync', 'multiple_alembic_heads', 'crypto_not_ready', 'crypto_disabled'
     if not ok:
         reasons.append("db_unreachable")
     if not models_ok:
@@ -218,21 +296,54 @@ def healthz(db: Session = Depends(get_db)):
     info_reasons = classification["info_reasons"]
     warn_reasons = classification["warn_reasons"]
     # Expose version info and explicit ok flag; reasons always a list
-    version_info = {"branch": getattr(app_version, "GIT_BRANCH", "unknown"), "commit": getattr(app_version, "GIT_COMMIT", "unknown"), "build_time": getattr(app_version, "BUILD_TIME", "unknown")}
-    if _ALEMBIC_DIVERGED is not None and migration_diverged is not None:  # pragma: no cover
+    version_info = {
+        "branch": getattr(app_version, "GIT_BRANCH", "unknown"),
+        "commit": getattr(app_version, "GIT_COMMIT", "unknown"),
+        "build_time": getattr(app_version, "BUILD_TIME", "unknown"),
+    }
+    if (
+        _ALEMBIC_DIVERGED is not None and migration_diverged is not None
+    ):  # pragma: no cover
         try:
             _ALEMBIC_DIVERGED.set(1.0 if migration_diverged else 0.0)
         except Exception:
             pass
+    # Update crypto metrics
+    try:
+        set_crypto_metrics(crypto.get("mode"))
+    except Exception:
+        pass
+
+    # RAG readiness check: count embeddings for demo verification
+    embeddings_count = 0
+    rag_tables_ok = False
+    try:
+        # Check if rag_chunks table exists and has embeddings
+        result = db.execute(
+            text("SELECT COUNT(*) FROM rag_chunks WHERE LENGTH(embedding) > 0")
+        )
+        embeddings_count = result.scalar() or 0
+        rag_tables_ok = True
+    except Exception:
+        pass  # Tables don't exist yet or DB error
+
     return {
         "ok": ok_flag,
         "status": overall_status,
-    "reasons": output_reasons,
+        "reasons": output_reasons,
         "info_reasons": info_reasons,
         "warn_reasons": warn_reasons,
+        "checks": {
+            "db": "ok" if ok and models_ok else "error",
+            "migrations": "ok" if alembic.get("in_sync") else "out_of_sync",
+            "embeddings_count": embeddings_count,
+            "rag_tables": "ok" if rag_tables_ok else "not_found",
+        },
         "db": {"reachable": ok, "models_ok": models_ok},
         "alembic": alembic,
-        "migration_diverged": bool(migration_diverged) if migration_diverged is not None else None,
+        "migration_diverged": (
+            bool(migration_diverged) if migration_diverged is not None else None
+        ),
         "db_engine": db_engine,
         "alembic_ok": bool(alembic.get("in_sync")),
         "db_revision": alembic.get("db_revision"),
@@ -243,6 +354,7 @@ def healthz(db: Session = Depends(get_db)):
         "rotation": rotation_stats if rotation_stats else None,
         "version": version_info,
     }
+
 
 @router.get("/health/simple")
 def health_simple(db: Session = Depends(get_db)):
@@ -257,6 +369,7 @@ def health_simple(db: Session = Depends(get_db)):
     except Exception:
         branch, commit = "unknown", "unknown"
     return {"ok": db_ok, "db": db_ok, "branch": branch, "commit": commit}
+
 
 # Alias path without slash for environments that block nested health style
 @router.get("/health_simple")
@@ -273,18 +386,33 @@ def encryption_status(db: Session = Depends(get_db)):
     except Exception:
         wl = None
     try:
-        rows = db.execute(text(
-            "SELECT label, created_at, dek_wrap_nonce FROM encryption_keys ORDER BY created_at DESC"
-        )).fetchall()
+        rows = db.execute(
+            text(
+                "SELECT label, created_at, dek_wrap_nonce FROM encryption_keys ORDER BY created_at DESC"
+            )
+        ).fetchall()
         keys = []
         for r in rows:
             nonce = getattr(r, "dek_wrap_nonce", None)
-            scheme = "gcp_kms" if (nonce is None or (isinstance(nonce, (bytes, bytearray)) and len(nonce) == 0)) else "aesgcm"
-            keys.append({
-                "label": r.label,
-                "created_at": (r.created_at.isoformat() if getattr(r, "created_at", None) else None),
-                "wrap_scheme": scheme,
-            })
+            scheme = (
+                "gcp_kms"
+                if (
+                    nonce is None
+                    or (isinstance(nonce, (bytes, bytearray)) and len(nonce) == 0)
+                )
+                else "aesgcm"
+            )
+            keys.append(
+                {
+                    "label": r.label,
+                    "created_at": (
+                        r.created_at.isoformat()
+                        if getattr(r, "created_at", None)
+                        else None
+                    ),
+                    "wrap_scheme": scheme,
+                }
+            )
     except Exception:
         keys = []
     out = {
@@ -302,14 +430,20 @@ def encryption_status(db: Session = Depends(get_db)):
             for k in keys:
                 if k.get("label") == "active" and k.get("created_at"):
                     from datetime import datetime, timezone
+
                     try:
-                        active_ts = datetime.fromisoformat(k["created_at"].replace("Z",""))
+                        active_ts = datetime.fromisoformat(
+                            k["created_at"].replace("Z", "")
+                        )
                     except Exception:
                         active_ts = None
                     break
             if active_ts:
                 from datetime import datetime, timezone
-                _CRYPTO_ACTIVE_LABEL_AGE.set(max(0, (datetime.now(timezone.utc) - active_ts).total_seconds()))
+
+                _CRYPTO_ACTIVE_LABEL_AGE.set(
+                    max(0, (datetime.now(timezone.utc) - active_ts).total_seconds())
+                )
         except Exception:
             pass
     return out
@@ -323,7 +457,13 @@ def ready(db: Session = Depends(get_db)):
     st = get_crypto_status(db)
     if not st.get("ready"):
         raise HTTPException(status_code=503, detail={"crypto_ready": False, **st})
+    # Update crypto metrics
+    try:
+        set_crypto_metrics(st.get("mode"))
+    except Exception:
+        pass
     return {"ok": True, **st}
+
 
 @router.get("/live")
 def live():

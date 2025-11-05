@@ -1,0 +1,264 @@
+# HELP python_gc_objects_collected_total Objects collected during gc
+# TYPE python_gc_objects_collected_total counter
+python_gc_objects_collected_total{generation="0"} 6928.0
+python_gc_objects_collected_total{generation="1"} 12752.0
+python_gc_objects_collected_total{generation="2"} 13.0
+# HELP python_gc_objects_uncollectable_total Uncollectable objects found during GC
+# TYPE python_gc_objects_uncollectable_total counter
+python_gc_objects_uncollectable_total{generation="0"} 0.0
+python_gc_objects_uncollectable_total{generation="1"} 0.0
+python_gc_objects_uncollectable_total{generation="2"} 0.0
+# HELP python_gc_collections_total Number of times this generation was collected
+# TYPE python_gc_collections_total counter
+python_gc_collections_total{generation="0"} 694.0
+python_gc_collections_total{generation="1"} 63.0
+python_gc_collections_total{generation="2"} 5.0
+# HELP python_info Python platform information
+# TYPE python_info gauge
+python_info{implementation="CPython",major="3",minor="11",patchlevel="2",version="3.11.2"} 1.0
+# HELP process_virtual_memory_bytes Virtual memory size in bytes.
+# TYPE process_virtual_memory_bytes gauge
+process_virtual_memory_bytes 3.781668864e+09
+# HELP process_resident_memory_bytes Resident memory size in bytes.
+# TYPE process_resident_memory_bytes gauge
+process_resident_memory_bytes 2.85028352e+08
+# HELP process_start_time_seconds Start time of the process since unix epoch in seconds.
+# TYPE process_start_time_seconds gauge
+process_start_time_seconds 1.75938828571e+09
+# HELP process_cpu_seconds_total Total user and system CPU time spent in seconds.
+# TYPE process_cpu_seconds_total counter
+process_cpu_seconds_total 5.7299999999999995
+# HELP process_open_fds Number of open file descriptors.
+# TYPE process_open_fds gauge
+process_open_fds 23.0
+# HELP process_max_fds Maximum number of open file descriptors.
+# TYPE process_max_fds gauge
+process_max_fds 1.048576e+06
+# HELP help_cache_hits_total Help cache hits
+# TYPE help_cache_hits_total counter
+help_cache_hits_total 0.0
+# HELP help_cache_hits_created Help cache hits
+# TYPE help_cache_hits_created gauge
+help_cache_hits_created 1.7593882891124144e+09
+# HELP help_cache_misses_total Help cache misses
+# TYPE help_cache_misses_total counter
+help_cache_misses_total 0.0
+# HELP help_cache_misses_created Help cache misses
+# TYPE help_cache_misses_created gauge
+help_cache_misses_created 1.759388289112422e+09
+# HELP help_cache_evictions_total Help cache evictions
+# TYPE help_cache_evictions_total counter
+help_cache_evictions_total 0.0
+# HELP help_cache_evictions_created Help cache evictions
+# TYPE help_cache_evictions_created gauge
+help_cache_evictions_created 1.7593882891124268e+09
+# HELP help_cache_entries Help cache current size
+# TYPE help_cache_entries gauge
+help_cache_entries 0.0
+# HELP crypto_rotation_scanned_total Rows scanned during DEK rotation
+# TYPE crypto_rotation_scanned_total counter
+crypto_rotation_scanned_total 0.0
+# HELP crypto_rotation_scanned_created Rows scanned during DEK rotation
+# TYPE crypto_rotation_scanned_created gauge
+crypto_rotation_scanned_created 1.7593882891176524e+09
+# HELP crypto_rotation_processed_total Rows re-encrypted during DEK rotation
+# TYPE crypto_rotation_processed_total counter
+crypto_rotation_processed_total 0.0
+# HELP crypto_rotation_processed_created Rows re-encrypted during DEK rotation
+# TYPE crypto_rotation_processed_created gauge
+crypto_rotation_processed_created 1.7593882891176627e+09
+# HELP crypto_rotation_decrypt_fail_total Decrypt failures during DEK rotation
+# TYPE crypto_rotation_decrypt_fail_total counter
+crypto_rotation_decrypt_fail_total 0.0
+# HELP crypto_rotation_decrypt_fail_created Decrypt failures during DEK rotation
+# TYPE crypto_rotation_decrypt_fail_created gauge
+crypto_rotation_decrypt_fail_created 1.759388289117667e+09
+# HELP crypto_rotation_decrypt_ok_total Successful decrypt operations during rotation
+# TYPE crypto_rotation_decrypt_ok_total counter
+crypto_rotation_decrypt_ok_total 0.0
+# HELP crypto_rotation_decrypt_ok_created Successful decrypt operations during rotation
+# TYPE crypto_rotation_decrypt_ok_created gauge
+crypto_rotation_decrypt_ok_created 1.7593882891176748e+09
+# HELP crypto_rotation_remaining Remaining rows under source label needing rotation
+# TYPE crypto_rotation_remaining gauge
+crypto_rotation_remaining 0.0
+# HELP crypto_rotation_last_batch_size Row count processed in last rotation batch
+# TYPE crypto_rotation_last_batch_size gauge
+crypto_rotation_last_batch_size 0.0
+# HELP crypto_rotation_batch_seconds Wall time to process a yielded batch of rows
+# TYPE crypto_rotation_batch_seconds histogram
+crypto_rotation_batch_seconds_bucket{le="0.01"} 0.0
+crypto_rotation_batch_seconds_bucket{le="0.05"} 0.0
+crypto_rotation_batch_seconds_bucket{le="0.1"} 0.0
+crypto_rotation_batch_seconds_bucket{le="0.25"} 0.0
+crypto_rotation_batch_seconds_bucket{le="0.5"} 0.0
+crypto_rotation_batch_seconds_bucket{le="1.0"} 0.0
+crypto_rotation_batch_seconds_bucket{le="2.0"} 0.0
+crypto_rotation_batch_seconds_bucket{le="5.0"} 0.0
+crypto_rotation_batch_seconds_bucket{le="10.0"} 0.0
+crypto_rotation_batch_seconds_bucket{le="30.0"} 0.0
+crypto_rotation_batch_seconds_bucket{le="+Inf"} 0.0
+crypto_rotation_batch_seconds_count 0.0
+crypto_rotation_batch_seconds_sum 0.0
+# HELP crypto_rotation_batch_seconds_created Wall time to process a yielded batch of rows
+# TYPE crypto_rotation_batch_seconds_created gauge
+crypto_rotation_batch_seconds_created 1.7593882891176958e+09
+# HELP crypto_rotation_decrypt_fail_field_total Decrypt failures grouped by field
+# TYPE crypto_rotation_decrypt_fail_field_total counter
+# HELP crypto_rotation_finalize_total Successful finalize (promotion) events for rotation
+# TYPE crypto_rotation_finalize_total counter
+crypto_rotation_finalize_total 0.0
+# HELP crypto_rotation_finalize_created Successful finalize (promotion) events for rotation
+# TYPE crypto_rotation_finalize_created gauge
+crypto_rotation_finalize_created 1.7593882891177824e+09
+# HELP crypto_ready Whether crypto subsystem loaded DEK (1=ready,0=not)
+# TYPE crypto_ready gauge
+crypto_ready 0.0
+# HELP crypto_mode_env Crypto mode flag (1 if env-wrapped active key)
+# TYPE crypto_mode_env gauge
+crypto_mode_env 0.0
+# HELP crypto_keys_total Total encryption key rows
+# TYPE crypto_keys_total gauge
+crypto_keys_total 0.0
+# HELP crypto_active_label_age_seconds Approx age (seconds) of active label
+# TYPE crypto_active_label_age_seconds gauge
+crypto_active_label_age_seconds 0.0
+# HELP alembic_multiple_heads 1 if multiple Alembic heads detected
+# TYPE alembic_multiple_heads gauge
+alembic_multiple_heads 0.0
+# HELP health_reason Health reason active flag (1=present)
+# TYPE health_reason gauge
+health_reason{reason="multiple_alembic_heads",severity="warn"} 0.0
+health_reason{reason="alembic_out_of_sync",severity="warn"} 0.0
+health_reason{reason="crypto_not_ready",severity="warn"} 0.0
+health_reason{reason="crypto_disabled",severity="info"} 0.0
+health_reason{reason="models_unreadable",severity="warn"} 0.0
+health_reason{reason="db_unreachable",severity="warn"} 0.0
+# HELP health_overall Overall health status (1=ok,0=degraded)
+# TYPE health_overall gauge
+health_overall 1.0
+# HELP csp_reports_total Total CSP violation reports
+# TYPE csp_reports_total counter
+# HELP csp_inline_total Inline CSP violations (style/script)
+# TYPE csp_inline_total counter
+# HELP edge_csp_policy_length Length of CSP header observed by external probe
+# TYPE edge_csp_policy_length gauge
+edge_csp_policy_length 0.0
+# HELP edge_metrics_timestamp_seconds Unix timestamp of last edge metrics push
+# TYPE edge_metrics_timestamp_seconds gauge
+edge_metrics_timestamp_seconds 0.0
+# HELP edge_csp_policy_sha Current CSP header hash at edge (label=sha, value=1)
+# TYPE edge_csp_policy_sha gauge
+# HELP help_describe_requests_total Help describe requests
+# TYPE help_describe_requests_total counter
+# HELP help_describe_rephrased_total Help describe responses that were rephrased
+# TYPE help_describe_rephrased_total counter
+# HELP help_describe_fallback_total Help describe non-rephrased classification
+# TYPE help_describe_fallback_total counter
+# HELP compat_endpoint_hits_total Hits to legacy /api/* compat endpoints
+# TYPE compat_endpoint_hits_total counter
+# HELP http_requests_total Total number of requests by method, status and handler.
+# TYPE http_requests_total counter
+http_requests_total{handler="/live",method="GET",status="2xx"} 30.0
+http_requests_total{handler="/healthz",method="GET",status="2xx"} 30.0
+http_requests_total{handler="/version",method="GET",status="2xx"} 1.0
+http_requests_total{handler="/agent/chat",method="POST",status="4xx"} 1.0
+# HELP http_requests_created Total number of requests by method, status and handler.
+# TYPE http_requests_created gauge
+http_requests_created{handler="/live",method="GET",status="2xx"} 1.7593882935328646e+09
+http_requests_created{handler="/healthz",method="GET",status="2xx"} 1.7593882948171508e+09
+http_requests_created{handler="/version",method="GET",status="2xx"} 1.759388339372092e+09
+http_requests_created{handler="/agent/chat",method="POST",status="4xx"} 1.7593884395109355e+09
+# HELP http_request_size_bytes Content length of incoming requests by handler. Only value of header is respected. Otherwise ignored. No percentile calculated.
+# TYPE http_request_size_bytes summary
+http_request_size_bytes_count{handler="/live"} 30.0
+http_request_size_bytes_sum{handler="/live"} 0.0
+http_request_size_bytes_count{handler="/healthz"} 30.0
+http_request_size_bytes_sum{handler="/healthz"} 0.0
+http_request_size_bytes_count{handler="/version"} 1.0
+http_request_size_bytes_sum{handler="/version"} 0.0
+http_request_size_bytes_count{handler="/agent/chat"} 1.0
+http_request_size_bytes_sum{handler="/agent/chat"} 2.0
+# HELP http_request_size_bytes_created Content length of incoming requests by handler. Only value of header is respected. Otherwise ignored. No percentile calculated.
+# TYPE http_request_size_bytes_created gauge
+http_request_size_bytes_created{handler="/live"} 1.759388293532877e+09
+http_request_size_bytes_created{handler="/healthz"} 1.7593882948171628e+09
+http_request_size_bytes_created{handler="/version"} 1.759388339372105e+09
+http_request_size_bytes_created{handler="/agent/chat"} 1.7593884395109468e+09
+# HELP http_response_size_bytes Content length of outgoing responses by handler. Only value of header is respected. Otherwise ignored. No percentile calculated.
+# TYPE http_response_size_bytes summary
+http_response_size_bytes_count{handler="/live"} 30.0
+http_response_size_bytes_sum{handler="/live"} 0.0
+http_response_size_bytes_count{handler="/healthz"} 30.0
+http_response_size_bytes_sum{handler="/healthz"} 19710.0
+http_response_size_bytes_count{handler="/version"} 1.0
+http_response_size_bytes_sum{handler="/version"} 125.0
+http_response_size_bytes_count{handler="/agent/chat"} 1.0
+http_response_size_bytes_sum{handler="/agent/chat"} 158.0
+# HELP http_response_size_bytes_created Content length of outgoing responses by handler. Only value of header is respected. Otherwise ignored. No percentile calculated.
+# TYPE http_response_size_bytes_created gauge
+http_response_size_bytes_created{handler="/live"} 1.7593882935328896e+09
+http_response_size_bytes_created{handler="/healthz"} 1.7593882948171742e+09
+http_response_size_bytes_created{handler="/version"} 1.7593883393721151e+09
+http_response_size_bytes_created{handler="/agent/chat"} 1.7593884395109568e+09
+# HELP http_request_duration_highr_seconds Latency with many buckets but no API specific labels. Made for more accurate percentile calculations.
+# TYPE http_request_duration_highr_seconds histogram
+http_request_duration_highr_seconds_bucket{le="0.01"} 36.0
+http_request_duration_highr_seconds_bucket{le="0.025"} 62.0
+http_request_duration_highr_seconds_bucket{le="0.05"} 62.0
+http_request_duration_highr_seconds_bucket{le="0.075"} 62.0
+http_request_duration_highr_seconds_bucket{le="0.1"} 62.0
+http_request_duration_highr_seconds_bucket{le="0.25"} 62.0
+http_request_duration_highr_seconds_bucket{le="0.5"} 62.0
+http_request_duration_highr_seconds_bucket{le="0.75"} 62.0
+http_request_duration_highr_seconds_bucket{le="1.0"} 62.0
+http_request_duration_highr_seconds_bucket{le="1.5"} 62.0
+http_request_duration_highr_seconds_bucket{le="2.0"} 62.0
+http_request_duration_highr_seconds_bucket{le="2.5"} 62.0
+http_request_duration_highr_seconds_bucket{le="3.0"} 62.0
+http_request_duration_highr_seconds_bucket{le="3.5"} 62.0
+http_request_duration_highr_seconds_bucket{le="4.0"} 62.0
+http_request_duration_highr_seconds_bucket{le="4.5"} 62.0
+http_request_duration_highr_seconds_bucket{le="5.0"} 62.0
+http_request_duration_highr_seconds_bucket{le="7.5"} 62.0
+http_request_duration_highr_seconds_bucket{le="10.0"} 62.0
+http_request_duration_highr_seconds_bucket{le="30.0"} 62.0
+http_request_duration_highr_seconds_bucket{le="60.0"} 62.0
+http_request_duration_highr_seconds_bucket{le="+Inf"} 62.0
+http_request_duration_highr_seconds_count 62.0
+http_request_duration_highr_seconds_sum 0.41629760400018156
+# HELP http_request_duration_highr_seconds_created Latency with many buckets but no API specific labels. Made for more accurate percentile calculations.
+# TYPE http_request_duration_highr_seconds_created gauge
+http_request_duration_highr_seconds_created 1.7593882892112732e+09
+# HELP http_request_duration_seconds Latency with only few buckets by handler. Made to be only used if aggregation by handler is important.
+# TYPE http_request_duration_seconds histogram
+http_request_duration_seconds_bucket{handler="/live",le="0.1",method="GET"} 30.0
+http_request_duration_seconds_bucket{handler="/live",le="0.5",method="GET"} 30.0
+http_request_duration_seconds_bucket{handler="/live",le="1.0",method="GET"} 30.0
+http_request_duration_seconds_bucket{handler="/live",le="+Inf",method="GET"} 30.0
+http_request_duration_seconds_count{handler="/live",method="GET"} 30.0
+http_request_duration_seconds_sum{handler="/live",method="GET"} 0.04308222000012307
+http_request_duration_seconds_bucket{handler="/healthz",le="0.1",method="GET"} 30.0
+http_request_duration_seconds_bucket{handler="/healthz",le="0.5",method="GET"} 30.0
+http_request_duration_seconds_bucket{handler="/healthz",le="1.0",method="GET"} 30.0
+http_request_duration_seconds_bucket{handler="/healthz",le="+Inf",method="GET"} 30.0
+http_request_duration_seconds_count{handler="/healthz",method="GET"} 30.0
+http_request_duration_seconds_sum{handler="/healthz",method="GET"} 0.3698758790000447
+http_request_duration_seconds_bucket{handler="/version",le="0.1",method="GET"} 1.0
+http_request_duration_seconds_bucket{handler="/version",le="0.5",method="GET"} 1.0
+http_request_duration_seconds_bucket{handler="/version",le="1.0",method="GET"} 1.0
+http_request_duration_seconds_bucket{handler="/version",le="+Inf",method="GET"} 1.0
+http_request_duration_seconds_count{handler="/version",method="GET"} 1.0
+http_request_duration_seconds_sum{handler="/version",method="GET"} 0.0020870920000106707
+http_request_duration_seconds_bucket{handler="/agent/chat",le="0.1",method="POST"} 1.0
+http_request_duration_seconds_bucket{handler="/agent/chat",le="0.5",method="POST"} 1.0
+http_request_duration_seconds_bucket{handler="/agent/chat",le="1.0",method="POST"} 1.0
+http_request_duration_seconds_bucket{handler="/agent/chat",le="+Inf",method="POST"} 1.0
+http_request_duration_seconds_count{handler="/agent/chat",method="POST"} 1.0
+http_request_duration_seconds_sum{handler="/agent/chat",method="POST"} 0.0012524130000031164
+# HELP http_request_duration_seconds_created Latency with only few buckets by handler. Made to be only used if aggregation by handler is important.
+# TYPE http_request_duration_seconds_created gauge
+http_request_duration_seconds_created{handler="/live",method="GET"} 1.759388293532908e+09
+http_request_duration_seconds_created{handler="/healthz",method="GET"} 1.7593882948171911e+09
+http_request_duration_seconds_created{handler="/version",method="GET"} 1.759388339372134e+09
+http_request_duration_seconds_created{handler="/agent/chat",method="POST"} 1.7593884395109887e+09

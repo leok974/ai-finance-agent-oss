@@ -98,6 +98,8 @@ $backend = Start-Job -Name Backend -ScriptBlock {
   # Prefer Postgres in dev (matches docker-compose postgres service)
   $env:DATABASE_URL = "postgresql+psycopg://myuser:password@localhost:5432/finance"
   $env:APP_ENV = "dev"
+  # Enable dev-only helper routes for E2E seeding and diagnostics
+  $env:ALLOW_DEV_ROUTES = "1"
   $env:PYTHONNOUSERSITE = "1"
   Write-Host "[Backend] Using DATABASE_URL=$env:DATABASE_URL"
   & $PythonExe -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
@@ -122,5 +124,3 @@ if ($NoOllama) {
 } else {
   Receive-Job -Name Ollama,Backend,Frontend -Wait
 }
-
-

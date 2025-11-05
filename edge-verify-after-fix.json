@@ -1,0 +1,152 @@
+{
+  "host": "app.ledger-mind.org",
+  "ts": "2025-09-30T14:24:08.8803666-04:00",
+  "endpoints": {
+    "health_simple": {
+      "code": "200",
+      "latency_ms": 259,
+      "status": "up",
+      "severity": "ok"
+    },
+    "up": {
+      "code": "204",
+      "latency_ms": 160,
+      "status": "up",
+      "severity": "ok"
+    },
+    "agui_ping": {
+      "code": "200",
+      "latency_ms": 194,
+      "status": "up",
+      "severity": "ok"
+    },
+    "healthz": {
+      "code": "200",
+      "latency_ms": 317,
+      "status": "up",
+      "severity": "ok"
+    },
+    "edge_classified": [
+      {
+        "url": "https://app.ledger-mind.org/_up",
+        "http": "204",
+        "exit": 0,
+        "class": "ok",
+        "stderr": "",
+        "note": null
+      },
+      {
+        "url": "https://app.ledger-mind.org/api/healthz",
+        "http": "200",
+        "exit": 0,
+        "class": "ok",
+        "stderr": "",
+        "note": null
+      },
+      {
+        "url": "https://app.ledger-mind.org/api/ready",
+        "http": "200",
+        "exit": 0,
+        "class": "ok",
+        "stderr": "",
+        "note": null
+      },
+      {
+        "url": "https://app.ledger-mind.org/api/live",
+        "http": "204",
+        "exit": 0,
+        "class": "ok",
+        "stderr": "",
+        "note": null
+      }
+    ],
+    "llm_health": {
+      "code": "200",
+      "latency_ms": 175,
+      "status": "up",
+      "severity": "ok"
+    },
+    "ready": {
+      "code": "200",
+      "latency_ms": 211,
+      "status": "up",
+      "severity": "ok"
+    },
+    "live": {
+      "code": "204",
+      "latency_ms": 170,
+      "status": "up",
+      "severity": "ok"
+    },
+    "healthz_headers": {
+      "url": "https://app.ledger-mind.org/api/healthz",
+      "code": "200",
+      "content_length": 200,
+      "transfer_encoding": null,
+      "has_length": true,
+      "not_chunked": true,
+      "raw": [
+        "HTTP/1.1 200 OK",
+        "Date: Tue, 30 Sep 2025 18:24:12 GMT",
+        "Content-Type: application/json",
+        "Content-Length: 617",
+        "Connection: keep-alive",
+        "content-security-policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' https: wss:; frame-ancestors 'none';",
+        "permissions-policy: geolocation=(), microphone=(), camera=()",
+        "permissions-policy: camera=(), microphone=(), geolocation=()",
+        "referrer-policy: strict-origin-when-cross-origin",
+        "referrer-policy: strict-origin-when-cross-origin",
+        "Server: cloudflare",
+        "strict-transport-security: max-age=63072000; includeSubDomains; preload",
+        "x-content-type-options: nosniff",
+        "x-content-type-options: nosniff",
+        "x-frame-options: DENY",
+        "x-request-id: a14ffd3b-c8f9-4a37-b1fe-e95fefa29fae",
+        "cf-cache-status: DYNAMIC",
+        "Nel: {\"report_to\":\"cf-nel\",\"success_fraction\":0.0,\"max_age\":604800}",
+        "Report-To: {\"group\":\"cf-nel\",\"max_age\":604800,\"endpoints\":[{\"url\":\"https://a.nel.cloudflare.com/report/v4?s=cyOwGsxnoxUTxDe36yZhJ%2BPnVNAI7paY7Fn4WN91vN0WeK0QdbAcmdvz9g0ilB5nyj9xLwmUI82t6jxzw0Prp9lWlhKMZcQtqji7kcKuxZZO0Jz8%2BAIjPCoWmNGFHSA%3D\"}]}",
+        "CF-RAY: 9875c17b58b2dab8-IAD",
+        "alt-svc: h3=\":443\"; ma=86400",
+        ""
+      ]
+    }
+  },
+  "llm": {
+    "models_error": "unavailable",
+    "echo_ok": false
+  },
+  "tunnel": {
+    "status": "ok",
+    "ha_connection_series": [
+      4.0
+    ],
+    "ha_min": 4.0,
+    "ha_max": 4.0,
+    "metrics_present": true
+  },
+  "conflicts": {
+    "critical": []
+  },
+  "dns": {
+    "ok": true,
+    "latency_ms": 45,
+    "ipv4": [
+      "172.67.176.45",
+      "104.21.31.95"
+    ]
+  },
+  "tls": {},
+  "summary": {
+    "critical": [],
+    "warnings": null,
+    "ok": true
+  },
+  "local_tls": null,
+  "critical": [],
+  "timestamp": "2025-09-30T14:24:08.8803666-04:00",
+  "probes": {
+    "ready": 200,
+    "up": 204,
+    "healthz": 200
+  }
+}

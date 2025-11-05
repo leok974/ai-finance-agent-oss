@@ -1,0 +1,155 @@
+{
+  "host": "app.ledger-mind.org",
+  "ts": "2025-09-30T14:42:00.0894734-04:00",
+  "endpoints": {
+    "healthz_dup_headers": [],
+    "health_simple": {
+      "code": "200",
+      "latency_ms": 183,
+      "status": "up",
+      "severity": "ok"
+    },
+    "edge_classified": [
+      {
+        "url": "https://app.ledger-mind.org/_up",
+        "http": "204",
+        "exit": 0,
+        "class": "ok",
+        "stderr": "",
+        "note": null
+      },
+      {
+        "url": "https://app.ledger-mind.org/api/healthz",
+        "http": "200",
+        "exit": 0,
+        "class": "ok",
+        "stderr": "",
+        "note": null
+      },
+      {
+        "url": "https://app.ledger-mind.org/api/ready",
+        "http": "200",
+        "exit": 0,
+        "class": "ok",
+        "stderr": "",
+        "note": null
+      },
+      {
+        "url": "https://app.ledger-mind.org/api/live",
+        "http": "204",
+        "exit": 0,
+        "class": "ok",
+        "stderr": "",
+        "note": null
+      }
+    ],
+    "healthz": {
+      "code": "200",
+      "latency_ms": 199,
+      "status": "up",
+      "severity": "ok"
+    },
+    "agui_ping": {
+      "code": "200",
+      "latency_ms": 205,
+      "status": "up",
+      "severity": "ok"
+    },
+    "live": {
+      "code": "204",
+      "latency_ms": 164,
+      "status": "up",
+      "severity": "ok"
+    },
+    "ready": {
+      "code": "200",
+      "latency_ms": 288,
+      "status": "up",
+      "severity": "ok"
+    },
+    "up": {
+      "code": "204",
+      "latency_ms": 197,
+      "status": "up",
+      "severity": "ok"
+    },
+    "healthz_headers": {
+      "url": "https://app.ledger-mind.org/api/healthz",
+      "code": "200",
+      "content_length": 617,
+      "transfer_encoding": null,
+      "content_type": null,
+      "has_length": true,
+      "not_chunked": true,
+      "duplicates": null,
+      "raw": [
+        "HTTP/1.1 200 OK",
+        "Date: Tue, 30 Sep 2025 18:42:03 GMT",
+        "Content-Type: application/json",
+        "Content-Length: 617",
+        "Connection: keep-alive",
+        "content-security-policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' https: wss:; frame-ancestors 'none';",
+        "permissions-policy: geolocation=(), microphone=(), camera=()",
+        "permissions-policy: camera=(), microphone=(), geolocation=()",
+        "referrer-policy: strict-origin-when-cross-origin",
+        "referrer-policy: strict-origin-when-cross-origin",
+        "Server: cloudflare",
+        "strict-transport-security: max-age=63072000; includeSubDomains; preload",
+        "x-content-type-options: nosniff",
+        "x-content-type-options: nosniff",
+        "x-frame-options: DENY",
+        "x-request-id: 4dcf1fa9-84c2-428b-9380-4df54d6e1839",
+        "cf-cache-status: DYNAMIC",
+        "Nel: {\"report_to\":\"cf-nel\",\"success_fraction\":0.0,\"max_age\":604800}",
+        "Report-To: {\"group\":\"cf-nel\",\"max_age\":604800,\"endpoints\":[{\"url\":\"https://a.nel.cloudflare.com/report/v4?s=56hBJeuFzDm6qhCOyrDgKNxQVecBorxU5E8Bkg3C6OOVxGPCf4rzG1o4vjm3tttEnMtSu1tDq50rjhYoZjP64e%2BFJ8UtK8zxcg6uOeuYapJuofl4zPOu%2Fmi%2B%2F%2FErEJM%3D\"}]}",
+        "CF-RAY: 9875dba33d9b1980-IAD",
+        "alt-svc: h3=\":443\"; ma=86400",
+        ""
+      ]
+    },
+    "llm_health": {
+      "code": "200",
+      "latency_ms": 183,
+      "status": "up",
+      "severity": "ok"
+    }
+  },
+  "llm": {
+    "echo_ok": false,
+    "models_error": "unavailable"
+  },
+  "tunnel": {
+    "status": "ok",
+    "ha_max": 4.0,
+    "ha_connection_series": [
+      4.0
+    ],
+    "metrics_present": true,
+    "ha_min": 4.0
+  },
+  "conflicts": {
+    "critical": []
+  },
+  "dns": {
+    "ok": true,
+    "latency_ms": 52,
+    "ipv4": [
+      "104.21.31.95",
+      "172.67.176.45"
+    ]
+  },
+  "tls": {},
+  "summary": {
+    "critical": [],
+    "warnings": null,
+    "ok": true
+  },
+  "local_tls": null,
+  "critical": [],
+  "timestamp": "2025-09-30T14:42:00.0894734-04:00",
+  "probes": {
+    "healthz": 200,
+    "up": 204,
+    "ready": 200
+  }
+}

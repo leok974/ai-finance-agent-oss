@@ -1,0 +1,25 @@
+groups:
+- name: edge
+  rules:
+  - alert: EdgeProbeFailing
+    expr: edge_probe_success == 0
+    for: 2m
+    labels:
+      severity: page
+    annotations:
+      summary: "Edge probe failing"
+      detail: "edge_probe_exit_code_os != 0"
+  - alert: EdgeAssetsMimeMissing
+    expr: edge_assets_ok == 0 and edge_assets_soft_ok == 0
+    for: 5m
+    labels:
+      severity: warn
+    annotations:
+      summary: "Assets missing MIME and length"
+  - alert: EdgeCspAbsent
+    expr: edge_csp_present == 0
+    for: 10m
+    labels:
+      severity: info
+    annotations:
+      summary: "CSP not present on index"

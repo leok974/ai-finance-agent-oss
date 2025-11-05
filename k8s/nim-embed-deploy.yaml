@@ -1,0 +1,74 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nim-embed
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nim-embed
+  template:
+    metadata:
+      labels:
+        app: nim-embed
+    spec:
+      nodeSelector:
+        nvidia.com/gpu: "true"
+      containers:
+        - name: nim-embed
+          image: nvcr.io/nvidia/nim/nvidia/nv-embedqa-e5-v5:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8001
+              name: http
+          env:
+            - name: NGC_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: nim-secrets
+                  key: ngc-api-key
+            - name: NIM_CACHE_PATH
+              value: /opt/nim/.cache
+          resources:
+            requests:
+              nvidia.com/gpu: 1
+              memory: 8Gi
+              cpu: 2
+            limits:
+              nvidia.com/gpu: 1
+              memory: 12Gi
+              cpu: 4
+          volumeMounts:
+            - name: cache
+              mountPath: /opt/nim/.cache
+          livenessProbe:
+            httpGet:
+              path: /v1/health/live
+              port: 8001
+            initialDelaySeconds: 90
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /v1/health/ready
+              port: 8001
+            initialDelaySeconds: 45
+            periodSeconds: 10
+      volumes:
+        - name: cache
+          emptyDir:
+            sizeLimit: 30Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nim-embed-service
+  namespace: default
+spec:
+  selector:
+    app: nim-embed
+  ports:
+    - protocol: TCP
+      port: 8001
+      targetPort: 8001
+  type: ClusterIP

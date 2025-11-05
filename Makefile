@@ -233,3 +233,254 @@ ingest-smoke:
 .PHONY: ingest-smoke-large
 ingest-smoke-large:
 	INGEST_LARGE=1 pytest -q apps/backend/tests/test_ingest_csv_smoke.py::test_ingest_post_auth_large_optional
+
+# --------------------------------------------------------------
+# CSP Verification
+# URL can be overridden: make verify-csp URL=http://127.0.0.1/
+# --------------------------------------------------------------
+.PHONY: verify-csp
+URL?=http://127.0.0.1/
+verify-csp:
+	@sh ./scripts/verify-csp.sh $(URL)
+
+# --------------------------------------------------------------
+# Analytics smoke (local prod-like)
+# Usage: make analytics-smoke [BASE_URL=http://127.0.0.1]
+# --------------------------------------------------------------
+.PHONY: analytics-smoke
+BASE_URL?=http://127.0.0.1
+analytics-smoke:
+	pwsh ./scripts/analytics-smoke.ps1 -BaseUrl $(BASE_URL)
+
+.PHONY: csp-check-runtime
+## Tail nginx logs to confirm runtime CSP hashing executed and config version injected
+csp-check-runtime:
+	@echo "[csp-check] Verifying CSP runtime hasher ran..." && \
+	 docker compose -f docker-compose.prod.yml logs --tail=120 nginx | findstr /i "[csp]" || echo "[csp-check] No CSP log lines (container may need restart)" && \
+	 echo "[csp-check] Header sample:" && \
+	 curl -sI http://127.0.0.1/ | findstr /i "content-security-policy" && \
+	 curl -sI http://127.0.0.1/ | findstr /i "x-config-version" || true
+
+# ----------------------------
+# Web deploy (frontend + nginx)
+# ----------------------------
+
+.PHONY: help
+## Show common targets
+.PHONY: ml-wipe
+## Wipe the ML model file (forces retraining on next categorization)
+ml-wipe:
+	@echo "[ml-wipe] Removing ML model file..."
+	@docker compose exec -T backend python -m app.scripts.ml_model_tools wipe
+
+.PHONY: ml-reseed
+## Complete ML reset: wipe model + reseed categories/rules
+ml-reseed:
+	@echo "[ml-reseed] Running complete ML reset workflow..."
+	@pwsh -NoProfile -ExecutionPolicy Bypass scripts/ml-reseed.ps1
+
+help:
+	@echo "Common targets:"
+	@echo "  deploy-web-edge          Build web, rebuild nginx image, bring it up, run smokes"
+	@echo "  ml-wipe                  Wipe ML model file (forces retraining)"
+	@echo "  ml-reseed                Complete ML reset (wipe + reseed categories/rules)"
+	@echo ""
+	@echo "Pre-commit Hooks:"
+	@echo "  precommit-install        Install pre-commit hooks (one-time setup)"
+	@echo "  precommit-run            Run pre-commit on all files (JSON format + validation)"
+	@echo "  precommit-autoupdate     Update hook versions to latest releases"
+	@echo "  precommit-validate-dashboards  Validate Grafana dashboards only"
+	@echo ""
+	@echo "E2E Testing:"
+	@echo "  e2e                      Run all E2E tests (Postgres + Playwright)"
+	@echo "  e2e GREP=\"pattern\"       Run tests matching pattern"
+	@echo "  e2e BASELINE=1           Update visual baselines"
+	@echo "  e2e DOWN=1               Stop Postgres after tests"
+	@echo "  e2e-db-start             Start Postgres only"
+	@echo "  e2e-db-stop              Stop Postgres"
+	@echo "  e2e-db-reset             Reset database only"
+	@echo ""
+	@echo "Examples:"
+	@echo "  make precommit-install && make precommit-run"
+	@echo "  make e2e GREP=\"tooltip visual baseline\" BASELINE=1 DOWN=1"
+	@echo "  make e2e-db-start"
+	@echo "  make e2e-run GREP=\"login\""
+	@echo ""
+	@echo "  help                     Show this help"
+
+.PHONY: check-tools
+## Verify required CLI tools are available
+check-tools:
+	@pwsh -NoProfile -Command "$$ErrorActionPreference='Stop'; \
+	  if (-not (Get-Command pnpm -ErrorAction SilentlyContinue)) { Write-Error 'pnpm not found in PATH'; exit 1 } ; \
+	  if (-not (Get-Command docker -ErrorAction SilentlyContinue)) { Write-Error 'docker not found in PATH'; exit 1 } ; \
+	  Write-Host 'Tools OK'"
+
+.PHONY: deploy-web-edge
+## One-shot frontend rebuild + edge nginx refresh + smokes
+# Usage:
+#   make deploy-web-edge
+# Pass-thru flags to PowerShell (optional):
+#   make deploy-web-edge FLAGS="--SkipCspHash --NoAnalyticsEvent"
+deploy-web-edge: check-tools
+	@echo "[deploy-web-edge] Running web deploy pipeline"
+	@pwsh -NoProfile -ExecutionPolicy Bypass scripts/deploy-web.ps1 $(FLAGS)
+
+# How to use
+# Default full pipeline (web build → nginx build → up → smokes)
+#   make deploy-web-edge
+# Pass optional flags to your PowerShell script (if you add any later)
+#   make deploy-web-edge FLAGS="--SkipCspHash --NoAnalyticsEvent"
+
+# ------------------------------------------------------------------
+# E2E Testing with Playwright + Postgres
+# ------------------------------------------------------------------
+.PHONY: e2e e2e-db-up e2e-migrate-reset-seed e2e-web e2e-run e2e-down e2e-db-start e2e-db-stop e2e-db-reset
+
+## Full E2E workflow: start Postgres → migrate → reset → seed → run tests
+## Usage:
+##   make e2e                                          # Run all E2E tests
+##   make e2e GREP="tooltip visual baseline"          # Run specific tests
+##   make e2e BASELINE=1                               # Update snapshots
+##   make e2e GREP="tooltip visual baseline" BASELINE=1 DOWN=1  # Full workflow + cleanup
+GREP ?=
+BASELINE ?= 0
+DOWN ?= 0
+
+e2e: e2e-db-up e2e-migrate-reset-seed e2e-web e2e-run
+	@if [ "$(DOWN)" = "1" ]; then $(MAKE) e2e-down; fi
+	@echo "✅ E2E completed"
+
+## Start Postgres E2E database (docker compose)
+e2e-db-up:
+	@echo "🗄️  Starting Postgres E2E database..."
+	@docker compose -f docker-compose.e2e.yml up -d db
+	@echo "⏳ Waiting for Postgres to be healthy..."
+	@for i in $$(seq 1 60); do \
+	  docker compose -f docker-compose.e2e.yml exec -T db pg_isready -U app -d app_e2e >/dev/null 2>&1 && { echo "✅ Postgres is healthy"; break; } || sleep 2; \
+	done
+
+## Migrate, reset, and seed the E2E database
+e2e-migrate-reset-seed:
+	@echo "🧱 Migrating + resetting + seeding..."
+	@cd apps/backend && \
+	  echo "  📦 Installing backend dependencies..." && \
+	  python -m pip install -r requirements.txt -q && \
+	  echo "  🔄 Running migrations..." && \
+	  python -m alembic upgrade head && \
+	  echo "  🗑️  Resetting database..." && \
+	  python scripts/e2e_db_reset.py && \
+	  echo "  🌱 Seeding test user..." && \
+	  python -m app.cli_seed_dev_user $${DEV_E2E_EMAIL:-leoklemet.pa@gmail.com} $${DEV_E2E_PASSWORD:-Superleo3}
+	@echo "✅ Backend setup complete"
+
+## Install web dependencies and Playwright browsers
+e2e-web:
+	@echo "📦 Installing web deps + browsers..."
+	@cd apps/web && \
+	  pnpm i && \
+	  pnpm exec playwright install --with-deps chromium
+
+## Run Playwright E2E tests
+e2e-run:
+	@echo "🎭 Running Playwright E2E tests..."
+	@cd apps/web && \
+	  ARGS=""; \
+	  [ -n "$(GREP)" ] && ARGS="$$ARGS -g \"$(GREP)\"" && echo "🔍 Running tests matching: $(GREP)"; \
+	  [ "$(BASELINE)" = "1" ] && ARGS="$$ARGS --update-snapshots" && echo "📸 Updating snapshots (baseline mode)"; \
+	  eval pnpm exec playwright test $$ARGS
+
+## Stop Postgres E2E database (includes volume cleanup)
+e2e-down:
+	@echo "🧹 Stopping Postgres E2E database..."
+	@docker compose -f docker-compose.e2e.yml down -v
+
+## Individual convenience targets
+e2e-db-start: e2e-db-up
+	@echo "✅ Database is ready"
+
+e2e-db-stop:
+	@echo "🛑 Stopping Postgres..."
+	@docker compose -f docker-compose.e2e.yml down -v
+
+e2e-db-reset:
+	@echo "🗑️  Resetting E2E database..."
+	@cd apps/backend && python scripts/e2e_db_reset.py
+	@echo "✅ Database reset complete"
+
+# ------------------------------------------------------------------
+# ML Suggestions Smoke Test
+# ------------------------------------------------------------------
+.PHONY: smoke-ml
+## Quick smoke test for ML suggestions API
+## Usage:
+##   make smoke-ml                                   # Default: http://localhost
+##   make smoke-ml BASE_URL=http://localhost:8080    # Custom URL
+BASE_URL ?= http://localhost
+
+smoke-ml:
+	@echo "🔥 Running ML suggestions smoke test..."
+	@curl -s -X POST $(BASE_URL)/ml/suggestions \
+	  -H 'Content-Type: application/json' \
+	  -d '{"txn_ids":["999001"],"top_k":1,"mode":"auto"}' | jq -e '.items[0].candidates[0].label' >/dev/null && \
+	  echo "✅ ML suggestions smoke OK" || \
+	  (echo "❌ ML suggestions smoke FAILED" && exit 1)
+
+# ------------------------------------------------------------------
+# ML Phase 2: Production Training Pipeline
+# ------------------------------------------------------------------
+.PHONY: ml-features ml-train ml-status ml-predict ml-smoke
+
+## Build features for last 180 days
+ml-features:
+	docker compose exec backend python -m app.ml.feature_build --days 180
+
+## Train model with LightGBM (auto-deploys if F1 >= threshold)
+ml-train:
+	docker compose exec backend python -c "from app.ml.train import run_train; import json; print(json.dumps(run_train(limit=200000), indent=2))"
+
+## Check deployed model status
+ml-status:
+	@curl -s http://localhost:8000/ml/v2/model/status | jq
+
+## Predict category for sample transaction
+ml-predict:
+	@echo '{"abs_amount": 42.5, "merchant":"STARBUCKS", "channel":"pos", "hour_of_day":18, "dow":5, "is_weekend":true, "is_subscription":false, "norm_desc":"starbucks store"}' \
+	| curl -s -H "Content-Type: application/json" -d @- http://localhost:8000/ml/v2/predict | jq
+
+## Run full ML smoke test (features → train → predict)
+ml-smoke:
+	@echo "🧪 ML Phase 2 smoke test..."
+	@$(MAKE) ml-features && \
+	 $(MAKE) ml-train && \
+	 $(MAKE) ml-status && \
+	 $(MAKE) ml-predict && \
+	 echo "✅ ML Phase 2 smoke test PASSED"
+
+# ------------------------------------------------------------------
+# Pre-commit Hooks (Dashboard Validation + JSON Formatting)
+# ------------------------------------------------------------------
+.PHONY: precommit-install precommit-run precommit-autoupdate precommit-validate-dashboards
+
+## Install pre-commit hooks (one-time setup)
+precommit-install:
+	python -m pip install --upgrade pip
+	pip install pre-commit
+	pre-commit install
+	@echo "✅ Pre-commit hooks installed. Run 'make precommit-run' to validate all files."
+
+## Run pre-commit on all files (JSON formatting + dashboard validation)
+precommit-run:
+	pre-commit run --all-files
+
+## Update pre-commit hook versions to latest
+precommit-autoupdate:
+	pip install pre-commit
+	pre-commit autoupdate
+	@echo "✅ Hook versions updated in .pre-commit-config.yaml"
+	@echo "Run 'make precommit-run' to test updated hooks"
+
+## Validate Grafana dashboards only (manual check)
+precommit-validate-dashboards:
+	@pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/validate-dashboards.ps1 || \
+	 python scripts/validate_grafana_dashboard.py ops/grafana/**/*.json

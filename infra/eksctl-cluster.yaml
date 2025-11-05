@@ -1,0 +1,67 @@
+apiVersion: eksctl.io/v1alpha5
+kind: ClusterConfig
+
+metadata:
+  name: finance-agent-cluster
+  region: us-west-2
+  version: "1.28"
+
+iam:
+  withOIDC: true
+
+addons:
+  - name: vpc-cni
+    version: latest
+  - name: coredns
+    version: latest
+  - name: kube-proxy
+    version: latest
+  - name: aws-ebs-csi-driver
+    version: latest
+
+managedNodeGroups:
+  - name: cpu-workers
+    instanceType: t3.medium
+    desiredCapacity: 2
+    minSize: 1
+    maxSize: 5
+    volumeSize: 50
+    volumeType: gp3
+    labels:
+      role: cpu-worker
+    tags:
+      nodegroup-role: cpu-worker
+    iam:
+      withAddonPolicies:
+        autoScaler: true
+        albIngress: true
+        ebs: true
+        efs: true
+        cloudWatch: true
+
+  - name: gpu-workers
+    instanceType: g4dn.xlarge
+    desiredCapacity: 2
+    minSize: 1
+    maxSize: 3
+    volumeSize: 100
+    volumeType: gp3
+    labels:
+      role: gpu-worker
+      nvidia.com/gpu: "true"
+    tags:
+      nodegroup-role: gpu-worker
+    iam:
+      withAddonPolicies:
+        autoScaler: true
+        ebs: true
+        cloudWatch: true
+    preBootstrapCommands:
+      - "sudo yum install -y nvidia-container-toolkit"
+
+# Enable IAM OIDC provider for service accounts
+# Required for ALB Ingress Controller
+cloudWatch:
+  clusterLogging:
+    enableTypes:
+      ["api", "audit", "authenticator", "controllerManager", "scheduler"]

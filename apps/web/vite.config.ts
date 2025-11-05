@@ -4,18 +4,24 @@ import { execSync } from "child_process";
 import path from "path";
 
 // Prefer injected environment variables (Docker build) before attempting local git commands.
-let BRANCH = process.env.WEB_BRANCH || "unknown";
-let COMMIT = process.env.WEB_COMMIT || "unknown";
-let BUILD_ID = process.env.WEB_BUILD_ID || "unknown";
+const envBranch = process.env.VITE_GIT_BRANCH ?? process.env.WEB_BRANCH;
+const envCommit = process.env.VITE_GIT_COMMIT ?? process.env.WEB_COMMIT;
+let BRANCH = envBranch || "unknown";
+let COMMIT = envCommit || "unknown";
+const BUILD_ID = process.env.WEB_BUILD_ID || "unknown";
 
 if (BRANCH === "unknown" || COMMIT === "unknown") {
   try {
     if (BRANCH === "unknown") BRANCH = execSync("git rev-parse --abbrev-ref HEAD").toString().trim();
     if (COMMIT === "unknown") COMMIT = execSync("git rev-parse --short HEAD").toString().trim();
-  } catch {}
+  } catch (error) {
+    // ignore git metadata lookup failures in minimal environments
+  }
 }
 
-const API = "http://127.0.0.1:8000";
+// During local E2E we sometimes run backend on 8001 with encryption disabled.
+// Prefer 8001 if BACKEND_PORT is set; else default to 8000.
+const API = `http://127.0.0.1:${process.env.BACKEND_PORT || '8000'}`;
 
 // https://vitejs.dev/config/
 export default defineConfig({
@@ -40,27 +46,33 @@ export default defineConfig({
     css: true,
   },
   server: {
-  host: "127.0.0.1",
+    host: "127.0.0.1",
     proxy: {
-      // ✅ proxy ALL backend routes to FastAPI
-      "/ingest": { target: API, changeOrigin: true },
-      "/txns": { target: API, changeOrigin: true },
-      "/rules": { target: API, changeOrigin: true },
-      "/ml": { target: API, changeOrigin: true },
-      "/report": { target: API, changeOrigin: true },
-      "/budget": { target: API, changeOrigin: true },
-      "/alerts": { target: API, changeOrigin: true },
-      "/insights": { target: API, changeOrigin: true },
-      "/agent": { target: API, changeOrigin: true },
-      "/health": { target: API, changeOrigin: true },
-      "/charts": { target: API, changeOrigin: true },
-      "/metrics": { target: API, changeOrigin: true },
-      "/api/metrics": { target: API, changeOrigin: true },
-      "/ready": { target: API, changeOrigin: true },
-      "/_up": { target: API, changeOrigin: true },
+      // All API requests go through /api prefix, Vite strips it before forwarding to FastAPI
+      '/api': {
+        target: API,
+        changeOrigin: true,
+        secure: false,
+        rewrite: (path) => path.replace(/^\/api/, ''), // FastAPI sees bare paths
+      },
+      // Safety net: direct /agent calls also proxy to backend (in case some slip through)
+      '/agent': {
+        target: API,
+        changeOrigin: true,
+        secure: false,
+      },
+      // Safety net: direct /auth calls proxy to backend (optional fallback)
+      '/auth': {
+        target: API,
+        changeOrigin: true,
+        secure: false,
+      },
     },
   },
   build: {
+    modulePreload: {
+      polyfill: false,
+    },
     chunkSizeWarningLimit: 650,
     rollupOptions: {
       output: {
