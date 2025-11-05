@@ -1,0 +1,32 @@
+# CODEOWNERS - Require security review for sensitive files
+# See: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Default owners for everything (optional)
+# * @leok974
+
+# Require review for any JSON files in sensitive directories
+/ops/**/*.json @leok974
+/dbt/**/*.json @leok974
+/infra/**/*.json @leok974
+/warehouse/**/*.json @leok974
+/cloudflared/**/*.json @leok974
+/prometheus/**/*.json @leok974
+
+# Require review for security-related files
+/scripts/security/** @leok974
+/.github/workflows/** @leok974
+/.gitleaks.toml @leok974
+/.pre-commit-config.yaml @leok974
+/SECURITY.md @leok974
+
+# Require review for environment and credential files
+**/.env* @leok974
+**/credentials*.json @leok974
+**/service-account*.json @leok974
+**/*-sa.json @leok974
+**/*key*.json @leok974
+
+# Docker and deployment configs
+/docker-compose*.yml @leok974
+/ops/nginx/** @leok974
+/ops/docker-compose*.yml @leok974

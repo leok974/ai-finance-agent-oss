@@ -189,5 +189,339 @@ For questions about this remediation:
 
 ---
 
+## Phase 2 - History Purge + Force Push
+
+### Prerequisites
+- [ ] All changes committed and pushed to `sec/finish-key-incident` branch
+- [ ] Pull request created and approved
+- [ ] GCP key disabled & deleted (Phase 1 complete)
+
+### Execution Steps
+
+**Step 1: Install git-filter-repo**
+```bash
+pip install git-filter-repo
+```
+
+**Step 2: Run history purge script**
+```powershell
+# Windows
+.\scripts\security\history-purge.ps1
+
+# Linux/Mac
+bash scripts/security/history-purge.sh
+```
+
+The script will:
+- Check for uncommitted changes (abort if dirty)
+- Create backup branch
+- Remove `gcp-dbt-sa.json` from all commits
+- Verify removal
+
+**Step 3: Verify removal**
+```bash
+# Should return nothing (file not found)
+git log --all --full-history -- gcp-dbt-sa.json
+
+# Should return 0 matches
+git log --all --oneline | Select-String "gcp-dbt-sa"
+```
+
+**Step 4: Force push to remote**
+```bash
+# Force push to overwrite remote history
+git push --force --prune origin HEAD:main
+
+# Push all refs to ensure completeness
+git push --force --all origin
+git push --force --tags origin
+```
+
+**Step 5: Notify team**
+Send message to team:
+```
+🚨 CRITICAL: Repository history rewritten to remove leaked credentials.
+
+ACTION REQUIRED:
+1. Delete your local clone
+2. Fresh clone: git clone https://github.com/leok974/ai-finance-agent-oss.git
+3. Do NOT push old branches (they contain leaked key)
+
+Reason: GCP service account key purged from history (security incident 2025-11-05)
+Timeline: Completed [DATE]
+```
+
+**Step 6: Cleanup**
+```bash
+# After verification, delete backup branch
+git branch -D backup-before-filter-repo-YYYYMMDD-HHMMSS
+```
+
+### Verification
+```bash
+# 1. Confirm file not in history
+git log --all --oneline | grep -i gcp-dbt || echo "OK: not found"
+
+# 2. Run gitleaks on entire history
+gitleaks detect --no-banner --redact -v
+
+# 3. Check repository size (should be smaller)
+git count-objects -vH
+```
+
+---
+
+## Phase 3 - OIDC E2E Verification
+
+### Prerequisites
+- [ ] Phase 2 complete (history purged)
+- [ ] GCP Workload Identity Federation configured
+- [ ] `GCP_WIF_PROVIDER` secret added to GitHub
+
+### Verification Steps
+
+**Step 1: Test OIDC authentication locally**
+```bash
+# Install dependencies
+pip install dbt-core dbt-bigquery google-auth
+
+# Create test profile
+mkdir -p ~/.dbt
+cat > ~/.dbt/profiles.yml <<EOF
+ledgermind:
+  target: prod
+  outputs:
+    prod:
+      type: bigquery
+      method: oauth
+      project: ledgermind-ml-analytics
+      dataset: dbt_prod
+      location: US
+EOF
+
+# Test connection (will use gcloud auth)
+cd warehouse
+dbt debug --target prod
+```
+
+**Step 2: Trigger GitHub Actions workflow**
+```bash
+# Manual workflow dispatch
+gh workflow run dbt-oidc.yml
+
+# Watch logs
+gh run watch
+
+# Check for successful authentication
+gh run view --log | grep "Authenticated as"
+```
+
+**Step 3: Verify no static keys in use**
+```bash
+# Search entire codebase for private keys
+gitleaks detect --no-banner --redact
+
+# Check for any JSON keys in environment
+echo "Checking GitHub secrets..."
+gh secret list
+
+# Ensure no *_KEY_JSON or *_CREDENTIALS secrets exist
+```
+
+**Step 4: Confirm dbt runs successfully**
+```bash
+# Check workflow run status
+gh run list --workflow=dbt-oidc.yml --limit=1
+
+# Expected: ✓ dbt (OIDC - No Static Keys) completed successfully
+```
+
+**Step 5: Disable old workflow**
+```bash
+# Disable dbt-nightly.yml (if it exists)
+gh workflow disable dbt-nightly.yml
+
+# Or delete the file
+git rm .github/workflows/dbt-nightly.yml
+git commit -m "chore: remove deprecated dbt workflow (replaced with OIDC)"
+```
+
+---
+
+## Phase 4 - Repo Protections (Rulesets)
+
+### GitHub Repository Settings
+
+**Navigate to**: Repository → Settings
+
+#### A) Enable Secret Scanning
+
+**Path**: Settings → Code security and analysis
+
+**Actions**:
+1. Click **Enable** for "Secret scanning"
+2. Click **Enable** for "Push protection"
+3. Click **Enable** for "Private vulnerability reporting"
+
+**Verification**:
+```bash
+# Attempt to commit a fake secret (should be blocked)
+echo '{"type":"service_account","private_key":"test"}' > test-key.json
+git add test-key.json
+git commit -m "test"
+# Expected: Blocked by pre-commit hook
+
+git reset HEAD test-key.json
+rm test-key.json
+```
+
+#### B) Create Repository Rulesets
+
+**Path**: Settings → Rules → Rulesets → New ruleset
+
+**Ruleset 1: Block Service Account Keys**
+- Name: `Block GCP Service Account Keys`
+- Target: All branches
+- Enforcement: Active
+- Rules:
+  - **Block file path patterns**:
+    - `.*service[-_ ]?account.*\.json`
+    - `.*gcp.*key.*\.json`
+    - `.*[-_]sa\.json`
+    - `gcp-dbt-sa\.json`
+  - **Bypass patterns**:
+    - `tests/fixtures/.*`
+    - `.*\.example\.json`
+
+**Ruleset 2: Security Review Required**
+- Name: `Security Review Required`
+- Target: `main`, `production`, `release/*`
+- Enforcement: Active
+- Rules:
+  - **Require pull request**:
+    - Required approvals: 1
+    - Require review from Code Owners: ✅
+    - Dismiss stale approvals: ✅
+  - **Applies to**:
+    - `/ops/**/*.json`
+    - `/scripts/security/**`
+    - `/.github/workflows/**`
+    - `/.gitleaks.toml`
+    - `/SECURITY.md`
+
+**Ruleset 3: Status Checks Required**
+- Name: `CI Must Pass`
+- Target: `main`
+- Rules:
+  - **Require status checks**:
+    - `web tests (coverage)`
+    - `backend: test (hermetic)`
+    - `pre-commit` (if CI runs this)
+
+#### C) Branch Protection Rules
+
+**Path**: Settings → Branches → Add rule
+
+**Branch pattern**: `main`
+
+**Settings**:
+- ✅ Require pull request before merging
+  - Required approvals: 1
+  - Dismiss stale reviews: ✅
+- ✅ Require status checks to pass
+  - Require branches to be up to date: ✅
+- ✅ Require conversation resolution
+- ✅ Include administrators (recommended)
+
+#### D) Configure CODEOWNERS
+
+Already created at `.github/CODEOWNERS`
+
+**Verification**:
+```bash
+# Check CODEOWNERS syntax
+cat .github/CODEOWNERS
+
+# Test: Any JSON change in /ops requires review from @leok974
+```
+
+### Manual Configuration Checklist
+
+- [ ] Secret scanning enabled
+- [ ] Push protection enabled
+- [ ] Private vulnerability reporting enabled
+- [ ] Ruleset "Block GCP Service Account Keys" created
+- [ ] Ruleset "Security Review Required" created
+- [ ] Branch protection on `main` configured
+- [ ] CODEOWNERS file committed
+- [ ] Tested: Pre-commit hooks block secrets
+- [ ] Tested: GitHub blocks pushes with secrets
+- [ ] Documented in `docs/security/ruleset.md`
+
+### Post-Configuration Verification
+
+```bash
+# 1. Attempt to push a secret (should be blocked by GitHub)
+git checkout -b test/secret-push
+echo '{"type":"service_account"}' > bad-key.json
+git add bad-key.json
+git commit -m "test" --no-verify  # bypass pre-commit
+git push origin test/secret-push
+# Expected: Blocked by GitHub push protection
+
+# 2. Verify CODEOWNERS enforced
+gh pr create --title "Test CODEOWNERS" --body "Testing security review"
+# Expected: Requires review from @leok974 for security files
+
+# 3. Cleanup
+git checkout main
+git branch -D test/secret-push
+```
+
+---
+
+## Final Verification Checklist
+
+### Phase 1: Containment ✅
+- [x] Pre-commit hooks configured (gitleaks + detect-secrets)
+- [x] .gitignore hardened
+- [x] OIDC workflow created
+- [x] Documentation updated
+- [x] Scripts created
+
+### Phase 2: History Purge
+- [ ] git-filter-repo installed
+- [ ] Backup branch created
+- [ ] History purged locally
+- [ ] Verification: `git log --all -- gcp-dbt-sa.json` returns nothing
+- [ ] Force-pushed to remote
+- [ ] Team notified to re-clone
+
+### Phase 3: OIDC Migration
+- [ ] GCP WIF provider created
+- [ ] GitHub secret `GCP_WIF_PROVIDER` configured
+- [ ] dbt-oidc.yml workflow tested
+- [ ] Workflow runs successfully
+- [ ] Old dbt-nightly.yml disabled/removed
+
+### Phase 4: Repository Protections
+- [ ] Secret scanning enabled
+- [ ] Push protection enabled
+- [ ] Repository rulesets configured
+- [ ] Branch protection on main
+- [ ] CODEOWNERS enforced
+- [ ] Verification tests passed
+
+### Phase 5: Audit & Cleanup
+- [ ] Cloud Logging reviewed (no unauthorized SA usage)
+- [ ] GitHub Actions artifacts deleted
+- [ ] Backup branches deleted
+- [ ] Pre-commit runs clean: `pre-commit run -a`
+- [ ] Gitleaks scans clean: `gitleaks detect --no-banner --redact`
+- [ ] Team trained on new procedures
+
+---
+
 **Generated**: 2025-11-05
+**Last Updated**: 2025-11-05 (Phase 2-4 added)
 **Classification**: INTERNAL - Security Remediation
