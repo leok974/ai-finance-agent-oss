@@ -285,6 +285,12 @@ help:
 	@echo "  ml-wipe                  Wipe ML model file (forces retraining)"
 	@echo "  ml-reseed                Complete ML reset (wipe + reseed categories/rules)"
 	@echo ""
+	@echo "Pre-commit Hooks:"
+	@echo "  precommit-install        Install pre-commit hooks (one-time setup)"
+	@echo "  precommit-run            Run pre-commit on all files (JSON format + validation)"
+	@echo "  precommit-autoupdate     Update hook versions to latest releases"
+	@echo "  precommit-validate-dashboards  Validate Grafana dashboards only"
+	@echo ""
 	@echo "E2E Testing:"
 	@echo "  e2e                      Run all E2E tests (Postgres + Playwright)"
 	@echo "  e2e GREP=\"pattern\"       Run tests matching pattern"
@@ -295,6 +301,7 @@ help:
 	@echo "  e2e-db-reset             Reset database only"
 	@echo ""
 	@echo "Examples:"
+	@echo "  make precommit-install && make precommit-run"
 	@echo "  make e2e GREP=\"tooltip visual baseline\" BASELINE=1 DOWN=1"
 	@echo "  make e2e-db-start"
 	@echo "  make e2e-run GREP=\"login\""
@@ -400,3 +407,80 @@ e2e-db-reset:
 	@echo "🗑️  Resetting E2E database..."
 	@cd apps/backend && python scripts/e2e_db_reset.py
 	@echo "✅ Database reset complete"
+
+# ------------------------------------------------------------------
+# ML Suggestions Smoke Test
+# ------------------------------------------------------------------
+.PHONY: smoke-ml
+## Quick smoke test for ML suggestions API
+## Usage:
+##   make smoke-ml                                   # Default: http://localhost
+##   make smoke-ml BASE_URL=http://localhost:8080    # Custom URL
+BASE_URL ?= http://localhost
+
+smoke-ml:
+	@echo "🔥 Running ML suggestions smoke test..."
+	@curl -s -X POST $(BASE_URL)/ml/suggestions \
+	  -H 'Content-Type: application/json' \
+	  -d '{"txn_ids":["999001"],"top_k":1,"mode":"auto"}' | jq -e '.items[0].candidates[0].label' >/dev/null && \
+	  echo "✅ ML suggestions smoke OK" || \
+	  (echo "❌ ML suggestions smoke FAILED" && exit 1)
+
+# ------------------------------------------------------------------
+# ML Phase 2: Production Training Pipeline
+# ------------------------------------------------------------------
+.PHONY: ml-features ml-train ml-status ml-predict ml-smoke
+
+## Build features for last 180 days
+ml-features:
+	docker compose exec backend python -m app.ml.feature_build --days 180
+
+## Train model with LightGBM (auto-deploys if F1 >= threshold)
+ml-train:
+	docker compose exec backend python -c "from app.ml.train import run_train; import json; print(json.dumps(run_train(limit=200000), indent=2))"
+
+## Check deployed model status
+ml-status:
+	@curl -s http://localhost:8000/ml/v2/model/status | jq
+
+## Predict category for sample transaction
+ml-predict:
+	@echo '{"abs_amount": 42.5, "merchant":"STARBUCKS", "channel":"pos", "hour_of_day":18, "dow":5, "is_weekend":true, "is_subscription":false, "norm_desc":"starbucks store"}' \
+	| curl -s -H "Content-Type: application/json" -d @- http://localhost:8000/ml/v2/predict | jq
+
+## Run full ML smoke test (features → train → predict)
+ml-smoke:
+	@echo "🧪 ML Phase 2 smoke test..."
+	@$(MAKE) ml-features && \
+	 $(MAKE) ml-train && \
+	 $(MAKE) ml-status && \
+	 $(MAKE) ml-predict && \
+	 echo "✅ ML Phase 2 smoke test PASSED"
+
+# ------------------------------------------------------------------
+# Pre-commit Hooks (Dashboard Validation + JSON Formatting)
+# ------------------------------------------------------------------
+.PHONY: precommit-install precommit-run precommit-autoupdate precommit-validate-dashboards
+
+## Install pre-commit hooks (one-time setup)
+precommit-install:
+	python -m pip install --upgrade pip
+	pip install pre-commit
+	pre-commit install
+	@echo "✅ Pre-commit hooks installed. Run 'make precommit-run' to validate all files."
+
+## Run pre-commit on all files (JSON formatting + dashboard validation)
+precommit-run:
+	pre-commit run --all-files
+
+## Update pre-commit hook versions to latest
+precommit-autoupdate:
+	pip install pre-commit
+	pre-commit autoupdate
+	@echo "✅ Hook versions updated in .pre-commit-config.yaml"
+	@echo "Run 'make precommit-run' to test updated hooks"
+
+## Validate Grafana dashboards only (manual check)
+precommit-validate-dashboards:
+	@pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/validate-dashboards.ps1 || \
+	 python scripts/validate_grafana_dashboard.py ops/grafana/**/*.json
