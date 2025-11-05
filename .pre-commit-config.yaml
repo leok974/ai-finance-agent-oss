@@ -1,11 +1,11 @@
 repos:
   - repo: https://github.com/psf/black
-    rev: 24.3.0
+    rev: 25.9.0
     hooks:
       - id: black
         language_version: python3.11
   - repo: https://github.com/charliermarsh/ruff-pre-commit
-    rev: v0.6.8
+    rev: v0.14.3
     hooks:
       - id: ruff
         args: [--fix]
@@ -28,15 +28,47 @@ repos:
         entry: python scripts/validate_grafana_dashboard.py
         files: ^(ops/grafana/|.*ml_suggestions_dashboard\.json$)
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.6.0
+    rev: v6.0.0
     hooks:
       - id: check-json
       - id: end-of-file-fixer
       - id: trailing-whitespace
   # JSON formatting handled by check-json hook above
   - repo: https://github.com/zricethezav/gitleaks
-    rev: v8.18.4
+    rev: v8.29.0
     hooks:
       - id: gitleaks
         args: ["detect", "--no-banner", "--config=.gitleaks.toml"]
         pass_filenames: false
+
+# Skip heavy or generated files for faster commits
+exclude: >
+  (?x)^(
+    node_modules/.*|
+    dist/.*|
+    build/.*|
+    \.venv/.*|
+    \.venv-bigquery/.*|
+    assets/.*|
+    .*\.min\.js$|
+    .*\.lock$|
+    pnpm-lock\.yaml$|
+    package-lock\.json$|
+    ops/grafana/_exported/.*|
+    docs/_site/.*|
+    warehouse/target/.*|
+    warehouse/logs/.*|
+    warehouse/dbt_packages/.*|
+    \.pnpm-store/.*|
+    apps/web/test-results/.*|
+    apps/web/playwright-report/.*|
+    \.cache/.*|
+    __pycache__/.*|
+    .*\.pyc$|
+    .*\.pyo$|
+    \.pytest_cache/.*|
+    \.mypy_cache/.*|
+    \.ruff_cache/.*|
+    playwright-report/.*|
+    .*edge-new-noauth\.json$
+  )$
