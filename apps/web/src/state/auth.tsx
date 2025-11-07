@@ -3,13 +3,44 @@ import type { ReactNode } from "react";
 import { postWithCsrf, getWithAuth } from "../lib/auth-helpers";
 import { useDev } from "./dev";
 
-export type User = {
+/**
+ * Current user type - single source of truth for auth state
+ */
+export type CurrentUser = {
+  id?: string;
   email: string;
+  name?: string | null;
+  picture_url?: string | null; // Google photo URL (set during OAuth callback)
+  initial?: string; // Server-provided initial to prevent flicker
   roles: string[];
   is_active?: boolean;
   dev_unlocked?: boolean;
   env?: string;
-} | null;
+  // Legacy field for backwards compatibility
+  picture?: string;
+};
+
+export type User = CurrentUser | null;
+
+/**
+ * Get the user's initial for avatar display
+ * Prefers server-provided initial to prevent client-side jitter.
+ *
+ * @param u - User object (can be null/undefined)
+ * @returns Single uppercase letter for avatar, or "?" if no data
+ */
+export function getUserInitial(u?: CurrentUser | null): string {
+  if (!u) return "?";
+
+  // Prefer server-provided initial (prevents flicker on load)
+  if (u.initial) return u.initial.toUpperCase();
+
+  // Fallback: derive from name or email (for legacy clients)
+  const fromName = u.name?.trim()?.[0];
+  if (fromName) return fromName.toUpperCase();
+  const fromEmail = u.email?.trim()?.[0];
+  return (fromEmail || "?").toUpperCase();
+}
 
 export const AuthContext = createContext<{
   user: User;

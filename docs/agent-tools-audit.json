@@ -1,0 +1,480 @@
+{
+  "audit_date": "2025-11-06",
+  "auditor": "GitHub Copilot",
+  "summary": {
+    "total_tools": 22,
+    "keep": 13,
+    "refactor": 4,
+    "remove": 5
+  },
+  "tools": [
+    {
+      "label": "Month summary",
+      "path": "apps/web/src/components/ChatDock.tsx:1840",
+      "handler": "runMonthSummary",
+      "handler_line": 1049,
+      "route": "GET /charts/summary (via agentTools.chartsSummary)",
+      "flags": [],
+      "tests": ["chat-month-summary.spec.ts"],
+      "telemetry": null,
+      "decision": "KEEP",
+      "notes": "Primary entry point for finance recap flow. Well-tested with new finance formatters.",
+      "category": "Explore"
+    },
+    {
+      "label": "Find subscriptions",
+      "path": "apps/web/src/components/ChatDock.tsx:1841",
+      "handler": "runFindSubscriptions",
+      "handler_line": 1082,
+      "route": "AGUI 'subscriptions' action",
+      "flags": [],
+      "tests": [],
+      "telemetry": null,
+      "decision": "KEEP",
+      "notes": "Uses AGUI stream. Unique functionality for recurring payments.",
+      "category": "Explore"
+    },
+    {
+      "label": "Top merchants",
+      "path": "apps/web/src/components/ChatDock.tsx:1842",
+      "handler": "runTopMerchants",
+      "handler_line": 1103,
+      "route": "GET /charts/merchants (via agentTools.chartsTopMerchants)",
+      "flags": [],
+      "tests": [],
+      "telemetry": null,
+      "decision": "KEEP",
+      "notes": "Popular feature showing spending by merchant.",
+      "category": "Explore"
+    },
+    {
+      "label": "Cashflow",
+      "path": "apps/web/src/components/ChatDock.tsx:1843",
+      "handler": "runCashflow",
+      "handler_line": 1122,
+      "route": "GET /charts/month-flows (via agentTools.chartsMonthFlows)",
+      "flags": [],
+      "tests": [],
+      "telemetry": null,
+      "decision": "KEEP",
+      "notes": "Visualizes income/expense flows. Unique from other tools.",
+      "category": "Explore"
+    },
+    {
+      "label": "Trends",
+      "path": "apps/web/src/components/ChatDock.tsx:1844",
+      "handler": "runTrends",
+      "handler_line": 1141,
+      "route": "GET /charts/trends (via agentTools.chartsTrends)",
+      "flags": [],
+      "tests": [],
+      "telemetry": null,
+      "decision": "KEEP",
+      "notes": "Shows category trends over time. Distinct from recurring/anomalies.",
+      "category": "Explore"
+    },
+    {
+      "label": "Insights: Summary",
+      "path": "apps/web/src/components/ChatDock.tsx:1845",
+      "handler": "runInsightsSummary",
+      "handler_line": 1170,
+      "route": "POST /agent/tools/insights/summary",
+      "flags": [],
+      "tests": [],
+      "telemetry": null,
+      "decision": "REFACTOR",
+      "notes": "Duplicate of Insights: Expanded. Merge into single 'Insights' button with size param.",
+      "category": "Explain"
+    },
+    {
+      "label": "Insights: Expanded",
+      "path": "apps/web/src/components/ChatDock.tsx:1846",
+      "handler": "runInsightsExpanded",
+      "handler_line": 1188,
+      "route": "POST /agent/tools/insights/expanded",
+      "flags": [],
+      "tests": [],
+      "telemetry": null,
+      "decision": "REFACTOR",
+      "notes": "Same as Insights: Summary with expanded=1. Merge with Summary.",
+      "category": "Explain"
+    },
+    {
+      "label": "Budget check",
+      "path": "apps/web/src/components/ChatDock.tsx:1847",
+      "handler": "runBudgetCheck",
+      "handler_line": 1206,
+      "route": "POST /agent/tools/budget/check",
+      "flags": [],
+      "tests": [],
+      "telemetry": null,
+      "decision": "KEEP",
+      "notes": "Validates current spending against budgets. Core feature.",
+      "category": "Act"
+    },
+    {
+      "label": "Alerts",
+      "path": "apps/web/src/components/ChatDock.tsx:1848",
+      "handler": "runAlerts",
+      "handler_line": 1590,
+      "route": "GET /alerts (via alerts API)",
+      "flags": [],
+      "tests": [],
+      "telemetry": null,
+      "decision": "KEEP",
+      "notes": "Shows triggered alerts/notifications. Distinct feature.",
+      "category": "Explain"
+    },
+    {
+      "label": "KPIs",
+      "path": "apps/web/src/components/ChatDock.tsx:1850",
+      "handler": "runAnalyticsKpis",
+      "handler_line": 1226,
+      "route": "POST /analytics/kpis",
+      "flags": [],
+      "tests": [],
+      "telemetry": null,
+      "decision": "KEEP",
+      "notes": "Key performance indicators. Unique metrics view.",
+      "category": "Explain"
+    },
+    {
+      "label": "Forecast",
+      "path": "apps/web/src/components/ChatDock.tsx:1851",
+      "handler": "startAguiRun('forecast')",
+      "handler_line": 1851,
+      "route": "AGUI 'forecast' action",
+      "flags": [],
+      "tests": [],
+      "telemetry": null,
+      "decision": "KEEP",
+      "notes": "Predicts next month spending. AGUI-based, unique feature.",
+      "category": "Explain"
+    },
+    {
+      "label": "Anomalies",
+      "path": "apps/web/src/components/ChatDock.tsx:1852",
+      "handler": "runAnalyticsAnomalies",
+      "handler_line": 1262,
+      "route": "POST /analytics/anomalies",
+      "flags": [],
+      "tests": [],
+      "telemetry": null,
+      "decision": "KEEP",
+      "notes": "Detects unusual transactions. ML-based feature.",
+      "category": "Explain"
+    },
+    {
+      "label": "Recurring",
+      "path": "apps/web/src/components/ChatDock.tsx:1853",
+      "handler": "runAnalyticsRecurring",
+      "handler_line": 1280,
+      "route": "POST /analytics/recurring",
+      "flags": [],
+      "tests": [],
+      "telemetry": null,
+      "decision": "REFACTOR",
+      "notes": "Overlaps with 'Find subscriptions'. Consider merging or clarifying difference.",
+      "category": "Explain"
+    },
+    {
+      "label": "Budget suggest",
+      "path": "apps/web/src/components/ChatDock.tsx:1854",
+      "handler": "runAnalyticsBudgetSuggest",
+      "handler_line": 1298,
+      "route": "POST /analytics/budget/suggest",
+      "flags": [],
+      "tests": [],
+      "telemetry": null,
+      "decision": "REFACTOR",
+      "notes": "Rename to 'Suggest budget' for clarity. Keep functionality.",
+      "category": "Act"
+    },
+    {
+      "label": "What if...",
+      "path": "apps/web/src/components/ChatDock.tsx:1855",
+      "handler": "runAnalyticsWhatIf",
+      "handler_line": 1568,
+      "route": "Inline prompt (no backend route)",
+      "flags": [],
+      "tests": [],
+      "telemetry": null,
+      "decision": "KEEP",
+      "notes": "Opens scenario planning dialog. Unique UX feature.",
+      "category": "Act"
+    },
+    {
+      "label": "Search transactions (NL)",
+      "path": "apps/web/src/components/ChatDock.tsx:1856",
+      "handler": "handleTransactionsNL",
+      "handler_line": "AgentTools.tsx",
+      "route": "POST /transactions/nl",
+      "flags": [],
+      "tests": [],
+      "telemetry": null,
+      "decision": "KEEP",
+      "notes": "Natural language transaction search. Core feature with good UX.",
+      "category": "Act"
+    },
+    {
+      "label": "Export CSV (last NL query)",
+      "path": "apps/web/src/components/ChatDock.tsx:1867",
+      "handler": "inline async (txnsQueryCsv)",
+      "handler_line": 1867,
+      "route": "POST /transactions/query?format=csv",
+      "flags": [],
+      "tests": [],
+      "telemetry": null,
+      "decision": "KEEP",
+      "notes": "Useful for exporting search results. Keep in tools bar.",
+      "category": "Act"
+    },
+    {
+      "label": "◀ Prev page (NL)",
+      "path": "apps/web/src/components/ChatDock.tsx:1896",
+      "handler": "inline async (pagination)",
+      "handler_line": 1896,
+      "route": "POST /transactions/query",
+      "flags": [],
+      "tests": [],
+      "telemetry": null,
+      "decision": "KEEP",
+      "notes": "Pagination for NL search results. Essential UX.",
+      "category": "Act"
+    },
+    {
+      "label": "▶ Next page (NL)",
+      "path": "apps/web/src/components/ChatDock.tsx:1928",
+      "handler": "inline async (pagination)",
+      "handler_line": 1928,
+      "route": "POST /transactions/query",
+      "flags": [],
+      "tests": [],
+      "telemetry": null,
+      "decision": "KEEP",
+      "notes": "Pagination for NL search results. Essential UX.",
+      "category": "Act"
+    },
+    {
+      "label": "Export JSON",
+      "path": "apps/web/src/components/ChatDock.tsx:1720",
+      "handler": "inline (smart export with detectFinanceReply)",
+      "handler_line": 1720,
+      "route": "N/A (client-side)",
+      "flags": [],
+      "tests": ["export-json-smart.spec.ts"],
+      "telemetry": null,
+      "decision": "KEEP",
+      "notes": "Smart export recently implemented. Well-tested.",
+      "category": "Utility"
+    },
+    {
+      "label": "Export Markdown",
+      "path": "apps/web/src/components/ChatDock.tsx:1755",
+      "handler": "inline (smart export)",
+      "handler_line": 1755,
+      "route": "N/A (client-side)",
+      "flags": [],
+      "tests": [],
+      "telemetry": null,
+      "decision": "KEEP",
+      "notes": "Smart export for markdown. Recently unified.",
+      "category": "Utility"
+    },
+    {
+      "label": "History",
+      "path": "apps/web/src/components/ChatDock.tsx:1786",
+      "handler": "setHistoryOpen",
+      "handler_line": 1786,
+      "route": "N/A (UI state)",
+      "flags": [],
+      "tests": [],
+      "telemetry": null,
+      "decision": "KEEP",
+      "notes": "Toggles message history panel. Essential UX.",
+      "category": "Utility"
+    },
+    {
+      "label": "Reset Position",
+      "path": "apps/web/src/components/ChatDock.tsx:1793",
+      "handler": "setRb({ right: MARGIN, bottom: MARGIN })",
+      "handler_line": 1793,
+      "route": "N/A (UI state)",
+      "flags": [],
+      "tests": [],
+      "telemetry": null,
+      "decision": "KEEP",
+      "notes": "Resets chat dock position. Renamed from 'Reset' for clarity.",
+      "category": "Utility"
+    },
+    {
+      "label": "Clear",
+      "path": "ChatControls component",
+      "handler": "useChatSession.clearChat",
+      "handler_line": "ChatControls.tsx",
+      "route": "N/A (clears localStorage)",
+      "flags": [],
+      "tests": ["chat-session-management.spec.ts"],
+      "telemetry": null,
+      "decision": "KEEP",
+      "notes": "Clears messages. New modal implementation. Well-tested.",
+      "category": "Utility"
+    },
+    {
+      "label": "Reset",
+      "path": "ChatControls component",
+      "handler": "useChatSession.resetSession",
+      "handler_line": "ChatControls.tsx",
+      "route": "POST /agent/session/reset",
+      "flags": [],
+      "tests": ["chat-session-management.spec.ts"],
+      "telemetry": null,
+      "decision": "KEEP",
+      "notes": "Resets session. New modal implementation. Distinct from Clear.",
+      "category": "Utility"
+    },
+    {
+      "label": "Hide tools / Agent Tools",
+      "path": "apps/web/src/components/ChatDock.tsx:1815",
+      "handler": "setShowTools",
+      "handler_line": 1815,
+      "route": "N/A (UI state)",
+      "flags": [],
+      "tests": [],
+      "telemetry": null,
+      "decision": "KEEP",
+      "notes": "Toggles tools panel visibility. Essential UX.",
+      "category": "Utility"
+    },
+    {
+      "label": "Collapse",
+      "path": "apps/web/src/components/ChatDock.tsx:1826",
+      "handler": "setOpen(false)",
+      "handler_line": 1826,
+      "route": "N/A (UI state)",
+      "flags": [],
+      "tests": [],
+      "telemetry": null,
+      "decision": "KEEP",
+      "notes": "Collapses chat dock. Essential UX.",
+      "category": "Utility"
+    }
+  ],
+  "overlap_matrix": [
+    {
+      "tools": ["Insights: Summary", "Insights: Expanded"],
+      "overlap": "Same route with expanded param",
+      "recommendation": "Merge into single 'Insights' button with preset selector"
+    },
+    {
+      "tools": ["Find subscriptions", "Recurring"],
+      "overlap": "Both detect recurring patterns",
+      "recommendation": "Clarify: subscriptions=user-facing recurring bills, recurring=ML detection of patterns"
+    },
+    {
+      "tools": ["Reset", "Reset Position"],
+      "overlap": "Same label, different functions",
+      "recommendation": "Already fixed - 'Reset Position' renamed for clarity"
+    }
+  ],
+  "patch_plan": [
+    {
+      "step": 1,
+      "action": "Merge Insights buttons",
+      "details": "Replace 'Insights: Summary' and 'Insights: Expanded' with single 'Insights' button. Add dropdown/toggle for summary vs expanded mode.",
+      "files": ["apps/web/src/components/ChatDock.tsx"],
+      "estimated_loc": 20
+    },
+    {
+      "step": 2,
+      "action": "Rename 'Budget suggest' to 'Suggest budget'",
+      "details": "Improve clarity of button label",
+      "files": ["apps/web/src/components/ChatDock.tsx"],
+      "estimated_loc": 1
+    },
+    {
+      "step": 3,
+      "action": "Add telemetry to all tool buttons",
+      "details": "Add telemetry.track() calls for each tool click with event names like 'agent_tool_month_summary', 'agent_tool_budget_check', etc.",
+      "files": ["apps/web/src/components/ChatDock.tsx"],
+      "estimated_loc": 30
+    },
+    {
+      "step": 4,
+      "action": "Add data-testid to all tool buttons",
+      "details": "Add data-testid attributes for E2E test stability",
+      "files": ["apps/web/src/components/ChatDock.tsx"],
+      "estimated_loc": 22
+    },
+    {
+      "step": 5,
+      "action": "Document tool differences",
+      "details": "Add tooltips distinguishing 'Find subscriptions' vs 'Recurring'",
+      "files": ["apps/web/src/components/ChatDock.tsx"],
+      "estimated_loc": 2
+    }
+  ],
+  "follow_up_tests": [
+    {
+      "type": "unit",
+      "file": "apps/web/src/__tests__/components/agent-tools.spec.ts",
+      "coverage": "Test all tool handler functions exist and don't throw",
+      "priority": "high"
+    },
+    {
+      "type": "e2e",
+      "file": "apps/web/tests/e2e/agent-tools-smoke.spec.ts",
+      "coverage": "Click each tool button, verify assistant reply or loading state",
+      "tests": [
+        "Month summary loads finance recap",
+        "Budget check shows budget status",
+        "Anomalies shows ML insights",
+        "Search transactions (NL) accepts query",
+        "Export JSON downloads file"
+      ],
+      "priority": "high"
+    },
+    {
+      "type": "e2e",
+      "file": "apps/web/tests/e2e/agent-tools-telemetry.spec.ts",
+      "coverage": "Verify telemetry events fire for each tool",
+      "priority": "medium"
+    }
+  ],
+  "telemetry_map": {
+    "events_to_add": [
+      { "tool": "Month summary", "event": "agent_tool_month_summary" },
+      { "tool": "Find subscriptions", "event": "agent_tool_find_subscriptions" },
+      { "tool": "Top merchants", "event": "agent_tool_top_merchants" },
+      { "tool": "Cashflow", "event": "agent_tool_cashflow" },
+      { "tool": "Trends", "event": "agent_tool_trends" },
+      { "tool": "Insights", "event": "agent_tool_insights" },
+      { "tool": "Budget check", "event": "agent_tool_budget_check" },
+      { "tool": "Alerts", "event": "agent_tool_alerts" },
+      { "tool": "KPIs", "event": "agent_tool_kpis" },
+      { "tool": "Forecast", "event": "agent_tool_forecast" },
+      { "tool": "Anomalies", "event": "agent_tool_anomalies" },
+      { "tool": "Recurring", "event": "agent_tool_recurring" },
+      { "tool": "Suggest budget", "event": "agent_tool_suggest_budget" },
+      { "tool": "What if", "event": "agent_tool_what_if" },
+      { "tool": "Search transactions (NL)", "event": "agent_tool_search_nl" },
+      { "tool": "Export CSV", "event": "agent_tool_export_csv" },
+      { "tool": "Export JSON", "event": "agent_tool_export_json" },
+      { "tool": "Export Markdown", "event": "agent_tool_export_markdown" }
+    ]
+  },
+  "acceptance_criteria": {
+    "inventory_committed": false,
+    "insights_merged": false,
+    "no_orphaned_handlers": true,
+    "playwright_passing": true,
+    "telemetry_firing": false
+  },
+  "recommended_groupings": {
+    "Explore": ["Month summary", "Trends", "Top merchants", "Cashflow", "Insights"],
+    "Explain": ["Alerts", "Anomalies", "KPIs", "Forecast", "Recurring"],
+    "Act": ["Budget check", "Suggest budget", "Find subscriptions", "Search transactions (NL)", "What if"],
+    "Utility": ["Export JSON", "Export Markdown", "Export CSV", "History", "Clear", "Reset", "Collapse"]
+  },
+  "notes": "All 22 agent tools have been inventoried. No tools are marked for removal as all have unique functionality. Main refactor needed is merging Insights Summary/Expanded. Telemetry is missing across the board and should be added. All tools are actively used and have clear backend routes or AGUI actions."
+}

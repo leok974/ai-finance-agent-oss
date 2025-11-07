@@ -1,5 +1,5 @@
 import app.env_bootstrap  # earliest import: loads DATABASE_URL from file secret if provided
-from fastapi import FastAPI, APIRouter, Response, Request
+from fastapi import FastAPI, APIRouter, Response, Request, HTTPException
 from fastapi.responses import RedirectResponse, JSONResponse
 from .startup_guard import require_db_or_exit
 from contextlib import asynccontextmanager
@@ -56,10 +56,10 @@ from app.routers import agent_tools_categorize as agent_tools_categorize_router
 from app.routers import categorize_admin as categorize_admin_router
 from app.routers import agent_tools_suggestions as agent_tools_suggestions_router
 from app.routers import suggestions as suggestions_router  # ML suggestions
+from app.routers import ml_status as ml_status_router  # ML status endpoint
 from .routers import charts
 from app.routers import txns_edit as txns_edit_router
 from app.routers import auth as auth_router
-from app.routers import auth_oauth as auth_oauth_router
 from app.routers import auth_dev as auth_dev_router
 from app.routers import agent_txns  # NEW
 from app.routers import help_ui as help_ui_router
@@ -84,6 +84,7 @@ from app.routers import (
 from app.routers import agent_tools_budget as agent_tools_budget_router
 from app.routers import agent_tools_insights as agent_tools_insights_router
 from app.routers import agent_actions as agent_actions_router
+from app.routers import agent_session as agent_session_router  # NEW: session management
 from app.routers import dev_overlay as dev_overlay_router
 from app.routers import agent_describe as agent_describe_router  # NEW: contextual help
 from app.routes import csp as csp_routes
@@ -320,6 +321,20 @@ if not _LLM_PATH_MIDDLEWARE_ATTACHED:  # pragma: no cover - simple guard
 # Fail fast immediately if DB misconfigured (after app exists)
 require_db_or_exit()
 app.add_middleware(RequestIdMiddleware)  # must precede others for rid context
+
+# === OAuth Session Middleware ===
+# Session middleware for OAuth state management
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=os.getenv("SESSION_SECRET", "dev-secret"),
+    session_cookie="lm_oauth_session",  # Distinct cookie name to avoid conflicts
+    same_site="lax",
+    https_only=bool(int(os.getenv("COOKIE_SECURE", "0"))),
+    max_age=60 * 60 * 24 * 7,  # 7 days
+    domain=os.getenv("COOKIE_DOMAIN") if os.getenv("COOKIE_DOMAIN") else None,
+)
+# === /OAuth Session Middleware ===
+
 try:
     # Lightweight best-effort startup self-checks (Postgres only) for
     # migration head count & performance index presence.
@@ -552,6 +567,7 @@ try:
     app.include_router(agent_tools_insights_router.router)
     app.include_router(agent_tools_suggestions_router.router)
     app.include_router(suggestions_router.router)  # ML suggestions endpoints
+    app.include_router(ml_status_router.router)  # ML status endpoint
     app.include_router(agent_actions_router.router)
 except Exception as e:
     logger.error(f"Failed to include agent_tools routers: {e}", exc_info=True)
@@ -863,10 +879,67 @@ app.include_router(explain.router, prefix="/txns", tags=["explain"])
 # charts.router already declares prefix="/charts"; avoid double /charts/charts
 app.include_router(charts.router, tags=["charts"])
 app.include_router(auth_router.router)
-app.include_router(auth_oauth_router.router)
+# Commented out old OAuth router - replaced with new Google OAuth below
+# app.include_router(auth_oauth_router.router)
 app.include_router(
     auth_dev_router.router
 )  # Dev PIN unlock (only active in APP_ENV=dev)
+
+# === Google OAuth ===
+from app.auth import google as google_auth
+
+app.include_router(google_auth.router)
+
+# /auth/me endpoint
+from fastapi import APIRouter
+
+_auth_me_router = APIRouter()
+
+
+@_auth_me_router.get("/auth/me")
+def get_current_user_endpoint(request: Request):
+    """Return current user from JWT token."""
+    from app.utils.auth import get_current_user as get_user_from_jwt
+    from app.db import get_db
+
+    # Get database session
+    db = next(get_db())
+    try:
+        user = get_user_from_jwt(request, db=db)
+        roles = [ur.role.name for ur in user.roles]
+
+        # Derive stable initial on server to prevent flicker
+        name = (user.name or "").strip() or None
+        email = (user.email or "").strip()
+        initial = (name or email or "?")[0].upper()
+
+        # Use picture_url for new Google OAuth photos, fallback to legacy picture field
+        picture_url = user.picture if user.picture else None
+
+        return {
+            "id": str(user.id),
+            "email": email,
+            "roles": roles,
+            "is_active": user.is_active,
+            "name": name,
+            "picture": user.picture,  # Legacy field (deprecated, keep for backward compat)
+            "picture_url": picture_url,  # New field for Google photos
+            "initial": initial,  # Server-derived to prevent client flicker
+            "env": os.getenv("APP_ENV", "prod"),
+        }
+    except HTTPException as e:
+        # If JWT auth fails, try session (legacy)
+        user_session = request.session.get("user")
+        if not user_session:
+            raise e
+        return {"ok": True, "user": user_session}
+    finally:
+        db.close()
+
+
+app.include_router(_auth_me_router)
+# === /Google OAuth ===
+
 app.include_router(transactions_router.router)
 app.include_router(transactions_nl_router)
 
@@ -890,6 +963,7 @@ app.include_router(meta.router)
 app.include_router(agent_txns.router)  # NEW
 app.include_router(agent_plan_router.router)
 app.include_router(agent_describe_router.router)  # NEW: contextual help
+app.include_router(agent_session_router.router)  # NEW: session management
 # Analytics endpoints (agent tools)
 app.include_router(analytics.router)
 app.include_router(analytics_receiver.router)
