@@ -9,6 +9,7 @@ from app.models import Rule
 # (Removed unused latest_month_from_data / apply_all_active_rules imports)
 from app.services import rules_service, ml_train_service, txns_service
 from app.transactions import Transaction
+from app.deps.auth_guard import get_current_user_id
 from app.schemas.rules import (
     SaveTrainPayload,
     SaveTrainResponse,
@@ -319,7 +320,11 @@ def _month_bounds(yyyy_mm: Optional[str]) -> tuple[Optional[date], Optional[date
     summary="Test a rule against transactions",
     description="Matches transactions by description/merchant for the given month (YYYY-MM). Returns a count and a small sample.",
 )
-def test_rule(payload: RuleTestPayload, db: Session = Depends(get_db)):
+def test_rule(
+    user_id: int = Depends(get_current_user_id),
+    payload: RuleTestPayload = ...,
+    db: Session = Depends(get_db),
+):
     # Validate presence of rule.when
     if payload.rule is None or getattr(payload.rule, "when", None) is None:
         raise HTTPException(status_code=400, detail="Missing rule.when")
@@ -328,7 +333,7 @@ def test_rule(payload: RuleTestPayload, db: Session = Depends(get_db)):
     if not like_val:
         return RuleTestResponse(count=0, sample=[])
 
-    q = db.query(Transaction)
+    q = db.query(Transaction).filter(Transaction.user_id == user_id)
     if payload.month:
         q = q.filter(Transaction.month == payload.month)
     like_expr = f"%{like_val}%"

@@ -1,36 +1,31 @@
-"""Auth guard dependency for protecting routes with OAuth session."""
+"""Auth guard dependency for protecting routes with user data isolation."""
 
-from fastapi import Cookie, HTTPException
-from app.auth.google import unsign_session_public
+from fastapi import Depends, HTTPException
+from app.utils.auth import get_current_user as _get_current_user_base
+from app.orm_models import User
 
 
-def require_session(lm_session: str = Cookie(default=None)):
+def get_current_user_id(user: User = Depends(_get_current_user_base)) -> int:
     """
-    FastAPI dependency that validates the lm_session cookie.
+    Extract user ID from authenticated user.
+
+    This is the PRIMARY dependency for enforcing user data isolation.
+    Use this in all routes that access user-specific data (transactions, charts, etc.)
 
     Usage:
-        from app.deps.auth_guard import require_session
-
-        @router.get("/secure")
-        def secure_endpoint(user = Depends(require_session)):
-            return {"ok": True, "user": user}
-
-    Raises:
-        HTTPException: 401 if session is missing or invalid
+        @router.get("/transactions")
+        def list_transactions(
+            user_id: int = Depends(get_current_user_id),
+            db: Session = Depends(get_db)
+        ):
+            return db.query(Transaction).filter(Transaction.user_id == user_id).all()
 
     Returns:
-        dict: User info from signed session token
-            {
-                "sub": "google_user_id",
-                "email": "user@example.com",
-                "name": "User Name",
-                "picture": "https://...",
-                "iss": "google"
-            }
+        int: User's database ID
+
+    Raises:
+        HTTPException: 401 if user not authenticated
     """
-    if not lm_session:
-        raise HTTPException(401, "No session")
-    try:
-        return unsign_session_public(lm_session)
-    except Exception:
-        raise HTTPException(401, "Invalid session")
+    if not user or not user.id:
+        raise HTTPException(401, "User not authenticated")
+    return user.id

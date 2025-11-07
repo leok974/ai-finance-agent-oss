@@ -11,9 +11,11 @@ from app.transactions import Transaction
 # --- Month helpers ------------------------------------------------------------
 
 
-def latest_month_str(db: Session) -> str | None:
+def latest_month_str(db: Session, user_id: int) -> str | None:
     """Return YYYY-MM for the latest transaction date, or None."""
-    max_d = db.execute(select(func.max(Transaction.date))).scalar()
+    max_d = db.execute(
+        select(func.max(Transaction.date)).where(Transaction.user_id == user_id)
+    ).scalar()
     return max_d.strftime("%Y-%m") if max_d else None
 
 
@@ -27,7 +29,11 @@ def month_bounds(yyyymm: str) -> tuple[_date, _date]:
 
 
 def resolve_window(
-    db: Session, month: Optional[str], start: Optional[str], end: Optional[str]
+    db: Session,
+    user_id: int,
+    month: Optional[str],
+    start: Optional[str],
+    end: Optional[str],
 ) -> tuple[_date, _date]:
     """
     Priority:
@@ -41,7 +47,7 @@ def resolve_window(
         y2, m2, d2 = map(int, end.split("-"))
         return _date(y1, m1, d1), _date(y2, m2, d2)
 
-    mm = month or latest_month_str(db)
+    mm = month or latest_month_str(db, user_id)
     if not mm:
         # No data to infer a window from
         raise ValueError("No month/window available")
@@ -117,7 +123,7 @@ def spend_case():
 # --- Data aggregations used by both charts and exports ------------------------
 
 
-def get_month_summary(db: Session, month: str) -> Dict[str, Any]:
+def get_month_summary(db: Session, user_id: int, month: str) -> Dict[str, Any]:
     start, end = month_bounds(month)
 
     lower_cat = func.lower(func.coalesce(Transaction.category, ""))
@@ -141,7 +147,11 @@ def get_month_summary(db: Session, month: str) -> Dict[str, Any]:
         select(
             func.sum(spend_expr),
             func.sum(income_expr),
-        ).where(Transaction.date >= start, Transaction.date < end)
+        ).where(
+            Transaction.user_id == user_id,  # ✅ Scope by user
+            Transaction.date >= start,
+            Transaction.date < end,
+        )
     ).one()
     total_spend = float(totals[0] or 0.0)
     total_income = float(totals[1] or 0.0)
@@ -149,7 +159,11 @@ def get_month_summary(db: Session, month: str) -> Dict[str, Any]:
     cat_expr = func.coalesce(Transaction.category, "Unknown")
     cat_rows = db.execute(
         select(cat_expr.label("cat"), func.sum(spend_expr).label("amt"))
-        .where(Transaction.date >= start, Transaction.date < end)
+        .where(
+            Transaction.user_id == user_id,  # ✅ Scope by user
+            Transaction.date >= start,
+            Transaction.date < end,
+        )
         .group_by(cat_expr)
         .order_by(func.sum(spend_expr).desc())
     ).all()
@@ -164,7 +178,9 @@ def get_month_summary(db: Session, month: str) -> Dict[str, Any]:
     }
 
 
-def get_month_merchants(db: Session, month: str, limit: int = 10) -> Dict[str, Any]:
+def get_month_merchants(
+    db: Session, user_id: int, month: str, limit: int = 10
+) -> Dict[str, Any]:
     """
     Fast SQL GROUP BY over canonical merchant; expenses only as positive magnitudes.
     Display name preserves raw merchant casing by selecting a representative raw value.
@@ -180,6 +196,7 @@ def get_month_merchants(db: Session, month: str, limit: int = 10) -> Dict[str, A
             cnt,
         )
         .where(
+            Transaction.user_id == user_id,  # ✅ Scope by user
             Transaction.date >= start,
             Transaction.date < end,
             Transaction.amount < 0,
@@ -202,7 +219,7 @@ def get_month_merchants(db: Session, month: str, limit: int = 10) -> Dict[str, A
 
 
 def get_month_categories(
-    db: Session, month: str, limit: int = 50
+    db: Session, user_id: int, month: str, limit: int = 50
 ) -> list[dict[str, Any]]:
     """Category spend aggregation (expenses only), descending by total spend."""
     start, end = month_bounds(month)
@@ -213,6 +230,7 @@ def get_month_categories(
             spend_abs,
         )
         .where(
+            Transaction.user_id == user_id,  # ✅ Scope by user
             Transaction.date >= start,
             Transaction.date < end,
             Transaction.amount < 0,
@@ -226,11 +244,15 @@ def get_month_categories(
     return [{"category": c, "spend": float(s or 0.0)} for (c, s) in rows]
 
 
-def get_month_flows(db: Session, month: str) -> Dict[str, Any]:
+def get_month_flows(db: Session, user_id: int, month: str) -> Dict[str, Any]:
     start, end = month_bounds(month)
     rows = db.execute(
         select(Transaction.date, Transaction.amount, Transaction.merchant)
-        .where(Transaction.date >= start, Transaction.date < end)
+        .where(
+            Transaction.user_id == user_id,  # ✅ Scope by user
+            Transaction.date >= start,
+            Transaction.date < end,
+        )
         .order_by(Transaction.date)
     ).all()
     series = []
@@ -248,13 +270,14 @@ def get_month_flows(db: Session, month: str) -> Dict[str, Any]:
     return {"month": month, "series": series}
 
 
-def get_spending_trends(db: Session, months: int = 6) -> Dict[str, Any]:
+def get_spending_trends(db: Session, user_id: int, months: int = 6) -> Dict[str, Any]:
     rows = db.execute(
         select(
             Transaction.month.label("month"),
             func.sum(spend_case()).label("spend"),
             func.sum(income_case()).label("income"),
         )
+        .where(Transaction.user_id == user_id)  # ✅ Scope by user
         .group_by(Transaction.month)
         .order_by(Transaction.month.desc())
         .limit(months)
@@ -269,7 +292,7 @@ def get_spending_trends(db: Session, months: int = 6) -> Dict[str, Any]:
 
 
 # --- Category timeseries (single category) -----------------------------------
-def get_category_timeseries(db: Session, category: str, months: int = 6):
+def get_category_timeseries(db: Session, user_id: int, category: str, months: int = 6):
     """
     Build a per-month time series for a single category over the last N months.
 
@@ -279,7 +302,11 @@ def get_category_timeseries(db: Session, category: str, months: int = 6):
     - Returns a list of { month: 'YYYY-MM', amount: number } sorted ascending by month.
     """
     # find max date
-    max_dt = db.execute(select(func.max(Transaction.date))).scalar()
+    max_dt = db.execute(
+        select(func.max(Transaction.date)).where(
+            Transaction.user_id == user_id
+        )  # ✅ Scope by user
+    ).scalar()
     if not max_dt:
         return None
     # compute earliest month start
@@ -305,6 +332,7 @@ def get_category_timeseries(db: Session, category: str, months: int = 6):
     rows = db.execute(
         select(ym.label("ym"), func.sum(func.abs(Transaction.amount)).label("amt"))
         .where(
+            Transaction.user_id == user_id,  # ✅ Scope by user
             Transaction.date >= earliest,
             Transaction.date < end,
             Transaction.category == category,

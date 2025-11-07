@@ -10,7 +10,7 @@ from app.utils import llm as llm_mod
 from app.analytics_emit import emit_fallback
 from app.services import help_cache
 from app.utils.filters import hash_filters
-from app.utils.cache import cache_get, cache_set
+from app.deps.auth_guard import get_current_user_id
 import json
 import threading
 import os
@@ -23,7 +23,6 @@ from app.metrics import (
 )
 from app.services.help_copy import get_static_help_for_panel
 from app.services.explain import explain_month_merchants
-from app.metrics_ml import lm_help_requests_total
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -47,29 +46,35 @@ class DescribeRequest(BaseModel):
 ## cache now handled by app.services.help_cache
 
 
-def _deterministic(panel_id: str, req: DescribeRequest, db: Session) -> str:
+def _deterministic(
+    panel_id: str, req: DescribeRequest, user_id: int, db: Session
+) -> str:
     """
     Deterministic descriptions with panel-specific heuristic logic.
     Extended with real transaction analysis where available.
     """
     month = req.month or "(current month)"
-    
+
     # Use real transaction analysis for merchant spending
     if panel_id in {"charts.month_merchants", "top_merchants"}:
         if req.month:
             try:
-                result = explain_month_merchants(db, req.month)
+                result = explain_month_merchants(db, user_id, req.month)
                 # Combine what + why for explain mode
                 parts = []
                 if result.get("what"):
                     parts.append(result["what"])
                 if result.get("why"):
                     parts.append(result["why"])
-                return " ".join(parts) if parts else f"Top merchants ranked by spend for {month}."
+                return (
+                    " ".join(parts)
+                    if parts
+                    else f"Top merchants ranked by spend for {month}."
+                )
             except Exception as e:
                 logger.warning(f"explain_month_merchants failed: {e}")
                 return f"Top merchants ranked by spend for {month}."
-    
+
     # Original fallbacks for other panels
     if panel_id in {"overview.metrics.totalSpend", "total_spend"}:
         return f"Total spend shows all outgoing amounts for {month}."
@@ -132,7 +137,8 @@ def _record_metrics(
 
 @router.post("/agent/describe/{panel_id}")
 def describe_panel(
-    panel_id: str,
+    user_id: int = Depends(get_current_user_id),
+    panel_id: str = ...,
     req: DescribeRequest = Body(default=DescribeRequest()),
     rephrase_q: Optional[bool] = Query(None),
     db: Session = Depends(get_db),
@@ -156,7 +162,9 @@ def describe_panel(
     rephrase_requested = mode == "explain"
 
     fhash = hash_filters(req.filters)
-    key = help_cache.make_key(panel_id, req.month, fhash, rephrase_requested, mode=mode)
+    key = help_cache.make_key(
+        panel_id, req.month, fhash, rephrase_requested, user_id=user_id, mode=mode
+    )
     cached = help_cache.get(key)
     if cached:
         cached.setdefault("panel_id", panel_id)
@@ -201,7 +209,7 @@ def describe_panel(
         return payload
 
     # explain mode: deterministic base plus optional LLM polish
-    base = _deterministic(panel_id, req, db)
+    base = _deterministic(panel_id, req, user_id, db)
     text = base
     provider = "none"
     was_rephrased = False

@@ -11,21 +11,14 @@ from app.services.charts_data import (
     get_spending_trends as srv_get_spending_trends,
 )
 from app.services.charts_data import get_category_timeseries
-import os
-from app.utils.auth import get_current_user
+from app.deps.auth_guard import get_current_user_id
 
 router = APIRouter(prefix="/charts", tags=["charts"])
 
 
-# Require auth in prod; allow public in tests (TEST_MODE=1 or APP_ENV=test)
-_REQUIRE_AUTH = not (
-    os.getenv("TEST_MODE") == "1" or os.getenv("APP_ENV", "").lower() == "test"
-)
-_CHARTS_DEPS = [Depends(get_current_user)] if _REQUIRE_AUTH else []
-
-
-@router.get("/month_summary", dependencies=_CHARTS_DEPS)
+@router.get("/month_summary")
 def month_summary(
+    user_id: int = Depends(get_current_user_id),
     month: str | None = Query(None, pattern=r"^\d{4}-\d{2}$"),
     db: Session = Depends(get_db),
     request: Request = None,  # type: ignore[assignment]
@@ -40,7 +33,7 @@ def month_summary(
          * Else -> return null/zero payload for onboarding UI.
     """
     if month:
-        return srv_get_month_summary(db, month)
+        return srv_get_month_summary(db, user_id, month)
 
     # No explicit month: inspect in-memory first
     latest_mem: str | None = None
@@ -102,40 +95,46 @@ def month_summary(
 
     # In-memory empty: try DB latest
     try:
-        latest_db = latest_month_str(db)
+        latest_db = latest_month_str(db, user_id)
     except Exception:
         latest_db = None
     if latest_db:
-        return srv_get_month_summary(db, latest_db)
+        return srv_get_month_summary(db, user_id, latest_db)
     return month_payload
 
 
 @router.get("/month_merchants")
 def month_merchants(
+    user_id: int = Depends(get_current_user_id),
     month: str | None = Query(None, pattern=r"^\d{4}-\d{2}$"),
     limit: int = Query(10, ge=1, le=500),
     db: Session = Depends(get_db),
 ):
-    m = month or latest_month_str(db)
+    m = month or latest_month_str(db, user_id)
     if not m:
         return {"month": None, "merchants": []}
-    return srv_get_month_merchants(db, m, limit=limit)
+    return srv_get_month_merchants(db, user_id, m, limit=limit)
 
 
 @router.get("/month_flows")
 def month_flows(
+    user_id: int = Depends(get_current_user_id),
     month: str | None = Query(None, pattern=r"^\d{4}-\d{2}$"),
     db: Session = Depends(get_db),
 ):
-    m = month or latest_month_str(db)
+    m = month or latest_month_str(db, user_id)
     if not m:
         return {"month": None, "series": []}
-    return srv_get_month_flows(db, m)
+    return srv_get_month_flows(db, user_id, m)
 
 
 @router.get("/spending_trends")
-def spending_trends(months: int = Query(6, ge=1, le=24), db: Session = Depends(get_db)):
-    return srv_get_spending_trends(db, months)
+def spending_trends(
+    user_id: int = Depends(get_current_user_id),
+    months: int = Query(6, ge=1, le=24),
+    db: Session = Depends(get_db),
+):
+    return srv_get_spending_trends(db, user_id, months)
 
 
 class CategoryPoint(BaseModel):
@@ -182,6 +181,7 @@ class CategorySeriesResp(BaseModel):
     summary="Category time series (expenses only)",
 )
 def chart_category(
+    user_id: int = Depends(get_current_user_id),
     category: str = Query(..., min_length=1, description="Category to chart"),
     months: int = Query(6, ge=1, le=36, description="Months of history to include"),
     db: Session = Depends(get_db),
@@ -189,7 +189,7 @@ def chart_category(
     """
     Sums **expense magnitudes** (amount < 0 → abs) per month. Income & transfers excluded.
     """
-    data = get_category_timeseries(db, category=category, months=months)
+    data = get_category_timeseries(db, user_id, category=category, months=months)
     if data is None:
         raise HTTPException(status_code=404, detail="Category not found or no data")
     return {"category": category, "months": months, "series": data}
