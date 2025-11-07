@@ -15,14 +15,13 @@ class FakeBC {
 }
 
 if (!("BroadcastChannel" in globalThis)) {
-  // @ts-expect-error - Mocking BroadcastChannel for tests
+  // @ts-expect-error - Intentionally mocking BroadcastChannel for tests
   global.BroadcastChannel = FakeBC;
 }
 
 // Basic localStorage shim if your env lacks it
 if (!("localStorage" in globalThis)) {
   const store = new Map<string, string>();
-  // @ts-expect-error - Mocking localStorage for tests
   global.localStorage = {
     getItem: (k: string) => store.get(k) ?? null,
     setItem: (k: string, v: string) => void store.set(k, v),
