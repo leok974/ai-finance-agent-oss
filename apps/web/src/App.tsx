@@ -28,6 +28,7 @@ import NetActivityBlip from "@/components/NetActivityBlip";
 import AuthMenu from "@/components/AuthMenu";
 import { useAuth, useIsAdmin } from "@/state/auth";
 import { useChartsStore } from "@/state/charts";
+import { initBroadcastChannelSync } from "@/state/chatSession";
 // import AgentChat from "./components/AgentChat"; // legacy chat bubble disabled
 import { setGlobalMonth } from "./state/month";
 // Providers are applied at the top-level (main.tsx)
@@ -74,6 +75,11 @@ const App: React.FC = () => {
   const [dbRev, setDbRev] = useState<string | null>(null);
   const [inSync, setInSync] = useState<boolean | undefined>(undefined);
   const refetchAllCharts = useChartsStore((state) => state.refetchAll);
+
+  // Initialize BroadcastChannel for cross-tab chat synchronization (client-side only)
+  useEffect(() => {
+    initBroadcastChannelSync();
+  }, []);
 
   // Keyboard toggles: Ctrl+Alt+D soft session toggle (no reload), Ctrl+Shift+D hard persistent toggle (reload)
   useEffect(() => {
