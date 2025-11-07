@@ -13,6 +13,9 @@ ARG VITE_GIT_COMMIT=unknown
 ARG GIT_BRANCH=unknown
 ARG GIT_COMMIT=unknown
 ARG BUILD_ID=not_set
+ARG VITE_ENABLE_LOCAL_AUTH=0
+ARG VITE_ENABLE_GOOGLE_OAUTH=1
+ARG VITE_ENABLE_GITHUB_OAUTH=0
 WORKDIR /w
 # Copy only manifest files first for dependency install.
 COPY apps/web/package.json apps/web/pnpm-lock.yaml* ./apps/web/
@@ -44,7 +47,10 @@ ENV WEB_BRANCH=${WEB_BRANCH} \
 	VITE_GIT_COMMIT=${VITE_GIT_COMMIT} \
 	GIT_BRANCH=${GIT_BRANCH} \
 	GIT_COMMIT=${GIT_COMMIT} \
-	BUILD_ID=${BUILD_ID}
+	BUILD_ID=${BUILD_ID} \
+	VITE_ENABLE_LOCAL_AUTH=${VITE_ENABLE_LOCAL_AUTH} \
+	VITE_ENABLE_GOOGLE_OAUTH=${VITE_ENABLE_GOOGLE_OAUTH} \
+	VITE_ENABLE_GITHUB_OAUTH=${VITE_ENABLE_GITHUB_OAUTH}
 
 # Create a build-stamp file (must occur after src copied so it lands inside src/) then build
 # If a build-stamp already exists (from repo or host build), keep it; otherwise generate one

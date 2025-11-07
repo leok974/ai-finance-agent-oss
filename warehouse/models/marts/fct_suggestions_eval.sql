@@ -42,49 +42,54 @@ transactions as (
 select
     -- Primary key
     {{ dbt_utils.generate_surrogate_key(['s.id', 'f.id']) }} as eval_id,
-    
+
     -- Foreign keys
     s.id as suggestion_event_id,
     s.txn_id,
     f.id as feedback_id,
-    
+
     -- Suggestion details
     s.mode as suggestion_mode,
     s.model_id,
     s.features_hash,
     s.candidates as suggested_categories,
     s.created_at as suggested_at,
-    
+    s.confidence,
+    s.reason_json,
+    s.accepted as suggestion_accepted,
+    s.source as suggestion_source,
+    s.model_version,
+
     -- Feedback
     f.action as user_action,
     f.label as user_selected_label,
     f.confidence as user_confidence,
     f.reason as user_reason,
     f.created_at as feedback_at,
-    
+
     -- Ground truth (if available)
     l.label as true_label,
     l.source as label_source,
-    
+
     -- Transaction context
     t.txn_date,
     t.amount,
     t.merchant,
     t.current_category,
-    
+
     -- Evaluation metrics (computed)
     case
         when f.action = 'accept' then 1
         when f.action = 'reject' then 0
         else null
     end as is_accepted,
-    
+
     case
         when f.action = 'accept' and l.label = f.label then 1
         when f.action = 'accept' and l.label != f.label then 0
         else null
     end as is_correct_accept,
-    
+
     case
         when f.action = 'reject' and l.label = f.label then 0  -- Rejected good suggestion
         when f.action = 'reject' and l.label != f.label then 1  -- Rejected bad suggestion

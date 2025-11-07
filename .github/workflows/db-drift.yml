@@ -1,0 +1,49 @@
+name: db-drift
+on: [pull_request]
+jobs:
+  drift:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: app
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd="pg_isready -U postgres -d app"
+          --health-interval=5s --health-timeout=5s --health-retries=20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install deps
+        run: pip install -r apps/backend/requirements.txt
+      - name: Alembic upgrade
+        env:
+          DATABASE_URL: postgresql+psycopg2://postgres:postgres@localhost:5432/app
+        run: |
+          cd apps/backend
+          alembic upgrade head
+      - name: Drift check
+        env:
+          DATABASE_URL: postgresql+psycopg2://postgres:postgres@localhost:5432/app
+        run: |
+          cd apps/backend
+          python -m app.drift_check | tee drift.json
+          python - <<'PY'
+          import json
+          with open("drift.json") as f:
+              j = json.load(f)
+          missing = sum(len(v["missing_cols"]) for k,v in j.items() if isinstance(v, dict) and "missing_cols" in v)
+          label_ok = j.get("label_source") is not None
+          if missing > 0:
+              print(f"ERROR: {missing} missing columns detected")
+              exit(1)
+          if not label_ok:
+              print("ERROR: No label table (user_labels or transaction_labels) found")
+              exit(1)
+          print("✓ Schema drift check passed")
+          PY

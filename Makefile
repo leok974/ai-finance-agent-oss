@@ -578,3 +578,62 @@ help-selftest:
 help-cache-bust:
 	@curl -sf -X POST "http://localhost:8000/agent/describe/_cache/clear" | jq
 
+# ------------------------------------------------------------------
+# ML Merchant Labeler & Confidence Gating
+# ------------------------------------------------------------------
+.PHONY: ml-merchant-labels ml-smoke-test ml-drift-check ml-verify-logs help-selftest-pr
+
+## Test merchant majority labeler (verify module loads)
+ml-merchant-labels:
+	docker compose exec backend python -c "from app.services.suggest.merchant_labeler import majority_for_merchant; print('✅ Merchant labeler OK')"
+
+## Run full ML pipeline smoke test
+ml-smoke-test:
+	@echo "Running ML Pipeline Phase 2.1 smoke tests..."
+	@docker compose exec backend python -m app.drift_check
+	@docker compose exec backend python -c "from app.services.suggest.merchant_labeler import majority_for_merchant, MIN_SUPPORT, MAJORITY_P; from app.db import SessionLocal; db = SessionLocal(); r = majority_for_merchant(db, 'Amazon'); print(f'✅ Merchant majority: {r.label if r else \"None\"} (support={r.support if r else 0}, p={r.p if r else 0})'); db.close()"
+	@docker compose exec backend python -c "from app.orm_models import Suggestion; from app.db import SessionLocal; db = SessionLocal(); count = db.query(Suggestion).count(); print(f'✅ Suggestions logged: {count}'); db.close()"
+	@echo "✅ All smoke tests passed!"
+
+## Check schema drift
+ml-drift-check:
+	docker compose exec backend python -m app.drift_check
+
+## Verify suggestion logs in database
+ml-verify-logs:
+	@echo "Recent suggestions from database:"
+	@docker compose exec backend python -c "from app.orm_models import Suggestion; from app.db import SessionLocal; import json; db = SessionLocal(); recent = db.query(Suggestion).order_by(Suggestion.timestamp.desc()).limit(10).all(); print(f'{'Label':<15} {'Conf':<6} {'Source':<10} {'Model':<25} Merchant'); print('-' * 80); [print(f'{s.label:<15} {s.confidence:<6.2f} {s.source:<10} {(s.model_version or \"N/A\"):<25} {json.loads(s.reason_json)[0].get(\"merchant\", \"N/A\") if s.reason_json else \"N/A\"}') for s in recent]; db.close()"
+
+## Trigger help-selftest workflow on PRs
+help-selftest-pr:
+	gh workflow run help-selftest.yml
+
+
+# ------------------------------------------------------------------
+# ML Canary Ramp
+# ------------------------------------------------------------------
+.PHONY: canary-0 canary-10 canary-50 canary-100 canary-status
+
+## Set canary to 0% (rules only, shadow ML)
+canary-0:
+	@echo "Setting ML canary to 0% (rules only)..."
+	@docker compose exec backend bash -c 'export SUGGEST_USE_MODEL_CANARY=0; echo "✅ Canary set to 0%"'
+
+## Set canary to 10% (test ramp)
+canary-10:
+	@echo "Setting ML canary to 10% (test ramp)..."
+	@docker compose exec backend bash -c 'export SUGGEST_USE_MODEL_CANARY=10%; echo "✅ Canary set to 10%"'
+
+## Set canary to 50% (half rollout)
+canary-50:
+	@echo "Setting ML canary to 50% (half rollout)..."
+	@docker compose exec backend bash -c 'export SUGGEST_USE_MODEL_CANARY=50%; echo "✅ Canary set to 50%"'
+
+## Set canary to 100% (full rollout)
+canary-100:
+	@echo "Setting ML canary to 100% (full rollout)..."
+	@docker compose exec backend bash -c 'export SUGGEST_USE_MODEL_CANARY=100%; echo "✅ Canary set to 100%"'
+
+## Check current canary status
+canary-status:
+	@docker compose exec backend printenv | grep SUGGEST_USE_MODEL_CANARY || echo "SUGGEST_USE_MODEL_CANARY not set (defaults to 0)"

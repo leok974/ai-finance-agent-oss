@@ -8,7 +8,7 @@ import EnvAvatar from "@/components/EnvAvatar";
 import { useAuth, getUserInitial } from "@/state/auth";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { createPortal } from "react-dom";
-import { ChevronUp, Wrench } from "lucide-react";
+import { ChevronUp, ChevronDown, Wrench } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
@@ -286,6 +286,9 @@ export default function ChatDock() {
     try { return String(import.meta.env.VITE_ENABLE_AGUI || '').trim() === '1'; } catch { return false; }
   })();   // experimental AGUI integration
 
+  // Get version from store for force-rerender after clear/reset
+  const version = useChatSession((state) => state.version);
+
   // Live message stream (render from UI state, persist via chatStore)
   const [uiMessages, setUiMessages] = useState<Msg[]>([]);
   // Equality guard to avoid redundant setState on cross-tab updates
@@ -365,13 +368,13 @@ export default function ChatDock() {
     if (!metaPayload.used_context && metaPayload.ctxMonth) {
       metaPayload.used_context = { month: metaPayload.ctxMonth };
     }
-    
+
     // Normalize the reply before appending (strip "Hey", apply templates, add variety)
     const normalized = normalizeAssistantReply(
       { role: 'assistant', text, meta: metaPayload },
       user
     );
-    
+
     setUiMessages(cur => [...cur, { role: 'assistant', text: normalized.text, ts, meta: metaPayload }]);
     chatStore.append({ role: 'assistant', content: normalized.text, createdAt: ts });
     try {
@@ -427,11 +430,11 @@ export default function ChatDock() {
       const isUser = m.role === 'user';
       const meta = ((m as any).meta ?? (i === (uiMessages.length - 1) ? (chatResp as any) : undefined)) || {};
       const isThinking = (m as any).thinking || (m as any).meta?.thinking;
-      
+
       // Get user initial for avatar
       const userInitial = getUserInitial(user);
       const userPicture = user?.picture_url || user?.picture;
-      
+
       out.push(
         <div key={`${m.role}-${ts}-${i}`} className={`px-3 py-2 my-1 flex items-end gap-2 ${isUser ? 'justify-end' : 'justify-start'}`}>
           {!isUser && (
@@ -659,50 +662,9 @@ export default function ChatDock() {
   // History toggle (reads directly from messages)
   const [historyOpen, setHistoryOpen] = useState<boolean>(false);
 
-  // Clear history handler (with snapshot + animated Undo)
-  const handleClearHistory = React.useCallback(() => {
-    const existing = chatStore.get();
-    if (!existing?.length) return;
-    try {
-      const ok = window.confirm('Clear chat history across tabs?');
-      if (!ok) return;
-    } catch { /* ignore */ }
-    // 1) take snapshot for undo
-    const snap = chatSnapshot();
-    // 2) clear store and local UI
-    try {
-      chatStore.clear();
-      setUiMessages([]);
-    } catch (e) { /* ignore */ }
-    // 3) offer undo that restores snapshot via chatStore
-    showUndo('Chat cleared', () => {
-      const res = chatRestoreFromSnapshot();
-      if (res.ok) {
-        try {
-          const restored = chatStore.get() || [];
-          const mapped = (restored || []).map(b => ({
-            role: (b.role === 'assistant' ? 'assistant' : 'user') as MsgRole,
-            text: String(b.content || ''),
-            ts: Number(b.createdAt) || Date.now(),
-          }));
-          setUiMessages(mapped);
-        } catch { /* ignore */ }
-  try { sessionStorage.setItem('chat:restored_at', String(Date.now())); } catch (_err) { /* intentionally empty: swallow to render empty-state */ }
-  setRestoredVisible(true);
-  window.setTimeout(() => setRestoredVisible(false), 4500);
-        try { /* optional: clear snapshot explicitly if needed */ chatDiscardSnapshot(); } catch (_err) { /* intentionally empty: swallow to render empty-state */ }
-      }
-      // close snackbar shortly after click
-      setUndoClosing(true);
-      window.setTimeout(() => setUndoVisible(false), 800);
-    });
-  }, []);
-
   const mapBasicToMsg = React.useCallback((arr: BasicMsg[]): Msg[] => {
     return (arr || []).map(b => ({ role: (b.role === 'assistant' ? 'assistant' : 'user') as MsgRole, text: String(b.content || ''), ts: Number(b.createdAt) || Date.now() }));
   }, []);
-
-  // no-op cleanup needed for new snackbar timers (scoped to showUndo)
 
   // Auto-run state for debounced month changes
   const isAutoRunning = useRef(false);
@@ -741,6 +703,11 @@ export default function ChatDock() {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape" && open) setOpen(false);
       if (e.key.toLowerCase() === "k" && e.shiftKey && e.ctrlKey) { e.preventDefault(); setOpen((v: boolean) => !v); }
+      // Ctrl+Shift+C opens Clear modal
+      if (e.key.toLowerCase() === "c" && e.shiftKey && e.ctrlKey) {
+        e.preventDefault();
+        chatControlsRef.current?.openClearModal();
+      }
       // Ctrl+Shift+R opens Reset modal
       if (e.key.toLowerCase() === "r" && e.shiftKey && e.ctrlKey) {
         e.preventDefault();
@@ -1098,17 +1065,17 @@ export default function ChatDock() {
     setBusy(true);
     try {
       appendUser('Summarize my spending this month');
-      
+
       // Fetch data without LLM rephrase
       const data = await agentTools.chartsSummary({ month: month || '', include_daily: false } as any);
-      
+
       // Transform to MonthSummary format
       const summary = adaptChartsSummaryToMonthSummary(data, month || '');
       lastMonthSummaryRef.current = summary;
-      
+
       // Render quick recap
       const quickRecap = renderQuick(summary);
-      
+
       // Add with special meta to show "Deeper breakdown" chip
       appendAssistant(quickRecap, {
         ctxMonth: month,
@@ -1116,7 +1083,7 @@ export default function ChatDock() {
         showDeeperBreakdown: true,
         monthSummary: summary, // Store for smart export
       });
-      
+
       syncFromStoreDebounced(120);
     } catch (err: any) {
       appendAssistant(`Failed to load month summary: ${err?.message || String(err)}`);
@@ -1224,13 +1191,13 @@ export default function ChatDock() {
         ? 'Summarize key insights for this month.'
         : 'Expand insights (month-over-month + anomalies).';
       appendUser(userPrompt);
-      
+
       const rephrasePrompt = size === "compact"
         ? `Turn these insights for ${month} into a friendly paragraph with one recommendation: `
         : `Expand insights for ${month} with MoM and anomalies: `;
-      
+
       telemetry.track(AGENT_TOOL_EVENTS.INSIGHTS, { size });
-      
+
       await runToolWithRephrase(
         'insights.expanded',
         () => agentTools.insightsExpanded({ month }),
@@ -1728,6 +1695,7 @@ export default function ChatDock() {
 
   const panelEl = open && (
     <div
+      key={version}
       ref={panelRef}
   className="fixed z-[70] w-[min(760px,calc(100vw-2rem))] max-h-[80vh] rounded-2xl border border-neutral-700 shadow-xl bg-neutral-900/95 backdrop-blur p-4 flex flex-col min-h-[320px]"
   style={{ right: rb.right, bottom: rb.bottom, position: 'fixed' as const }}
@@ -1764,17 +1732,17 @@ export default function ChatDock() {
             type="button"
             data-testid="agent-tool-export-json"
             onPointerDown={(e) => e.stopPropagation()}
-            onClick={(e) => { 
+            onClick={(e) => {
               e.stopPropagation();
-              
+
               // Get current session ID
               const sessionId = useChatSession.getState().sessionId;
-              
+
               // Try smart export first
               const financePayload = detectFinanceReply(uiMessages, sessionId);
-              
+
               telemetry.track(AGENT_TOOL_EVENTS.EXPORT_JSON, { mode: financePayload ? 'finance' : 'thread' });
-              
+
               if (financePayload) {
                 // Export structured finance JSON
                 const month = financePayload.month;
@@ -1801,14 +1769,14 @@ export default function ChatDock() {
             type="button"
             data-testid="agent-tool-export-markdown"
             onPointerDown={(e) => e.stopPropagation()}
-            onClick={(e) => { 
+            onClick={(e) => {
               e.stopPropagation();
               // Smart export: if last reply is a finance summary, export it; otherwise export full thread
               const lastAssistant = [...(uiMessages || [])].reverse().find(m => m.role === 'assistant');
               const isFinanceSummary = lastAssistant?.meta?.mode === 'finance_quick_recap' || lastAssistant?.meta?.mode === 'finance_deep_dive';
-              
+
               telemetry.track(AGENT_TOOL_EVENTS.EXPORT_MARKDOWN, { mode: isFinanceSummary ? 'finance' : 'thread' });
-              
+
               if (isFinanceSummary && lastAssistant) {
                 // Export just the last finance reply
                 const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
@@ -1842,15 +1810,6 @@ export default function ChatDock() {
             title="Show recent messages"
           >
             {historyOpen ? 'Hide history' : 'History'}
-          </button>
-          <button
-            type="button"
-            onPointerDown={(e) => e.stopPropagation()}
-            onClick={(e) => { e.stopPropagation(); setRb({ right: MARGIN, bottom: MARGIN }); }}
-            className="text-xs px-2 py-1 border rounded-md hover:bg-muted"
-            title="Reset to bottom-right"
-          >
-            Reset Position
           </button>
           <ChatControls ref={chatControlsRef} />
           <button
@@ -1889,40 +1848,43 @@ export default function ChatDock() {
             <button type="button" onClick={(e) => { telemetry.track(AGENT_TOOL_EVENTS.TOP_MERCHANTS); runTopMerchants(e as any); }} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50" data-testid="agent-tool-top-merchants">Top merchants</button>
             <button type="button" onClick={(e) => { telemetry.track(AGENT_TOOL_EVENTS.CASHFLOW); runCashflow(e as any); }} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50" data-testid="agent-tool-cashflow">Cashflow</button>
             <button type="button" onClick={(e) => { telemetry.track(AGENT_TOOL_EVENTS.TRENDS); runTrends(e as any); }} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50" data-testid="agent-tool-trends">Trends</button>
-            {/* Merged Insights button with size toggle */}
-            <div className="flex items-center gap-1">
-              <button
-                type="button"
-                onClick={() => runInsights({ size: insightsSize })}
-                disabled={busy}
-                className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50"
-                data-testid="agent-tool-insights"
-                title={`Insights (${insightsSize}) — Metrics & explanations. Use the size toggle for compact vs. expanded.`}
-              >
-                Insights
-              </button>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <button
-                    type="button"
-                    disabled={busy}
-                    className="text-xs px-1 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50"
-                    data-testid="agent-tool-insights-size"
-                    title="Toggle between compact and expanded insights"
-                  >
-                    ⚙
-                  </button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start">
-                  <DropdownMenuItem onClick={() => setInsightsSize("compact")}>
-                    Compact
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setInsightsSize("expanded")}>
-                    Expanded
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
+            {/* Consolidated Insights button with dropdown */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  disabled={busy}
+                  className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50 inline-flex items-center gap-1"
+                  data-testid="agent-tool-insights"
+                  title={`Insights (${insightsSize}) — Choose Compact or Expanded`}
+                  aria-label={`Insights (${insightsSize})`}
+                >
+                  Insights <ChevronDown className="h-3 w-3 opacity-70" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start">
+                <DropdownMenuItem
+                  onClick={() => {
+                    setInsightsSize("compact");
+                    telemetry.track(AGENT_TOOL_EVENTS.INSIGHTS, { size: "compact" });
+                    runInsights({ size: "compact" });
+                  }}
+                  data-testid="agent-tool-insights-compact"
+                >
+                  Compact
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => {
+                    setInsightsSize("expanded");
+                    telemetry.track(AGENT_TOOL_EVENTS.INSIGHTS, { size: "expanded" });
+                    runInsights({ size: "expanded" });
+                  }}
+                  data-testid="agent-tool-insights-expanded"
+                >
+                  Expanded
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
             <button type="button" onClick={(e) => runBudgetCheck(e as any)} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50" data-testid="agent-tool-budget-check">Budget check</button>
             <button type="button" onClick={(e) => runAlerts(e as any)} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50">Alerts</button>
             {/* Analytics quick buttons */}
@@ -2081,7 +2043,7 @@ export default function ChatDock() {
             <div className="text-xs opacity-70">This tab's recent messages</div>
             <button
               className="text-xs px-2 py-1 border rounded-md hover:bg-muted"
-              onClick={handleClearHistory}
+              onClick={() => chatControlsRef.current?.openClearModal()}
               title="Clear chat history (all tabs)"
             >
               Clear

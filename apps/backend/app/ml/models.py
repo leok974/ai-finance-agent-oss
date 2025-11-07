@@ -8,7 +8,6 @@ from __future__ import annotations
 from datetime import datetime, date
 from typing import Optional
 from sqlalchemy import (
-    Column,
     Integer,
     Text,
     TIMESTAMP,
@@ -20,15 +19,16 @@ from sqlalchemy import (
     ForeignKey,
     DOUBLE_PRECISION,
 )
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column
 from app.db import Base
 
 
 class TransactionLabel(Base):
     """Golden labels for transactions (human-approved categories).
-    
+
     One label per transaction. Used as ground truth for ML training.
     """
+
     __tablename__ = "transaction_labels"
 
     txn_id: Mapped[int] = mapped_column(
@@ -37,7 +37,9 @@ class TransactionLabel(Base):
         primary_key=True,
     )
     label: Mapped[str] = mapped_column(Text, nullable=False)
-    source: Mapped[str] = mapped_column(Text, nullable=False)  # 'human', 'rule', 'import'
+    source: Mapped[str] = mapped_column(
+        Text, nullable=False
+    )  # 'human', 'rule', 'import'
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP, nullable=False, server_default="NOW()"
     )
@@ -45,16 +47,17 @@ class TransactionLabel(Base):
         TIMESTAMP, nullable=False, server_default="NOW()"
     )
 
-    # Relationship to transaction
-    transaction = relationship("Transaction", back_populates="label")
+    # Relationship to transaction - TEMPORARILY DISABLED (Transaction.label commented out)
+    # transaction = relationship("Transaction", back_populates="label")
 
 
 class MLFeature(Base):
     """Extracted features for ML training (point-in-time feature vectors).
-    
+
     Features are computed from raw transaction data and stored for reproducible
     training runs without data leakage.
     """
+
     __tablename__ = "ml_features"
 
     txn_id: Mapped[int] = mapped_column(
@@ -67,26 +70,31 @@ class MLFeature(Base):
     abs_amount: Mapped[float] = mapped_column(Numeric, nullable=False)
     merchant: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     mcc: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    channel: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # pos/online/ach/zelle/deposit
+    channel: Mapped[Optional[str]] = mapped_column(
+        Text, nullable=True
+    )  # pos/online/ach/zelle/deposit
     hour_of_day: Mapped[Optional[int]] = mapped_column(SmallInteger, nullable=True)
     dow: Mapped[Optional[int]] = mapped_column(SmallInteger, nullable=True)  # 0=Monday
     is_weekend: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
     is_subscription: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
-    norm_desc: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # normalized description
+    norm_desc: Mapped[Optional[str]] = mapped_column(
+        Text, nullable=True
+    )  # normalized description
     tokens: Mapped[Optional[list[str]]] = mapped_column(ARRAY(Text), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP, nullable=False, server_default="NOW()"
     )
 
-    # Relationship to transaction
-    transaction = relationship("Transaction", back_populates="features")
+    # Relationship to transaction - TEMPORARILY DISABLED (Transaction.features commented out)
+    # transaction = relationship("Transaction", back_populates="features")
 
 
 class MLTrainingRun(Base):
     """Audit log for ML training runs.
-    
+
     Records metadata about each training run including dataset stats and model performance.
     """
+
     __tablename__ = "ml_training_runs"
 
     run_id: Mapped[str] = mapped_column(Text, primary_key=True)
@@ -96,9 +104,12 @@ class MLTrainingRun(Base):
     finished_at: Mapped[Optional[datetime]] = mapped_column(TIMESTAMP, nullable=True)
     label_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     feature_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    val_f1_macro: Mapped[Optional[float]] = mapped_column(DOUBLE_PRECISION, nullable=True)
-    val_accuracy: Mapped[Optional[float]] = mapped_column(DOUBLE_PRECISION, nullable=True)
+    val_f1_macro: Mapped[Optional[float]] = mapped_column(
+        DOUBLE_PRECISION, nullable=True
+    )
+    val_accuracy: Mapped[Optional[float]] = mapped_column(
+        DOUBLE_PRECISION, nullable=True
+    )
     class_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     model_uri: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-

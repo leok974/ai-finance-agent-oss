@@ -39,7 +39,7 @@ const LoginForm: React.FC = () => {
 
   return (
     <>
-      <form onSubmit={submit} className="flex items-center gap-2">
+      <form onSubmit={submit} className="local-auth-form flex items-center gap-2">
         <input
           type="email"
           className="input input-bordered input-xs"

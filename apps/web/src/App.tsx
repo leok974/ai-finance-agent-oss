@@ -24,8 +24,8 @@ import ChartsPanel from "./components/ChartsPanel";
 import TopEmptyBanner from "./components/TopEmptyBanner";
 // import MLStatusCard from "./components/MLStatusCard"; // rendered only inside DevDock
 import NetActivityBlip from "@/components/NetActivityBlip";
-import LoginForm from "@/components/LoginForm";
-import AccountMenu from "@/components/AccountMenu";
+// import LoginForm from "@/components/LoginForm"; // Replaced with AuthMenu for OAuth
+import AuthMenu from "@/components/AuthMenu";
 import { useAuth, useIsAdmin } from "@/state/auth";
 import { useChartsStore } from "@/state/charts";
 // import AgentChat from "./components/AgentChat"; // legacy chat bubble disabled
@@ -199,21 +199,18 @@ const App: React.FC = () => {
   // Always call hooks above; render gates below
   if (!ready || !authReady) return <div className="p-6 text-[color:var(--text-muted)]">Loading…</div>;
   if (!authOk) return (
-    <div className="p-6">
-      <div className="max-w-md mx-auto">
-        <div className="mb-6 flex items-center justify-center">
-          <img
-            src={logoPng}
-            alt=""
-            width={40}
-            height={40}
-            decoding="async"
-            fetchpriority="high"
-            className="mr-2 h-10 w-10 rounded-[8px] ring-1 ring-white/10"
-          />
-          <span className="text-xl font-semibold">LedgerMind</span>
-        </div>
-        <LoginForm />
+    <div className="min-h-dvh w-full bg-black text-white flex items-center justify-center">
+      <div className="flex flex-col items-center gap-10">
+        {/* Large LedgerMind logo (no card/box) */}
+        <img
+          src={logoPng}
+          alt="LedgerMind"
+          className="w-[240px] sm:w-[320px] md:w-[420px] lg:w-[520px] select-none pointer-events-none"
+          draggable={false}
+        />
+
+        {/* Centered Google button */}
+        <AuthMenu />
       </div>
     </div>
   );
@@ -254,9 +251,7 @@ const App: React.FC = () => {
                 }}
               />
             )}
-            {authOk && (
-              <AccountMenu email={user?.email} onLogout={logout} />
-            )}
+            <AuthMenu />
           </div>
         </header>
   {/* Global mount of RuleTesterPanel (portal overlay) gated by dev flag */}

@@ -116,7 +116,9 @@ export const dictionaries = {
         tx_split_created_title: 'Split created',
         tx_merged_into_title: 'Merged',
         tx_merged_multi_title: 'Merged',
-        tx_linked_title: 'Linked'
+        tx_linked_title: 'Linked',
+        category_applied_title: 'Category Applied',
+        category_apply_failed_title: 'Failed to apply category'
       },
       charts: {
         overview_title: 'Overview — {month}',
@@ -280,7 +282,9 @@ export const dictionaries = {
         tx_split_created_title: 'División creada',
         tx_merged_into_title: 'Fusionado',
         tx_merged_multi_title: 'Fusionado',
-        tx_linked_title: 'Vinculado'
+        tx_linked_title: 'Vinculado',
+        category_applied_title: 'Categoría Aplicada',
+        category_apply_failed_title: 'Error al aplicar categoría'
       }
     }
   }
