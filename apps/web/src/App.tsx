@@ -9,6 +9,8 @@ import { emitToastSuccess } from "@/lib/toast-helpers";
 import { t } from '@/lib/i18n';
 // import RulesPanel from "./components/RulesPanel";
 import { getAlerts, getMonthSummary, getHealthz, agentTools, fetchLatestMonth } from './lib/api'
+import { withAuthGuard, safeFetch } from '@/lib/authGuard';
+import { withRetry } from '@/lib/retry';
 import { flags } from "@/lib/flags";
 import AboutDrawer from './components/AboutDrawer';
 import RulesPanel from "./components/RulesPanel";
@@ -147,12 +149,28 @@ const App: React.FC = () => {
       console.info('[boot] skipping charts prefetch (core not ready)');
       return;
     }
-    // Use charts store to fetch and normalize all chart data
-    void refetchAllCharts(month).then(() => {
-      console.log('[boot] charts prefetch completed for month:', month);
-    });
-    // Also prefetch spending trends separately (not in store yet)
-    void agentTools.chartsSpendingTrends({ month, months_back: 6 });
+    // Wrap in retry logic for resilience
+    const fetchCharts = async () => {
+      try {
+        await withRetry(() => refetchAllCharts(month), { maxAttempts: 3 });
+        console.log('[boot] charts prefetch completed for month:', month);
+      } catch (error) {
+        console.error('[boot] charts prefetch failed after retries:', error);
+      }
+    };
+    // Also prefetch spending trends separately (not in store yet) - use safeFetch for non-critical
+    const fetchTrends = async () => {
+      try {
+        await safeFetch(
+          () => agentTools.chartsSpendingTrends({ month, months_back: 6 }),
+          null
+        );
+      } catch (error) {
+        console.warn('[boot] spending trends prefetch failed:', error);
+      }
+    };
+    void fetchCharts();
+    void fetchTrends();
   }, [authReady, authOk, ready, month, refetchAllCharts]);
 
   // Log DB health once after CORS/DB are good (boot complete) and capture db revision
@@ -181,9 +199,19 @@ const App: React.FC = () => {
   // CRITICAL: Never make API calls before auth is confirmed
   if (!authReady || !authOk || !ready || !month) return;
     try {
-      setInsights(await agentTools.insightsExpanded({ month, large_limit: 10 }))
-      setAlerts(await getAlerts(month))
-    } catch (_err) { /* intentionally empty: swallow to render empty-state */ }
+      // Wrap in retry + auth guard for extra safety
+      const [insightsData, alertsData] = await Promise.all([
+        withRetry(() => withAuthGuard(agentTools.insightsExpanded)({ month, large_limit: 10 }), { maxAttempts: 2 }),
+        withRetry(() => withAuthGuard(getAlerts)(month), { maxAttempts: 2 })
+      ]);
+      setInsights(insightsData);
+      setAlerts(alertsData);
+    } catch (error) {
+      console.error('[boot] insights/alerts fetch failed:', error);
+      // Set empty states on error to prevent infinite loading
+      setInsights(null);
+      setAlerts(null);
+    }
   })() }, [authReady, authOk, ready, month, refreshKey])
 
   // Probe backend emptiness (latest by default). If charts summary returns null or month:null, show banner.
@@ -191,9 +219,10 @@ const App: React.FC = () => {
   // CRITICAL: Never make API calls before auth is confirmed
   if (!authReady || !authOk || !ready || !month) return;
     try {
-      const s = await getMonthSummary(month);
+      const s = await withRetry(() => withAuthGuard(getMonthSummary)(month), { maxAttempts: 2 });
       setEmpty(!s || s?.month == null);
-    } catch {
+    } catch (error) {
+      console.error('[boot] month summary check failed:', error);
       setEmpty(true);
     }
   })() }, [authReady, authOk, ready, month, refreshKey])
