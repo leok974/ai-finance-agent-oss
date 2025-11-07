@@ -1,0 +1,99 @@
+name: ML Pipeline Bug Report
+description: Report a bug or issue with the ML Pipeline (merchant labeler, confidence gating, suggestions)
+title: "[ML] "
+labels: ["ml-pipeline", "bug"]
+assignees: []
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting an ML Pipeline issue! Please provide as much detail as possible.
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      description: Which part of the ML Pipeline is affected?
+      options:
+        - Merchant Labeler (merchant-majority)
+        - Confidence Gating (ask-agent threshold)
+        - Suggestion Endpoint (/ml/suggestions)
+        - Accept Endpoint (/ml/suggestions/{id}/accept)
+        - ML Status Endpoint (/ml/status)
+        - SuggestionCard UI Component
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Bug Description
+      description: A clear description of what the bug is
+      placeholder: "Example: Suggestions with confidence > 0.50 are still going to ask-agent mode"
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to Reproduce
+      description: How can we reproduce this issue?
+      placeholder: |
+        1. Create transaction with merchant "Amazon"
+        2. Call POST /ml/suggestions
+        3. Observe mode="ask" despite confidence=0.75
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      description: What should happen?
+      placeholder: "Should return mode='model' with confidence >= 0.50"
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual Behavior
+      description: What actually happens?
+      placeholder: "Returns mode='ask' even with high confidence"
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: |
+        Provide details about your environment
+      value: |
+        - Canary %: (run `make canary-status`)
+        - Database: (PostgreSQL/SQLite)
+        - Backend version: (git sha or branch)
+        - Relevant logs: (paste from `make ml-verify-logs`)
+    validations:
+      required: false
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant Logs
+      description: Paste any relevant logs or error messages
+      render: shell
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Pre-submission Checklist
+      options:
+        - label: I checked the documentation (docs/ML_E2E_SMOKE_TEST.md, docs/CANARY_RAMP_QUICKOPS.md)
+        - label: I verified the schema is up-to-date (make ml-drift-check)
+        - label: I checked recent suggestions (make ml-verify-logs)
+        - label: This is not a duplicate of an existing issue

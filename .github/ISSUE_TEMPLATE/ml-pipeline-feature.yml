@@ -1,0 +1,104 @@
+name: ML Pipeline Feature Request
+description: Suggest a new feature or enhancement for the ML Pipeline
+title: "[ML Feature] "
+labels: ["ml-pipeline", "enhancement"]
+assignees: []
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for suggesting an ML Pipeline enhancement!
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Feature Area
+      description: Which area would this feature enhance?
+      options:
+        - Merchant Labeler (rules/logic)
+        - Confidence Calibration
+        - Suggestion Quality
+        - UI/UX (SuggestionCard)
+        - Monitoring/Observability
+        - Canary Rollout Process
+        - Performance/Latency
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem Statement
+      description: What problem does this feature solve?
+      placeholder: "Example: Users can't see why a suggestion was made by the merchant labeler"
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed Solution
+      description: How would you solve this problem?
+      placeholder: |
+        Add a "reasoning" field to merchant-majority suggestions that shows:
+        - Number of past transactions with this merchant
+        - Most common label and its probability
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: What other solutions did you consider?
+      placeholder: "Could use tooltips instead of a dedicated field"
+    validations:
+      required: false
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      description: How important is this feature to you?
+      options:
+        - Critical (blocking workflow)
+        - High (significant impact)
+        - Medium (nice to have)
+        - Low (minor improvement)
+    validations:
+      required: true
+
+  - type: textarea
+    id: impact
+    attributes:
+      label: Expected Impact
+      description: What metrics would improve with this feature?
+      placeholder: |
+        - Accept rate: +10% (users trust suggestions more with reasoning)
+        - Ask-agent rate: -5% (better confidence calibration)
+    validations:
+      required: false
+
+  - type: textarea
+    id: implementation
+    attributes:
+      label: Implementation Notes
+      description: Technical details or hints for implementation (optional)
+      placeholder: |
+        Backend: Add to serve.py MerchantMajorityLabeler._get_reason()
+        Frontend: Update SuggestionCard reasoning viewer
+        Docs: Update GRAFANA_ML_PANELS.md with new metric
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Pre-submission Checklist
+      options:
+        - label: I searched existing issues to avoid duplicates
+        - label: I reviewed the ML Pipeline documentation (docs/CANARY_RAMP_QUICKOPS.md)
+        - label: I considered backward compatibility
+        - label: I'm willing to help implement this feature

@@ -12,6 +12,7 @@ import { useToast } from "@/hooks/use-toast";
 import { telemetry, AGENT_TOOL_EVENTS } from "@/lib/telemetry";
 
 export interface ChatControlsRef {
+  openClearModal: () => void;
   openResetModal: () => void;
 }
 
@@ -21,6 +22,7 @@ export const ChatControls = forwardRef<ChatControlsRef>((props, ref) => {
   const { toast } = useToast();
 
   useImperativeHandle(ref, () => ({
+    openClearModal: () => setOpen("clear"),
     openResetModal: () => setOpen("reset"),
   }));
 

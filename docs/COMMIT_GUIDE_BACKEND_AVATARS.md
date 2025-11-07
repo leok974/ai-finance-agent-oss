@@ -1,4 +1,4 @@
-# Commit Guide - Backend User Avatars
+Commit Guide - Backend User Avatars
 
 ## Summary
 

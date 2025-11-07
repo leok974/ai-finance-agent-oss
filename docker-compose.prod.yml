@@ -138,12 +138,16 @@ services:
         WEB_BUILD_ID: ${WEB_BUILD_ID:-not_set}
         VITE_SUGGESTIONS_ENABLED: ${VITE_SUGGESTIONS_ENABLED:-1}
         VITE_ANALYTICS_ENABLED: ${VITE_ANALYTICS_ENABLED:-0}
-        VITE_API_BASE: ${VITE_API_BASE:-/api}
+        VITE_API_BASE: ""
         VITE_GIT_BRANCH: ${VITE_GIT_BRANCH:-unknown}
         VITE_GIT_COMMIT: ${VITE_GIT_COMMIT:-unknown}
         GIT_BRANCH: ${VITE_GIT_BRANCH:-unknown}
         GIT_COMMIT: ${VITE_GIT_COMMIT:-unknown}
         BUILD_ID: ${BUILD_ID:-not_set}
+        # OAuth provider toggles
+        VITE_ENABLE_LOCAL_AUTH: "0"
+        VITE_ENABLE_GOOGLE_OAUTH: "1"
+        VITE_ENABLE_GITHUB_OAUTH: "0"
     image: ai-finance-agent-oss-clean-nginx:latest
     depends_on:
       backend:
@@ -154,9 +158,10 @@ services:
       - ./deploy/nginx.conf:/etc/nginx/nginx.conf:ro
       - certbot_www:/var/www/certbot
       - letsencrypt:/etc/letsencrypt:ro
-    ports:
-      - "127.0.0.1:80:80"
-      - "127.0.0.1:443:443"
+    # Ports disabled for tunnel-based setup - Cloudflare tunnel connects directly to nginx:80 internally
+    # ports:
+    #   - "127.0.0.1:80:80"
+    #   - "127.0.0.1:443:443"
     user: "101:101"
     read_only: true
     tmpfs:

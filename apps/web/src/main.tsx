@@ -31,6 +31,11 @@ import buildStamp from './build-stamp.json';
 // Initialize locale (persisted or inferred) before app render
 initLocale();
 
+// Set production flag on root element for CSS safety net
+if (import.meta.env.PROD) {
+  document.documentElement.setAttribute('data-prod', 'true');
+}
+
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <Providers>

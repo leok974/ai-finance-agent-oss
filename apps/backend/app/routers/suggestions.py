@@ -1,6 +1,6 @@
 """Suggestions router - ML-powered category suggestions."""
 
-# Updated: 2025-11-04 - Enhanced feedback schema with txn_id and label
+# Updated: 2025-11-05 - Added accept endpoint with Prometheus metrics
 
 from __future__ import annotations
 from fastapi import APIRouter, HTTPException, Depends
@@ -17,10 +17,11 @@ from ..services.metrics import (
     SUGGESTIONS_LATENCY,
     HTTP_ERRORS,
 )
+from ..services.suggest.metrics import ml_suggestion_accepts_total
 from ..models.suggestions import SuggestionEvent, SuggestionFeedback
 from ..db import SessionLocal, get_db
 from ..services.suggest.serve import suggest_auto
-from ..orm_models import Transaction
+from ..orm_models import Transaction, Suggestion
 from sqlalchemy.orm import Session
 
 router = APIRouter(prefix="/ml/suggestions", tags=["ml-suggestions"])
@@ -31,7 +32,11 @@ class SuggestionCandidate(BaseModel):
 
     label: str
     confidence: float
-    reasons: List[str]
+    reasons: List[
+        Union[str, dict]
+    ]  # Support both legacy strings and new structured reasons
+    source: str | None = None  # Add source for transparency
+    model_version: str | None = None  # Add model version for tracking
 
 
 class SuggestionItem(BaseModel):
@@ -148,7 +153,9 @@ def suggest(req: SuggestRequest):
             # Use smart suggester with shadow/canary support
             # TODO: Extract user_id from request context for sticky canary
             user_id = str(txn.get("tenant_id", "default"))
-            cands, model_id, features_hash, source = suggest_auto(txn, user_id=user_id)
+            cands, model_id, features_hash, source = suggest_auto(
+                txn, user_id=user_id, db=db
+            )
             cands = cands[:top_k]
             if cands:
                 covered += 1
@@ -233,3 +240,40 @@ def feedback(req: SuggestionFeedbackRequestV2, db: Session = Depends(get_db)):
         SUGGESTIONS_REJECT.labels(label=req.label).inc()
 
     return {"ok": True}
+
+
+@router.post("/{suggestion_id}/accept", summary="Accept a suggestion")
+def accept_suggestion(suggestion_id: int, db: Session = Depends(get_db)):
+    """Mark a suggestion as accepted and emit metrics.
+
+    Args:
+        suggestion_id: ID of the suggestion to accept
+        db: Database session
+
+    Returns:
+        Success response with accepted status
+
+    Raises:
+        HTTPException: If suggestion not found
+    """
+    s = db.query(Suggestion).filter(Suggestion.id == suggestion_id).one_or_none()
+    if not s:
+        raise HTTPException(status_code=404, detail="Suggestion not found")
+
+    # If already accepted, return success (idempotent - no metric increment)
+    if s.accepted:
+        return {"status": "ok", "id": s.id, "accepted": True}
+
+    # Mark as accepted (flip once)
+    s.accepted = True
+    db.add(s)
+    db.commit()
+
+    # Emit Prometheus metric (only on first accept)
+    ml_suggestion_accepts_total.labels(
+        model_version=s.model_version or "n/a",
+        source=s.source or "n/a",
+        label=s.label or "n/a",
+    ).inc()
+
+    return {"status": "ok", "id": s.id, "accepted": True}
