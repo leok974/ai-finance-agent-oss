@@ -279,6 +279,18 @@ export default function ChatDock() {
     });
   }, [setInput, setComposerPlaceholderState]);
 
+  // Wire up abort callback to ChatControls
+  useEffect(() => {
+    if (chatControlsRef.current) {
+      (chatControlsRef.current as any).abortRequest = () => {
+        if (reqRef.current) {
+          reqRef.current.abort();
+          reqRef.current = null;
+        }
+      };
+    }
+  }, []);
+
   // --- feature flags to forcibly hide legacy UI ---
   const ENABLE_TOPBAR_TOOL_BUTTONS = false;   // keep a single "Agent tools" toggle
   const ENABLE_LEGACY_TOOL_FORM    = false;   // hide Payload/Result/Insert context/Run
@@ -287,7 +299,14 @@ export default function ChatDock() {
   })();   // experimental AGUI integration
 
   // Get version from store for force-rerender after clear/reset
-  const version = useChatSession((state) => state.version);
+  const { version, messages: storeMessages, sessionId } = useChatSession((state) => ({ 
+    version: state.version, 
+    messages: state.messages,
+    sessionId: state.sessionId 
+  }));
+
+  // Request abort controller for canceling in-flight requests
+  const reqRef = React.useRef<AbortController | null>(null);
 
   // Live message stream (render from UI state, persist via chatStore)
   const [uiMessages, setUiMessages] = useState<Msg[]>([]);
@@ -968,6 +987,13 @@ export default function ChatDock() {
     if (busy) return;
     const text = input.trim();
     if (!text) return;
+    
+    // Cancel any previous in-flight request
+    if (reqRef.current) {
+      reqRef.current.abort();
+      reqRef.current = null;
+    }
+    
     if (ENABLE_AGUI) {
       // Unified AGUI streaming via wireAguiStream
       appendUser(text);
@@ -978,6 +1004,11 @@ export default function ChatDock() {
       setAguiTools([]);
       setAguiRunActive(true);
       let aggregated = '';
+      
+      // Create abort controller for this request
+      reqRef.current = new AbortController();
+      const currentReqRef = reqRef.current;
+      
       aguiLog('agui.run', { from: 'text', month, q: text });
       wireAguiStream({ q: text, month }, {
         onStart(meta) { appendAssistant('...', { thinking: true }); if (meta?.intent) setIntentBadge(meta.intent); },
@@ -1024,9 +1055,11 @@ export default function ChatDock() {
             aggregated += `\n\n⚠️ Skipped: ${pretty.join(', ')} (unavailable). I used everything else.`;
           }
           setBusy(false); setAguiRunActive(false); appendAssistant(aggregated || '(no content)');
+          if (reqRef.current === currentReqRef) reqRef.current = null;
         },
         onError() {
           setBusy(false); setAguiRunActive(false); appendAssistant('(stream error – fallback)');
+          if (reqRef.current === currentReqRef) reqRef.current = null;
         }
       });
       return;
@@ -1036,6 +1069,11 @@ export default function ChatDock() {
     focusComposer();
     appendUser(text);
     setBusy(true);
+    
+    // Create abort controller for this request
+    reqRef.current = new AbortController();
+    const currentReqRef = reqRef.current;
+    
     try {
       const req: AgentChatRequest = {
         messages: [{ role: 'user', content: text }],
@@ -1047,9 +1085,12 @@ export default function ChatDock() {
       handleAgentResponse(resp);
       syncFromStoreDebounced(120);
     } catch (e: any) {
-      appendAssistant(`Send failed: ${e?.message ?? String(e)}`);
+      if (e?.name !== 'AbortError') {
+        appendAssistant(`Send failed: ${e?.message ?? String(e)}`);
+      }
     } finally {
       setBusy(false);
+      if (reqRef.current === currentReqRef) reqRef.current = null;
     }
   }, [busy, input, handleAgentResponse, month, appendUser, appendAssistant]);
 
@@ -1701,6 +1742,12 @@ export default function ChatDock() {
   style={{ right: rb.right, bottom: rb.bottom, position: 'fixed' as const }}
   data-chatdock-root
     >
+      {/* Debug overlay (dev only) */}
+      {typeof process !== 'undefined' && process.env?.NODE_ENV !== "production" && (
+        <div className="fixed right-2 top-2 z-[9999] text-xs px-2 py-1 rounded bg-black/70 text-white pointer-events-none">
+          v:{version} · msgs:{uiMessages.length} · sid:{sessionId.slice(0,6)}
+        </div>
+      )}
   <style>{`.intent-badge{display:inline-flex;align-items:center;gap:.35rem;padding:.15rem .45rem;border-radius:9999px;border:1px solid rgba(120,120,120,.35);font-size:.6rem;letter-spacing:.5px;text-transform:uppercase;background:rgba(255,255,255,0.06);} .chip{display:inline-flex;align-items:center;padding:.25rem .6rem;border-radius:9999px;border:1px solid rgba(120,120,120,.35);font-size:.7rem;line-height:1;font-weight:500;cursor:pointer;user-select:none} .chip-suggest{background:rgba(59,130,246,.10);} .chip-suggest-gw{background:rgba(16,185,129,.12);} .chip:focus{outline:2px solid currentColor;outline-offset:1px}`}</style>
       <div
         className="flex items-center justify-between mb-2 select-none border-b border-border pb-1"
@@ -2085,7 +2132,7 @@ export default function ChatDock() {
           </div>
         </div>
       ) : null}
-      <div className="flex-1 overflow-auto chat-scroll" ref={listRef} aria-live="polite" aria-atomic="false" role="log">
+      <div className="flex-1 overflow-auto chat-scroll" key={`${sessionId}:${version}`} ref={listRef} aria-live="polite" aria-atomic="false" role="log">
         {renderedMessages}
         {busy && (
           <div className="px-3 py-2">

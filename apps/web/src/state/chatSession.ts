@@ -9,7 +9,8 @@ type ChatState = {
   messages: Msg[];
   isBusy: boolean;
   version: number; // Force re-render key
-  clearChat: () => Promise<void>;
+  clearedAt?: number; // Timestamp of last clear action
+  clearChat: () => void; // Synchronous now
   resetSession: () => Promise<void>;
 };
 
@@ -27,22 +28,29 @@ export const useChatSession = create<ChatState>()(
       isBusy: false,
       version: 0,
 
-      clearChat: async () => {
-        // 1) Create NEW array ref to ensure React detects change
-        set({ messages: [], version: get().version + 1 });
-
-        // 2) Clear persisted storage for this session
+      clearChat: () => {
+        const sid = get().sessionId;
+        
+        // 1) Wipe persistence first
         try {
+          localStorage.removeItem(`lm:chat:${sid}`);
           localStorage.removeItem(STORAGE_KEY);
         } catch (err) {
           // Silently fail - storage may not be available
         }
 
-        // 3) Also clear the legacy chatStore for backward compatibility
+        // 2) Also clear the legacy chatStore for backward compatibility
         chatStore.clear();
 
-        // 4) Broadcast to other tabs
-        bc?.postMessage({ type: "CLEARED", sessionId: get().sessionId });
+        // 3) Broadcast to other tabs BEFORE state update
+        try {
+          bc?.postMessage({ type: "cleared", sid });
+        } catch (err) {
+          // BroadcastChannel may not be available
+        }
+
+        // 4) Update state: clear messages, bump version, mark clearedAt
+        set({ messages: [], version: get().version + 1, clearedAt: Date.now() });
       },
 
       resetSession: async () => {
@@ -50,6 +58,17 @@ export const useChatSession = create<ChatState>()(
         try {
           const prev = get().sessionId;
           const next = newSession();
+
+          // Clear persisted storage for old session
+          try {
+            localStorage.removeItem(`lm:chat:${prev}`);
+            localStorage.removeItem(STORAGE_KEY);
+          } catch (err) {
+            // Silently fail
+          }
+
+          // Also clear the legacy chatStore
+          chatStore.clear();
 
           // Ask backend to drop any server memory/tools state for prev session
           await fetch(`/agent/session/reset`, {
@@ -60,17 +79,9 @@ export const useChatSession = create<ChatState>()(
           });
 
           // Clear everything and bump version
-          set({ sessionId: next, messages: [], version: get().version + 1 });
+          set({ sessionId: next, messages: [], version: get().version + 1, clearedAt: Date.now() });
 
-          // Clear persisted storage
-          try {
-            localStorage.removeItem(STORAGE_KEY);
-          } catch (err) {
-            // Silently fail
-          }
-
-          // Also clear the legacy chatStore
-          chatStore.clear();
+          // Broadcast to other tabs
           bc?.postMessage({ type: "RESET", prev, next });
         } finally {
           set({ isBusy: false });
@@ -85,17 +96,19 @@ export const useChatSession = create<ChatState>()(
 if (bc) {
   bc.addEventListener("message", (e) => {
     const { type } = e.data ?? {};
-    if (type === "CLEARED") {
+    if (type === "cleared" || type === "CLEARED") {
       useChatSession.setState((state) => ({
         messages: [],
-        version: state.version + 1
+        version: state.version + 1,
+        clearedAt: Date.now()
       }));
     }
     if (type === "RESET") {
       useChatSession.setState((state) => ({
         messages: [],
         sessionId: e.data.next,
-        version: state.version + 1
+        version: state.version + 1,
+        clearedAt: Date.now()
       }));
     }
   });

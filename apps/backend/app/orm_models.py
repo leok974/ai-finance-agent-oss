@@ -47,6 +47,9 @@ AAD = b"txn:v1"
 class Transaction(Base):
     __tablename__ = "transactions"
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=True
+    )  # TODO: Make NOT NULL after backfill
     tenant_id: Mapped[int | None] = mapped_column(Integer, index=True, nullable=True)
     date: Mapped[Date] = mapped_column(Date, index=True)
     merchant: Mapped[str | None] = mapped_column(String(256), index=True)
