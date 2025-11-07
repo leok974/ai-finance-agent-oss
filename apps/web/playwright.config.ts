@@ -7,6 +7,7 @@ const baseURL = process.env.BASE_URL ?? 'http://127.0.0.1:5173';
 // default to dev server so /api proxy works in E2E unless explicitly disabled
 const useDev = process.env.USE_DEV === '0' || process.env.USE_DEV === 'false' ? false : true;
 const storageStatePath = './tests/e2e/.auth/state.json';
+const PROD_STATE = './tests/e2e/.auth/prod-state.json';
 
 export default defineConfig({
   // Only run E2E specs; unit tests are handled by Vitest
@@ -34,6 +35,20 @@ export default defineConfig({
       name: 'chromium',
       use: { ...devices['Desktop Chrome'], storageState: storageStatePath },
       dependencies: ['setup'],
+    },
+    // Production testing project (no setup deps, uses captured state)
+    {
+      name: 'chromium-prod',
+      use: {
+        ...devices['Desktop Chrome'],
+        baseURL: process.env.BASE_URL || 'https://app.ledger-mind.org',
+        storageState: PROD_STATE,            // ✅ use captured prod state
+        video: 'retain-on-failure',
+        trace: 'on-first-retry',
+      },
+      // IMPORTANT: don't depend on auth setup project in prod
+      dependencies: [],                       // ✅ isolate from dev setup
+      testIgnore: /@dev-only|@needs-seed/,    // ✅ skip any dev/seed-only tests
     },
   ],
   webServer: process.env.PW_SKIP_WS ? undefined : [

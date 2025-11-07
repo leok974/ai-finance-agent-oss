@@ -4,13 +4,13 @@ import * as path from 'path';
 
 /**
  * Grafana Dashboard Smoke Test
- * 
+ *
  * Validates that the ML Suggestions dashboard exists and has expected panels/queries.
- * 
+ *
  * Required:
  *   GRAFANA_URL:     https://grafana.example.com
  *   GRAFANA_API_KEY: Grafana PAT with Viewer + API access
- * 
+ *
  * Optional:
  *   GRAFANA_DASH_TITLE: Dashboard title (default: "LedgerMind — ML Suggestions")
  *   GRAFANA_IMPORT_IF_MISSING: "1" to auto-import if not found (requires GRAFANA_DASH_JSON_PATH)
@@ -36,7 +36,7 @@ async function grafana() {
   });
 }
 
-test('Dashboard exists (or import) and has expected ML panels', async (_fixtures, testInfo) => {
+test('Dashboard exists (or import) and has expected ML panels', async ({ page }, testInfo) => {
   test.skip(!GRAFANA_URL || !GRAFANA_API_KEY, 'Grafana env not set');
 
   const api = await grafana();
