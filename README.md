@@ -380,6 +380,29 @@ E2E tests run automatically in CI via `.github/workflows/e2e-dev.yml`. The workf
 - Runs tests with `CI=true` (enables retries and trace capture)
 - Uploads Playwright reports and traces as artifacts on failure
 
+## Production E2E Testing
+
+Run e2e tests against **production** (`https://app.ledger-mind.org`) using captured OAuth state:
+
+```powershell
+# Interactive setup wizard (capture auth + run tests)
+.\scripts\prod-e2e.ps1
+
+# Or manually:
+cd apps/web
+pnpm exec tsx tests/e2e/.auth/capture-prod-state.ts  # One-time: manual Google OAuth
+BASE_URL=https://app.ledger-mind.org PW_SKIP_WS=1 pnpm exec playwright test --project=chromium-prod
+```
+
+**Features:**
+- ✅ Manual Google OAuth (no automation, more reliable)
+- ✅ Durable session cookies (lasts 1-2 weeks)
+- ✅ Read-only smoke tests + user-scoped mutation tests
+- ✅ Automatic skip of `@dev-only` tests
+- ✅ CI/CD ready (store `prod-state.json` in secrets)
+
+**Documentation:** See [`apps/web/tests/e2e/PROD-TESTING.md`](apps/web/tests/e2e/PROD-TESTING.md) for complete setup guide, security best practices, and CI/CD integration examples.
+
 ## Fast Playwright (Chromium-only local runs)
 
 We provide fast, Chromium-only Playwright runs locally with higher parallelism and a no-webServer pattern (you prestart the app):

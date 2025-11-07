@@ -2,6 +2,22 @@ import { describe, it, expect, beforeAll, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
+// Mock useChatSession to avoid persist middleware issues
+vi.mock('@/state/chatSession', () => ({
+  useChatSession: vi.fn((selector?: any) => {
+    const state = {
+      sessionId: 'test-session-123',
+      messages: [],
+      version: 0,
+      clearedAt: null,
+      addMessage: vi.fn(),
+      clearChat: vi.fn(),
+      resetSession: vi.fn(),
+    };
+    return selector ? selector(state) : state;
+  }),
+}));
+
 // Silence AGUI streaming side-effects
 vi.mock('@/lib/aguiStream', () => ({
   wireAguiStream: vi.fn(() => ({ start: () => {}, stop: () => {} })),

@@ -50,6 +50,18 @@ const mockSuggestion: SuggestItem = {
   ],
 };
 
+// Mock categories list
+const mockCategories = [
+  "Groceries",
+  "Shopping",
+  "General",
+  "Dining",
+  "Transportation",
+  "Entertainment",
+  "Bills",
+  "Healthcare",
+];
+
 describe("TransactionRowWithSuggestions", () => {
   let mockOnSelect: ReturnType<typeof vi.fn>;
   let mockOnEdit: ReturnType<typeof vi.fn>;
@@ -79,6 +91,7 @@ describe("TransactionRowWithSuggestions", () => {
             onAcceptSuggestion={mockOnAcceptSuggestion}
             onRejectSuggestion={mockOnRejectSuggestion}
             suggestionsLoading={false}
+            allCategories={mockCategories}
           />
         </tbody>
       </table>
@@ -103,6 +116,7 @@ describe("TransactionRowWithSuggestions", () => {
             onAcceptSuggestion={mockOnAcceptSuggestion}
             onRejectSuggestion={mockOnRejectSuggestion}
             suggestionsLoading={false}
+            allCategories={mockCategories}
           />
         </tbody>
       </table>
@@ -128,6 +142,7 @@ describe("TransactionRowWithSuggestions", () => {
             onAcceptSuggestion={mockOnAcceptSuggestion}
             onRejectSuggestion={mockOnRejectSuggestion}
             suggestionsLoading={false}
+            allCategories={mockCategories}
           />
         </tbody>
       </table>
@@ -151,6 +166,7 @@ describe("TransactionRowWithSuggestions", () => {
             onAcceptSuggestion={mockOnAcceptSuggestion}
             onRejectSuggestion={mockOnRejectSuggestion}
             suggestionsLoading={false}
+            allCategories={mockCategories}
           />
         </tbody>
       </table>
@@ -192,6 +208,7 @@ describe("TransactionRowWithSuggestions", () => {
             onAcceptSuggestion={mockOnAcceptSuggestion}
             onRejectSuggestion={mockOnRejectSuggestion}
             suggestionsLoading={false}
+            allCategories={mockCategories}
           />
         </tbody>
       </table>
@@ -236,6 +253,7 @@ describe("TransactionRowWithSuggestions", () => {
             onAcceptSuggestion={slowAccept}
             onRejectSuggestion={mockOnRejectSuggestion}
             suggestionsLoading={false}
+            allCategories={mockCategories}
           />
         </tbody>
       </table>
@@ -279,6 +297,7 @@ describe("TransactionRowWithSuggestions", () => {
             onAcceptSuggestion={mockOnAcceptSuggestion}
             onRejectSuggestion={mockOnRejectSuggestion}
             suggestionsLoading={false}
+            allCategories={mockCategories}
           />
         </tbody>
       </table>
@@ -304,6 +323,7 @@ describe("TransactionRowWithSuggestions", () => {
             onAcceptSuggestion={mockOnAcceptSuggestion}
             onRejectSuggestion={mockOnRejectSuggestion}
             suggestionsLoading={false}
+            allCategories={mockCategories}
           />
         </tbody>
       </table>
@@ -329,6 +349,7 @@ describe("TransactionRowWithSuggestions", () => {
             onAcceptSuggestion={mockOnAcceptSuggestion}
             onRejectSuggestion={mockOnRejectSuggestion}
             suggestionsLoading={false}
+            allCategories={mockCategories}
           />
         </tbody>
       </table>

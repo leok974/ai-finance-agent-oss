@@ -57,8 +57,8 @@ export const ChatControls = forwardRef<ChatControlsRef>((props, ref) => {
               : "This will start a fresh session and clear the assistant's memory for this chat."}
           </p>
           <DialogFooter>
-            <Button 
-              variant="pill-outline" 
+            <Button
+              variant="pill-outline"
               onClick={() => setOpen(null)}
               data-testid="modal-cancel"
             >
@@ -74,7 +74,7 @@ export const ChatControls = forwardRef<ChatControlsRef>((props, ref) => {
                   if (abortRequestRef.current) {
                     abortRequestRef.current();
                   }
-                  
+
                   clearChat(); // Now synchronous
                   toast({
                     title: "Chat cleared",

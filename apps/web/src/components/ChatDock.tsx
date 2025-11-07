@@ -299,10 +299,10 @@ export default function ChatDock() {
   })();   // experimental AGUI integration
 
   // Get version from store for force-rerender after clear/reset
-  const { version, messages: storeMessages, sessionId } = useChatSession((state) => ({ 
-    version: state.version, 
+  const { version, messages: storeMessages, sessionId } = useChatSession((state) => ({
+    version: state.version,
     messages: state.messages,
-    sessionId: state.sessionId 
+    sessionId: state.sessionId
   }));
 
   // Request abort controller for canceling in-flight requests
@@ -987,13 +987,13 @@ export default function ChatDock() {
     if (busy) return;
     const text = input.trim();
     if (!text) return;
-    
+
     // Cancel any previous in-flight request
     if (reqRef.current) {
       reqRef.current.abort();
       reqRef.current = null;
     }
-    
+
     if (ENABLE_AGUI) {
       // Unified AGUI streaming via wireAguiStream
       appendUser(text);
@@ -1004,11 +1004,11 @@ export default function ChatDock() {
       setAguiTools([]);
       setAguiRunActive(true);
       let aggregated = '';
-      
+
       // Create abort controller for this request
       reqRef.current = new AbortController();
       const currentReqRef = reqRef.current;
-      
+
       aguiLog('agui.run', { from: 'text', month, q: text });
       wireAguiStream({ q: text, month }, {
         onStart(meta) { appendAssistant('...', { thinking: true }); if (meta?.intent) setIntentBadge(meta.intent); },
@@ -1069,11 +1069,11 @@ export default function ChatDock() {
     focusComposer();
     appendUser(text);
     setBusy(true);
-    
+
     // Create abort controller for this request
     reqRef.current = new AbortController();
     const currentReqRef = reqRef.current;
-    
+
     try {
       const req: AgentChatRequest = {
         messages: [{ role: 'user', content: text }],

@@ -10,7 +10,7 @@ export default defineConfig({
   },
   test: {
     environment: 'happy-dom',
-    setupFiles: ['./src/test/setupTests.ts', './src/__tests__/setup.fetch-mock.ts'],
+    setupFiles: ['./src/test/setup.ts', './src/test/setupTests.ts', './src/__tests__/setup.fetch-mock.ts'],
     globals: true,
     clearMocks: true,
     // Narrow what we actively collect so third‑party package internal tests (msw, etc.) are never included.
