@@ -5,15 +5,20 @@ const { useEffect, useRef, useState } = React;
 import { wireAguiStream } from "@/lib/aguiStream";
 import RobotThinking from "@/components/ui/RobotThinking";
 import EnvAvatar from "@/components/EnvAvatar";
-import { useAuth } from "@/state/auth";
+import { useAuth, getUserInitial } from "@/state/auth";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { createPortal } from "react-dom";
 import { ChevronUp, Wrench } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
-import { agentTools, agentChat, type AgentChatRequest, type AgentChatResponse, type TxnQueryResult, explainTxnForChat, agentRephrase, analytics, transactionsNl, telemetry, txnsQueryCsv, txnsQuery, agentStatus, type AgentStatusResponse } from "../lib/api";
+import { agentTools, agentChat, type AgentChatRequest, type AgentChatResponse, type TxnQueryResult, explainTxnForChat, agentRephrase, analytics, transactionsNl, txnsQueryCsv, txnsQuery, agentStatus, type AgentStatusResponse } from "../lib/api";
 import { fmtMonthSummary, fmtTopMerchants, fmtCashflow, fmtTrends } from "../lib/formatters";
+import { renderQuick, renderDeep, type MonthSummary as FinanceMonthSummary } from "../lib/formatters/finance";
+import { adaptChartsSummaryToMonthSummary } from "../lib/formatters/financeAdapters";
 import { runToolWithRephrase } from "../lib/tools-runner";
+import { MessageRenderer } from "@/features/chat/MessageRenderer";
+import { normalizeAssistantReply } from "@/features/chat/normalizeReply";
 import { saveAs } from "../utils/save";
 import { buildAgentGreeting, buildGreetingCtxFromAPI, type AgentGreetingCtx } from "@/lib/agent/greeting";
 import type { MonthSummary, MerchantsResponse } from "@/lib/api.types";
@@ -34,6 +39,17 @@ import { handleTransactionsNL } from "./AgentTools";
 import FallbackBadge from "./FallbackBadge";
 import { useShowDevTools } from "@/state/auth";
 import { RagToolChips } from "./RagToolChips";
+import { ChatControls, type ChatControlsRef } from "@/features/chat/ChatControls";
+import { financeName } from "../utils/filename";
+import { detectFinanceReply } from "@/features/chat/exportSmart";
+import { useChatSession } from "@/state/chatSession";
+import { telemetry, AGENT_TOOL_EVENTS } from "@/lib/telemetry";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 // Minimal process env typing for test gating without pulling full @types/node
 declare const process: { env?: Record<string,string|undefined> } | undefined;
 // --- layout constants (right/bottom anchored) ---
@@ -228,6 +244,8 @@ export default function ChatDock() {
   // Persist the last successful NL query + resolved filters so we can export without re-prompting
   type LastNlq = { q: string; flow?: "expenses"|"income"|"all"; filters?: any; intent?: string };
   const lastNlqRef = useRef<LastNlq | null>(null);
+  // Track last month summary for deep-dive follow-up
+  const lastMonthSummaryRef = useRef<any>(null);
   // NEW: Tiny tools panel state
   const [showTools, setShowTools] = useState<boolean>(true);
   const [activePreset, setActivePreset] = useState<ToolPresetKey>('insights_expanded');
@@ -245,6 +263,12 @@ export default function ChatDock() {
 
   // Toast for fallback notifications
   const { toast } = useToast();
+
+  // Insights size toggle state
+  const [insightsSize, setInsightsSize] = useState<"compact" | "expanded">("compact");
+
+  // Ref for ChatControls to expose openResetModal
+  const chatControlsRef = useRef<ChatControlsRef>(null);
 
   useEffect(() => {
     return registerComposerControls({
@@ -341,8 +365,15 @@ export default function ChatDock() {
     if (!metaPayload.used_context && metaPayload.ctxMonth) {
       metaPayload.used_context = { month: metaPayload.ctxMonth };
     }
-    setUiMessages(cur => [...cur, { role: 'assistant', text, ts, meta: metaPayload }]);
-    chatStore.append({ role: 'assistant', content: text, createdAt: ts });
+    
+    // Normalize the reply before appending (strip "Hey", apply templates, add variety)
+    const normalized = normalizeAssistantReply(
+      { role: 'assistant', text, meta: metaPayload },
+      user
+    );
+    
+    setUiMessages(cur => [...cur, { role: 'assistant', text: normalized.text, ts, meta: metaPayload }]);
+    chatStore.append({ role: 'assistant', content: normalized.text, createdAt: ts });
     try {
       const provider = metaPayload?.fallback;
       if (provider) {
@@ -396,17 +427,35 @@ export default function ChatDock() {
       const isUser = m.role === 'user';
       const meta = ((m as any).meta ?? (i === (uiMessages.length - 1) ? (chatResp as any) : undefined)) || {};
       const isThinking = (m as any).thinking || (m as any).meta?.thinking;
+      
+      // Get user initial for avatar
+      const userInitial = getUserInitial(user);
+      const userPicture = user?.picture_url || user?.picture;
+      
       out.push(
         <div key={`${m.role}-${ts}-${i}`} className={`px-3 py-2 my-1 flex items-end gap-2 ${isUser ? 'justify-end' : 'justify-start'}`}>
-          {!isUser && <EnvAvatar who="agent" className="size-7" />}
+          {!isUser && (
+            <Avatar className="size-7 shrink-0" data-testid="chat-avatar-assistant">
+              <AvatarFallback className="bg-primary/10 text-primary text-xs font-semibold">
+                LM
+              </AvatarFallback>
+            </Avatar>
+          )}
           <div className={`max-w-[72%] rounded-2xl px-3 py-2 text-sm leading-relaxed ${isUser ? 'bg-blue-600 text-white rounded-br-sm' : 'bg-slate-800 text-slate-100 rounded-bl-sm'}`}>
             {isThinking ? (
               <div className="py-1"><span className="sr-only">Thinking.</span><RobotThinking size={32} /></div>
             ) : (
-              m.role === 'assistant' ? <div className="chat-markdown"><Markdown>{m.text}</Markdown></div> : <>{m.text}</>
+              m.role === 'assistant' ? <MessageRenderer text={m.text} /> : <>{m.text}</>
             )}
           </div>
-          {isUser && <EnvAvatar who="user" className="size-7" title={userName} />}
+          {isUser && (
+            <Avatar className="size-7 shrink-0 ring-1 ring-primary/30" data-testid="chat-avatar-me">
+              {userPicture && <AvatarImage src={userPicture} alt={user?.name || user?.email || "me"} />}
+              <AvatarFallback className="bg-primary/10 text-primary text-xs font-semibold">
+                {userInitial}
+              </AvatarFallback>
+            </Avatar>
+          )}
         </div>
       );
       // Meta line under each message (add ModeChip + ForecastFollowUps when applicable)
@@ -455,7 +504,11 @@ export default function ChatDock() {
               meta.mode === "primary" &&
               !!meta.explain;
 
-            if (!chips.length && !canSaveRule && !canShowWhy) return null;
+            // Check for finance-specific chips
+            const showDeeperBreakdown = meta.showDeeperBreakdown === true;
+            const showFinanceActions = meta.showFinanceActions === true;
+
+            if (!chips.length && !canSaveRule && !canShowWhy && !showDeeperBreakdown && !showFinanceActions) return null;
             return (
               <div className="flex flex-wrap gap-2 mt-2 items-center">
                 {chips.map((chip: any) => (
@@ -470,6 +523,57 @@ export default function ChatDock() {
                     onClick={()=>handleSuggestionChip({ label: chip.label, action: chip.action || chip.label, source: chip.source })}
                   >{chip.label}</button>
                 ))}
+                {showDeeperBreakdown && (
+                  <button
+                    type="button"
+                    data-testid="action-chip-deeper-breakdown"
+                    aria-label="Deeper breakdown"
+                    className="chip chip-suggest-gw"
+                    onClick={() => handleSuggestionChip({ label: 'Deeper breakdown', action: 'deeper_breakdown', source: 'finance' })}
+                  >
+                    Deeper breakdown
+                  </button>
+                )}
+                {showFinanceActions && (
+                  <>
+                    <button
+                      type="button"
+                      data-testid="action-chip-categorize-unknowns"
+                      aria-label="Categorize unknowns"
+                      className="chip chip-suggest-gw"
+                      onClick={() => handleSuggestionChip({ label: 'Categorize unknowns', action: 'categorize_unknowns', source: 'finance' })}
+                    >
+                      Categorize unknowns
+                    </button>
+                    <button
+                      type="button"
+                      data-testid="action-chip-show-spikes"
+                      aria-label="Show only spikes"
+                      className="chip chip-suggest-gw"
+                      onClick={() => handleSuggestionChip({ label: 'Show only spikes', action: 'show_spikes', source: 'finance' })}
+                    >
+                      Show only spikes
+                    </button>
+                    <button
+                      type="button"
+                      data-testid="action-chip-top-merchants"
+                      aria-label="Top merchants detail"
+                      className="chip chip-suggest-gw"
+                      onClick={() => handleSuggestionChip({ label: 'Top merchants detail', action: 'top_merchants', source: 'finance' })}
+                    >
+                      Top merchants detail
+                    </button>
+                    <button
+                      type="button"
+                      data-testid="action-chip-budget-check"
+                      aria-label="Budget check"
+                      className="chip chip-suggest-gw"
+                      onClick={() => handleSuggestionChip({ label: 'Budget check', action: 'budget_check', source: 'finance' })}
+                    >
+                      Budget check
+                    </button>
+                  </>
+                )}
                 {canShowWhy && (
                   <button
                     type="button"
@@ -636,7 +740,12 @@ export default function ChatDock() {
   React.useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape" && open) setOpen(false);
-  if (e.key.toLowerCase() === "k" && e.shiftKey && e.ctrlKey) { e.preventDefault(); setOpen((v: boolean) => !v); }
+      if (e.key.toLowerCase() === "k" && e.shiftKey && e.ctrlKey) { e.preventDefault(); setOpen((v: boolean) => !v); }
+      // Ctrl+Shift+R opens Reset modal
+      if (e.key.toLowerCase() === "r" && e.shiftKey && e.ctrlKey) {
+        e.preventDefault();
+        chatControlsRef.current?.openResetModal();
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -985,28 +1094,35 @@ export default function ChatDock() {
   // --- ONE-CLICK TOOL RUNNERS (top bar) ---
   const runMonthSummary = React.useCallback(async (_ev?: React.MouseEvent) => {
     if (busy) return;
-  if (startAguiRun('overview', AGUI_ACTIONS['overview'].prompt, month)) return;
+    if (startAguiRun('overview', AGUI_ACTIONS['overview'].prompt, month)) return;
     setBusy(true);
     try {
-      appendUser('Summarize my spending this month in 4 bullets and one action.');
-      await runToolWithRephrase(
-  'charts.month_summary',
-        () => agentTools.chartsSummary({ month: month || '', include_daily: false } as any),
-        (raw: any) => {
-          const norm = {
-            income_total: raw?.total_inflows ?? 0,
-            spend_total: raw?.total_outflows ?? 0,
-            net: raw?.net ?? (raw?.total_inflows ?? 0) - Math.abs(raw?.total_outflows ?? 0),
-            categories: [],
-          };
-          return fmtMonthSummary(month || '', norm);
-        },
-  (msg, meta) => appendAssistant(msg, { ...meta, ctxMonth: month }),
-  (on) => setBusy(on),
-  () => ({ context: getContext() })
-      );
+      appendUser('Summarize my spending this month');
+      
+      // Fetch data without LLM rephrase
+      const data = await agentTools.chartsSummary({ month: month || '', include_daily: false } as any);
+      
+      // Transform to MonthSummary format
+      const summary = adaptChartsSummaryToMonthSummary(data, month || '');
+      lastMonthSummaryRef.current = summary;
+      
+      // Render quick recap
+      const quickRecap = renderQuick(summary);
+      
+      // Add with special meta to show "Deeper breakdown" chip
+      appendAssistant(quickRecap, {
+        ctxMonth: month,
+        mode: 'finance_quick_recap',
+        showDeeperBreakdown: true,
+        monthSummary: summary, // Store for smart export
+      });
+      
       syncFromStoreDebounced(120);
-    } finally { setBusy(false); }
+    } catch (err: any) {
+      appendAssistant(`Failed to load month summary: ${err?.message || String(err)}`);
+    } finally {
+      setBusy(false);
+    }
   }, [busy, month, appendAssistant]);
 
   const runFindSubscriptions = React.useCallback(async (_ev?: React.MouseEvent) => {
@@ -1097,41 +1213,35 @@ export default function ChatDock() {
     console.debug('[bind] Budget check handler attached', month);
   }, [month]);
 
-  const runInsightsSummary = React.useCallback(async (_ev?: React.MouseEvent) => {
+  // Merged Insights function with size parameter
+  const runInsights = React.useCallback(async ({ size }: { size: "compact" | "expanded" }) => {
     if (busy) return;
-  if (startAguiRun('overview', AGUI_ACTIONS['insights-summary'].prompt, month)) return;
+    const aguiAction = size === "compact" ? "insights-summary" : "insights-expanded";
+    if (startAguiRun('overview', AGUI_ACTIONS[aguiAction].prompt, month)) return;
     setBusy(true);
     try {
-      appendUser('Summarize key insights for this month.');
+      const userPrompt = size === "compact"
+        ? 'Summarize key insights for this month.'
+        : 'Expand insights (month-over-month + anomalies).';
+      appendUser(userPrompt);
+      
+      const rephrasePrompt = size === "compact"
+        ? `Turn these insights for ${month} into a friendly paragraph with one recommendation: `
+        : `Expand insights for ${month} with MoM and anomalies: `;
+      
+      telemetry.track(AGENT_TOOL_EVENTS.INSIGHTS, { size });
+      
       await runToolWithRephrase(
         'insights.expanded',
         () => agentTools.insightsExpanded({ month }),
-        (raw) => `Turn these insights for ${month} into a friendly paragraph with one recommendation: ${JSON.stringify(raw)}`,
-  (msg, meta) => appendAssistant(msg, { ...meta, ctxMonth: month }),
-  (on) => setBusy(on),
-  () => ({ context: getContext() })
+        (raw) => rephrasePrompt + JSON.stringify(raw),
+        (msg, meta) => appendAssistant(msg, { ...meta, ctxMonth: month }),
+        (on) => setBusy(on),
+        () => ({ context: getContext() })
       );
       syncFromStore();
     } finally { setBusy(false); }
-  }, [busy, month, appendAssistant]);
-
-  const runInsightsExpanded = React.useCallback(async (_ev?: React.MouseEvent) => {
-    if (busy) return;
-  if (startAguiRun('overview', AGUI_ACTIONS['insights-expanded'].prompt, month)) return;
-    setBusy(true);
-    try {
-      appendUser('Expand insights (month-over-month + anomalies).');
-      await runToolWithRephrase(
-        'insights.expanded',
-        () => agentTools.insightsExpanded({ month }),
-        (raw) => `Expand insights for ${month} with MoM and anomalies: ${JSON.stringify(raw)}`,
-  (msg, meta) => appendAssistant(msg, { ...meta, ctxMonth: month }),
-  (on) => setBusy(on),
-  () => ({ context: getContext() })
-      );
-      syncFromStore();
-    } finally { setBusy(false); }
-  }, [busy, month, appendAssistant]);
+  }, [busy, month, appendAssistant, insightsSize]);
 
   const runBudgetCheck = React.useCallback(async (_ev?: React.MouseEvent) => {
     if (busy) return;
@@ -1447,6 +1557,35 @@ export default function ChatDock() {
     }
     const currentMonth = month;
     switch (chip.action) {
+      case 'deeper_breakdown':
+        // Show deep dive for last month summary
+        if (lastMonthSummaryRef.current) {
+          appendUser('Show deeper breakdown');
+          const deepDive = renderDeep(lastMonthSummaryRef.current);
+          appendAssistant(deepDive, {
+            ctxMonth: currentMonth,
+            mode: 'finance_deep_dive',
+            showFinanceActions: true,
+            monthSummary: lastMonthSummaryRef.current, // Store for smart export
+          });
+        }
+        break;
+      case 'categorize_unknowns':
+        appendUser(`Categorize unknowns for ${currentMonth}`);
+        startAguiRun('overview', `Show me all uncategorized transactions for ${currentMonth} and suggest categories`, currentMonth);
+        break;
+      case 'show_spikes':
+        appendUser(`Show only spikes for ${currentMonth}`);
+        startAguiRun('anomalies', `Show unusual spending spikes and large transactions for ${currentMonth}`, currentMonth);
+        break;
+      case 'top_merchants':
+        appendUser(`Top merchants detail for ${currentMonth}`);
+        startAguiRun('merchants', `Show top merchants for ${currentMonth} with spending breakdown`, currentMonth);
+        break;
+      case 'budget_check':
+        appendUser(`Budget check for ${currentMonth}`);
+        startAguiRun('budget', `Check my budget status for ${currentMonth}`, currentMonth);
+        break;
       case 'budget_from_forecast':
         startAguiRun('budget', 'Suggest a budget using the forecast', currentMonth);
         break;
@@ -1623,31 +1762,71 @@ export default function ChatDock() {
           {/* Export */}
           <button
             type="button"
+            data-testid="agent-tool-export-json"
             onPointerDown={(e) => e.stopPropagation()}
-            onClick={(e) => { e.stopPropagation();
-              const normalized = (uiMessages || []).map(m => ({ role: m.role, content: m.text, createdAt: m.ts }));
-              const firstUser = (uiMessages || []).find(m => m.role === 'user');
-              const trimmed = (firstUser?.text || '').split('\n')[0].slice(0, 40).trim();
-              const title = trimmed ? `finance-agent-chat-${trimmed.replace(/\s+/g, '_')}` : 'finance-agent-chat';
-              exportThreadAsJSON(title, normalized);
+            onClick={(e) => { 
+              e.stopPropagation();
+              
+              // Get current session ID
+              const sessionId = useChatSession.getState().sessionId;
+              
+              // Try smart export first
+              const financePayload = detectFinanceReply(uiMessages, sessionId);
+              
+              telemetry.track(AGENT_TOOL_EVENTS.EXPORT_JSON, { mode: financePayload ? 'finance' : 'thread' });
+              
+              if (financePayload) {
+                // Export structured finance JSON
+                const month = financePayload.month;
+                const kind = financePayload.kind === 'finance_quick_recap' ? 'quick' : 'deep';
+                const filename = financeName(month, kind);
+                const blob = new Blob([JSON.stringify(financePayload, null, 2)], { type: 'application/json' });
+                saveAs(blob, filename);
+              } else {
+                // Export full thread
+                const normalized = (uiMessages || []).map(m => ({ role: m.role, content: m.text, createdAt: m.ts }));
+                const firstUser = (uiMessages || []).find(m => m.role === 'user');
+                const trimmed = (firstUser?.text || '').split('\n')[0].slice(0, 40).trim();
+                const title = trimmed ? `finance-agent-chat-${trimmed.replace(/\s+/g, '_')}` : 'finance-agent-chat';
+                exportThreadAsJSON(title, normalized);
+              }
             }}
-            className="text-xs px-2 py-1 border rounded-md hover:bg-muted"
-            title="Download chat as JSON"
+            disabled={!uiMessages || uiMessages.length === 0}
+            className="text-xs px-2 py-1 border rounded-md hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed"
+            title="Export last finance summary (if present) or full thread"
           >
             Export JSON
           </button>
           <button
             type="button"
+            data-testid="agent-tool-export-markdown"
             onPointerDown={(e) => e.stopPropagation()}
-            onClick={(e) => { e.stopPropagation();
-              const normalized = (uiMessages || []).map(m => ({ role: m.role, content: m.text, createdAt: m.ts }));
-              const firstUser = (uiMessages || []).find(m => m.role === 'user');
-              const trimmed = (firstUser?.text || '').split('\n')[0].slice(0, 40).trim();
-              const title = trimmed ? `finance-agent-chat-${trimmed.replace(/\s+/g, '_')}` : 'finance-agent-chat';
-              exportThreadAsMarkdown(title, normalized);
+            onClick={(e) => { 
+              e.stopPropagation();
+              // Smart export: if last reply is a finance summary, export it; otherwise export full thread
+              const lastAssistant = [...(uiMessages || [])].reverse().find(m => m.role === 'assistant');
+              const isFinanceSummary = lastAssistant?.meta?.mode === 'finance_quick_recap' || lastAssistant?.meta?.mode === 'finance_deep_dive';
+              
+              telemetry.track(AGENT_TOOL_EVENTS.EXPORT_MARKDOWN, { mode: isFinanceSummary ? 'finance' : 'thread' });
+              
+              if (isFinanceSummary && lastAssistant) {
+                // Export just the last finance reply
+                const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+                const month = lastAssistant.meta?.ctxMonth || 'unknown';
+                const filename = `finance-summary-${month}-${timestamp}.md`;
+                const blob = new Blob([lastAssistant.text], { type: 'text/markdown;charset=utf-8' });
+                saveAs(blob, filename);
+              } else {
+                // Export full thread
+                const normalized = (uiMessages || []).map(m => ({ role: m.role, content: m.text, createdAt: m.ts }));
+                const firstUser = (uiMessages || []).find(m => m.role === 'user');
+                const trimmed = (firstUser?.text || '').split('\n')[0].slice(0, 40).trim();
+                const title = trimmed ? `finance-agent-chat-${trimmed.replace(/\s+/g, '_')}` : 'finance-agent-chat';
+                exportThreadAsMarkdown(title, normalized);
+              }
             }}
             className="text-xs px-2 py-1 border rounded-md hover:bg-muted"
-            title="Download chat as Markdown"
+            title="Export last finance summary (if present) or full thread"
           >
             Export Markdown
           </button>
@@ -1671,17 +1850,9 @@ export default function ChatDock() {
             className="text-xs px-2 py-1 border rounded-md hover:bg-muted"
             title="Reset to bottom-right"
           >
-            Reset
+            Reset Position
           </button>
-          <button
-            type="button"
-            onPointerDown={(e) => e.stopPropagation()}
-            onClick={(e) => { e.stopPropagation(); handleClearHistory(); }}
-            className="text-xs px-2 py-1 border rounded-md hover:bg-muted"
-            title="Clear chat history (all tabs)"
-          >
-            Clear
-          </button>
+          <ChatControls ref={chatControlsRef} />
           <button
             type="button"
             onPointerDown={(e) => e.stopPropagation()}
@@ -1713,14 +1884,46 @@ export default function ChatDock() {
         <div id="agent-tools-panel" className="px-3 py-2 border-b bg-muted/10">
           {/* Tabs */}
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 mb-2">
-            <button type="button" onClick={(e) => runMonthSummary(e as any)} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50">Month summary</button>
-            <button type="button" onClick={(e) => runFindSubscriptions(e as any)} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50">Find subscriptions</button>
-            <button type="button" onClick={(e) => runTopMerchants(e as any)} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50">Top merchants</button>
-            <button type="button" onClick={(e) => runCashflow(e as any)} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50">Cashflow</button>
-            <button type="button" onClick={(e) => runTrends(e as any)} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50">Trends</button>
-            <button type="button" onClick={(e) => runInsightsSummary(e as any)} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50">Insights: Summary</button>
-            <button type="button" onClick={(e) => runInsightsExpanded(e as any)} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50">Insights: Expanded</button>
-            <button type="button" onClick={(e) => runBudgetCheck(e as any)} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50">Budget check</button>
+            <button type="button" onClick={(e) => { telemetry.track(AGENT_TOOL_EVENTS.MONTH_SUMMARY); runMonthSummary(e as any); }} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50" data-testid="agent-tool-month-summary">Month summary</button>
+            <button type="button" onClick={(e) => { telemetry.track(AGENT_TOOL_EVENTS.FIND_SUBSCRIPTIONS); runFindSubscriptions(e as any); }} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50" data-testid="agent-tool-find-subscriptions">Find subscriptions</button>
+            <button type="button" onClick={(e) => { telemetry.track(AGENT_TOOL_EVENTS.TOP_MERCHANTS); runTopMerchants(e as any); }} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50" data-testid="agent-tool-top-merchants">Top merchants</button>
+            <button type="button" onClick={(e) => { telemetry.track(AGENT_TOOL_EVENTS.CASHFLOW); runCashflow(e as any); }} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50" data-testid="agent-tool-cashflow">Cashflow</button>
+            <button type="button" onClick={(e) => { telemetry.track(AGENT_TOOL_EVENTS.TRENDS); runTrends(e as any); }} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50" data-testid="agent-tool-trends">Trends</button>
+            {/* Merged Insights button with size toggle */}
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => runInsights({ size: insightsSize })}
+                disabled={busy}
+                className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50"
+                data-testid="agent-tool-insights"
+                title={`Insights (${insightsSize}) — Metrics & explanations. Use the size toggle for compact vs. expanded.`}
+              >
+                Insights
+              </button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    className="text-xs px-1 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50"
+                    data-testid="agent-tool-insights-size"
+                    title="Toggle between compact and expanded insights"
+                  >
+                    ⚙
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start">
+                  <DropdownMenuItem onClick={() => setInsightsSize("compact")}>
+                    Compact
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setInsightsSize("expanded")}>
+                    Expanded
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+            <button type="button" onClick={(e) => runBudgetCheck(e as any)} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50" data-testid="agent-tool-budget-check">Budget check</button>
             <button type="button" onClick={(e) => runAlerts(e as any)} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50">Alerts</button>
             {/* Analytics quick buttons */}
             <button type="button" onClick={(e) => runAnalyticsKpis(e as any)} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50">KPIs</button>
@@ -1741,8 +1944,10 @@ export default function ChatDock() {
             </button>
             <button
               type="button"
+              data-testid="agent-tool-export-csv"
               onClick={async () => {
                 if (busy) return;
+                telemetry.track(AGENT_TOOL_EVENTS.EXPORT_CSV);
                 try {
                   setBusy(true);
                   const last = lastNlqRef.current;
@@ -1768,13 +1973,14 @@ export default function ChatDock() {
               }}
               disabled={busy}
               className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50"
-              title="Download CSV of the last NL transactions query"
+              title="Exports results from your last natural-language search"
             >
               Export CSV (last NL query)
             </button>
             {/* Prev/Next paging for last NL list results */}
             <button
               type="button"
+              data-testid="agent-tool-prev-nl"
               onClick={async () => {
                 if (busy) return;
                 const last = lastNlqRef.current;
@@ -1812,6 +2018,7 @@ export default function ChatDock() {
             </button>
             <button
               type="button"
+              data-testid="agent-tool-next-nl"
               onClick={async () => {
                 if (busy) return;
                 const last = lastNlqRef.current;
@@ -1916,7 +2123,7 @@ export default function ChatDock() {
           </div>
         </div>
       ) : null}
-      <div className="flex-1 overflow-auto chat-scroll" ref={listRef}>
+      <div className="flex-1 overflow-auto chat-scroll" ref={listRef} aria-live="polite" aria-atomic="false" role="log">
         {renderedMessages}
         {busy && (
           <div className="px-3 py-2">
