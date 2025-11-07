@@ -76,11 +76,6 @@ const App: React.FC = () => {
   const [inSync, setInSync] = useState<boolean | undefined>(undefined);
   const refetchAllCharts = useChartsStore((state) => state.refetchAll);
 
-  // Initialize BroadcastChannel for cross-tab chat synchronization (client-side only)
-  useEffect(() => {
-    initBroadcastChannelSync();
-  }, []);
-
   // Keyboard toggles: Ctrl+Alt+D soft session toggle (no reload), Ctrl+Shift+D hard persistent toggle (reload)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -134,6 +129,13 @@ const App: React.FC = () => {
 
   const { user, authReady, logout } = useAuth();
   const authOk = !!user;
+  
+  // Initialize BroadcastChannel for cross-tab chat synchronization (client-side only, auth-gated)
+  useEffect(() => {
+    if (!authOk) return; // Only init when authenticated
+    initBroadcastChannelSync();
+  }, [authOk]);
+
   // Load dashboard data whenever month changes (only when authenticated)
   useEffect(() => {
     if (!authOk || !month) return;
