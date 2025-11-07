@@ -1,4 +1,5 @@
 from typing import List, Optional, Literal, Dict, Any
+import logging
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 from sqlalchemy import func, case
@@ -9,6 +10,7 @@ from app.transactions import Transaction
 from app.services.insights_expanded import build_expanded_insights
 from app.deps.auth_guard import get_current_user_id
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/agent/tools/insights", tags=["agent-tools:insights"])
 
 Severity = Literal["info", "warn", "critical"]
@@ -84,9 +86,27 @@ def insights_expanded(
     db: Session = Depends(get_db),
     user_id: int = Depends(get_current_user_id),
 ) -> Dict[str, Any]:
-    return build_expanded_insights(
-        db=db, month=body.month, large_limit=body.large_limit or 10
-    )
+    try:
+        result = build_expanded_insights(
+            db=db, month=body.month, large_limit=body.large_limit or 10
+        )
+        # If service returns None/empty, provide safe fallback
+        if not result:
+            return {
+                "month": body.month or "",
+                "top_merchants": [],
+                "unknown_spend": 0.0,
+                "stats": {"count": 0, "total": 0.0},
+            }
+        return result
+    except Exception:
+        logger.exception("insights_expanded failed for month=%s", body.month)
+        return {
+            "month": body.month or "",
+            "top_merchants": [],
+            "unknown_spend": 0.0,
+            "stats": {"count": 0, "total": 0.0},
+        }
 
 
 # --- Minimal helper for /agent/chat resilience --------------------------------

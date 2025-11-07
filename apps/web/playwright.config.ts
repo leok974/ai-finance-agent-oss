@@ -45,10 +45,12 @@ export default defineConfig({
         storageState: PROD_STATE,            // ✅ use captured prod state
         video: 'retain-on-failure',
         trace: 'on-first-retry',
+        headless: true,
       },
       // IMPORTANT: don't depend on auth setup project in prod
       dependencies: [],                       // ✅ isolate from dev setup
       testIgnore: /@dev-only|@needs-seed/,    // ✅ skip any dev/seed-only tests
+      grep: /@prod/,                          // ✅ only run tests tagged @prod
     },
   ],
   webServer: process.env.PW_SKIP_WS ? undefined : [
