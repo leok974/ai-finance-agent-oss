@@ -19,18 +19,25 @@ depends_on = None
 def upgrade():
     """Add reason_json, accepted, and mode columns to suggestions table."""
     bind = op.get_bind()
+    inspector = sa.inspect(bind)
 
     # Check if table exists
     if not bind.dialect.has_table(bind, "suggestions"):
         return
 
+    # Get existing columns
+    existing_columns = {col['name'] for col in inspector.get_columns("suggestions")}
+
     with op.batch_alter_table("suggestions", schema=None) as batch_op:
-        # Add reason_json for explainability
-        batch_op.add_column(sa.Column("reason_json", sa.JSON(), nullable=True))
-        # Add accepted flag for user feedback
-        batch_op.add_column(sa.Column("accepted", sa.Boolean(), nullable=True))
-        # Add mode to distinguish model/rule/ask
-        batch_op.add_column(sa.Column("mode", sa.String(length=16), nullable=True))
+        # Add reason_json for explainability (only if doesn't exist)
+        if "reason_json" not in existing_columns:
+            batch_op.add_column(sa.Column("reason_json", sa.JSON(), nullable=True))
+        # Add accepted flag for user feedback (only if doesn't exist)
+        if "accepted" not in existing_columns:
+            batch_op.add_column(sa.Column("accepted", sa.Boolean(), nullable=True))
+        # Add mode to distinguish model/rule/ask (only if doesn't exist)
+        if "mode" not in existing_columns:
+            batch_op.add_column(sa.Column("mode", sa.String(length=16), nullable=True))
 
 
 def downgrade():
