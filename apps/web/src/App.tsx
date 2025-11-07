@@ -139,7 +139,8 @@ const App: React.FC = () => {
 
   // Load dashboard data whenever month changes (only when authenticated)
   useEffect(() => {
-    if (!authOk || !month) return;
+    // CRITICAL: Never make API calls before auth is confirmed
+    if (!authReady || !authOk || !ready || !month) return;
     console.info("[boot] loading dashboards for month", month);
     const coreReady = (window as any).__CORE_READY__ === true;
     if (!coreReady) {
@@ -152,7 +153,7 @@ const App: React.FC = () => {
     });
     // Also prefetch spending trends separately (not in store yet)
     void agentTools.chartsSpendingTrends({ month, months_back: 6 });
-  }, [authOk, month, refetchAllCharts]);
+  }, [authReady, authOk, ready, month, refetchAllCharts]);
 
   // Log DB health once after CORS/DB are good (boot complete) and capture db revision
   useEffect(() => {
@@ -177,23 +178,25 @@ const App: React.FC = () => {
 
   // Load insights and alerts separately for state management
   useEffect(()=>{ (async()=>{
-  if (!authOk || !ready || !month) return;
+  // CRITICAL: Never make API calls before auth is confirmed
+  if (!authReady || !authOk || !ready || !month) return;
     try {
       setInsights(await agentTools.insightsExpanded({ month, large_limit: 10 }))
       setAlerts(await getAlerts(month))
     } catch (_err) { /* intentionally empty: swallow to render empty-state */ }
-  })() }, [authOk, ready, month, refreshKey])
+  })() }, [authReady, authOk, ready, month, refreshKey])
 
   // Probe backend emptiness (latest by default). If charts summary returns null or month:null, show banner.
   useEffect(() => { (async () => {
-  if (!authOk || !ready || !month) return;
+  // CRITICAL: Never make API calls before auth is confirmed
+  if (!authReady || !authOk || !ready || !month) return;
     try {
       const s = await getMonthSummary(month);
       setEmpty(!s || s?.month == null);
     } catch {
       setEmpty(true);
     }
-  })() }, [authOk, ready, month, refreshKey])
+  })() }, [authReady, authOk, ready, month, refreshKey])
 
   const onCsvUploaded = useCallback(() => {
     setRefreshKey((k) => k + 1);
