@@ -45,9 +45,10 @@ export const useChatSession = create<ChatState>()(
 
         // 3) Broadcast to other tabs BEFORE state update (tagged with origin)
         try {
-          const bc = new BroadcastChannel("lm-chat");
-          bc.postMessage({ type: "cleared", sid, from: INSTANCE_ID });
-          bc.close?.();
+          const bc = _ensureBroadcastChannel();
+          if (bc) {
+            bc.postMessage({ type: "cleared", sid, from: INSTANCE_ID });
+          }
         } catch (err) {
           // BroadcastChannel may not be available
         }
@@ -86,9 +87,10 @@ export const useChatSession = create<ChatState>()(
 
           // Broadcast to other tabs (tagged with origin)
           try {
-            const bc = new BroadcastChannel("lm-chat");
-            bc.postMessage({ type: "reset", newSid: next, prev, from: INSTANCE_ID });
-            bc.close?.();
+            const bc = _ensureBroadcastChannel();
+            if (bc) {
+              bc.postMessage({ type: "reset", newSid: next, prev, from: INSTANCE_ID });
+            }
           } catch (err) {
             // BroadcastChannel may not be available
           }
@@ -101,13 +103,16 @@ export const useChatSession = create<ChatState>()(
   )
 );
 
-// Cross-tab listener with echo-loop prevention
-(function wireBC() {
-  if (typeof window === "undefined") return;
+// Cross-tab listener with echo-loop prevention - lazy initialization
+let _bcInstance: BroadcastChannel | null = null;
+
+function _ensureBroadcastChannel() {
+  if (typeof window === "undefined") return null;
+  if (_bcInstance) return _bcInstance;
 
   try {
-    const bc = new BroadcastChannel("lm-chat");
-    bc.onmessage = (ev: MessageEvent) => {
+    _bcInstance = new BroadcastChannel("lm-chat");
+    _bcInstance.onmessage = (ev: MessageEvent) => {
       const msg = ev.data || {};
 
       // Ignore our own broadcasts to prevent echo loops
@@ -139,7 +144,9 @@ export const useChatSession = create<ChatState>()(
   } catch (err) {
     // BroadcastChannel may not be available
   }
-})();
+
+  return _bcInstance;
+}
 
 // Helper to clear persisted thread for a specific session
 export function clearPersistedThread(sessionId?: string) {

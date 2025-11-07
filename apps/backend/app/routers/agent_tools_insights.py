@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.db import get_db
 from app.transactions import Transaction
 from app.services.insights_expanded import build_expanded_insights
+from app.deps.auth_guard import get_current_user_id
 
 router = APIRouter(prefix="/agent/tools/insights", tags=["agent-tools:insights"])
 
@@ -79,7 +80,9 @@ class ExpandedIn(BaseModel):
 
 @router.post("/expanded")
 def insights_expanded(
-    body: ExpandedIn, db: Session = Depends(get_db)
+    body: ExpandedIn,
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id),
 ) -> Dict[str, Any]:
     return build_expanded_insights(
         db=db, month=body.month, large_limit=body.large_limit or 10
@@ -89,20 +92,15 @@ def insights_expanded(
 # --- Minimal helper for /agent/chat resilience --------------------------------
 # These are permissive shapes/utilities that allow the chat endpoint to
 # normalize whatever "insights" payload exists, without crashing the request.
-from typing import (
-    Any as _Any,
-    Optional as _Optional,
-    List as _List,
-)  # aliases to avoid shadowing
 
 
 class ExpandedBody(BaseModel):
     summary: str = ""
-    bullets: _List[str] = []
-    sources: _List[str] = []
+    bullets: List[str] = []
+    sources: List[str] = []
 
 
-def expand(raw: _Optional[dict[str, _Any]] = None) -> ExpandedBody:
+def expand(raw: Optional[dict[str, Any]] = None) -> ExpandedBody:
     if not raw:
         return ExpandedBody()
 
