@@ -131,7 +131,7 @@ const App: React.FC = () => {
 
   const { user, authReady, logout } = useAuth();
   const authOk = !!user;
-  
+
   // Initialize BroadcastChannel for cross-tab chat synchronization (client-side only, auth-gated)
   // TEMPORARILY DISABLED for debugging
   // useEffect(() => {
@@ -198,20 +198,25 @@ const App: React.FC = () => {
   useEffect(()=>{ (async()=>{
   // CRITICAL: Never make API calls before auth is confirmed
   if (!authReady || !authOk || !ready || !month) return;
+    let cancelled = false;
     try {
       // Wrap in retry + auth guard for extra safety
       const [insightsData, alertsData] = await Promise.all([
-        withRetry(() => withAuthGuard(agentTools.insightsExpanded)({ month, large_limit: 10 }), { maxAttempts: 2 }),
-        withRetry(() => withAuthGuard(getAlerts)(month), { maxAttempts: 2 })
+        withRetry(() => withAuthGuard(agentTools.insightsExpanded)({ month, large_limit: 10 }), { maxAttempts: 2 }).catch(() => null),
+        withRetry(() => withAuthGuard(getAlerts)(month), { maxAttempts: 2 }).catch(() => null),
       ]);
-      setInsights(insightsData);
-      setAlerts(alertsData);
+      if (cancelled) return;
+      // Set benign defaults if tools return null/error
+      setInsights(insightsData || null);
+      setAlerts(alertsData || null);
     } catch (error) {
+      if (cancelled) return;
       console.error('[boot] insights/alerts fetch failed:', error);
       // Set empty states on error to prevent infinite loading
       setInsights(null);
       setAlerts(null);
     }
+    return () => { cancelled = true; };
   })() }, [authReady, authOk, ready, month, refreshKey])
 
   // Probe backend emptiness (latest by default). If charts summary returns null or month:null, show banner.
@@ -374,7 +379,15 @@ const App: React.FC = () => {
             ) : null}
           </div>
         </div>
-          {showChatDock && <ChatDock data-chatdock-root />}
+          {showChatDock && (
+            <ErrorBoundary fallback={(e) => (
+              <div className="fixed bottom-4 right-4 p-4 bg-red-500/10 border border-red-500 rounded text-sm text-red-500 max-w-md">
+                Chat panel error: {String(e?.message || e)}
+              </div>
+            )}>
+              <ChatDock data-chatdock-root />
+            </ErrorBoundary>
+          )}
 
           {/* Dev Dock at very bottom: only Planner DevTool */}
           {flags.dev && (

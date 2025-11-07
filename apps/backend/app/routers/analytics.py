@@ -1,10 +1,12 @@
 from __future__ import annotations
+import logging
 from fastapi import APIRouter, Depends, Body
 from sqlalchemy.orm import Session
 from app.db import get_db
 from app.services import analytics as svc
 from app.deps.auth_guard import get_current_user_id
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/agent/tools/analytics", tags=["analytics"])
 
 
@@ -31,9 +33,24 @@ def forecast_cashflow(
     horizon = int(payload.get("horizon", 3)) if isinstance(payload, dict) else 3
     model = payload.get("model", "auto") if isinstance(payload, dict) else "auto"
     alpha = payload.get("alpha") if isinstance(payload, dict) else None
-    return svc.forecast_cashflow(
-        db, month=month, horizon=horizon, model=model, alpha=alpha
-    )
+
+    try:
+        result = svc.forecast_cashflow(
+            db, month=month, horizon=horizon, model=model, alpha=alpha
+        )
+        # If service returns None/empty, provide safe fallback
+        if not result:
+            return {
+                "series": [],
+                "summary": {"month": month or "", "count": 0, "horizon": horizon},
+            }
+        return result
+    except Exception:
+        logger.exception("forecast_cashflow failed for month=%s", month)
+        return {
+            "series": [],
+            "summary": {"month": month or "", "count": 0, "horizon": horizon},
+        }
 
 
 @router.post("/anomalies")
