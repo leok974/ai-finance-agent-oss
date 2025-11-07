@@ -148,6 +148,11 @@ function _ensureBroadcastChannel() {
   return _bcInstance;
 }
 
+// Initialize BroadcastChannel on first module load in browser
+if (typeof window !== "undefined") {
+  _ensureBroadcastChannel();
+}
+
 // Helper to clear persisted thread for a specific session
 export function clearPersistedThread(sessionId?: string) {
   try {
