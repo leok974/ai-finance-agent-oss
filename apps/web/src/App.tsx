@@ -131,10 +131,11 @@ const App: React.FC = () => {
   const authOk = !!user;
   
   // Initialize BroadcastChannel for cross-tab chat synchronization (client-side only, auth-gated)
-  useEffect(() => {
-    if (!authOk) return; // Only init when authenticated
-    initBroadcastChannelSync();
-  }, [authOk]);
+  // TEMPORARILY DISABLED for debugging
+  // useEffect(() => {
+  //   if (!authOk) return; // Only init when authenticated
+  //   initBroadcastChannelSync();
+  // }, [authOk]);
 
   // Load dashboard data whenever month changes (only when authenticated)
   useEffect(() => {
