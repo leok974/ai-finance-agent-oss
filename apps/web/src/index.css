@@ -28,6 +28,11 @@
 
 :root { color-scheme: dark; }
 
+/* Production safety net: hide local auth form even if old bundle cached */
+:root[data-prod="true"] .local-auth-form {
+  display: none !important;
+}
+
 /* ---------- Global tooltip look & feel + panel utilities ---------- */
 @layer components {
   /* Subtle, reusable card/panel surfaces */
@@ -276,6 +281,32 @@ body { @apply bg-neutral-950 text-neutral-100; }
   /* container that fades out after completion */
   @keyframes agui-fade-away { 0% { opacity:1 } 80% { opacity:1 } 100% { opacity:0 } }
   .agui-ribbon-fade { animation: agui-fade-away 5.5s forwards; }
+}
+
+/* Transaction row hover effects - ring highlight for better contrast */
+@layer components {
+  .transaction-row {
+    @apply relative rounded-lg px-3 py-2 transition-shadow;
+  }
+  .transaction-row:hover {
+    @apply ring-2 ring-primary/50 ring-offset-0;
+  }
+  .transaction-row:focus-visible {
+    @apply ring-2 ring-primary/60 outline-none;
+  }
+
+  /* Pulse animation for successful category save */
+  @keyframes pulse-success {
+    0%, 100% {
+      background-color: transparent;
+    }
+    50% {
+      background-color: hsl(var(--primary) / 0.05);
+    }
+  }
+  .animate-pulse-success {
+    animation: pulse-success 1.5s ease-in-out;
+  }
 }
 
 /* Optional: brighten grid lines slightly in transactions drawer */

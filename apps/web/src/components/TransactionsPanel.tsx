@@ -1,5 +1,5 @@
 import React from "react";
-import { listTxns, getTxn, patchTxn, bulkPatchTxns, deleteTxn, restoreTxn, splitTxn, mergeTxns, linkTransfer } from "@/lib/api";
+import { listTxns, getTxn, patchTxn, bulkPatchTxns, deleteTxn, restoreTxn, splitTxn, mergeTxns, linkTransfer, getAllCategoryNames } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import Card from "@/components/Card";
 import { emitToastSuccess, emitToastError } from "@/lib/toast-helpers";
@@ -35,6 +35,7 @@ export default function TransactionsPanel() {
   const [page, setPage] = React.useState(0);
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const [allCategories, setAllCategories] = React.useState<string[]>([]);
   const limit = 50;
   // Removed legacy toast hook in favor of emit helpers
 
@@ -61,6 +62,11 @@ export default function TransactionsPanel() {
     }
   }, [q, month, sort, page]);
 
+  // Fetch all category names for the picker
+  React.useEffect(() => {
+    getAllCategoryNames().then(setAllCategories).catch(console.error);
+  }, []);
+
   React.useEffect(() => { refresh(); }, [refresh]);
 
   // ML Suggestions hook for uncategorized transactions
@@ -85,14 +91,14 @@ export default function TransactionsPanel() {
       await acceptSuggestion(String(txnId), category);
 
       // Show success toast
-      emitToastSuccess('Category Applied', {
+      emitToastSuccess(t('ui.toast.category_applied_title'), {
         description: `Set category to "${category}"`,
       });
 
       // Refresh transaction list
       refresh();
     } catch (error) {
-      emitToastError('Failed to apply category', {
+      emitToastError(t('ui.toast.category_apply_failed_title'), {
         description: error instanceof Error ? error.message : 'Unknown error',
       });
     }
@@ -193,6 +199,7 @@ export default function TransactionsPanel() {
                   key={r.id}
                   transaction={r}
                   suggestion={getSuggestionsForTransaction(String(r.id))}
+                  allCategories={allCategories}
                   isSelected={sel.includes(r.id)}
                   onSelect={(id, checked) => toggleOne(id, checked)}
                   onEdit={(id) => openEdit(id)}

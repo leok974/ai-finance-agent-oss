@@ -453,6 +453,27 @@ export async function getMonthCategories(month?: string): Promise<UICategory[]> 
   }
 }
 
+/**
+ * Get all unique category names from transactions
+ * Used for category picker dropdown
+ */
+export async function getAllCategoryNames(): Promise<string[]> {
+  try {
+    const result = await listTxns({ limit: 10000, offset: 0 });
+    const categories = new Set<string>();
+    result.items.forEach((t) => {
+      const cat = typeof t === 'object' && t !== null ? (t as Record<string, unknown>).category : null;
+      if (cat && typeof cat === 'string' && cat.trim()) {
+        categories.add(cat.trim());
+      }
+    });
+    return Array.from(categories).sort();
+  } catch (e) {
+    console.warn('[api] getAllCategoryNames failed:', e);
+    return [];
+  }
+}
+
 export async function getMonthFlows(month?: string): Promise<UIDaily[]> {
   // Daily flows = summary.daily (reuse from getMonthSummary logic)
   const summary = await getMonthSummary(month);
