@@ -2283,7 +2283,16 @@ export default function ChatDock() {
   // Render via portal; show bubble when closed, panel when open
   // Render only the primary instance
   if (!isPrimary) return null;
-  return createPortal(<>{open ? panelEl : bubbleEl}</>, document.body);
+  return createPortal(
+    <ErrorBoundary fallback={(e) => (
+      <div className="fixed bottom-4 right-4 p-4 bg-red-500/10 border border-red-500 rounded text-sm text-red-500 max-w-md z-[9999]">
+        Chat panel error: {String(e?.message || e)}
+      </div>
+    )}>
+      {open ? panelEl : bubbleEl}
+    </ErrorBoundary>,
+    document.body
+  );
 }
 
 // Helper: format NL transaction query result for chat rendering

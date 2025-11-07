@@ -379,15 +379,7 @@ const App: React.FC = () => {
             ) : null}
           </div>
         </div>
-          {showChatDock && (
-            <ErrorBoundary fallback={(e) => (
-              <div className="fixed bottom-4 right-4 p-4 bg-red-500/10 border border-red-500 rounded text-sm text-red-500 max-w-md">
-                Chat panel error: {String(e?.message || e)}
-              </div>
-            )}>
-              <ChatDock data-chatdock-root />
-            </ErrorBoundary>
-          )}
+          {showChatDock && <ChatDock data-chatdock-root />}
 
           {/* Dev Dock at very bottom: only Planner DevTool */}
           {flags.dev && (
