@@ -148,8 +148,12 @@ function _ensureBroadcastChannel() {
   return _bcInstance;
 }
 
-// Initialize BroadcastChannel on first module load in browser
-if (typeof window !== "undefined") {
+// Export function for components to initialize BroadcastChannel
+// Call this once from App component to set up cross-tab sync
+export function initBroadcastChannelSync() {
+  if (typeof window === "undefined") return;
+  
+  // Initialize on first call
   _ensureBroadcastChannel();
 }
 
