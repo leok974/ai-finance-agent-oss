@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { telemetry, CATEGORY_PICKER_EVENTS } from '@/lib/telemetry';
 
 type Candidate = {
   label: string;
@@ -45,6 +46,25 @@ export function CategoryCell({
     setValue(category ?? '');
   }, [category]);
 
+  // Track open/close events
+  useEffect(() => {
+    if (open) {
+      telemetry.track(CATEGORY_PICKER_EVENTS.OPENED, {
+        txnId,
+        merchant: merchant || 'unknown',
+        currentCategory: category || 'uncategorized',
+        suggestionsCount: suggestions.length,
+        categoriesCount: allCategories.length,
+      });
+    } else if (!open && value !== (category ?? '')) {
+      // Closed without saving (cancelled)
+      telemetry.track(CATEGORY_PICKER_EVENTS.CLOSED, {
+        txnId,
+        saved: false,
+      });
+    }
+  }, [open, txnId, merchant, category, suggestions.length, allCategories.length, value]);
+
   // Show "just saved" animation
   useEffect(() => {
     if (justSaved) {
@@ -58,6 +78,20 @@ export function CategoryCell({
 
     setSaving(true);
     try {
+      // Track save event with telemetry
+      telemetry.track(
+        makeRule ? CATEGORY_PICKER_EVENTS.SAVE_WITH_RULE : CATEGORY_PICKER_EVENTS.SAVE,
+        {
+          txnId,
+          merchant: merchant || 'unknown',
+          oldCategory: category || 'uncategorized',
+          newCategory: value,
+          wasFromSuggestion: suggestions.some((s) => s.label === value),
+          suggestionConfidence: suggestions.find((s) => s.label === value)?.confidence,
+          makeRule,
+        }
+      );
+
       await onSave({ category: value, makeRule });
       setOpen(false);
       setMakeRule(false); // Reset checkbox
@@ -72,6 +106,21 @@ export function CategoryCell({
   const handleSelect = (selectedCategory: string) => {
     setValue(selectedCategory);
     setSearch('');
+
+    // Track selection source
+    const isFromSuggestion = suggestions.some((s) => s.label === selectedCategory);
+    const suggestion = suggestions.find((s) => s.label === selectedCategory);
+
+    telemetry.track(
+      isFromSuggestion ? CATEGORY_PICKER_EVENTS.SELECT_SUGGESTION : CATEGORY_PICKER_EVENTS.SELECT_CATEGORY,
+      {
+        category: selectedCategory,
+        confidence: suggestion?.confidence,
+        searchQuery: search,
+        txnId,
+        merchant: merchant || 'unknown',
+      }
+    );
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -95,6 +144,21 @@ export function CategoryCell({
   const filteredCategories = allCategories
     .filter((c) => c.toLowerCase().includes(search.toLowerCase()))
     .slice(0, 20);
+
+  // Track search with debouncing (avoid spamming events)
+  useEffect(() => {
+    if (!search || search.length < 2) return;
+
+    const timer = setTimeout(() => {
+      telemetry.track(CATEGORY_PICKER_EVENTS.SEARCH, {
+        query: search,
+        resultsCount: filteredCategories.length,
+        txnId,
+      });
+    }, 500); // Debounce 500ms
+
+    return () => clearTimeout(timer);
+  }, [search, filteredCategories.length, txnId]);
 
   return (
     <div
@@ -218,6 +282,11 @@ export function CategoryCell({
                   size="sm"
                   variant="pill-ghost"
                   onClick={() => {
+                    telemetry.track(CATEGORY_PICKER_EVENTS.CANCEL, {
+                      txnId,
+                      hadSelectedValue: !!value,
+                      selectedValue: value || null,
+                    });
                     setOpen(false);
                     setValue(category ?? '');
                     setSearch('');
