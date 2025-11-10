@@ -55,9 +55,9 @@ export function mountChatDock(): void {
     if (!frame) {
       frame = document.createElement('iframe');
       frame.id = 'lm-chat-frame';
-      frame.setAttribute('sandbox', 'allow-scripts allow-same-origin');
+      frame.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-popups');
       frame.style.cssText =
-        'all:unset;position:fixed;inset:auto 24px 24px auto;width:420px;height:640px;border:0;z-index:2147483647;pointer-events:auto;';
+        'background:transparent;border:0;display:block;position:fixed;inset:auto 24px 24px auto;width:420px;height:640px;z-index:2147483647;pointer-events:auto;';
       sr.appendChild(frame);
     }
 
@@ -67,7 +67,7 @@ export function mountChatDock(): void {
     // 4) Initialize iframe document if needed
     if (!doc.getElementById('lm-chat-root')) {
       doc.open();
-      doc.write(`<!doctype html><html><head><meta charset="utf-8"></head>
+      doc.write(`<!doctype html><html><head><meta charset="utf-8"><style>html,body{background:transparent!important;margin:0;padding:0;}</style></head>
         <body><div id="lm-chat-root"></div></body></html>`);
       doc.close();
     }
@@ -93,9 +93,9 @@ export function mountChatDock(): void {
     // 7) Expose iframe body for all portals (complete isolation from main document)
     (window as any).__LM_PORTAL_ROOT__ = doc.body;
 
-    // 8) Render with providers
+    // 8) Render with providers (root is guaranteed non-null here)
     console.log('[chat] rendering...');
-    root.render(
+    root!.render(
       <ErrorBoundary fallback={(e) => {
         console.error('[chat] ErrorBoundary caught:', e);
         // Notify parent of error to hide host
