@@ -8,11 +8,13 @@ const baseURL = process.env.BASE_URL ?? 'http://127.0.0.1:5173';
 const useDev = process.env.USE_DEV === '0' || process.env.USE_DEV === 'false' ? false : true;
 const storageStatePath = './tests/e2e/.auth/state.json';
 const PROD_STATE = './tests/e2e/.auth/prod-state.json';
+const AUTH_STORAGE = './tests/.auth/storageState.json';
 
 export default defineConfig({
   // Only run E2E specs; unit tests are handled by Vitest
   testDir: './tests/e2e',
-  // globalSetup: './tests/e2e/.auth/global-setup.ts', // Disabled in favor of setup project
+  globalSetup: './tests/setup/global-setup.ts',
+  globalTeardown: './tests/setup/global-teardown.ts',
   workers: useDev ? 1 : workers,  // serialize in dev to avoid SQLite locks
   timeout: 30_000,
   expect: { timeout: 3_000 },
@@ -21,34 +23,31 @@ export default defineConfig({
   use: {
     headless: true,
     baseURL,
+    storageState: AUTH_STORAGE,
     trace: 'on-first-retry',
     video: 'retain-on-failure',
     screenshot: 'only-on-failure',
     actionTimeout: 10_000,
     navigationTimeout: 15_000,
+    ignoreHTTPSErrors: true,
   },
   projects: [
-    // Setup project runs auth.setup.ts to log in and save storage state
-    { name: 'setup', testMatch: /.*\.setup\.ts/ },
-    // Main chromium tests depend on setup and use the saved storage state
+    // Main chromium tests with shared auth state
     {
       name: 'chromium',
-      use: { ...devices['Desktop Chrome'], storageState: storageStatePath },
-      dependencies: ['setup'],
+      use: { ...devices['Desktop Chrome'] },
     },
-    // Production testing project (no setup deps, uses captured state)
+    // Production testing project (uses prod base URL + optional prod storage state)
     {
       name: 'chromium-prod',
       use: {
         ...devices['Desktop Chrome'],
         baseURL: process.env.BASE_URL || 'https://app.ledger-mind.org',
-        storageState: PROD_STATE,            // ✅ use captured prod state
+        storageState: PROD_STATE,            // ✅ use captured prod state if available
         video: 'retain-on-failure',
         trace: 'on-first-retry',
         headless: true,
       },
-      // IMPORTANT: don't depend on auth setup project in prod
-      dependencies: [],                       // ✅ isolate from dev setup
       testIgnore: /@dev-only|@needs-seed/,    // ✅ skip any dev/seed-only tests
       grep: /@prod/,                          // ✅ only run tests tagged @prod
     },
