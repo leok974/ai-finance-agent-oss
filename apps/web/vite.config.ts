@@ -85,7 +85,7 @@ export default defineConfig({
     rollupOptions: {
       input: {
         main: path.resolve(__dirname, 'index.html'),
-        chat: path.resolve(__dirname, 'public/chat/index.html'),
+        chat: path.resolve(__dirname, 'chat/index.html'),
       },
       output: {
         manualChunks(id) {
