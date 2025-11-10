@@ -1,14 +1,25 @@
 import React from 'react'
-import ReactDOM from 'react-dom/client'
+import { ensureRoot } from './rootSingleton'
 import './index.css'
 import App from './App'
 import { Toaster } from "@/components/ui/toaster";
 import Providers from "@/components/Providers";
+import { AppErrorBoundary } from "@/components/AppErrorBoundary";
 import { initLocale } from '@/lib/i18n-persist';
 // Build metadata injected during Docker build (file created in Dockerfile)
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore - generated at build time
 import buildStamp from './build-stamp.json';
+import { version as reactVersion } from 'react';
+import { version as reactDomVersion } from 'react-dom';
+
+// ✅ Prevent double mount if the bundle is executed twice
+// (route-replace, OAuth popup shenanigans, duplicate script tag, etc.)
+declare global { interface Window { __APP_MOUNTED__?: boolean } }
+if (window.__APP_MOUNTED__) {
+  throw new Error('Abort duplicate mount');
+}
+window.__APP_MOUNTED__ = true;
 
 (() => {
   try {
@@ -36,11 +47,41 @@ if (import.meta.env.PROD) {
   document.documentElement.setAttribute('data-prod', 'true');
 }
 
-ReactDOM.createRoot(document.getElementById('root')!).render(
-  <React.StrictMode>
+const container = document.getElementById('root')!;
+
+// 🛡️ HARD GUARD: We do NOT use SSR. If anything is inside #root
+// (e.g., extension-injected DOM), clear it so React doesn't attempt
+// hydration against foreign markup → React error #185 eliminated.
+if (container.firstChild) {
+  console.warn('[boot] clearing unexpected DOM from #root (extensions?)');
+  container.replaceChildren(); // fast and safe
+}
+
+// StrictMode should ONLY run in development (it causes double-rendering)
+const AppContent = (
+  <AppErrorBoundary>
     <Providers>
       <App />
       <Toaster />
     </Providers>
-  </React.StrictMode>
-)
+  </AppErrorBoundary>
+);
+
+// ✅ Root singleton prevents double-mount even if this script runs twice
+const root = ensureRoot(container);
+root.render(
+  import.meta.env.DEV ? (
+    <React.StrictMode>{AppContent}</React.StrictMode>
+  ) : (
+    AppContent
+  )
+);
+
+// Boot diagnostics - prove single mount + single React copy
+console.info('[boot] react', reactVersion, 'react-dom', reactDomVersion);
+console.info('[boot] root created at', (window as any).__ROOT_CREATED_AT__);
+console.info('[boot] mount once flag', window.__APP_MOUNTED__);
+
+if (import.meta.env.PROD) {
+  console.info('[boot] React root mounted once (production mode)');
+}

@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useRef, Suspense } from "react";
+import React, { useState, useCallback, useEffect, useRef, Suspense, lazy } from "react";
 import { MonthContext } from "./context/MonthContext";
 import UploadCsv from "./components/UploadCsv";
 import UnknownsPanel from "./components/UnknownsPanel";
@@ -14,7 +14,7 @@ import { withRetry } from '@/lib/retry';
 import { flags } from "@/lib/flags";
 import AboutDrawer from './components/AboutDrawer';
 import RulesPanel from "./components/RulesPanel";
-import ChatDock from "./components/ChatDock";
+// ChatDock is now mounted via chatMount.tsx (separate React root)
 import { useChatDockStore } from "./stores/chatdock";
 import DevDock from "@/components/dev/DevDock";
 import PlannerDevPanel from "@/components/dev/PlannerDevPanel";
@@ -59,7 +59,33 @@ console.info("[Web] branch=", __WEB_BRANCH__, "commit=", __WEB_COMMIT__);
 
 
 const App: React.FC = () => {
-  const [devDockOpen, setDevDockOpen] = useState<boolean>(() => (import.meta as any).env?.VITE_DEV_UI === '1' || localStorage.getItem('DEV_DOCK') !== '0');
+  // Chat feature flags with runtime fuse for crash protection
+  const qp = new URLSearchParams(window.location.search);
+  const CHAT_QP = qp.get('chat');
+  // Default: chat ON (can disable with ?chat=0 for debugging)
+  const CHAT_FLAG = CHAT_QP !== null 
+    ? CHAT_QP === '1' 
+    : true; // Changed from env check - chat ON by default
+  
+  // Session-scoped fuse (cleared on browser close, not persistent like localStorage)
+  const CHAT_FUSE_OFF = sessionStorage.getItem('lm:disableChat') === '1';
+  const chatEnabled = CHAT_FLAG && !CHAT_FUSE_OFF;
+
+  // Prefetch flag
+  const prefetchEnabled =
+    (import.meta.env.VITE_PREFETCH_ENABLED ?? '1') === '1' &&
+    qp.get('prefetch') !== '0';
+
+  // Deterministic initial state - no localStorage access during render
+  const [devDockOpen, setDevDockOpen] = useState<boolean>(false);
+  
+  // Hydrate from localStorage after mount
+  useEffect(() => {
+    const viteDevUI = (import.meta as any).env?.VITE_DEV_UI === '1';
+    const devDockStored = localStorage.getItem('DEV_DOCK') !== '0';
+    setDevDockOpen(viteDevUI || devDockStored);
+  }, []);
+
   const devUI = useDevUI();
   const isAdmin = useIsAdmin();
   const [month, setMonth] = useState<string>("");
@@ -141,8 +167,8 @@ const App: React.FC = () => {
 
   // Load dashboard data whenever month changes (only when authenticated)
   useEffect(() => {
-    // CRITICAL: Never make API calls before auth is confirmed
-    if (!authReady || !authOk || !ready || !month) return;
+    // CRITICAL: Never make API calls before auth is confirmed + feature flag check
+    if (!authReady || !authOk || !ready || !month || !prefetchEnabled) return;
     console.info("[boot] loading dashboards for month", month);
     const coreReady = (window as any).__CORE_READY__ === true;
     if (!coreReady) {
@@ -171,7 +197,7 @@ const App: React.FC = () => {
     };
     void fetchCharts();
     void fetchTrends();
-  }, [authReady, authOk, ready, month, refetchAllCharts]);
+  }, [authReady, authOk, ready, month, prefetchEnabled, refetchAllCharts]);
 
   // Log DB health once after CORS/DB are good (boot complete) and capture db revision
   useEffect(() => {
@@ -241,6 +267,20 @@ const App: React.FC = () => {
   useEffect(() => { refreshLlm({ refreshModels: true }); }, [refreshLlm]);
 
   const showChatDock = useChatDockStore(s => s.visible);
+
+  // Chat mounting: dynamically import from boot module
+  useEffect(() => {
+    if (!chatEnabled || !authReady || !authOk) return;
+    
+    queueMicrotask(() => {
+      import('@/boot/mountChat')
+        .then(m => m.mountChatDock())
+        .catch(e => {
+          console.error('[chat] mount failed → fuse trip', e);
+          sessionStorage.setItem('lm:disableChat', '1');
+        });
+    });
+  }, [chatEnabled, authReady, authOk]);
 
   // Always call hooks above; render gates below
   if (!ready || !authReady) return <div className="p-6 text-[color:var(--text-muted)]">Loading…</div>;
@@ -379,7 +419,6 @@ const App: React.FC = () => {
             ) : null}
           </div>
         </div>
-          {showChatDock && <ChatDock data-chatdock-root />}
 
           {/* Dev Dock at very bottom: only Planner DevTool */}
           {flags.dev && (
