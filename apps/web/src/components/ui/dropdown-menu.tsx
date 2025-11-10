@@ -59,26 +59,16 @@ const DropdownMenuContent = React.forwardRef<
   React.ElementRef<typeof DropdownMenuPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Content>
 >(({ className, sideOffset = 4, ...props }, ref) => {
-  const [mounted, setMounted] = React.useState(false);
-
-  React.useEffect(() => {
-    // Wait for complete page load before rendering portal
-    if (typeof window === 'undefined' || typeof document === 'undefined') return;
-    
-    if (document.readyState === 'complete') {
-      setMounted(true);
-    } else {
-      const onLoad = () => setMounted(true);
-      window.addEventListener('load', onLoad);
-      return () => window.removeEventListener('load', onLoad);
-    }
-  }, []);
-
-  // Don't render portal until page is fully loaded
-  if (!mounted || !document.body) return null;
+  // In iframe context, portal root is guaranteed to exist before React renders
+  // No need for mounted state check - just verify portal root exists
+  const portalRoot = getPortalRoot();
+  if (!portalRoot) {
+    console.warn('[dropdown] no portal root available');
+    return null;
+  }
 
   return (
-    <DropdownMenuPrimitive.Portal container={getPortalRoot() as any}>
+    <DropdownMenuPrimitive.Portal container={portalRoot as any}>
       <DropdownMenuPrimitive.Content
         ref={ref}
         sideOffset={sideOffset}

@@ -35,340 +35,584 @@
         - button "Upload CSV" [disabled] [ref=e36]:
           - img [ref=e37]
           - text: Upload CSV
-      - generic [ref=e42]:
-        - heading "⚠ Unusual this month Card help" [level=3] [ref=e44]:
-          - text: ⚠ Unusual this month
-          - button "Card help" [ref=e45] [cursor=pointer]: "?"
-        - generic [ref=e46]: No unusual categories this month.
-      - generic [ref=e47]:
-        - generic [ref=e50]:
-          - heading "Overview — 2025-11 Card help" [level=3] [ref=e51]:
-            - text: Overview — 2025-11
-            - button "Card help" [ref=e52] [cursor=pointer]: "?"
-          - generic [ref=e54]:
-            - button "Export" [ref=e55] [cursor=pointer]:
-              - img [ref=e56]
-              - generic [ref=e59]: Export
-            - button "Custom range…" [ref=e60] [cursor=pointer]:
-              - generic [ref=e62]: Custom range…
-        - heading "Top Categories — 2025-11 Card help" [level=3] [ref=e79]:
-          - text: Top Categories — 2025-11
-          - button "Card help" [ref=e80] [cursor=pointer]: "?"
-        - heading "Top Merchants — 2025-11 Card help" [level=3] [ref=e94]:
-          - text: Top Merchants — 2025-11
-          - button "Card help" [ref=e95] [cursor=pointer]: "?"
-        - heading "Daily Flows — 2025-11 Card help" [level=3] [ref=e109]:
-          - text: Daily Flows — 2025-11
-          - button "Card help" [ref=e110] [cursor=pointer]: "?"
-        - heading "Spending Trends — last 6 months Card help" [level=3] [ref=e117]:
-          - text: Spending Trends — last 6 months
-          - button "Card help" [ref=e118] [cursor=pointer]: "?"
-      - generic [ref=e123]:
-        - generic [ref=e124]:
-          - heading "Forecast" [level=3] [ref=e126]
-          - button "Explain this" [ref=e127] [cursor=pointer]: "?"
-        - generic [ref=e128]:
-          - generic [ref=e129]:
-            - generic [ref=e130]: Model
-            - combobox "Model" [ref=e131]:
+      - generic [ref=e40]:
+        - generic [ref=e41]:
+          - generic [ref=e42]:
+            - generic [ref=e43]:
+              - heading "Expanded Insights — 2025-11" [level=3] [ref=e44]
+              - generic [ref=e45]: no prior month
+            - generic [ref=e46]:
+              - generic [ref=e47]:
+                - generic [ref=e48]: Income
+                - generic [ref=e49]: $1,500.00
+              - generic [ref=e50]:
+                - generic [ref=e51]: Spend
+                - generic [ref=e52]: $1,003.46
+              - generic [ref=e53]:
+                - generic [ref=e54]: Net
+                - generic [ref=e55]: $496.54
+            - generic [ref=e56]: "Unknown spend: $1,003.46 (19 txns)"
+          - generic [ref=e57]:
+            - generic [ref=e58]:
+              - heading "Top Categories" [level=3] [ref=e59]
+              - table [ref=e60]:
+                - rowgroup [ref=e61]:
+                  - row "Category Amount" [ref=e62]:
+                    - cell "Category" [ref=e63]
+                    - cell "Amount" [ref=e64]
+                - rowgroup [ref=e65]:
+                  - row "Unknown $1,003.46" [ref=e66]:
+                    - cell "Unknown" [ref=e67]
+                    - cell "$1,003.46" [ref=e68]
+            - generic [ref=e69]:
+              - heading "Top Merchants" [level=3] [ref=e70]
+              - table [ref=e71]:
+                - rowgroup [ref=e72]:
+                  - row "Merchant Amount" [ref=e73]:
+                    - cell "Merchant" [ref=e74]
+                    - cell "Amount" [ref=e75]
+                - rowgroup [ref=e76]:
+                  - 'row "HARRIS TEETER #0085 $361.83" [ref=e77]':
+                    - 'cell "HARRIS TEETER #0085" [ref=e78]'
+                    - cell "$361.83" [ref=e79]
+                  - row "Zelle To Conal Miner $240.00" [ref=e80]:
+                    - cell "Zelle To Conal Miner" [ref=e81]
+                    - cell "$240.00" [ref=e82]
+                  - row "ELECTRIC UTILITY CO $92.13" [ref=e83]:
+                    - cell "ELECTRIC UTILITY CO" [ref=e84]
+                    - cell "$92.13" [ref=e85]
+                  - row "AMAZON.COM*ELECTRONICS $89.99" [ref=e86]:
+                    - cell "AMAZON.COM*ELECTRONICS" [ref=e87]
+                    - cell "$89.99" [ref=e88]
+                  - row "AMAZON.COM*DEV-SUPPLIES $58.20" [ref=e89]:
+                    - cell "AMAZON.COM*DEV-SUPPLIES" [ref=e90]
+                    - cell "$58.20" [ref=e91]
+          - generic [ref=e92]:
+            - heading "Large Transactions" [level=3] [ref=e93]
+            - table [ref=e94]:
+              - rowgroup [ref=e95]:
+                - row "Date Merchant Category Amount" [ref=e96]:
+                  - cell "Date" [ref=e97]
+                  - cell "Merchant" [ref=e98]
+                  - cell "Category" [ref=e99]
+                  - cell "Amount" [ref=e100]
+              - rowgroup [ref=e101]:
+                - row "10/31/2025 Zelle To Conal Miner Unknown -$120.00" [ref=e102]:
+                  - cell "10/31/2025" [ref=e103]
+                  - cell "Zelle To Conal Miner" [ref=e104]
+                  - cell "Unknown" [ref=e105]
+                  - cell "-$120.00" [ref=e106]
+                - row "11/5/2025 Zelle To Conal Miner Unknown -$120.00" [ref=e107]:
+                  - cell "11/5/2025" [ref=e108]
+                  - cell "Zelle To Conal Miner" [ref=e109]
+                  - cell "Unknown" [ref=e110]
+                  - cell "-$120.00" [ref=e111]
+                - row "11/11/2025 ELECTRIC UTILITY CO Unknown -$92.13" [ref=e112]:
+                  - cell "11/11/2025" [ref=e113]
+                  - cell "ELECTRIC UTILITY CO" [ref=e114]
+                  - cell "Unknown" [ref=e115]
+                  - cell "-$92.13" [ref=e116]
+                - row "11/13/2025 AMAZON.COM*ELECTRONICS Unknown -$89.99" [ref=e117]:
+                  - cell "11/13/2025" [ref=e118]
+                  - cell "AMAZON.COM*ELECTRONICS" [ref=e119]
+                  - cell "Unknown" [ref=e120]
+                  - cell "-$89.99" [ref=e121]
+                - 'row "10/31/2025 HARRIS TEETER #0085 Unknown -$82.46" [ref=e122]':
+                  - cell "10/31/2025" [ref=e123]
+                  - 'cell "HARRIS TEETER #0085" [ref=e124]'
+                  - cell "Unknown" [ref=e125]
+                  - cell "-$82.46" [ref=e126]
+                - 'row "11/7/2025 HARRIS TEETER #0085 Unknown -$73.58" [ref=e127]':
+                  - cell "11/7/2025" [ref=e128]
+                  - 'cell "HARRIS TEETER #0085" [ref=e129]'
+                  - cell "Unknown" [ref=e130]
+                  - cell "-$73.58" [ref=e131]
+                - 'row "11/12/2025 HARRIS TEETER #0085 Unknown -$63.49" [ref=e132]':
+                  - cell "11/12/2025" [ref=e133]
+                  - 'cell "HARRIS TEETER #0085" [ref=e134]'
+                  - cell "Unknown" [ref=e135]
+                  - cell "-$63.49" [ref=e136]
+                - row "11/8/2025 AMAZON.COM*DEV-SUPPLIES Unknown -$58.20" [ref=e137]:
+                  - cell "11/8/2025" [ref=e138]
+                  - cell "AMAZON.COM*DEV-SUPPLIES" [ref=e139]
+                  - cell "Unknown" [ref=e140]
+                  - cell "-$58.20" [ref=e141]
+                - 'row "11/2/2025 HARRIS TEETER #0085 Unknown -$54.31" [ref=e142]':
+                  - cell "11/2/2025" [ref=e143]
+                  - 'cell "HARRIS TEETER #0085" [ref=e144]'
+                  - cell "Unknown" [ref=e145]
+                  - cell "-$54.31" [ref=e146]
+                - 'row "11/10/2025 HARRIS TEETER #0085 Unknown -$46.77" [ref=e147]':
+                  - cell "11/10/2025" [ref=e148]
+                  - 'cell "HARRIS TEETER #0085" [ref=e149]'
+                  - cell "Unknown" [ref=e150]
+                  - cell "-$46.77" [ref=e151]
+          - generic [ref=e152]:
+            - generic [ref=e153]:
+              - heading "Anomalies — Categories" [level=3] [ref=e155]
+              - table [ref=e157]:
+                - rowgroup [ref=e158]:
+                  - row "Category Prev Curr Δ % Δ" [ref=e159]:
+                    - cell "Category" [ref=e160]
+                    - cell "Prev" [ref=e161]
+                    - cell "Curr" [ref=e162]
+                    - cell "Δ" [ref=e163]
+                    - cell "% Δ" [ref=e164]
+                - rowgroup [ref=e165]:
+                  - row "Unknown 0.00 1003.46 1003.46 —" [ref=e166]:
+                    - cell "Unknown" [ref=e167]
+                    - cell "0.00" [ref=e168]
+                    - cell "1003.46" [ref=e169]
+                    - cell "1003.46" [ref=e170]
+                    - cell "—" [ref=e171]
+            - generic [ref=e172]:
+              - heading "Anomalies — Merchants" [level=3] [ref=e174]
+              - table [ref=e176]:
+                - rowgroup [ref=e177]:
+                  - row "Merchant Prev Curr Δ % Δ" [ref=e178]:
+                    - cell "Merchant" [ref=e179]
+                    - cell "Prev" [ref=e180]
+                    - cell "Curr" [ref=e181]
+                    - cell "Δ" [ref=e182]
+                    - cell "% Δ" [ref=e183]
+                - rowgroup [ref=e184]:
+                  - 'row "HARRIS TEETER #0085 0.00 361.83 361.83 —" [ref=e185]':
+                    - 'cell "HARRIS TEETER #0085" [ref=e186]'
+                    - cell "0.00" [ref=e187]
+                    - cell "361.83" [ref=e188]
+                    - cell "361.83" [ref=e189]
+                    - cell "—" [ref=e190]
+                  - row "Zelle To Conal Miner 0.00 240.00 240.00 —" [ref=e191]:
+                    - cell "Zelle To Conal Miner" [ref=e192]
+                    - cell "0.00" [ref=e193]
+                    - cell "240.00" [ref=e194]
+                    - cell "240.00" [ref=e195]
+                    - cell "—" [ref=e196]
+                  - row "ELECTRIC UTILITY CO 0.00 92.13 92.13 —" [ref=e197]:
+                    - cell "ELECTRIC UTILITY CO" [ref=e198]
+                    - cell "0.00" [ref=e199]
+                    - cell "92.13" [ref=e200]
+                    - cell "92.13" [ref=e201]
+                    - cell "—" [ref=e202]
+                  - row "AMAZON.COM*ELECTRONICS 0.00 89.99 89.99 —" [ref=e203]:
+                    - cell "AMAZON.COM*ELECTRONICS" [ref=e204]
+                    - cell "0.00" [ref=e205]
+                    - cell "89.99" [ref=e206]
+                    - cell "89.99" [ref=e207]
+                    - cell "—" [ref=e208]
+                  - row "AMAZON.COM*DEV-SUPPLIES 0.00 58.20 58.20 —" [ref=e209]:
+                    - cell "AMAZON.COM*DEV-SUPPLIES" [ref=e210]
+                    - cell "0.00" [ref=e211]
+                    - cell "58.20" [ref=e212]
+                    - cell "58.20" [ref=e213]
+                    - cell "—" [ref=e214]
+        - generic [ref=e216]:
+          - heading "⚠ Unusual this month Card help" [level=3] [ref=e218]:
+            - text: ⚠ Unusual this month
+            - button "Card help" [ref=e219] [cursor=pointer]: "?"
+          - generic [ref=e220]: No unusual categories this month.
+      - generic [ref=e221]:
+        - generic [ref=e223]:
+          - generic [ref=e224]:
+            - heading "Overview — 2025-11 Card help" [level=3] [ref=e225]:
+              - text: Overview — 2025-11
+              - button "Card help" [ref=e226] [cursor=pointer]: "?"
+            - generic [ref=e228]:
+              - button "Export" [ref=e229] [cursor=pointer]:
+                - img [ref=e230]
+                - generic [ref=e233]: Export
+              - button "Custom range…" [ref=e234] [cursor=pointer]:
+                - generic [ref=e236]: Custom range…
+          - generic [ref=e237]:
+            - generic [ref=e238]:
+              - generic [ref=e239]: Total Spend
+              - generic [ref=e240]: $1,003
+            - generic [ref=e241]:
+              - generic [ref=e242]: Total Income
+              - generic [ref=e243]: $1,500
+            - generic [ref=e244]:
+              - generic [ref=e245]: Net
+              - generic [ref=e246]: $497
+        - generic [ref=e248]:
+          - heading "Top Categories — 2025-11 Card help" [level=3] [ref=e250]:
+            - text: Top Categories — 2025-11
+            - button "Card help" [ref=e251] [cursor=pointer]: "?"
+          - generic [ref=e254]:
+            - img [ref=e255]:
+              - generic [ref=e262]: Unknown
+              - generic [ref=e263]:
+                - generic [ref=e264]:
+                  - generic [ref=e266]: "0"
+                  - generic [ref=e268]: "300"
+                  - generic [ref=e270]: "600"
+                  - generic [ref=e272]: "900"
+                  - generic [ref=e274]: "1200"
+                - generic [ref=e275]: Spend
+            - generic [ref=e277]:
+              - generic [ref=e278]: Spend
+              - generic [ref=e283]: low → high
+        - generic [ref=e285]:
+          - heading "Top Merchants — 2025-11 Card help" [level=3] [ref=e287]:
+            - text: Top Merchants — 2025-11
+            - button "Card help" [ref=e288] [cursor=pointer]: "?"
+          - generic [ref=e291]:
+            - img [ref=e292]:
+              - generic [ref=e297]:
+                - generic [ref=e299]: AMAZON.COM*ELECTRONICS
+                - generic [ref=e301]: DD *DOORDASH POPEYES
+              - generic [ref=e302]:
+                - generic [ref=e303]:
+                  - generic [ref=e305]: "0"
+                  - generic [ref=e307]: "95"
+                  - generic [ref=e309]: "190"
+                  - generic [ref=e311]: "285"
+                  - generic [ref=e313]: "380"
+                - generic [ref=e314]: Spend
+            - generic [ref=e316]:
+              - generic [ref=e317]: Spend
+              - generic [ref=e322]: low → high
+        - generic [ref=e324]:
+          - heading "Daily Flows — 2025-11 Card help" [level=3] [ref=e326]:
+            - text: Daily Flows — 2025-11
+            - button "Card help" [ref=e327] [cursor=pointer]: "?"
+          - generic [ref=e330]:
+            - img [ref=e331]:
+              - generic [ref=e336]:
+                - generic [ref=e338]: 2025-11-01
+                - generic [ref=e340]: 2025-11-04
+                - generic [ref=e342]: 2025-11-07
+                - generic [ref=e344]: 2025-11-10
+                - generic [ref=e346]: 2025-11-14
+              - generic [ref=e347]:
+                - generic [ref=e348]:
+                  - generic [ref=e350]: "-500"
+                  - generic [ref=e352]: "0"
+                  - generic [ref=e354]: "500"
+                  - generic [ref=e356]: "1000"
+                  - generic [ref=e358]: "1500"
+                - generic [ref=e359]: Amount
+            - list [ref=e367]:
+              - listitem [ref=e368]:
+                - img [ref=e369]
+                - text: In
+              - listitem [ref=e371]:
+                - img [ref=e372]
+                - text: Out
+              - listitem [ref=e374]:
+                - img [ref=e375]
+                - text: Net
+        - generic [ref=e378]:
+          - heading "Spending Trends — last 6 months Card help" [level=3] [ref=e380]:
+            - text: Spending Trends — last 6 months
+            - button "Card help" [ref=e381] [cursor=pointer]: "?"
+          - paragraph [ref=e382]: No historical data.
+      - generic [ref=e384]:
+        - generic [ref=e385]:
+          - heading "Forecast" [level=3] [ref=e387]
+          - button "Explain this" [ref=e388] [cursor=pointer]: "?"
+        - generic [ref=e389]:
+          - generic [ref=e390]:
+            - generic [ref=e391]: Model
+            - combobox "Model" [ref=e392]:
               - option "Auto" [selected]
               - option "SARIMAX"
               - option "EMA"
-          - generic [ref=e132]:
-            - generic [ref=e133]: CI
-            - combobox "CI" [ref=e134]:
+          - generic [ref=e393]:
+            - generic [ref=e394]: CI
+            - combobox "CI" [ref=e395]:
               - option "Off"
               - option "80%" [selected]
               - option "90%"
               - option "95%"
-          - generic [ref=e135]:
-            - generic [ref=e136]: Horizon
-            - spinbutton "Horizon" [ref=e137]: "3"
-          - generic [ref=e138]:
-            - button "Run" [ref=e139] [cursor=pointer]
-            - button "Reset forecast options" [ref=e140] [cursor=pointer]: Reset
-        - generic [ref=e143]: Not enough history to forecast yet.
-      - generic [ref=e145]:
-        - generic "Unknowns — 2025-11" [ref=e147]:
-          - generic [ref=e148]:
-            - generic [ref=e149]:
-              - generic [ref=e150]:
+          - generic [ref=e396]:
+            - generic [ref=e397]: Horizon
+            - spinbutton "Horizon" [ref=e398]: "3"
+          - generic [ref=e399]:
+            - button "Run" [ref=e400] [cursor=pointer]
+            - button "Reset forecast options" [ref=e401] [cursor=pointer]: Reset
+        - generic [ref=e404]: Not enough history to forecast yet.
+      - generic [ref=e406]:
+        - generic "Unknowns — 2025-11" [ref=e408]:
+          - generic [ref=e409]:
+            - generic [ref=e410]:
+              - generic [ref=e411]:
                 - text: Uncategorized transactions
-                - button "Card help" [ref=e151] [cursor=pointer]: "?"
-              - button "More info" [ref=e152] [cursor=pointer]: ⓘ
-            - generic [ref=e153]: Review → Seed → Categorize
-          - list [ref=e154]:
-            - listitem [ref=e155]:
-              - generic [ref=e156]:
-                - generic [ref=e157]:
-                  - generic [ref=e158]: AMAZON.COM*ELECTRONICS
-                  - generic [ref=e159]: Headset for calls
-                - generic [ref=e160]:
-                  - generic [ref=e161]: 11/13/2025
-                  - generic [ref=e162]: $-89.99
-              - generic [ref=e163]:
-                - button "Seed rule (prefill Rule Tester)" [ref=e164] [cursor=pointer]: Seed rule
-                - button "Explain" [ref=e165] [cursor=pointer]
-            - listitem [ref=e166]:
-              - generic [ref=e167]:
-                - generic [ref=e168]:
-                  - generic [ref=e169]: "HARRIS TEETER #0085"
-                  - generic [ref=e170]: Groceries
-                - generic [ref=e171]:
-                  - generic [ref=e172]: 11/12/2025
-                  - generic [ref=e173]: $-63.49
-              - generic [ref=e174]:
-                - button "Seed rule (prefill Rule Tester)" [ref=e175] [cursor=pointer]: Seed rule
-                - button "Explain" [ref=e176] [cursor=pointer]
-            - listitem [ref=e177]:
-              - generic [ref=e178]:
-                - generic [ref=e179]:
-                  - generic [ref=e180]: ELECTRIC UTILITY CO
-                  - generic [ref=e181]: Electric bill
-                - generic [ref=e182]:
-                  - generic [ref=e183]: 11/11/2025
-                  - generic [ref=e184]: $-92.13
-              - generic [ref=e185]:
-                - button "Seed rule (prefill Rule Tester)" [ref=e186] [cursor=pointer]: Seed rule
-                - button "Explain" [ref=e187] [cursor=pointer]
-            - listitem [ref=e188]:
-              - generic [ref=e189]:
-                - generic [ref=e190]:
-                  - generic [ref=e191]: "HARRIS TEETER #0085"
-                  - generic [ref=e192]: Groceries
-                - generic [ref=e193]:
-                  - generic [ref=e194]: 11/10/2025
-                  - generic [ref=e195]: $-46.77
-              - generic [ref=e196]:
-                - button "Seed rule (prefill Rule Tester)" [ref=e197] [cursor=pointer]: Seed rule
-                - button "Explain" [ref=e198] [cursor=pointer]
-            - listitem [ref=e199]:
-              - generic [ref=e200]:
-                - generic [ref=e201]:
-                  - generic [ref=e202]: TST*NED DEVINES IRISH
-                  - generic [ref=e203]: Dinner with friends
-                - generic [ref=e204]:
-                  - generic [ref=e205]: 11/9/2025
-                  - generic [ref=e206]: $-24.80
-              - generic [ref=e207]:
-                - button "Seed rule (prefill Rule Tester)" [ref=e208] [cursor=pointer]: Seed rule
-                - button "Explain" [ref=e209] [cursor=pointer]
-            - listitem [ref=e210]:
-              - generic [ref=e211]:
-                - generic [ref=e212]:
-                  - generic [ref=e213]: AMAZON.COM*DEV-SUPPLIES
-                  - generic [ref=e214]: Cables & SD card
-                - generic [ref=e215]:
-                  - generic [ref=e216]: 11/8/2025
-                  - generic [ref=e217]: $-58.20
-              - generic [ref=e218]:
-                - button "Seed rule (prefill Rule Tester)" [ref=e219] [cursor=pointer]: Seed rule
-                - button "Explain" [ref=e220] [cursor=pointer]
-            - listitem [ref=e221]:
-              - generic [ref=e222]:
-                - generic [ref=e223]:
-                  - generic [ref=e224]: "HARRIS TEETER #0085"
-                  - generic [ref=e225]: Weekly groceries
-                - generic [ref=e226]:
-                  - generic [ref=e227]: 11/7/2025
-                  - generic [ref=e228]: $-73.58
-              - generic [ref=e229]:
-                - button "Seed rule (prefill Rule Tester)" [ref=e230] [cursor=pointer]: Seed rule
-                - button "Explain" [ref=e231] [cursor=pointer]
-            - listitem [ref=e232]:
-              - generic [ref=e233]:
-                - generic [ref=e234]:
-                  - generic [ref=e235]: SPOTIFY
-                  - generic [ref=e236]: Monthly subscription
-                - generic [ref=e237]:
-                  - generic [ref=e238]: 11/6/2025
-                  - generic [ref=e239]: $-9.99
-              - generic [ref=e240]:
-                - button "Seed rule (prefill Rule Tester)" [ref=e241] [cursor=pointer]: Seed rule
-                - button "Explain" [ref=e242] [cursor=pointer]
-            - listitem [ref=e243]:
-              - generic [ref=e244]:
-                - generic [ref=e245]:
-                  - generic [ref=e246]: Zelle To Conal Miner
-                  - generic [ref=e247]: Shared groceries
-                - generic [ref=e248]:
-                  - generic [ref=e249]: 11/5/2025
-                  - generic [ref=e250]: $-120.00
-              - generic [ref=e251]:
-                - button "Seed rule (prefill Rule Tester)" [ref=e252] [cursor=pointer]: Seed rule
-                - button "Explain" [ref=e253] [cursor=pointer]
-            - listitem [ref=e254]:
-              - generic [ref=e255]:
-                - generic [ref=e256]:
-                  - generic [ref=e257]: AMAZON.COM*BOOKS
-                  - generic [ref=e258]: Art book
-                - generic [ref=e259]:
-                  - generic [ref=e260]: 11/5/2025
-                  - generic [ref=e261]: $-27.99
-              - generic [ref=e262]:
-                - button "Seed rule (prefill Rule Tester)" [ref=e263] [cursor=pointer]: Seed rule
-                - button "Explain" [ref=e264] [cursor=pointer]
-            - listitem [ref=e265]:
-              - generic [ref=e266]:
-                - generic [ref=e267]:
-                  - generic [ref=e268]: STARBUCKS STORE 1234
-                  - generic [ref=e269]: Latte + tip
-                - generic [ref=e270]:
-                  - generic [ref=e271]: 11/4/2025
-                  - generic [ref=e272]: $-6.35
-              - generic [ref=e273]:
-                - button "Seed rule (prefill Rule Tester)" [ref=e274] [cursor=pointer]: Seed rule
-                - button "Explain" [ref=e275] [cursor=pointer]
-            - listitem [ref=e276]:
-              - generic [ref=e277]:
-                - generic [ref=e278]:
-                  - generic [ref=e279]: UBER *TRIP HELP.UBER.COM
-                  - generic [ref=e280]: Ride to campus
-                - generic [ref=e281]:
-                  - generic [ref=e282]: 11/4/2025
-                  - generic [ref=e283]: $-16.40
-              - generic [ref=e284]:
-                - button "Seed rule (prefill Rule Tester)" [ref=e285] [cursor=pointer]: Seed rule
-                - button "Explain" [ref=e286] [cursor=pointer]
-            - listitem [ref=e287]:
-              - generic [ref=e288]:
-                - generic [ref=e289]:
-                  - generic [ref=e290]: "HARRIS TEETER #0085"
-                  - generic [ref=e291]: Snacks & staples
-                - generic [ref=e292]:
-                  - generic [ref=e293]: 11/3/2025
-                  - generic [ref=e294]: $-41.22
-              - generic [ref=e295]:
-                - button "Seed rule (prefill Rule Tester)" [ref=e296] [cursor=pointer]: Seed rule
-                - button "Explain" [ref=e297] [cursor=pointer]
-            - listitem [ref=e298]:
-              - generic [ref=e299]:
-                - generic [ref=e300]:
-                  - generic [ref=e301]: DD *DOORDASH POPEYES
-                  - generic [ref=e302]: Lunch
-                - generic [ref=e303]:
-                  - generic [ref=e304]: 11/3/2025
-                  - generic [ref=e305]: $-18.75
-              - generic [ref=e306]:
-                - button "Seed rule (prefill Rule Tester)" [ref=e307] [cursor=pointer]: Seed rule
-                - button "Explain" [ref=e308] [cursor=pointer]
-            - listitem [ref=e309]:
-              - generic [ref=e310]:
-                - generic [ref=e311]:
-                  - generic [ref=e312]: INTERNET XFR FRM CHECKG x2102
-                  - generic [ref=e313]: Rent & Living Allowance Nov
-                - generic [ref=e314]:
-                  - generic [ref=e315]: 11/2/2025
-                  - generic [ref=e316]: $1500.00
-              - generic [ref=e317]:
-                - button "Seed rule (prefill Rule Tester)" [ref=e318] [cursor=pointer]: Seed rule
-                - button "Explain" [ref=e319] [cursor=pointer]
-            - listitem [ref=e320]:
-              - generic [ref=e321]:
-                - generic [ref=e322]:
-                  - generic [ref=e323]: "HARRIS TEETER #0085"
-                  - generic [ref=e324]: Groceries, produce/meat
-                - generic [ref=e325]:
-                  - generic [ref=e326]: 11/2/2025
-                  - generic [ref=e327]: $-54.31
-              - generic [ref=e328]:
-                - button "Seed rule (prefill Rule Tester)" [ref=e329] [cursor=pointer]: Seed rule
-                - button "Explain" [ref=e330] [cursor=pointer]
-            - listitem [ref=e331]:
-              - generic [ref=e332]:
-                - generic [ref=e333]:
-                  - generic [ref=e334]: DD *DOORDASH PAISANOS
-                  - generic [ref=e335]: Pizza night
-                - generic [ref=e336]:
-                  - generic [ref=e337]: 11/1/2025
-                  - generic [ref=e338]: $-22.14
-              - generic [ref=e339]:
-                - button "Seed rule (prefill Rule Tester)" [ref=e340] [cursor=pointer]: Seed rule
-                - button "Explain" [ref=e341] [cursor=pointer]
-            - listitem [ref=e342]:
-              - generic [ref=e343]:
-                - generic [ref=e344]:
-                  - generic [ref=e345]: AMAZON.COM*N419L0K01
-                  - generic [ref=e346]: USB-C hub
-                - generic [ref=e347]:
-                  - generic [ref=e348]: 11/1/2025
-                  - generic [ref=e349]: $-34.89
-              - generic [ref=e350]:
-                - button "Seed rule (prefill Rule Tester)" [ref=e351] [cursor=pointer]: Seed rule
-                - button "Explain" [ref=e352] [cursor=pointer]
-            - listitem [ref=e353]:
-              - generic [ref=e354]:
-                - generic [ref=e355]:
-                  - generic [ref=e356]: Zelle To Conal Miner
-                  - generic [ref=e357]: Split utilities
-                - generic [ref=e358]:
-                  - generic [ref=e359]: 10/31/2025
-                  - generic [ref=e360]: $-120.00
-              - generic [ref=e361]:
-                - button "Seed rule (prefill Rule Tester)" [ref=e362] [cursor=pointer]: Seed rule
-                - button "Explain" [ref=e363] [cursor=pointer]
-            - listitem [ref=e364]:
-              - generic [ref=e365]:
-                - generic [ref=e366]:
-                  - generic [ref=e367]: "HARRIS TEETER #0085"
-                  - generic [ref=e368]: Groceries, weekly run
-                - generic [ref=e369]:
-                  - generic [ref=e370]: 10/31/2025
-                  - generic [ref=e371]: $-82.46
-              - generic [ref=e372]:
-                - button "Seed rule (prefill Rule Tester)" [ref=e373] [cursor=pointer]: Seed rule
-                - button "Explain" [ref=e374] [cursor=pointer]
-        - generic [ref=e375]:
-          - generic [ref=e377]:
-            - generic [ref=e378]: 2025-11
-            - heading "Suggestions" [level=3] [ref=e379]
-          - generic [ref=e381]: No uncategorized transactions found for this month. Try another month or lower the thresholds.
-      - generic [ref=e384]:
-        - generic [ref=e385]:
-          - heading "Rule Suggestions Card help" [level=3] [ref=e386]:
+                - button "Card help" [ref=e412] [cursor=pointer]: "?"
+              - button "More info" [ref=e413] [cursor=pointer]: ⓘ
+            - generic [ref=e414]: Review → Seed → Categorize
+          - list [ref=e415]:
+            - listitem [ref=e416]:
+              - generic [ref=e417]:
+                - generic [ref=e418]:
+                  - generic [ref=e419]: AMAZON.COM*ELECTRONICS
+                  - generic [ref=e420]: Headset for calls
+                - generic [ref=e421]:
+                  - generic [ref=e422]: 11/13/2025
+                  - generic [ref=e423]: $-89.99
+              - generic [ref=e424]:
+                - button "Seed rule (prefill Rule Tester)" [ref=e425] [cursor=pointer]: Seed rule
+                - button "Explain" [ref=e426] [cursor=pointer]
+            - listitem [ref=e427]:
+              - generic [ref=e428]:
+                - generic [ref=e429]:
+                  - generic [ref=e430]: "HARRIS TEETER #0085"
+                  - generic [ref=e431]: Groceries
+                - generic [ref=e432]:
+                  - generic [ref=e433]: 11/12/2025
+                  - generic [ref=e434]: $-63.49
+              - generic [ref=e435]:
+                - button "Seed rule (prefill Rule Tester)" [ref=e436] [cursor=pointer]: Seed rule
+                - button "Explain" [ref=e437] [cursor=pointer]
+            - listitem [ref=e438]:
+              - generic [ref=e439]:
+                - generic [ref=e440]:
+                  - generic [ref=e441]: ELECTRIC UTILITY CO
+                  - generic [ref=e442]: Electric bill
+                - generic [ref=e443]:
+                  - generic [ref=e444]: 11/11/2025
+                  - generic [ref=e445]: $-92.13
+              - generic [ref=e446]:
+                - button "Seed rule (prefill Rule Tester)" [ref=e447] [cursor=pointer]: Seed rule
+                - button "Explain" [ref=e448] [cursor=pointer]
+            - listitem [ref=e449]:
+              - generic [ref=e450]:
+                - generic [ref=e451]:
+                  - generic [ref=e452]: "HARRIS TEETER #0085"
+                  - generic [ref=e453]: Groceries
+                - generic [ref=e454]:
+                  - generic [ref=e455]: 11/10/2025
+                  - generic [ref=e456]: $-46.77
+              - generic [ref=e457]:
+                - button "Seed rule (prefill Rule Tester)" [ref=e458] [cursor=pointer]: Seed rule
+                - button "Explain" [ref=e459] [cursor=pointer]
+            - listitem [ref=e460]:
+              - generic [ref=e461]:
+                - generic [ref=e462]:
+                  - generic [ref=e463]: TST*NED DEVINES IRISH
+                  - generic [ref=e464]: Dinner with friends
+                - generic [ref=e465]:
+                  - generic [ref=e466]: 11/9/2025
+                  - generic [ref=e467]: $-24.80
+              - generic [ref=e468]:
+                - button "Seed rule (prefill Rule Tester)" [ref=e469] [cursor=pointer]: Seed rule
+                - button "Explain" [ref=e470] [cursor=pointer]
+            - listitem [ref=e471]:
+              - generic [ref=e472]:
+                - generic [ref=e473]:
+                  - generic [ref=e474]: AMAZON.COM*DEV-SUPPLIES
+                  - generic [ref=e475]: Cables & SD card
+                - generic [ref=e476]:
+                  - generic [ref=e477]: 11/8/2025
+                  - generic [ref=e478]: $-58.20
+              - generic [ref=e479]:
+                - button "Seed rule (prefill Rule Tester)" [ref=e480] [cursor=pointer]: Seed rule
+                - button "Explain" [ref=e481] [cursor=pointer]
+            - listitem [ref=e482]:
+              - generic [ref=e483]:
+                - generic [ref=e484]:
+                  - generic [ref=e485]: "HARRIS TEETER #0085"
+                  - generic [ref=e486]: Weekly groceries
+                - generic [ref=e487]:
+                  - generic [ref=e488]: 11/7/2025
+                  - generic [ref=e489]: $-73.58
+              - generic [ref=e490]:
+                - button "Seed rule (prefill Rule Tester)" [ref=e491] [cursor=pointer]: Seed rule
+                - button "Explain" [ref=e492] [cursor=pointer]
+            - listitem [ref=e493]:
+              - generic [ref=e494]:
+                - generic [ref=e495]:
+                  - generic [ref=e496]: SPOTIFY
+                  - generic [ref=e497]: Monthly subscription
+                - generic [ref=e498]:
+                  - generic [ref=e499]: 11/6/2025
+                  - generic [ref=e500]: $-9.99
+              - generic [ref=e501]:
+                - button "Seed rule (prefill Rule Tester)" [ref=e502] [cursor=pointer]: Seed rule
+                - button "Explain" [ref=e503] [cursor=pointer]
+            - listitem [ref=e504]:
+              - generic [ref=e505]:
+                - generic [ref=e506]:
+                  - generic [ref=e507]: Zelle To Conal Miner
+                  - generic [ref=e508]: Shared groceries
+                - generic [ref=e509]:
+                  - generic [ref=e510]: 11/5/2025
+                  - generic [ref=e511]: $-120.00
+              - generic [ref=e512]:
+                - button "Seed rule (prefill Rule Tester)" [ref=e513] [cursor=pointer]: Seed rule
+                - button "Explain" [ref=e514] [cursor=pointer]
+            - listitem [ref=e515]:
+              - generic [ref=e516]:
+                - generic [ref=e517]:
+                  - generic [ref=e518]: AMAZON.COM*BOOKS
+                  - generic [ref=e519]: Art book
+                - generic [ref=e520]:
+                  - generic [ref=e521]: 11/5/2025
+                  - generic [ref=e522]: $-27.99
+              - generic [ref=e523]:
+                - button "Seed rule (prefill Rule Tester)" [ref=e524] [cursor=pointer]: Seed rule
+                - button "Explain" [ref=e525] [cursor=pointer]
+            - listitem [ref=e526]:
+              - generic [ref=e527]:
+                - generic [ref=e528]:
+                  - generic [ref=e529]: STARBUCKS STORE 1234
+                  - generic [ref=e530]: Latte + tip
+                - generic [ref=e531]:
+                  - generic [ref=e532]: 11/4/2025
+                  - generic [ref=e533]: $-6.35
+              - generic [ref=e534]:
+                - button "Seed rule (prefill Rule Tester)" [ref=e535] [cursor=pointer]: Seed rule
+                - button "Explain" [ref=e536] [cursor=pointer]
+            - listitem [ref=e537]:
+              - generic [ref=e538]:
+                - generic [ref=e539]:
+                  - generic [ref=e540]: UBER *TRIP HELP.UBER.COM
+                  - generic [ref=e541]: Ride to campus
+                - generic [ref=e542]:
+                  - generic [ref=e543]: 11/4/2025
+                  - generic [ref=e544]: $-16.40
+              - generic [ref=e545]:
+                - button "Seed rule (prefill Rule Tester)" [ref=e546] [cursor=pointer]: Seed rule
+                - button "Explain" [ref=e547] [cursor=pointer]
+            - listitem [ref=e548]:
+              - generic [ref=e549]:
+                - generic [ref=e550]:
+                  - generic [ref=e551]: "HARRIS TEETER #0085"
+                  - generic [ref=e552]: Snacks & staples
+                - generic [ref=e553]:
+                  - generic [ref=e554]: 11/3/2025
+                  - generic [ref=e555]: $-41.22
+              - generic [ref=e556]:
+                - button "Seed rule (prefill Rule Tester)" [ref=e557] [cursor=pointer]: Seed rule
+                - button "Explain" [ref=e558] [cursor=pointer]
+            - listitem [ref=e559]:
+              - generic [ref=e560]:
+                - generic [ref=e561]:
+                  - generic [ref=e562]: DD *DOORDASH POPEYES
+                  - generic [ref=e563]: Lunch
+                - generic [ref=e564]:
+                  - generic [ref=e565]: 11/3/2025
+                  - generic [ref=e566]: $-18.75
+              - generic [ref=e567]:
+                - button "Seed rule (prefill Rule Tester)" [ref=e568] [cursor=pointer]: Seed rule
+                - button "Explain" [ref=e569] [cursor=pointer]
+            - listitem [ref=e570]:
+              - generic [ref=e571]:
+                - generic [ref=e572]:
+                  - generic [ref=e573]: INTERNET XFR FRM CHECKG x2102
+                  - generic [ref=e574]: Rent & Living Allowance Nov
+                - generic [ref=e575]:
+                  - generic [ref=e576]: 11/2/2025
+                  - generic [ref=e577]: $1500.00
+              - generic [ref=e578]:
+                - button "Seed rule (prefill Rule Tester)" [ref=e579] [cursor=pointer]: Seed rule
+                - button "Explain" [ref=e580] [cursor=pointer]
+            - listitem [ref=e581]:
+              - generic [ref=e582]:
+                - generic [ref=e583]:
+                  - generic [ref=e584]: "HARRIS TEETER #0085"
+                  - generic [ref=e585]: Groceries, produce/meat
+                - generic [ref=e586]:
+                  - generic [ref=e587]: 11/2/2025
+                  - generic [ref=e588]: $-54.31
+              - generic [ref=e589]:
+                - button "Seed rule (prefill Rule Tester)" [ref=e590] [cursor=pointer]: Seed rule
+                - button "Explain" [ref=e591] [cursor=pointer]
+            - listitem [ref=e592]:
+              - generic [ref=e593]:
+                - generic [ref=e594]:
+                  - generic [ref=e595]: DD *DOORDASH PAISANOS
+                  - generic [ref=e596]: Pizza night
+                - generic [ref=e597]:
+                  - generic [ref=e598]: 11/1/2025
+                  - generic [ref=e599]: $-22.14
+              - generic [ref=e600]:
+                - button "Seed rule (prefill Rule Tester)" [ref=e601] [cursor=pointer]: Seed rule
+                - button "Explain" [ref=e602] [cursor=pointer]
+            - listitem [ref=e603]:
+              - generic [ref=e604]:
+                - generic [ref=e605]:
+                  - generic [ref=e606]: AMAZON.COM*N419L0K01
+                  - generic [ref=e607]: USB-C hub
+                - generic [ref=e608]:
+                  - generic [ref=e609]: 11/1/2025
+                  - generic [ref=e610]: $-34.89
+              - generic [ref=e611]:
+                - button "Seed rule (prefill Rule Tester)" [ref=e612] [cursor=pointer]: Seed rule
+                - button "Explain" [ref=e613] [cursor=pointer]
+            - listitem [ref=e614]:
+              - generic [ref=e615]:
+                - generic [ref=e616]:
+                  - generic [ref=e617]: Zelle To Conal Miner
+                  - generic [ref=e618]: Split utilities
+                - generic [ref=e619]:
+                  - generic [ref=e620]: 10/31/2025
+                  - generic [ref=e621]: $-120.00
+              - generic [ref=e622]:
+                - button "Seed rule (prefill Rule Tester)" [ref=e623] [cursor=pointer]: Seed rule
+                - button "Explain" [ref=e624] [cursor=pointer]
+            - listitem [ref=e625]:
+              - generic [ref=e626]:
+                - generic [ref=e627]:
+                  - generic [ref=e628]: "HARRIS TEETER #0085"
+                  - generic [ref=e629]: Groceries, weekly run
+                - generic [ref=e630]:
+                  - generic [ref=e631]: 10/31/2025
+                  - generic [ref=e632]: $-82.46
+              - generic [ref=e633]:
+                - button "Seed rule (prefill Rule Tester)" [ref=e634] [cursor=pointer]: Seed rule
+                - button "Explain" [ref=e635] [cursor=pointer]
+        - generic [ref=e636]:
+          - generic [ref=e638]:
+            - generic [ref=e639]: 2025-11
+            - heading "Suggestions" [level=3] [ref=e640]
+          - generic [ref=e642]: No uncategorized transactions found for this month. Try another month or lower the thresholds.
+      - generic [ref=e645]:
+        - generic [ref=e646]:
+          - heading "Rule Suggestions Card help" [level=3] [ref=e647]:
             - text: Rule Suggestions
-            - button "Card help" [ref=e387] [cursor=pointer]: "?"
-          - generic [ref=e388]:
-            - button "Show ignores" [ref=e389] [cursor=pointer]
-            - button "Refresh" [ref=e390] [cursor=pointer]
-        - generic [ref=e391]: No suggestions right now.
-      - generic [ref=e395]:
-        - generic [ref=e396]:
-          - generic [ref=e397]:
-            - heading "Rules" [level=2] [ref=e398]
-            - generic [ref=e399]: ⓘ
-            - textbox "Search rules…" [ref=e400]
-          - generic [ref=e401]:
-            - generic [ref=e402]:
-              - button "Refresh" [ref=e403] [cursor=pointer]
-              - button "Create" [disabled] [ref=e404]
-            - generic [ref=e405]: based on last 60 days of feedback
-            - generic [ref=e406]:
-              - button "Prev" [disabled] [ref=e407]
-              - generic [ref=e408]: 1–0 of 0
-              - button "Next" [disabled] [ref=e409]
-        - generic [ref=e410]:
-          - generic [ref=e411]:
-            - generic [ref=e412]:
-              - generic "Rule name" [ref=e413]
-              - generic [ref=e414]: ⓘ
-            - textbox "Short, descriptive name for the rule" [ref=e415]:
+            - button "Card help" [ref=e648] [cursor=pointer]: "?"
+          - generic [ref=e649]:
+            - button "Show ignores" [ref=e650] [cursor=pointer]
+            - button "Refresh" [ref=e651] [cursor=pointer]
+        - generic [ref=e652]: No suggestions right now.
+      - generic [ref=e656]:
+        - generic [ref=e657]:
+          - generic [ref=e658]:
+            - heading "Rules" [level=2] [ref=e659]
+            - generic [ref=e660]: ⓘ
+            - textbox "Search rules…" [ref=e661]
+          - generic [ref=e662]:
+            - generic [ref=e663]:
+              - button "Refresh" [ref=e664] [cursor=pointer]
+              - button "Create" [disabled] [ref=e665]
+            - generic [ref=e666]: based on last 60 days of feedback
+            - generic [ref=e667]:
+              - button "Prev" [disabled] [ref=e668]
+              - generic [ref=e669]: 1–0 of 0
+              - button "Next" [disabled] [ref=e670]
+        - generic [ref=e671]:
+          - generic [ref=e672]:
+            - generic [ref=e673]:
+              - generic "Rule name" [ref=e674]
+              - generic [ref=e675]: ⓘ
+            - textbox "Short, descriptive name for the rule" [ref=e676]:
               - /placeholder: e.g., Coffee shops
-          - generic [ref=e416]:
-            - generic [ref=e417]:
-              - generic "Match — description contains" [ref=e418]: Match contains
-              - generic [ref=e419]: ⓘ
-            - textbox "Substring match against description (SQL ILIKE \"%text%\")" [ref=e420]:
+          - generic [ref=e677]:
+            - generic [ref=e678]:
+              - generic "Match — description contains" [ref=e679]: Match contains
+              - generic [ref=e680]: ⓘ
+            - textbox "Substring match against description (SQL ILIKE \"%text%\")" [ref=e681]:
               - /placeholder: e.g., "STARBUCKS" (case-insensitive)
-          - generic [ref=e421]:
-            - generic [ref=e422]:
-              - generic "Then — set category" [ref=e423]: Set category
-              - generic [ref=e424]: ⓘ
-            - textbox "The category assigned to all matches" [ref=e425]:
+          - generic [ref=e682]:
+            - generic [ref=e683]:
+              - generic "Then — set category" [ref=e684]: Set category
+              - generic [ref=e685]: ⓘ
+            - textbox "The category assigned to all matches" [ref=e686]:
               - /placeholder: e.g., Coffee
-        - paragraph [ref=e426]: No rules yet. Create your first rule above.
+        - paragraph [ref=e687]: No rules yet. Create your first rule above.
     - region "Notifications (F8)":
       - list
-  - iframe [ref=e428]:
+  - iframe [ref=e689]:
     
+  - generic [ref=e690]: "-500"
 ```
