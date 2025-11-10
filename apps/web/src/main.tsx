@@ -100,6 +100,7 @@ if (!(window as any).__chatHandshakeBound) {
     if (e.data?.type === 'chat:ready') {
       host.classList.add('ready');
       console.log('[chat-host] revealed (ready)');
+      (window as any).__CHAT_READY_SEEN__ = true; // For e2e tests
     }
     if (e.data?.type === 'chat:error') {
       host.classList.remove('ready');
