@@ -94,6 +94,9 @@ htmlcov/
 **/.pytest_cache/
 **/htmlcov/
 
+### Playwright persistent profile (contains cookies/session)
+.pw-userdata/
+
 ### Python caches (extra)
 .mypy_cache/
 .pytest_cache/
