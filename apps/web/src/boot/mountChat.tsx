@@ -51,11 +51,12 @@ export function mountChatDock(): void {
     const sr = host.shadowRoot ?? host.attachShadow({ mode: 'open' });
 
     // 3) Create iframe container (isolates DOM + portals completely)
+    // CRITICAL: NO allow-same-origin → iframe becomes unique origin, prevents external DOM mutations
     let frame = sr.querySelector('#lm-chat-frame') as HTMLIFrameElement | null;
     if (!frame) {
       frame = document.createElement('iframe');
       frame.id = 'lm-chat-frame';
-      frame.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-popups');
+      frame.setAttribute('sandbox', 'allow-scripts allow-popups');
       frame.style.cssText =
         'background:transparent;border:0;display:block;position:fixed;inset:auto 24px 24px auto;width:420px;height:640px;z-index:2147483647;pointer-events:auto;';
       sr.appendChild(frame);
@@ -79,13 +80,33 @@ export function mountChatDock(): void {
 
     // 6) Single root (never replaceChildren once root exists)
     if (!root) {
+      // DIAGNOSTIC: Log container state before createRoot to diagnose React #185
+      console.log('[chat] container:', container && {
+        tag: container.tagName,
+        id: container.id,
+        childCount: container.childNodes?.length ?? 0,
+        html: container.innerHTML?.slice(0, 120),
+        hasRootContainer: !!(container as any)._reactRootContainer
+      });
+
       // CRITICAL: Clear ANY stale DOM immediately before createRoot (React #185 safeguard)
       // Browser extensions can inject DOM between doc.close() and createRoot()
-      container.textContent = ''; // Nuclear option - clear everything
-      console.log('[chat] creating root in iframe...');
-      root = (win as any).__LM_CHAT_ROOT__ ?? createRoot(container);
-      (win as any).__LM_CHAT_ROOT__ = root;
-      console.log('[chat] root created successfully');
+      if (container.childNodes.length > 0) {
+        console.warn('[chat] container not empty before createRoot - clearing stale DOM');
+        container.textContent = ''; // Nuclear option - clear everything
+      }
+
+      // Guard against duplicate roots
+      if ((container as any)._reactRootContainer) {
+        console.error('[chat] root already exists on container - skip createRoot');
+        root = (container as any)._reactRootContainer;
+      } else {
+        console.log('[chat] creating root in iframe...');
+        root = (win as any).__LM_CHAT_ROOT__ ?? createRoot(container);
+        (win as any).__LM_CHAT_ROOT__ = root;
+        (container as any)._reactRootContainer = root;
+        console.log('[chat] root created successfully');
+      }
     } else {
       console.log('[chat] reusing existing root');
     }
@@ -163,6 +184,9 @@ function injectStyles(doc: Document): void {
  * Unmounts chat (for cleanup if needed)
  */
 export function unmountChatDock(): void {
+  // Notify parent to hide host
+  window.parent?.postMessage({ type: 'chat:teardown' }, window.location.origin);
+
   if (root) {
     root.unmount();
     root = null;
