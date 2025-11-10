@@ -28,6 +28,17 @@
 
 :root { color-scheme: dark; }
 
+/* Chat host safety: hidden until ready (prevents black box on error) */
+lm-chatdock-host {
+  background: transparent !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+lm-chatdock-host.ready {
+  opacity: 1 !important;
+  pointer-events: auto !important;
+}
+
 /* Production safety net: hide local auth form even if old bundle cached */
 :root[data-prod="true"] .local-auth-form {
   display: none !important;
