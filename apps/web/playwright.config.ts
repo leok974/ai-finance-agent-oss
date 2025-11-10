@@ -1,4 +1,5 @@
 import { defineConfig, devices } from '@playwright/test';
+import * as path from 'node:path';
 
 const E2E_DB_HOST = process.env.E2E_DB_HOST || '127.0.0.1';
 const isCI = !!process.env.CI;
@@ -9,6 +10,10 @@ const useDev = process.env.USE_DEV === '0' || process.env.USE_DEV === 'false' ? 
 const storageStatePath = './tests/e2e/.auth/state.json';
 const PROD_STATE = './tests/e2e/.auth/prod-state.json';
 const AUTH_STORAGE = './tests/.auth/storageState.json';
+
+// Persistent profile for Google OAuth stability (zero re-login)
+// Path relative to repository root
+const userDataDir = path.join(process.cwd(), '../../.pw-userdata');
 
 export default defineConfig({
   // Only run E2E specs; unit tests are handled by Vitest
@@ -21,9 +26,10 @@ export default defineConfig({
   reporter: isCI ? [['html'], ['line']] : [['line']],
   retries: isCI ? 1 : 0,  // retry once in CI to guard against flakes
   use: {
-    headless: true,
+    // IMPORTANT: do not set storageState when using persistent context
+    // storageState: AUTH_STORAGE,
+    headless: false,  // headed mode for Google OAuth stability
     baseURL,
-    storageState: AUTH_STORAGE,
     trace: 'on-first-retry',
     video: 'retain-on-failure',
     screenshot: 'only-on-failure',
@@ -32,12 +38,18 @@ export default defineConfig({
     ignoreHTTPSErrors: true,
   },
   projects: [
-    // Main chromium tests with shared auth state
+    // Persistent profile: reuses same Chrome profile across all test runs
+    // Eliminates re-login, extremely stable for Google OAuth
     {
-      name: 'chromium',
-      use: { ...devices['Desktop Chrome'] },
+      name: 'chromium-persistent',
+      use: {
+        ...devices['Desktop Chrome'],
+        launchOptions: {
+          args: [`--user-data-dir=${userDataDir}`],
+        },
+      },
     },
-    // Production testing project (uses prod base URL + optional prod storage state)
+    // Production testing project (uses captured state for CI)
     {
       name: 'chromium-prod',
       use: {
