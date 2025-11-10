@@ -1,5 +1,7 @@
 import * as React from "react";
 import ReactDOM from "react-dom";
+import { useSafePortalReady } from "@/hooks/useSafePortal";
+import { getPortalRoot } from "@/lib/portal";
 
 type SideDrawerProps = {
   open: boolean;
@@ -20,6 +22,8 @@ export default function SideDrawer({
   children,
   className = "",
 }: SideDrawerProps) {
+  const portalReady = useSafePortalReady();
+  
   React.useEffect(() => {
     if (!open) return;
     const onEsc = (e: KeyboardEvent) => (e.key === "Escape" ? onClose() : null);
@@ -33,7 +37,7 @@ export default function SideDrawer({
     };
   }, [open, onClose]);
 
-  if (!open) return null;
+  if (!open || !portalReady || !document.body) return null;
 
   return ReactDOM.createPortal(
     <div className="fixed inset-0 z-[9998]" role="dialog" aria-modal>
@@ -71,6 +75,6 @@ export default function SideDrawer({
         <div className="px-4 py-4">{children}</div>
       </aside>
     </div>,
-    document.body
+    getPortalRoot() as any
   );
 }

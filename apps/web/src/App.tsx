@@ -62,14 +62,18 @@ const App: React.FC = () => {
   // Chat feature flags with runtime fuse for crash protection
   const qp = new URLSearchParams(window.location.search);
   const CHAT_QP = qp.get('chat');
+  console.log('[App] CHAT_QP =', CHAT_QP, 'type=', typeof CHAT_QP);
   // Default: chat ON (can disable with ?chat=0 for debugging)
-  const CHAT_FLAG = CHAT_QP !== null 
-    ? CHAT_QP === '1' 
+  const CHAT_FLAG = CHAT_QP !== null
+    ? CHAT_QP === '1'
     : true; // Changed from env check - chat ON by default
-  
+  console.log('[App] CHAT_FLAG =', CHAT_FLAG);
+
   // Session-scoped fuse (cleared on browser close, not persistent like localStorage)
   const CHAT_FUSE_OFF = sessionStorage.getItem('lm:disableChat') === '1';
+  console.log('[App] CHAT_FUSE_OFF =', CHAT_FUSE_OFF);
   const chatEnabled = CHAT_FLAG && !CHAT_FUSE_OFF;
+  console.log('[App] chatEnabled =', chatEnabled);
 
   // Prefetch flag
   const prefetchEnabled =
@@ -78,7 +82,7 @@ const App: React.FC = () => {
 
   // Deterministic initial state - no localStorage access during render
   const [devDockOpen, setDevDockOpen] = useState<boolean>(false);
-  
+
   // Hydrate from localStorage after mount
   useEffect(() => {
     const viteDevUI = (import.meta as any).env?.VITE_DEV_UI === '1';
@@ -272,7 +276,7 @@ const App: React.FC = () => {
   useEffect(() => {
     console.log('[App] chat mount effect', { chatEnabled, authReady, authOk });
     if (!chatEnabled || !authReady || !authOk) return;
-    
+
     console.log('[App] queuing chat mount...');
     queueMicrotask(() => {
       console.log('[App] importing chat module...');

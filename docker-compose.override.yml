@@ -1,7 +1,8 @@
 services:
   backend:
     environment:
-      - COOKIE_DOMAIN=.leoklemet.com
+      - COOKIE_DOMAIN=.ledger-mind.org
       - COOKIE_SECURE=1
-      - COOKIE_SAMESITE=lax
-      - SITE_BASE_URL=https://www.leoklemet.com
+      - COOKIE_SAMESITE=none
+      - SITE_BASE_URL=https://app.ledger-mind.org
+      - OAUTH_REDIRECT_URL=https://app.ledger-mind.org/api/auth/google/callback

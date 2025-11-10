@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import ReactDOM from "react-dom";
+import { useSafePortalReady } from "@/hooks/useSafePortal";
 
 type Props = {
   title: string;
@@ -12,9 +13,11 @@ export function openHelpPanel(p: Props) { setStateRef?.(p); }
 export function closeHelpPanel() { setStateRef?.(null); }
 
 export function HelpPanelHost() {
+  const portalReady = useSafePortalReady();
   const [p, setP] = useState<Props | null>(null);
   useEffect(() => { setStateRef = setP; return () => { setStateRef = null; }; }, []);
-  if (!p) return null;
+  
+  if (!p || !portalReady || !document.body) return null;
 
   const margin = 10;
   const vw = window.innerWidth, vh = window.innerHeight;

@@ -40,6 +40,9 @@ export default function HelpMode() {
   }, [on]);
 
   if (!on) return null;
+  
+  // ⛑️ Safety: ensure DOM is ready before creating portal
+  if (typeof window === 'undefined' || !document.body) return null;
 
   return createPortal(
     <div className="fixed inset-0 z-[60] pointer-events-none" aria-hidden={false}>
