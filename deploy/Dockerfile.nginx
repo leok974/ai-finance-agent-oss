@@ -26,6 +26,7 @@ RUN corepack enable && corepack prepare pnpm@latest --activate \
 # Copy source (exclude node_modules via .dockerignore); copy only dirs needed for build
 COPY apps/web/src ./src
 COPY apps/web/index.html ./
+COPY apps/web/chat ./chat
 COPY apps/web/tsconfig*.json ./
 COPY apps/web/vite.config.ts ./
 COPY apps/web/vitest.config.ts ./
