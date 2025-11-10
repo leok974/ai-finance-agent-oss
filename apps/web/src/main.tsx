@@ -6,6 +6,7 @@ import { Toaster } from "@/components/ui/toaster";
 import Providers from "@/components/Providers";
 import { AppErrorBoundary } from "@/components/AppErrorBoundary";
 import { initLocale } from '@/lib/i18n-persist';
+import { ensurePortalRoot } from '@/lib/portal';
 // Build metadata injected during Docker build (file created in Dockerfile)
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore - generated at build time
@@ -41,6 +42,9 @@ window.__APP_MOUNTED__ = true;
 
 // Initialize locale (persisted or inferred) before app render
 initLocale();
+
+// Ensure portal root exists before mounting app
+ensurePortalRoot();
 
 // Set production flag on root element for CSS safety net
 if (import.meta.env.PROD) {
