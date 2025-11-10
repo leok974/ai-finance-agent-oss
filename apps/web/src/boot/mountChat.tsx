@@ -7,6 +7,8 @@
  * - All portals target iframe body via window.__LM_PORTAL_ROOT__
  * - Clears stale DOM BEFORE createRoot to prevent React #185
  * - Single root creation - never calls replaceChildren() after root exists
+ * - Posts 'chat:ready' message to parent when mount succeeds
+ * - Posts 'chat:error' message if mount/render fails
  */
 
 import React from 'react';
@@ -16,6 +18,7 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 import { ChatDockProvider } from '@/context/ChatDockContext';
 import ChatDock from '@/components/ChatDock';
 import ErrorBoundary from '@/components/ErrorBoundary';
+import { ChatDockHost } from './ChatDockHost';
 
 let root: Root | null = null;
 
@@ -32,7 +35,12 @@ export function mountChatDock(): void {
   (window as any).__LM_CHAT_ROOT_CREATED__ = true;
 
   try {
-    // 1) Get or create host element
+    // 1) Ensure custom element is registered
+    if (!customElements.get('lm-chatdock-host')) {
+      customElements.define('lm-chatdock-host', ChatDockHost);
+    }
+
+    // 2) Get or create host element
     let host = document.querySelector('lm-chatdock-host') as HTMLElement | null;
     if (!host) {
       host = document.createElement('lm-chatdock-host');
@@ -90,6 +98,8 @@ export function mountChatDock(): void {
     root.render(
       <ErrorBoundary fallback={(e) => {
         console.error('[chat] ErrorBoundary caught:', e);
+        // Notify parent of error to hide host
+        window.parent?.postMessage({ type: 'chat:error' }, window.location.origin);
         return <div style={{ display: 'none' }} />;
       }}>
         <AuthProvider>
@@ -103,8 +113,13 @@ export function mountChatDock(): void {
     );
 
     console.info('[chat] mounted in iframe');
+    
+    // Notify parent that chat is ready to reveal
+    window.parent?.postMessage({ type: 'chat:ready' }, window.location.origin);
   } catch (error) {
     console.error('[chat] mount failed', error);
+    // Notify parent of error
+    window.parent?.postMessage({ type: 'chat:error' }, window.location.origin);
     // Trip session fuse on error
     sessionStorage.setItem('lm:disableChat', '1');
     throw error;
