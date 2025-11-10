@@ -5,6 +5,7 @@
  * - Renders chat inside iframe document (not Shadow DOM)
  * - iframe provides complete isolation from browser extension DOM pollution
  * - All portals target iframe body via window.__LM_PORTAL_ROOT__
+ * - Clears stale DOM BEFORE createRoot to prevent React #185
  * - Single root creation - never calls replaceChildren() after root exists
  */
 
@@ -67,6 +68,11 @@ export function mountChatDock(): void {
 
     // 5) Single root (never replaceChildren once root exists)
     if (!root) {
+      // CRITICAL: Clear any stale DOM before creating root (React #185 safeguard)
+      if (container.firstChild) {
+        console.warn('[chat] clearing stale iframe DOM before createRoot');
+        container.replaceChildren();
+      }
       console.log('[chat] creating root in iframe...');
       root = (win as any).__LM_CHAT_ROOT__ ?? createRoot(container);
       (win as any).__LM_CHAT_ROOT__ = root;
