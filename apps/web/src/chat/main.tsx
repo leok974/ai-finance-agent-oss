@@ -25,8 +25,9 @@ function mountChat(): void {
   
   // CRITICAL: Expose portal root IMMEDIATELY, before any checks or logging
   // This ensures getPortalRoot() finds it during React's initial render
+  // Use document.body in iframe context to avoid cross-document issues with Radix Portal
   if (portalRoot) {
-    (window as any).__LM_PORTAL_ROOT__ = portalRoot;
+    (window as any).__LM_PORTAL_ROOT__ = document.body;
   }
   
   if (!el) {
