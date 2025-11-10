@@ -59,21 +59,42 @@ const DropdownMenuContent = React.forwardRef<
   React.ElementRef<typeof DropdownMenuPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Content>
 >(({ className, sideOffset = 4, ...props }, ref) => {
-  // In iframe context, portal root is guaranteed to exist before React renders
-  // No need for mounted state check - just verify portal root exists
+  // In iframe context, skip Portal wrapper - everything is already isolated
+  // Radix Portal doesn't work across document boundaries even with same-origin
+  const isIframe = window !== window.parent;
+  
+  console.log('[dropdown] isIframe=', isIframe, 'window=', window, 'parent=', window.parent);
+
+  if (isIframe) {
+    console.log('[dropdown] skipping Portal, rendering directly');
+    return (
+      <DropdownMenuPrimitive.Content
+        ref={ref}
+        sideOffset={sideOffset}
+        className={cn(
+          "ui-dropdown-content animate-in data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2",
+          className
+        )}
+        {...props}
+      />
+    );
+  }
+
+  // Main app uses portal to avoid z-index conflicts
   const portalRoot = getPortalRoot();
   if (!portalRoot) {
     console.warn('[dropdown] no portal root available');
     return null;
   }
 
+  console.log('[dropdown] using Portal, container=', portalRoot);
   return (
     <DropdownMenuPrimitive.Portal container={portalRoot as any}>
       <DropdownMenuPrimitive.Content
         ref={ref}
         sideOffset={sideOffset}
         className={cn(
-          "z-50 max-h-[var(--radix-dropdown-menu-content-available-height)] min-w-[8rem] overflow-y-auto overflow-x-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-md data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 origin-[--radix-dropdown-menu-content-transform-origin]",
+          "ui-dropdown-content animate-in data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2",
           className
         )}
         {...props}

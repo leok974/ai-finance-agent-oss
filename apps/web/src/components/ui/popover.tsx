@@ -13,26 +13,34 @@ const PopoverContent = React.forwardRef<
   React.ElementRef<typeof PopoverPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof PopoverPrimitive.Content>
 >(({ className, align = "center", sideOffset = 4, ...props }, ref) => {
-  const [mounted, setMounted] = React.useState(false);
+  // In iframe context, skip Portal wrapper - everything is already isolated
+  // Radix Portal doesn't work across document boundaries even with same-origin
+  const isIframe = window !== window.parent;
 
-  React.useEffect(() => {
-    // Wait for complete page load before rendering portal
-    if (typeof window === 'undefined' || typeof document === 'undefined') return;
-    
-    if (document.readyState === 'complete') {
-      setMounted(true);
-    } else {
-      const onLoad = () => setMounted(true);
-      window.addEventListener('load', onLoad);
-      return () => window.removeEventListener('load', onLoad);
-    }
-  }, []);
+  if (isIframe) {
+    return (
+      <PopoverPrimitive.Content
+        ref={ref}
+        align={align}
+        sideOffset={sideOffset}
+        className={cn(
+          "z-50 rounded-xl border border-border bg-card p-3 shadow-md outline-none",
+          className
+        )}
+        {...props}
+      />
+    );
+  }
 
-  // Don't render portal until page is fully loaded
-  if (!mounted || !document.body) return null;
+  // Main app uses portal to avoid z-index conflicts
+  const portalRoot = getPortalRoot();
+  if (!portalRoot) {
+    console.warn('[popover] no portal root available');
+    return null;
+  }
 
   return (
-    <PopoverPrimitive.Portal container={getPortalRoot() as any}>
+    <PopoverPrimitive.Portal container={portalRoot as any}>
       <PopoverPrimitive.Content
         ref={ref}
         align={align}
