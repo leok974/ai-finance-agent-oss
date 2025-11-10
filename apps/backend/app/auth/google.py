@@ -14,19 +14,19 @@ from app.orm_models import User, UserRole, Role
 from app.utils.auth import create_tokens, set_auth_cookies
 
 logger = logging.getLogger("auth.google")
-router = APIRouter(prefix="/auth/google", tags=["auth"])
+router = APIRouter(prefix="/api/auth/google", tags=["auth"])
 
 # Prometheus metrics for OAuth monitoring
 try:
     from prometheus_client import Counter, Histogram
+
     auth_callback_total = Counter(
-        'auth_callback_total',
-        'Total OAuth callback attempts',
-        ['result']  # ok, error, state_mismatch, token_exchange_failed
+        "auth_callback_total",
+        "Total OAuth callback attempts",
+        ["result"],  # ok, error, state_mismatch, token_exchange_failed
     )
     oauth_token_exchange_seconds = Histogram(
-        'oauth_token_exchange_seconds',
-        'Time spent in OAuth token exchange'
+        "oauth_token_exchange_seconds", "Time spent in OAuth token exchange"
     )
     METRICS_ENABLED = True
 except ImportError:
@@ -97,14 +97,17 @@ async def callback(request: Request, db: Session = Depends(get_db)):
         session_data = dict(request.session)
         print(f"[OAUTH DEBUG] Cookies: {list(cookies.keys())}", flush=True)
         print(f"[OAUTH DEBUG] Session keys: {list(session_data.keys())}", flush=True)
-        print(f"[OAUTH DEBUG] oauth_state in session: {session_data.get('oauth_state')}", flush=True)
-        
+        print(
+            f"[OAUTH DEBUG] oauth_state in session: {session_data.get('oauth_state')}",
+            flush=True,
+        )
+
         # 1) Validate state
         state_qs = request.query_params.get("state")
         state_sess = request.session.get("oauth_state")
         print(f"[OAUTH DEBUG] State from query: {state_qs}", flush=True)
         print(f"[OAUTH DEBUG] State from session: {state_sess}", flush=True)
-        
+
         if not state_qs or not state_sess or state_qs != state_sess:
             if METRICS_ENABLED:
                 auth_callback_total.labels(result="state_mismatch").inc()
@@ -114,13 +117,16 @@ async def callback(request: Request, db: Session = Depends(get_db)):
             raise HTTPException(status_code=400, detail="OAuth state mismatch")
 
         verifier = request.session.get("oauth_pkce_verifier")
-        print(f"[OAUTH DEBUG] PKCE verifier: {verifier[:20] if verifier else None}...", flush=True)
+        print(
+            f"[OAUTH DEBUG] PKCE verifier: {verifier[:20] if verifier else None}...",
+            flush=True,
+        )
         if not verifier:
             logger.error("OAuth callback: missing PKCE verifier in session")
             raise HTTPException(status_code=400, detail="OAuth PKCE verifier missing")
 
         # 2) Exchange code (+PKCE)
-        print(f"[OAUTH DEBUG] Starting token exchange...", flush=True)
+        print("[OAUTH DEBUG] Starting token exchange...", flush=True)
         try:
             if METRICS_ENABLED and oauth_token_exchange_seconds:
                 with oauth_token_exchange_seconds.time():
@@ -131,7 +137,7 @@ async def callback(request: Request, db: Session = Depends(get_db)):
                 token = await oauth.google.authorize_access_token(
                     request, code_verifier=verifier
                 )
-            print(f"[OAUTH DEBUG] Token exchange SUCCESS!", flush=True)
+            print("[OAUTH DEBUG] Token exchange SUCCESS!", flush=True)
         except Exception as e:
             if METRICS_ENABLED:
                 auth_callback_total.labels(result="token_exchange_failed").inc()
@@ -144,24 +150,28 @@ async def callback(request: Request, db: Session = Depends(get_db)):
                     body = await resp.text()
             except Exception:
                 body = str(e)
-            
+
             print(f"[OAUTH ERROR] Token exchange failed: {e}", flush=True)
             print(f"[OAUTH ERROR] Exception type: {type(e).__name__}", flush=True)
             print(f"[OAUTH ERROR] HTTP Status: {status}", flush=True)
             print(f"[OAUTH ERROR] Response body: {body}", flush=True)
-            
+
             logger.error(
                 "OAUTH TOKEN EXCHANGE FAILED status=%s body=%s exception=%s",
-                status, body, e
+                status,
+                body,
+                e,
             )
-            return JSONResponse({"detail": "OAuth token exchange failed"}, status_code=400)
+            return JSONResponse(
+                {"detail": "OAuth token exchange failed"}, status_code=400
+            )
 
         # Guard against string token (bad/mangled response)
         if isinstance(token, str):
             logger.error("Token came back as string (not JSON): %s", token)
             raise HTTPException(status_code=400, detail="OAuth token parse error")
 
-        print(f"[OAUTH DEBUG] Fetching userinfo...", flush=True)
+        print("[OAUTH DEBUG] Fetching userinfo...", flush=True)
         logger.info("OAuth token OK; fetching userinfo")
         # 3) Fetch profile
         try:
@@ -172,7 +182,8 @@ async def callback(request: Request, db: Session = Depends(get_db)):
                     userinfo = await oauth.google.parse_id_token(request, token)
                 except Exception as e:
                     logger.warning(
-                        "Failed to parse id_token, falling back to userinfo endpoint: %s", e
+                        "Failed to parse id_token, falling back to userinfo endpoint: %s",
+                        e,
                     )
 
             # Fallback: userinfo endpoint if id_token parsing failed or not present
@@ -196,7 +207,7 @@ async def callback(request: Request, db: Session = Depends(get_db)):
         name = userinfo.get("name")
         picture = userinfo.get("picture")
 
-        print(f"[OAUTH DEBUG] Creating/updating user in database...", flush=True)
+        print("[OAUTH DEBUG] Creating/updating user in database...", flush=True)
         # 4) Get or create user in database
         user = db.query(User).filter(User.email == email).first()
         if not user:
@@ -242,9 +253,9 @@ async def callback(request: Request, db: Session = Depends(get_db)):
         print(f"[OAUTH DEBUG] User roles: {roles}", flush=True)
 
         # 6) Create JWT tokens
-        print(f"[OAUTH DEBUG] Creating JWT tokens...", flush=True)
+        print("[OAUTH DEBUG] Creating JWT tokens...", flush=True)
         tokens = create_tokens(email, roles)
-        print(f"[OAUTH DEBUG] JWT tokens created", flush=True)
+        print("[OAUTH DEBUG] JWT tokens created", flush=True)
 
         # 7) Clean up OAuth session data
         request.session.pop("oauth_state", None)
@@ -253,25 +264,25 @@ async def callback(request: Request, db: Session = Depends(get_db)):
         logger.info("OAuth success for %s", email)
 
         # 8) Set auth cookies and redirect
-        print(f"[OAUTH DEBUG] Setting auth cookies and redirecting to /", flush=True)
+        print("[OAUTH DEBUG] Setting auth cookies and redirecting to /", flush=True)
         response = RedirectResponse(url="/", status_code=307)
         set_auth_cookies(response, tokens)
-        print(f"[OAUTH DEBUG] OAuth flow complete!", flush=True)
-        
+        print("[OAUTH DEBUG] OAuth flow complete!", flush=True)
+
         # Track successful OAuth callback
         if METRICS_ENABLED:
             auth_callback_total.labels(result="ok").inc()
             if start_time:
                 duration = time.time() - start_time
                 logger.info(f"OAuth callback completed in {duration:.2f}s")
-        
+
         return response
-        
+
     except HTTPException:
         # Re-raise HTTPException (400, 401, etc.) as-is
         if METRICS_ENABLED:
             auth_callback_total.labels(result="error").inc()
-        print(f"[OAUTH ERROR] HTTPException raised in callback", flush=True)
+        print("[OAUTH ERROR] HTTPException raised in callback", flush=True)
         raise
     except Exception as e:
         # Catch any unexpected errors and log with full traceback
@@ -282,8 +293,8 @@ async def callback(request: Request, db: Session = Depends(get_db)):
         logger.exception("OAuth callback failed with unexpected error: %s", e)
         # Return 400 instead of 500 to avoid exposing internal errors
         raise HTTPException(
-            status_code=400, 
-            detail="OAuth callback error - please try again or contact support"
+            status_code=400,
+            detail="OAuth callback error - please try again or contact support",
         )
 
 
