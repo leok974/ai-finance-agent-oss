@@ -2,10 +2,10 @@
  * mountChat.tsx - Chat iframe bootstrap (parent side)
  * 
  * CRITICAL ARCHITECTURE:
- * - Chat runs in sandboxed iframe (unique origin, NO allow-same-origin)
- * - Parent CANNOT access iframe.contentDocument (it's null with unique origin)
+ * - Chat runs in sandboxed iframe with same-origin access (for script loading)
+ * - Sandbox restricts capabilities (no forms, no top nav, but allows scripts/popups)
  * - Iframe self-mounts via /chat/index.html → src/chat/main.tsx
- * - Communication via postMessage ONLY (chat:ready, chat:error, chat:teardown)
+ * - Communication via postMessage (chat:ready, chat:error, chat:teardown)
  * - Custom element wraps iframe, reveals on 'chat:ready' message
  */
 
@@ -39,12 +39,12 @@ export function mountChatDock(): void {
     // 3) Attach shadow root once
     const sr = host.shadowRoot ?? host.attachShadow({ mode: 'open' });
 
-    // 4) Create iframe (unique origin sandbox - NO DOM access from parent)
+    // 4) Create iframe (sandboxed with same-origin for script loading)
     let frame = sr.querySelector('#lm-chat-frame') as HTMLIFrameElement | null;
     if (!frame) {
       frame = document.createElement('iframe');
       frame.id = 'lm-chat-frame';
-      frame.setAttribute('sandbox', 'allow-scripts allow-popups');
+      frame.setAttribute('sandbox', 'allow-scripts allow-popups allow-same-origin');
       frame.src = '/chat/index.html'; // Iframe self-mounts
       frame.style.cssText =
         'background:transparent;border:0;display:block;position:fixed;inset:auto 24px 24px auto;width:420px;height:640px;z-index:2147483647;pointer-events:auto;';
