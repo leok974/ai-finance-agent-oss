@@ -70,10 +70,24 @@ const App: React.FC = () => {
   console.log('[App] CHAT_FLAG =', CHAT_FLAG);
 
   // Session-scoped fuse (cleared on browser close, not persistent like localStorage)
+  // Allow ?chat=1 query param to force-enable and clear fuse
+  if (CHAT_QP === '1') {
+    sessionStorage.removeItem('lm:disableChat');
+    console.log('[App] chat fuse cleared by ?chat=1 query param');
+  }
   const CHAT_FUSE_OFF = sessionStorage.getItem('lm:disableChat') === '1';
   console.log('[App] CHAT_FUSE_OFF =', CHAT_FUSE_OFF);
   const chatEnabled = CHAT_FLAG && !CHAT_FUSE_OFF;
   console.log('[App] chatEnabled =', chatEnabled);
+
+  // Global helper for debugging
+  if (typeof window !== 'undefined') {
+    (window as any).enableChat = () => {
+      sessionStorage.removeItem('lm:disableChat');
+      console.log('[App] chat fuse cleared - reload page to enable chat');
+      location.reload();
+    };
+  }
 
   // Prefetch flag
   const prefetchEnabled =
