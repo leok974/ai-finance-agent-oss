@@ -7,6 +7,7 @@ import { selectTopMerchantCat } from '@/selectors/explain'
 import * as ReactDOM from 'react-dom'
 import { buildDeterministicExplain } from '@/lib/explainFallback'
 import Pill from '@/components/ui/pill'
+import { useSafePortalReady } from '@/hooks/useSafePortal'
 
 function GroundedBadge() {
   return (
@@ -23,6 +24,7 @@ export default function ExplainSignalDrawer({ txnId, open, onOpenChange, txn }: 
   onOpenChange: (v: boolean) => void
   txn?: any
 }) {
+  const portalReady = useSafePortalReady();
   const [loading, setLoading] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
   const [data, setData] = React.useState<ExplainResponse | null>(null)
@@ -49,7 +51,7 @@ export default function ExplainSignalDrawer({ txnId, open, onOpenChange, txn }: 
   const mode = data?.mode || (data?.llm_rationale ? 'llm' : 'deterministic')
   const top = React.useMemo(() => selectTopMerchantCat(data), [data])
 
-  if (!open) return null;
+  if (!open || !portalReady || !document.body) return null;
   const fallbackHtml = buildDeterministicExplain(txn, data?.evidence, rationale);
   return ReactDOM.createPortal(
     <div className="fixed inset-0 z-[9900]" aria-modal role="dialog" data-testid="explain-drawer">

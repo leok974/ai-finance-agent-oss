@@ -414,5 +414,9 @@ export default function RuleTesterPanel({ onChanged }: { onChanged?: () => void 
       </div>
     </div>
   );
+  
+  // ⛑️ Safety: ensure DOM is ready before creating portal
+  if (typeof window === 'undefined' || !document.body) return null;
+  
   return ReactDOM.createPortal(panel, document.body);
 }

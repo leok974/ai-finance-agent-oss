@@ -1,5 +1,5 @@
 import app.env_bootstrap  # earliest import: loads DATABASE_URL from file secret if provided
-from fastapi import FastAPI, APIRouter, Response, Request, HTTPException
+from fastapi import FastAPI, APIRouter, Response, Request, HTTPException, Depends
 from fastapi.responses import RedirectResponse, JSONResponse
 from .startup_guard import require_db_or_exit
 from contextlib import asynccontextmanager
@@ -328,7 +328,7 @@ app.add_middleware(
     SessionMiddleware,
     secret_key=os.getenv("SESSION_SECRET", "dev-secret"),
     session_cookie="lm_oauth_session",  # Distinct cookie name to avoid conflicts
-    same_site="lax",
+    same_site="none",  # Required for OAuth cross-site redirects (Google callback)
     https_only=bool(int(os.getenv("COOKIE_SECURE", "0"))),
     max_age=60 * 60 * 24 * 7,  # 7 days
     domain=os.getenv("COOKIE_DOMAIN") if os.getenv("COOKIE_DOMAIN") else None,
@@ -542,14 +542,7 @@ try:
 except Exception:
     pass
 
-# Session storage (used by OAuth state/nonce)
-app.add_middleware(
-    SessionMiddleware,
-    secret_key=os.environ.get(
-        "OAUTH_SESSION_SECRET", os.environ.get("AUTH_SECRET", "change-me")
-    ),
-    same_site=os.environ.get("COOKIE_SAMESITE", "lax"),
-)
+# Session middleware already configured above (line ~328) - don't add duplicate
 
 # Mount RAG routers (no auth gating here; rely on global auth/CSRF config if needed)
 try:
@@ -1118,6 +1111,58 @@ def version2():  # pragma: no cover - diagnostics only
 @app.get("/health")
 def health():
     return {"ok": True}
+
+
+# Debug endpoint to verify proxy headers (TEMPORARY)
+@app.get("/_echo")
+def echo(request: Request):
+    return {
+        "url": str(request.url),
+        "scheme": request.url.scheme,
+        "headers": {
+            "host": request.headers.get("host"),
+            "x-forwarded-proto": request.headers.get("x-forwarded-proto"),
+            "x-forwarded-host": request.headers.get("x-forwarded-host"),
+            "x-forwarded-port": request.headers.get("x-forwarded-port"),
+            "x-real-ip": request.headers.get("x-real-ip"),
+            "x-forwarded-for": request.headers.get("x-forwarded-for"),
+            "cookie": request.headers.get("cookie", "")[:100] + "..." if len(request.headers.get("cookie", "")) > 100 else request.headers.get("cookie", ""),
+        },
+    }
+
+
+# DB schema verification endpoint
+REQUIRED_USER_COLS = {"name", "picture", "email", "id", "password_hash", "is_active", "created_at"}
+
+@app.get("/health/db-schema")
+def db_schema_check():
+    """Verify critical database schema columns exist to prevent runtime failures."""
+    from sqlalchemy import text
+    from app.db import get_db
+    
+    try:
+        db = next(get_db())
+        result = db.execute(
+            text("SELECT column_name FROM information_schema.columns WHERE table_name='users'")
+        )
+        cols = {row[0] for row in result}
+        missing = sorted(REQUIRED_USER_COLS - cols)
+        
+        if missing:
+            return JSONResponse(
+                status_code=503,
+                content={"ok": False, "missing": missing, "error": "Database schema drift detected"}
+            )
+        
+        return {"ok": True, "missing": [], "columns": sorted(cols)}
+    except Exception as e:
+        return JSONResponse(
+            status_code=503,
+            content={"ok": False, "error": str(e)}
+        )
+    finally:
+        if 'db' in locals():
+            db.close()
 
 
 from app.routes import llm_compat as llm_compat_router  # compatibility shim

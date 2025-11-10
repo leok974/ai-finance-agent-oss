@@ -81,7 +81,7 @@ export default function HelpBadge({
         ?
       </button>
 
-      {open && createPortal(
+      {open && typeof window !== 'undefined' && document.body && createPortal(
         <div id={popId} data-popover-role="help-badge" className="fixed z-[9999] w-[340px] rounded-xl border bg-background p-3 shadow-xl animate-in fade-in-0 zoom-in-95" style={{ top: pos.top, left: pos.left }}>
           <div className="flex items-center justify-between">
             <div className="font-medium">What am I looking at?</div>
