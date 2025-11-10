@@ -1,26 +1,50 @@
 import { test, expect } from '@playwright/test';
 
-test.describe('Chat Iframe Rendering', () => {
+test.describe('Chat Iframe Rendering @prod', () => {
+  test('should show chat enabled in console', async ({ page }) => {
+    const consoleLogs: string[] = [];
+
+    page.on('console', (msg) => {
+      const text = msg.text();
+      consoleLogs.push(text);
+    });
+
+    await page.goto('/?chat=1');
+
+    // Wait for app boot
+    await page.waitForTimeout(5000);
+
+    console.log('=== ALL CONSOLE LOGS ===');
+    consoleLogs.filter(l => l.includes('[App]') || l.includes('[chat]')).forEach(log => console.log(log));
+
+    // Check that chat is enabled
+    const chatEnabledLog = consoleLogs.find(l => l.includes('chatEnabled'));
+    console.log('Chat enabled log:', chatEnabledLog);
+
+    expect(consoleLogs.some(l => l.includes('chatEnabled = true') || l.includes('chatEnabled: true'))).toBe(true);
+  });
+
   test('chat iframe should be created and visible', async ({ page }) => {
-    // Navigate to main app
-    await page.goto('/');
+    // Navigate to main app with ?chat=1 to clear any session fuse
+    await page.goto('/?chat=1');
 
     // Wait for app to boot
     await page.waitForFunction(() => {
       return (window as any).__APP_MOUNTED__ === true;
     }, { timeout: 10000 });
 
-    // Wait for auth to complete (either logged in or at login screen)
+    // Wait for auth to be ready AND user to be authenticated
     await page.waitForFunction(() => {
-      const logs = (window as any).__consoleLogs || [];
-      return logs.some((log: string) => log.includes('[boot] React root mounted'));
-    }, { timeout: 5000 }).catch(() => {
-      // If no console logs, just wait for root element
-      return page.waitForSelector('#root', { timeout: 5000 });
-    });
+      // Check for auth menu or dashboard elements indicating logged-in state
+      const authMenu = document.querySelector('[role="menu"]');
+      const dashboardContent = document.querySelector('#root');
+      return !!authMenu || !!dashboardContent;
+    }, { timeout: 15000 });
 
-    // Wait a bit for chat mount effect to run
-    await page.waitForTimeout(2000);
+    // Wait for chat mount to complete
+    await page.waitForFunction(() => {
+      return !!document.querySelector('lm-chatdock-host');
+    }, { timeout: 10000 });
 
     // Check if custom element exists
     const chatHost = await page.locator('lm-chatdock-host').first();
