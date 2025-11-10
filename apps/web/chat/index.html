@@ -15,7 +15,10 @@
 </head>
 <body>
   <div id="chat-root"></div>
-  <div id="__LM_PORTAL_ROOT__"></div>
+
+  <!-- CRITICAL: Prelude MUST load before main chat bundle -->
+  <!-- Vite will transform these to hashed asset URLs in the same order -->
+  <script type="module" src="/src/chat/prelude.ts"></script>
   <script type="module" src="/src/chat/main.tsx"></script>
 </body>
 </html>

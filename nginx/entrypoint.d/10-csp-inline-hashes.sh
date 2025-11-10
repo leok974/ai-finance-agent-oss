@@ -1,12 +1,18 @@
-#!/bin/sh
-# /docker-entrypoint.d/10-csp-inline-hashes.sh
-set -eu
+#!/bin/sh#!/bin/sh
 
-if (set -o pipefail 2>/dev/null); then
+# CSP inline script hash management - DISABLED# /docker-entrypoint.d/10-csp-inline-hashes.sh
+
+# All scripts are now external files, no inline scripts to hashset -eu
+
+echo "[csp] inline script hashing disabled - all scripts are external"
+
+exit 0if (set -o pipefail 2>/dev/null); then
+
   set -o pipefail
 fi
 
-HTML="/usr/share/nginx/html/index.html"
+MAIN_HTML="/usr/share/nginx/html/index.html"
+CHAT_HTML="/usr/share/nginx/html/chat/index.html"
 RUNTIME="/var/run/nginx-runtime"
 CONF_DIR="${RUNTIME}/conf.d"
 SEC="${CONF_DIR}/security-headers.conf"
@@ -16,38 +22,48 @@ log() { echo "[csp] $*"; }
 # Prepare runtime config stage (assumes you boot nginx with -c ${RUNTIME}/nginx.conf)
 mkdir -p "${CONF_DIR}"
 
-# Extract inline <script> blocks (no src=) and hash them
+# Extract inline <script> blocks (no src=) and hash them from BOTH HTML files
 # We capture the exact inner text including newlines — CSP hashing is whitespace-sensitive.
 tmp_scripts="$(mktemp)"
 tmp_hashes="$(mktemp)"
 trap 'rm -f "${tmp_scripts}" "${tmp_hashes}"' EXIT
 
-awk '
-  BEGIN { in_script=0; buf="" }
-  {
-    line=$0
-    if (match(tolower(line), /<script[^>]*>/)) {
-      tag=line
-      if (match(tolower(tag), /<script[^>]*\bsrc=/)) {
-        next
+# Process both HTML files
+for HTML in "${MAIN_HTML}" "${CHAT_HTML}"; do
+  if [ ! -f "${HTML}" ]; then
+    log "warning: ${HTML} not found, skipping"
+    continue
+  fi
+
+  log "processing ${HTML}"
+
+  awk '
+    BEGIN { in_script=0; buf="" }
+    {
+      line=$0
+      if (match(tolower(line), /<script[^>]*>/)) {
+        tag=line
+        if (match(tolower(tag), /<script[^>]*\bsrc=/)) {
+          next
+        }
+        in_script=1
+        sub(/^[^>]*>/, "", line)
       }
-      in_script=1
-      sub(/^[^>]*>/, "", line)
-    }
-    if (in_script==1) {
-      if (match(tolower(line), /<\/script>/)) {
-        sub(/<\/script>.*/, "", line)
-        buf=buf line "\n"
-        printf "%s", buf
-        print "__INLINE_SCRIPT_SPLIT__"
-        buf=""
-        in_script=0
-      } else {
-        buf=buf line "\n"
+      if (in_script==1) {
+        if (match(tolower(line), /<\/script>/)) {
+          sub(/<\/script>.*/, "", line)
+          buf=buf line "\n"
+          printf "%s", buf
+          print "__INLINE_SCRIPT_SPLIT__"
+          buf=""
+          in_script=0
+        } else {
+          buf=buf line "\n"
+        }
       }
     }
-  }
-' "${HTML}" > "${tmp_scripts}"
+  ' "${HTML}" >> "${tmp_scripts}"
+done
 
 if ! grep -q "__INLINE_SCRIPT_SPLIT__" "${tmp_scripts}" 2>/dev/null; then
   log "no inline <script> blocks detected; nothing to hash"
