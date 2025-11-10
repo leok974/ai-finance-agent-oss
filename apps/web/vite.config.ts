@@ -1,4 +1,4 @@
-import { defineConfig, splitVendorChunkPlugin } from "vite";
+import { defineConfig, splitVendorChunkPlugin, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import { execSync } from "child_process";
 import path from "path";
@@ -23,9 +23,45 @@ if (BRANCH === "unknown" || COMMIT === "unknown") {
 // Prefer 8001 if BACKEND_PORT is set; else default to 8000.
 const API = `http://127.0.0.1:${process.env.BACKEND_PORT || '8000'}`;
 
+/**
+ * Plugin to inject prelude script tag into chat HTML
+ * The prelude is a separate entry point that MUST load before the main chat bundle
+ */
+function injectPreludeScript(): Plugin {
+  return {
+    name: 'inject-prelude-script',
+    enforce: 'post',
+    transformIndexHtml: {
+      order: 'post',
+      handler(html, ctx) {
+        // Only apply to chat/index.html
+        if (!ctx.path.includes('chat/index.html')) return html;
+
+        // Find the prelude bundle filename from the bundle
+        const preludeChunk = Object.values(ctx.bundle || {}).find(
+          (chunk: any) => chunk.name === 'chat-prelude'
+        );
+
+        if (!preludeChunk || !('fileName' in preludeChunk)) {
+          console.warn('[inject-prelude] prelude chunk not found in bundle');
+          return html;
+        }
+
+        const preludeFile = `/${preludeChunk.fileName}`;
+
+        // Inject prelude script tag BEFORE the first existing script tag
+        return html.replace(
+          /<script type="module"/,
+          `<script type="module" crossorigin src="${preludeFile}"></script>\n  <script type="module"`
+        );
+      }
+    }
+  };
+}
+
 // https://vitejs.dev/config/
 export default defineConfig({
-  plugins: [react(), splitVendorChunkPlugin()],
+  plugins: [react(), splitVendorChunkPlugin(), injectPreludeScript()],
   define: {
     __WEB_BRANCH__: JSON.stringify(BRANCH),
     __WEB_COMMIT__: JSON.stringify(COMMIT),
@@ -86,6 +122,8 @@ export default defineConfig({
       input: {
         main: path.resolve(__dirname, 'index.html'),
         chat: path.resolve(__dirname, 'chat/index.html'),
+        // Separate entry for prelude - must load before chat
+        'chat-prelude': path.resolve(__dirname, 'src/chat/prelude.ts'),
       },
       output: {
         manualChunks(id) {
