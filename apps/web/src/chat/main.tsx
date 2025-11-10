@@ -21,10 +21,17 @@ let root: Root | null = null;
  */
 function mountChat(): void {
   const el = document.getElementById('chat-root');
+  const portalRoot = document.getElementById('__LM_PORTAL_ROOT__');
   
   if (!el) {
     console.error('[chat] no #chat-root — cannot mount');
-    window.parent?.postMessage({ type: 'chat:error' }, window.location.origin);
+    window.parent?.postMessage({ type: 'chat:error', error: 'no_chat_root' }, window.location.origin);
+    return;
+  }
+
+  if (!portalRoot) {
+    console.error('[chat] no #__LM_PORTAL_ROOT__ — portals will fail');
+    window.parent?.postMessage({ type: 'chat:error', error: 'no_portal_root' }, window.location.origin);
     return;
   }
 
@@ -35,13 +42,19 @@ function mountChat(): void {
       id: el.id,
       childCount: el.childNodes?.length ?? 0,
       html: el.innerHTML?.slice(0, 120),
-      hasRootContainer: !!(el as any)._reactRootContainer
+      hasRootContainer: !!(el as any).__root
     });
 
-    // Guard against duplicate roots
-    if ((el as any)._reactRootContainer) {
-      console.warn('[chat] root already exists on container — skip createRoot');
-      root = (el as any)._reactRootContainer;
+    console.log('[chat] portal root:', {
+      tag: portalRoot.tagName,
+      id: portalRoot.id,
+      exists: true
+    });
+
+    // Guard against duplicate roots (HMR safety)
+    if ((el as any).__root) {
+      console.warn('[chat] root already exists — reusing');
+      root = (el as any).__root;
     } else {
       // Clear any stale DOM
       if (el.childNodes.length > 0) {
@@ -51,16 +64,27 @@ function mountChat(): void {
 
       console.log('[chat] creating root in iframe...');
       root = createRoot(el);
-      (el as any)._reactRootContainer = root;
+      (el as any).__root = root;
       console.log('[chat] root created successfully');
     }
+
+    // Expose portal root globally for Radix/Toast components
+    // CRITICAL: Must use #__LM_PORTAL_ROOT__ div, NOT document.body
+    // (getPortalRoot() checks window.__LM_PORTAL_ROOT__ first)
+    (window as any).__LM_PORTAL_ROOT__ = portalRoot;
+    
+    console.log('[chat] portal root exposed:', {
+      el: portalRoot,
+      id: portalRoot.id,
+      windowProperty: '__LM_PORTAL_ROOT__'
+    });
 
     // Render with providers
     root!.render(
       <ErrorBoundary
         fallback={(error) => {
           console.error('[chat] ErrorBoundary caught:', error);
-          window.parent?.postMessage({ type: 'chat:error' }, window.location.origin);
+          window.parent?.postMessage({ type: 'chat:error', error: error.message }, window.location.origin);
           return <div style={{ display: 'none' }} />;
         }}
       >
@@ -80,7 +104,7 @@ function mountChat(): void {
     window.parent?.postMessage({ type: 'chat:ready' }, window.location.origin);
   } catch (error) {
     console.error('[chat] mount failed:', error);
-    window.parent?.postMessage({ type: 'chat:error' }, window.location.origin);
+    window.parent?.postMessage({ type: 'chat:error', error: String(error) }, window.location.origin);
   }
 }
 
@@ -104,8 +128,3 @@ if (document.readyState === 'loading') {
 } else {
   mountChat();
 }
-
-/**
- * Expose portal root for components inside iframe
- */
-(window as any).__LM_PORTAL_ROOT__ = document.body;
