@@ -59,35 +59,13 @@ const DropdownMenuContent = React.forwardRef<
   React.ElementRef<typeof DropdownMenuPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Content>
 >(({ className, sideOffset = 4, ...props }, ref) => {
-  // In iframe context, skip Portal wrapper - everything is already isolated
-  // Radix Portal doesn't work across document boundaries even with same-origin
-  const isIframe = window !== window.parent;
-  
-  console.log('[dropdown] isIframe=', isIframe, 'window=', window, 'parent=', window.parent);
-
-  if (isIframe) {
-    console.log('[dropdown] skipping Portal, rendering directly');
-    return (
-      <DropdownMenuPrimitive.Content
-        ref={ref}
-        sideOffset={sideOffset}
-        className={cn(
-          "ui-dropdown-content animate-in data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2",
-          className
-        )}
-        {...props}
-      />
-    );
-  }
-
-  // Main app uses portal to avoid z-index conflicts
+  // Portal guard in chat iframe ensures safe container resolution
   const portalRoot = getPortalRoot();
   if (!portalRoot) {
     console.warn('[dropdown] no portal root available');
     return null;
   }
 
-  console.log('[dropdown] using Portal, container=', portalRoot);
   return (
     <DropdownMenuPrimitive.Portal container={portalRoot as any}>
       <DropdownMenuPrimitive.Content
