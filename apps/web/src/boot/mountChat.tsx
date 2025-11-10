@@ -66,13 +66,14 @@ export function mountChatDock(): void {
 
     const container = doc.getElementById('lm-chat-root')!;
 
-    // 5) Single root (never replaceChildren once root exists)
+    // 5) Inject styles BEFORE root creation (safer timing)
+    injectStyles(doc);
+
+    // 6) Single root (never replaceChildren once root exists)
     if (!root) {
-      // CRITICAL: Clear any stale DOM before creating root (React #185 safeguard)
-      if (container.firstChild) {
-        console.warn('[chat] clearing stale iframe DOM before createRoot');
-        container.replaceChildren();
-      }
+      // CRITICAL: Clear ANY stale DOM immediately before createRoot (React #185 safeguard)
+      // Browser extensions can inject DOM between doc.close() and createRoot()
+      container.textContent = ''; // Nuclear option - clear everything
       console.log('[chat] creating root in iframe...');
       root = (win as any).__LM_CHAT_ROOT__ ?? createRoot(container);
       (win as any).__LM_CHAT_ROOT__ = root;
@@ -81,11 +82,8 @@ export function mountChatDock(): void {
       console.log('[chat] reusing existing root');
     }
 
-    // 6) Expose iframe body for all portals (complete isolation from main document)
+    // 7) Expose iframe body for all portals (complete isolation from main document)
     (window as any).__LM_PORTAL_ROOT__ = doc.body;
-
-    // 7) Inject styles into iframe
-    injectStyles(doc);
 
     // 8) Render with providers
     console.log('[chat] rendering...');
