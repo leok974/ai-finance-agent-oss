@@ -2,11 +2,13 @@
  * mountChat.tsx - Chat iframe bootstrap (parent side)
  * 
  * CRITICAL ARCHITECTURE:
- * - Chat runs in sandboxed iframe (unique origin via srcdoc)
- * - Sandbox allows scripts/popups but NO same-origin (prevents DOM pollution)
- * - Chat HTML injected via srcdoc with base href for asset loading
+ * - Chat runs in sandboxed iframe with same-origin (for asset loading)
+ * - Sandbox: allow-scripts allow-popups allow-same-origin
+ * - Blocks: top navigation, forms, modals, downloads
+ * - Iframe loads /chat/index.html (real page, no srcdoc tricks)
  * - Communication via postMessage ONLY (chat:ready, chat:error, chat:teardown)
  * - Custom element wraps iframe, reveals on 'chat:ready' message
+ * - CSP: /chat/ has frame-ancestors 'self' to allow embedding
  */
 
 import { ChatDockHost } from './ChatDockHost';
@@ -15,7 +17,7 @@ import { ChatDockHost } from './ChatDockHost';
  * Mounts chat iframe in custom element
  * Safe to call multiple times - will reuse existing host
  */
-export async function mountChatDock(): Promise<void> {
+export function mountChatDock(): void {
   // Safety guard: prevent duplicate chat host creation
   if ((window as any).__LM_CHAT_HOST_CREATED__) {
     console.warn('[lm] duplicate chat host creation blocked');
@@ -39,30 +41,22 @@ export async function mountChatDock(): Promise<void> {
     // 3) Attach shadow root once
     const sr = host.shadowRoot ?? host.attachShadow({ mode: 'open' });
 
-    // 4) Fetch the chat HTML content
-    const chatHTML = await fetch('/chat/index.html').then(r => r.text());
-    
-    // 5) Inject base href to ensure assets load correctly from unique origin
-    const htmlWithBase = chatHTML.replace(
-      '<head>',
-      `<head><base href="${window.location.origin}/">`
-    );
-
-    // 6) Create iframe with srcdoc (creates unique origin, no CORS issues)
+    // 4) Create iframe (sandboxed, same-origin for asset loading)
     let frame = sr.querySelector('#lm-chat-frame') as HTMLIFrameElement | null;
     if (!frame) {
       frame = document.createElement('iframe');
       frame.id = 'lm-chat-frame';
-      frame.setAttribute('sandbox', 'allow-scripts allow-popups');
-      frame.setAttribute('srcdoc', htmlWithBase);
+      frame.src = '/chat/index.html';
+      frame.setAttribute('sandbox', 'allow-scripts allow-popups allow-same-origin');
+      frame.setAttribute('referrerpolicy', 'no-referrer');
       frame.style.cssText =
         'background:transparent;border:0;display:block;position:fixed;inset:auto 24px 24px auto;width:420px;height:640px;z-index:2147483647;pointer-events:auto;';
       
-      // Optional: send init config when iframe loads
+      // Send init config when iframe loads
       frame.addEventListener('load', () => {
         frame!.contentWindow?.postMessage(
           { type: 'chat:init', config: {} },
-          '*'  // Must use * for unique origin
+          window.location.origin
         );
       });
 
@@ -82,11 +76,11 @@ export async function mountChatDock(): Promise<void> {
  * Unmounts chat (for cleanup if needed)
  */
 export function unmountChatDock(): void {
-  // Notify iframe to teardown (use * for unique origin from srcdoc)
+  // Notify iframe to teardown
   const host = document.querySelector('lm-chatdock-host');
   const frame = host?.shadowRoot?.querySelector('#lm-chat-frame') as HTMLIFrameElement | null;
   
-  frame?.contentWindow?.postMessage({ type: 'chat:teardown' }, '*');
+  frame?.contentWindow?.postMessage({ type: 'chat:teardown' }, window.location.origin);
 
   // Remove host element
   if (host) {
