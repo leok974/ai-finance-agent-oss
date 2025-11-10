@@ -85,3 +85,23 @@ console.info('[boot] mount once flag', window.__APP_MOUNTED__);
 if (import.meta.env.PROD) {
   console.info('[boot] React root mounted once (production mode)');
 }
+
+// Chat handshake listener (debounced for HMR safety)
+if (!(window as any).__chatHandshakeBound) {
+  const chatListener = (e: MessageEvent) => {
+    if (e.origin !== location.origin) return;
+    const host = document.querySelector('lm-chatdock-host') as HTMLElement | null;
+    if (!host) return;
+    
+    if (e.data?.type === 'chat:ready') {
+      host.classList.add('ready');
+      console.log('[chat-host] revealed (ready)');
+    }
+    if (e.data?.type === 'chat:error') {
+      host.classList.remove('ready');
+      console.warn('[chat-host] hidden (error)');
+    }
+  };
+  window.addEventListener('message', chatListener);
+  (window as any).__chatHandshakeBound = true;
+}

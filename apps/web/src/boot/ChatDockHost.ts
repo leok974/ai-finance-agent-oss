@@ -54,30 +54,6 @@ export class ChatDockHost extends HTMLElement {
     `;
     shadow.append(wrap);
   }
-  
-  connectedCallback() {
-    // Listen for ready/error messages from iframe
-    window.addEventListener('message', this.handleMessage);
-  }
-  
-  disconnectedCallback() {
-    window.removeEventListener('message', this.handleMessage);
-  }
-  
-  private handleMessage = (e: MessageEvent) => {
-    // Only accept messages from same origin
-    if (e.origin !== window.location.origin) return;
-    
-    if (e.data?.type === 'chat:ready') {
-      this.classList.add('ready');
-      console.log('[chat-host] revealed (ready)');
-    }
-    
-    if (e.data?.type === 'chat:error') {
-      this.classList.remove('ready');
-      console.warn('[chat-host] hidden (error)');
-    }
-  };
 }
 
 // Register custom element
