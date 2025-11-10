@@ -14,26 +14,7 @@ const TooltipContent = React.forwardRef<
   React.ElementRef<typeof TooltipPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof TooltipPrimitive.Content>
 >(({ className, sideOffset = 4, ...props }, ref) => {
-  // In iframe context, skip Portal wrapper - everything is already isolated
-  // Radix Portal doesn't work across document boundaries even with same-origin
-  const isIframe = window !== window.parent;
-  
-  if (isIframe) {
-    return (
-      <TooltipPrimitive.Content
-        ref={ref}
-        sideOffset={sideOffset}
-        className={cn(
-          "overflow-hidden animate-in fade-in-0 zoom-in-95 data-[state=closed]:animate-out " +
-          "data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 ui-tooltip",
-          className
-        )}
-        {...props}
-      />
-    );
-  }
-
-  // Main app uses portal to avoid z-index conflicts
+  // Portal guard in chat iframe ensures safe container resolution
   const portalRoot = getPortalRoot();
   if (!portalRoot) {
     console.warn('[tooltip] no portal root available');
