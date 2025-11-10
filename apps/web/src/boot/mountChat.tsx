@@ -1,38 +1,27 @@
 /**
- * mountChat.tsx - Chat rendered in iframe for complete DOM isolation
+ * mountChat.tsx - Chat iframe bootstrap (parent side)
  * 
  * CRITICAL ARCHITECTURE:
- * - Renders chat inside iframe document (not Shadow DOM)
- * - iframe provides complete isolation from browser extension DOM pollution
- * - All portals target iframe body via window.__LM_PORTAL_ROOT__
- * - Clears stale DOM BEFORE createRoot to prevent React #185
- * - Single root creation - never calls replaceChildren() after root exists
- * - Posts 'chat:ready' message to parent when mount succeeds
- * - Posts 'chat:error' message if mount/render fails
+ * - Chat runs in sandboxed iframe (unique origin, NO allow-same-origin)
+ * - Parent CANNOT access iframe.contentDocument (it's null with unique origin)
+ * - Iframe self-mounts via /chat/index.html → src/chat/main.tsx
+ * - Communication via postMessage ONLY (chat:ready, chat:error, chat:teardown)
+ * - Custom element wraps iframe, reveals on 'chat:ready' message
  */
 
-import React from 'react';
-import { createRoot, Root } from 'react-dom/client';
-import { AuthProvider } from '@/state/auth';
-import { TooltipProvider } from '@/components/ui/tooltip';
-import { ChatDockProvider } from '@/context/ChatDockContext';
-import ChatDock from '@/components/ChatDock';
-import ErrorBoundary from '@/components/ErrorBoundary';
 import { ChatDockHost } from './ChatDockHost';
 
-let root: Root | null = null;
-
 /**
- * Mounts ChatDock in iframe for complete isolation from browser extensions
- * Safe to call multiple times - will reuse existing root
+ * Mounts chat iframe in custom element
+ * Safe to call multiple times - will reuse existing host
  */
 export function mountChatDock(): void {
-  // Safety guard: prevent duplicate chat root creation
-  if ((window as any).__LM_CHAT_ROOT_CREATED__) {
-    console.warn('[lm] duplicate chat root creation blocked');
+  // Safety guard: prevent duplicate chat host creation
+  if ((window as any).__LM_CHAT_HOST_CREATED__) {
+    console.warn('[lm] duplicate chat host creation blocked');
     return;
   }
-  (window as any).__LM_CHAT_ROOT_CREATED__ = true;
+  (window as any).__LM_CHAT_HOST_CREATED__ = true;
 
   try {
     // 1) Ensure custom element is registered
@@ -47,158 +36,54 @@ export function mountChatDock(): void {
       document.body.appendChild(host);
     }
 
-    // 2) Attach shadow root once (for additional isolation layer)
+    // 3) Attach shadow root once
     const sr = host.shadowRoot ?? host.attachShadow({ mode: 'open' });
 
-    // 3) Create iframe container (isolates DOM + portals completely)
-    // CRITICAL: NO allow-same-origin → iframe becomes unique origin, prevents external DOM mutations
+    // 4) Create iframe (unique origin sandbox - NO DOM access from parent)
     let frame = sr.querySelector('#lm-chat-frame') as HTMLIFrameElement | null;
     if (!frame) {
       frame = document.createElement('iframe');
       frame.id = 'lm-chat-frame';
       frame.setAttribute('sandbox', 'allow-scripts allow-popups');
+      frame.src = '/chat/index.html'; // Iframe self-mounts
       frame.style.cssText =
         'background:transparent;border:0;display:block;position:fixed;inset:auto 24px 24px auto;width:420px;height:640px;z-index:2147483647;pointer-events:auto;';
+      
+      // Optional: send init config when iframe loads
+      frame.addEventListener('load', () => {
+        frame!.contentWindow?.postMessage(
+          { type: 'chat:init', config: {} },
+          window.location.origin
+        );
+      });
+
       sr.appendChild(frame);
     }
 
-    const doc = frame.contentDocument!;
-    const win = frame.contentWindow!;
-
-    // 4) Initialize iframe document if needed
-    if (!doc.getElementById('lm-chat-root')) {
-      doc.open();
-      doc.write(`<!doctype html><html><head><meta charset="utf-8"><style>html,body{background:transparent!important;margin:0;padding:0;}</style></head>
-        <body><div id="lm-chat-root"></div></body></html>`);
-      doc.close();
-    }
-
-    const container = doc.getElementById('lm-chat-root')!;
-
-    // 5) Inject styles BEFORE root creation (safer timing)
-    injectStyles(doc);
-
-    // 6) Single root (never replaceChildren once root exists)
-    if (!root) {
-      // DIAGNOSTIC: Log container state before createRoot to diagnose React #185
-      console.log('[chat] container:', container && {
-        tag: container.tagName,
-        id: container.id,
-        childCount: container.childNodes?.length ?? 0,
-        html: container.innerHTML?.slice(0, 120),
-        hasRootContainer: !!(container as any)._reactRootContainer
-      });
-
-      // CRITICAL: Clear ANY stale DOM immediately before createRoot (React #185 safeguard)
-      // Browser extensions can inject DOM between doc.close() and createRoot()
-      if (container.childNodes.length > 0) {
-        console.warn('[chat] container not empty before createRoot - clearing stale DOM');
-        container.textContent = ''; // Nuclear option - clear everything
-      }
-
-      // Guard against duplicate roots
-      if ((container as any)._reactRootContainer) {
-        console.error('[chat] root already exists on container - skip createRoot');
-        root = (container as any)._reactRootContainer;
-      } else {
-        console.log('[chat] creating root in iframe...');
-        root = (win as any).__LM_CHAT_ROOT__ ?? createRoot(container);
-        (win as any).__LM_CHAT_ROOT__ = root;
-        (container as any)._reactRootContainer = root;
-        console.log('[chat] root created successfully');
-      }
-    } else {
-      console.log('[chat] reusing existing root');
-    }
-
-    // 7) Expose iframe body for all portals (complete isolation from main document)
-    (window as any).__LM_PORTAL_ROOT__ = doc.body;
-
-    // 8) Render with providers (root is guaranteed non-null here)
-    console.log('[chat] rendering...');
-    root!.render(
-      <ErrorBoundary fallback={(e) => {
-        console.error('[chat] ErrorBoundary caught:', e);
-        // Notify parent of error to hide host
-        window.parent?.postMessage({ type: 'chat:error' }, window.location.origin);
-        return <div style={{ display: 'none' }} />;
-      }}>
-        <AuthProvider>
-          <TooltipProvider delayDuration={200}>
-            <ChatDockProvider>
-              <ChatDock />
-            </ChatDockProvider>
-          </TooltipProvider>
-        </AuthProvider>
-      </ErrorBoundary>
-    );
-
-    console.info('[chat] mounted in iframe');
-    
-    // Notify parent that chat is ready to reveal
-    window.parent?.postMessage({ type: 'chat:ready' }, window.location.origin);
+    console.info('[chat] iframe host created');
   } catch (error) {
-    console.error('[chat] mount failed', error);
-    // Notify parent of error
-    window.parent?.postMessage({ type: 'chat:error' }, window.location.origin);
-    // Trip session fuse on error
+    console.error('[chat] host creation failed', error);
     sessionStorage.setItem('lm:disableChat', '1');
     throw error;
   }
 }
 
 /**
- * Injects styles into iframe document
- * Copies all stylesheets from main document for Tailwind support
- */
-function injectStyles(doc: Document): void {
-  // Check if styles already injected
-  if (doc.querySelector('style[data-chat-styles]')) {
-    return;
-  }
-
-  // Create style element
-  const style = doc.createElement('style');
-  style.setAttribute('data-chat-styles', 'true');
-
-  // Copy all stylesheets from main document
-  const mainStyles = Array.from(document.styleSheets)
-    .map(sheet => {
-      try {
-        return Array.from(sheet.cssRules)
-          .map(rule => rule.cssText)
-          .join('\n');
-      } catch (e) {
-        // CORS-blocked stylesheets can't be read
-        console.warn('[chat] Could not read stylesheet:', sheet.href, e);
-        return '';
-      }
-    })
-    .join('\n');
-
-  style.textContent = mainStyles;
-  doc.head.appendChild(style);
-}
-
-/**
  * Unmounts chat (for cleanup if needed)
  */
 export function unmountChatDock(): void {
-  // Notify parent to hide host
-  window.parent?.postMessage({ type: 'chat:teardown' }, window.location.origin);
-
-  if (root) {
-    root.unmount();
-    root = null;
-  }
-
+  // Notify iframe to teardown
   const host = document.querySelector('lm-chatdock-host');
+  const frame = host?.shadowRoot?.querySelector('#lm-chat-frame') as HTMLIFrameElement | null;
+  
+  frame?.contentWindow?.postMessage({ type: 'chat:teardown' }, window.location.origin);
+
+  // Remove host element
   if (host) {
     host.remove();
   }
 
-  delete (window as any).__LM_PORTAL_ROOT__;
-  delete (window as any).__LM_CHAT_ROOT_CREATED__;
+  delete (window as any).__LM_CHAT_HOST_CREATED__;
 
-  console.info('[chat] unmounted');
+  console.info('[chat] host unmounted');
 }

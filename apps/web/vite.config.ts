@@ -33,12 +33,20 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-  '@': path.resolve(__dirname, './src'),
-      // ✅ force lowercase import resolution
+      '@': path.resolve(__dirname, './src'),
+      // ✅ Force lowercase import resolution
       Recharts: "recharts",
+      // ✅ Guarantee single React copy (prevent duplicate bundles from dependencies)
+      react: path.resolve(__dirname, 'node_modules/react'),
+      'react-dom': path.resolve(__dirname, 'node_modules/react-dom'),
+      'react-dom/client': path.resolve(__dirname, 'node_modules/react-dom/client'),
     },
-  // Ensure a single copy of React in the bundle and during HMR
-  dedupe: ["react", "react-dom"],
+    // ✅ Ensure a single copy of React in the bundle and during HMR
+    dedupe: ['react', 'react-dom', 'react-dom/client'],
+  },
+  optimizeDeps: {
+    // ✅ Pre-bundling also dedupes React (critical for dev server)
+    include: ['react', 'react-dom', 'react-dom/client'],
   },
   test: {
     environment: 'jsdom',
@@ -75,6 +83,10 @@ export default defineConfig({
     },
     chunkSizeWarningLimit: 650,
     rollupOptions: {
+      input: {
+        main: path.resolve(__dirname, 'index.html'),
+        chat: path.resolve(__dirname, 'public/chat/index.html'),
+      },
       output: {
         manualChunks(id) {
           if (id.includes('node_modules')) {
