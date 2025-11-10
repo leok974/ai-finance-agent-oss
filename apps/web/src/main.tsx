@@ -101,6 +101,10 @@ if (!(window as any).__chatHandshakeBound) {
       host.classList.remove('ready');
       console.warn('[chat-host] hidden (error)');
     }
+    if (e.data?.type === 'chat:teardown') {
+      host.classList.remove('ready');
+      console.log('[chat-host] hidden (teardown)');
+    }
   };
   window.addEventListener('message', chatListener);
   (window as any).__chatHandshakeBound = true;
