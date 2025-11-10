@@ -270,11 +270,17 @@ const App: React.FC = () => {
 
   // Chat mounting: dynamically import from boot module
   useEffect(() => {
+    console.log('[App] chat mount effect', { chatEnabled, authReady, authOk });
     if (!chatEnabled || !authReady || !authOk) return;
     
+    console.log('[App] queuing chat mount...');
     queueMicrotask(() => {
+      console.log('[App] importing chat module...');
       import('@/boot/mountChat')
-        .then(m => m.mountChatDock())
+        .then(m => {
+          console.log('[App] chat module loaded, calling mountChatDock()');
+          return m.mountChatDock();
+        })
         .catch(e => {
           console.error('[chat] mount failed → fuse trip', e);
           sessionStorage.setItem('lm:disableChat', '1');
