@@ -30,6 +30,9 @@ function mountChat(): void {
     (window as any).__LM_PORTAL_ROOT__ = document.body;
   }
   
+  // Guard flag for tests to verify portal protection is deployed
+  (window as any).__REACT_PORTAL_GUARD__ = true;
+  
   if (!el) {
     console.error('[chat] no #chat-root — cannot mount');
     window.parent?.postMessage({ type: 'chat:error', error: 'no_chat_root' }, window.location.origin);
