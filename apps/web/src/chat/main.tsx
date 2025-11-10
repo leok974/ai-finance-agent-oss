@@ -23,6 +23,12 @@ function mountChat(): void {
   const el = document.getElementById('chat-root');
   const portalRoot = document.getElementById('__LM_PORTAL_ROOT__');
   
+  // CRITICAL: Expose portal root IMMEDIATELY, before any checks or logging
+  // This ensures getPortalRoot() finds it during React's initial render
+  if (portalRoot) {
+    (window as any).__LM_PORTAL_ROOT__ = portalRoot;
+  }
+  
   if (!el) {
     console.error('[chat] no #chat-root — cannot mount');
     window.parent?.postMessage({ type: 'chat:error', error: 'no_chat_root' }, window.location.origin);
@@ -68,15 +74,11 @@ function mountChat(): void {
       console.log('[chat] root created successfully');
     }
 
-    // Expose portal root globally for Radix/Toast components
-    // CRITICAL: Must use #__LM_PORTAL_ROOT__ div, NOT document.body
-    // (getPortalRoot() checks window.__LM_PORTAL_ROOT__ first)
-    (window as any).__LM_PORTAL_ROOT__ = portalRoot;
-    
     console.log('[chat] portal root exposed:', {
       el: portalRoot,
       id: portalRoot.id,
-      windowProperty: '__LM_PORTAL_ROOT__'
+      windowProperty: '__LM_PORTAL_ROOT__',
+      actualValue: (window as any).__LM_PORTAL_ROOT__
     });
 
     // Render with providers
