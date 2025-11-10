@@ -1,13 +1,13 @@
 import * as React from "react";
 import { stripToolNamespaces } from "@/utils/prettyToolName";
 import SaveRuleModal from '@/components/SaveRuleModal';
-const { useEffect, useRef, useState } = React;
+const { useEffect, useRef, useState, useMemo } = React;
 import { wireAguiStream } from "@/lib/aguiStream";
 import RobotThinking from "@/components/ui/RobotThinking";
 import EnvAvatar from "@/components/EnvAvatar";
 import { useAuth, getUserInitial } from "@/state/auth";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { createPortal } from "react-dom";
+import { useSafePortalReady } from "@/hooks/useSafePortal";
 import { ChevronUp, ChevronDown, Wrench } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
@@ -156,6 +156,9 @@ declare global { interface Window { __CHATDOCK_MOUNT_COUNT__?: number } }
 let __CHATDOCK_ACTIVE__: symbol | null = null;
 
 export default function ChatDock() {
+  // ⛑️ CRITICAL: Only allow portal creation after complete page load
+  const portalReady = useSafePortalReady();
+  
   // Safe singleton: claim primary in effect; always run hooks, render only if primary
   const idRef = useRef(Symbol("chatdock"));
   const [isPrimary, setIsPrimary] = useState(false);
@@ -2280,18 +2283,18 @@ export default function ChatDock() {
     </div>
   );
 
-  // Render via portal; show bubble when closed, panel when open
-  // Render only the primary instance
-  if (!isPrimary) return null;
-  return createPortal(
+  // Since we're already mounted in Shadow DOM via chatMount.tsx,
+  // just return the content directly instead of creating another root
+  if (!portalReady || !isPrimary) return null;
+
+  return (
     <ErrorBoundary fallback={(e) => (
       <div className="fixed bottom-4 right-4 p-4 bg-red-500/10 border border-red-500 rounded text-sm text-red-500 max-w-md z-[9999]">
         Chat panel error: {String(e?.message || e)}
       </div>
     )}>
       {open ? panelEl : bubbleEl}
-    </ErrorBoundary>,
-    document.body
+    </ErrorBoundary>
   );
 }
 
