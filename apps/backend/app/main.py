@@ -1,5 +1,5 @@
 import app.env_bootstrap  # earliest import: loads DATABASE_URL from file secret if provided
-from fastapi import FastAPI, APIRouter, Response, Request, HTTPException, Depends
+from fastapi import FastAPI, APIRouter, Response, Request, HTTPException
 from fastapi.responses import RedirectResponse, JSONResponse
 from .startup_guard import require_db_or_exit
 from contextlib import asynccontextmanager
@@ -883,6 +883,11 @@ from app.auth import google as google_auth
 
 app.include_router(google_auth.router)
 
+# === DevDiag Operations ===
+from app.routers import ops_diag
+
+app.include_router(ops_diag.router)
+
 # /auth/me endpoint
 from fastapi import APIRouter
 
@@ -1126,42 +1131,58 @@ def echo(request: Request):
             "x-forwarded-port": request.headers.get("x-forwarded-port"),
             "x-real-ip": request.headers.get("x-real-ip"),
             "x-forwarded-for": request.headers.get("x-forwarded-for"),
-            "cookie": request.headers.get("cookie", "")[:100] + "..." if len(request.headers.get("cookie", "")) > 100 else request.headers.get("cookie", ""),
+            "cookie": (
+                request.headers.get("cookie", "")[:100] + "..."
+                if len(request.headers.get("cookie", "")) > 100
+                else request.headers.get("cookie", "")
+            ),
         },
     }
 
 
 # DB schema verification endpoint
-REQUIRED_USER_COLS = {"name", "picture", "email", "id", "password_hash", "is_active", "created_at"}
+REQUIRED_USER_COLS = {
+    "name",
+    "picture",
+    "email",
+    "id",
+    "password_hash",
+    "is_active",
+    "created_at",
+}
+
 
 @app.get("/health/db-schema")
 def db_schema_check():
     """Verify critical database schema columns exist to prevent runtime failures."""
     from sqlalchemy import text
     from app.db import get_db
-    
+
     try:
         db = next(get_db())
         result = db.execute(
-            text("SELECT column_name FROM information_schema.columns WHERE table_name='users'")
+            text(
+                "SELECT column_name FROM information_schema.columns WHERE table_name='users'"
+            )
         )
         cols = {row[0] for row in result}
         missing = sorted(REQUIRED_USER_COLS - cols)
-        
+
         if missing:
             return JSONResponse(
                 status_code=503,
-                content={"ok": False, "missing": missing, "error": "Database schema drift detected"}
+                content={
+                    "ok": False,
+                    "missing": missing,
+                    "error": "Database schema drift detected",
+                },
             )
-        
+
         return {"ok": True, "missing": [], "columns": sorted(cols)}
     except Exception as e:
-        return JSONResponse(
-            status_code=503,
-            content={"ok": False, "error": str(e)}
-        )
+        return JSONResponse(status_code=503, content={"ok": False, "error": str(e)})
     finally:
-        if 'db' in locals():
+        if "db" in locals():
             db.close()
 
 

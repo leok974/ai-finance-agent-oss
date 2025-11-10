@@ -26,10 +26,9 @@ export default defineConfig({
   reporter: isCI ? [['html'], ['line']] : [['line']],
   retries: isCI ? 1 : 0,  // retry once in CI to guard against flakes
   use: {
-    // IMPORTANT: do not set storageState when using persistent context
-    // storageState: AUTH_STORAGE,
-    headless: false,  // headed mode for Google OAuth stability
+    headless: false,  // headed mode for Google OAuth stability  
     baseURL,
+    storageState: AUTH_STORAGE,
     trace: 'on-first-retry',
     video: 'retain-on-failure',
     screenshot: 'only-on-failure',
@@ -38,16 +37,10 @@ export default defineConfig({
     ignoreHTTPSErrors: true,
   },
   projects: [
-    // Persistent profile: reuses same Chrome profile across all test runs
-    // Eliminates re-login, extremely stable for Google OAuth
+    // Main chromium tests with shared auth state
     {
-      name: 'chromium-persistent',
-      use: {
-        ...devices['Desktop Chrome'],
-        launchOptions: {
-          args: [`--user-data-dir=${userDataDir}`],
-        },
-      },
+      name: 'chromium',
+      use: { ...devices['Desktop Chrome'] },
     },
     // Production testing project (uses captured state for CI)
     {
