@@ -308,15 +308,22 @@ const App: React.FC = () => {
       ])
         .then(([mountModule, launcherModule]) => {
           console.log('[App] chat modules loaded, creating host and launcher');
-          
+
           // Create host element (hidden by default)
           const host = mountModule.mountChatDock();
-          
+
           // Create launcher button that toggles chat
           launcherModule.ensureChatLauncher(() => {
             mountModule.toggleChat(host);
           });
-          
+
+          // Escape key handler - must check isChatOpen() dynamically
+          window.addEventListener('keydown', (e: KeyboardEvent) => {
+            if (e.key === 'Escape' && mountModule.isChatOpen()) {
+              mountModule.hideChat(host);
+            }
+          });
+
           console.log('[chat-boot] chat entry loaded OK');
         })
         .catch(e => {
