@@ -21,12 +21,6 @@ import { patchCreatePortalToIframe } from './crossDocumentPortalHotfix';
 import { PortalContainerContext } from './portalRoot';
 import { TooltipProvider, Toaster } from './ui'; // Use chat-patched UI with Toaster
 
-// OVERLAY KILL-SWITCH: Disable all Radix overlays to isolate React #185
-const DISABLE_OVERLAYS = import.meta.env.VITE_DISABLE_OVERLAYS === '1';
-if (DISABLE_OVERLAYS) {
-  console.warn('[chat] 🚨 OVERLAY KILL-SWITCH ACTIVE — All Radix overlays disabled for debugging');
-}
-
 // HOTFIX: Patch createPortal IMMEDIATELY at module load, before any components render
 patchCreatePortalToIframe(document);
 
@@ -68,20 +62,12 @@ export function bootChat(root: Root): void {
       <ChatErrorBoundary>
         <PortalContainerContext.Provider value={document.body}>
           <AuthProvider>
-            {DISABLE_OVERLAYS ? (
-              // KILL-SWITCH: No overlay providers when debugging
+            <TooltipProvider delayDuration={200}>
               <ChatDockProvider>
                 <ChatDock />
+                <Toaster />
               </ChatDockProvider>
-            ) : (
-              // Normal: Full overlay stack
-              <TooltipProvider delayDuration={200}>
-                <ChatDockProvider>
-                  <ChatDock />
-                  <Toaster />
-                </ChatDockProvider>
-              </TooltipProvider>
-            )}
+            </TooltipProvider>
           </AuthProvider>
         </PortalContainerContext.Provider>
       </ChatErrorBoundary>
