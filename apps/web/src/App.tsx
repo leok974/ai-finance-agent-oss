@@ -320,14 +320,25 @@ const App: React.FC = () => {
           // Escape key handler - must check isChatOpen() dynamically
           // Remove any existing listener first to prevent duplicates
           const handleEscape = (e: KeyboardEvent) => {
-            console.log('[App] keydown:', e.key, 'isChatOpen:', mountModule.isChatOpen());
-            if (e.key === 'Escape' && mountModule.isChatOpen()) {
-              e.preventDefault();
-              e.stopPropagation();
-              mountModule.hideChat(host);
+            // Log ALL keydown events to debug
+            if (e.key === 'Escape') {
+              console.log('[App] *** ESCAPE KEY PRESSED ***');
+              console.log('[App] isChatOpen:', mountModule.isChatOpen());
+              console.log('[App] event:', e);
+
+              if (mountModule.isChatOpen()) {
+                console.log('[App] Closing chat...');
+                e.preventDefault();
+                e.stopPropagation();
+                mountModule.hideChat(host);
+              } else {
+                console.log('[App] Chat is already closed, ignoring Escape');
+              }
             }
           };
-          window.addEventListener('keydown', handleEscape);
+
+          console.log('[App] Adding Escape key handler');
+          window.addEventListener('keydown', handleEscape, true); // Use capture phase
 
           console.log('[chat-boot] chat entry loaded OK');
         })

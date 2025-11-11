@@ -147,24 +147,26 @@ export function mountChatDock(): HTMLElement {
     // 4) Attach shadow root once
     const sr = host.shadowRoot ?? host.attachShadow({ mode: 'open' });
 
-    // 5) Add styles for host container (fixed, high-z box)
+    // 5) Apply positioning styles directly to host element (more reliable than :host selector)
+    Object.assign(host.style, {
+      position: 'fixed',
+      right: '20px',
+      bottom: '20px',
+      width: 'min(520px, 92vw)',
+      height: 'min(620px, 84vh)',
+      zIndex: '2147483000',
+      borderRadius: '16px',
+      overflow: 'hidden',
+      boxShadow: '0 22px 48px rgba(0,0,0,.55)',
+      display: 'none',
+    });
+
+    // 6) Add styles for iframe inside shadow DOM
     let style = sr.querySelector('#lm-chat-host-styles') as HTMLStyleElement | null;
     if (!style) {
       style = document.createElement('style');
       style.id = 'lm-chat-host-styles';
       style.textContent = `
-        :host {
-          position: fixed;
-          right: 20px;
-          bottom: 20px;
-          width: min(520px, 92vw);
-          height: min(620px, 84vh);
-          z-index: 2147483000;
-          border-radius: 16px;
-          overflow: hidden;
-          box-shadow: 0 22px 48px rgba(0,0,0,.55);
-          display: none;
-        }
         iframe {
           display: block;
           width: 100%;
@@ -176,7 +178,7 @@ export function mountChatDock(): HTMLElement {
       sr.appendChild(style);
     }
 
-    // 6) Create iframe (sandboxed, same-origin for asset loading)
+    // 7) Create iframe (sandboxed, same-origin for asset loading)
     let frame = sr.querySelector('#lm-chat-frame') as HTMLIFrameElement | null;
     if (!frame) {
       frame = document.createElement('iframe');
@@ -200,8 +202,7 @@ export function mountChatDock(): HTMLElement {
       sr.appendChild(frame);
     }
 
-    // 7) Start hidden (launcher will show it)
-    host.style.display = 'none';
+    // Note: host.style.display already set to 'none' in step 5
 
     console.info('[chat] iframe host created');
     return host;
