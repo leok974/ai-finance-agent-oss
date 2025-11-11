@@ -14,8 +14,7 @@ import '@/index.css';      // Global app styles with theme variables
 import React from 'react';
 import { createRoot, Root } from 'react-dom/client';
 import { AuthProvider } from '@/state/auth';
-import { ChatDockProvider } from '@/context/ChatDockContext';
-import ChatDock from '@/components/ChatDock';
+import { ChatIframe } from './ChatIframe'; // Simplified grid-based chat for iframe
 import { ChatErrorBoundary } from './ChatErrorBoundary';
 import { patchCreatePortalToIframe } from './crossDocumentPortalHotfix';
 import { PortalContainerContext } from './portalRoot';
@@ -63,10 +62,8 @@ export function bootChat(root: Root): void {
         <PortalContainerContext.Provider value={document.body}>
           <AuthProvider>
             <TooltipProvider delayDuration={200}>
-              <ChatDockProvider>
-                <ChatDock />
-                <Toaster />
-              </ChatDockProvider>
+              <ChatIframe />
+              <Toaster />
             </TooltipProvider>
           </AuthProvider>
         </PortalContainerContext.Provider>
