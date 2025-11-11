@@ -1,6 +1,6 @@
 /**
  * ChatIframe.tsx - Simplified chat component for iframe context
- * 
+ *
  * Uses 3-row grid layout (tools header | scrollable messages | composer)
  * to ensure nothing escapes the iframe boundaries.
  */
@@ -108,15 +108,16 @@ export function ChatIframe() {
   }, {} as Record<string, Msg[]>);
 
   return (
-    <div className="lm-chat">
+    <div className="lm-iframe">
       {/* Tools header (row 1) - sticky with horizontal scroll */}
       {showTools && (
-        <header className="lm-chat__tools sticky top-0 z-20">
-          <div className="lm-chiprow overflow-x-auto" style={{ scrollbarWidth: 'thin' }}>
+        <header className="lm-tools-area">
+          <div className="lm-tools-row">
             <button className="chip" disabled={busy}>Month summary</button>
             <button className="chip" disabled={busy}>Trends</button>
             <button className="chip" disabled={busy}>Alerts</button>
             <button className="chip" disabled={busy}>Recurring</button>
+            <button className="chip" disabled={busy}>Subscriptions</button>
             <div className="chip chip--ghost" />
             <button className="chip" disabled={busy}>Find subscriptions</button>
             <button className="chip" disabled={busy}>Insights (C)</button>
@@ -125,7 +126,7 @@ export function ChatIframe() {
             <button className="chip" disabled={busy}>Search transactions (NL)</button>
           </div>
 
-          <div className="lm-toolsbar overflow-x-auto" style={{ scrollbarWidth: 'thin' }}>
+          <div className="lm-toolsbar">
             <span className="badge badge--ok">LLM: OK</span>
             <button className="btn btn--ghost">Export JSON</button>
             <button className="btn btn--ghost">Export Markdown</button>
@@ -138,7 +139,7 @@ export function ChatIframe() {
       )}
 
       {/* Scrollable messages (row 2) */}
-      <div className="lm-chat__scroll" ref={listRef}>
+      <main className="lm-thread" ref={listRef}>
         {uiMessages.length === 0 && (
           <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--lm-muted)' }}>
             <p>Hey! 👋</p>
@@ -176,25 +177,27 @@ export function ChatIframe() {
             ))}
           </div>
         ))}
-      </div>
+      </main>
 
       {/* Composer (row 3) */}
-      <form className="lm-chat__composer" onSubmit={handleSubmit}>
-        <input
-          className="input"
-          placeholder="Ask or type a command…"
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          disabled={busy}
-        />
-        <button
-          type="submit"
-          className="btn btn--primary"
-          disabled={!draft.trim() || busy}
-        >
-          {busy ? '...' : 'Send'}
-        </button>
-      </form>
+      <footer className="lm-composer">
+        <form onSubmit={handleSubmit} style={{ display: 'contents' }}>
+          <input
+            className="input"
+            placeholder="Ask or type a command…"
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            disabled={busy}
+          />
+          <button
+            type="submit"
+            className="btn btn--primary"
+            disabled={!draft.trim() || busy}
+          >
+            {busy ? '...' : 'Send'}
+          </button>
+        </form>
+      </footer>
     </div>
   );
 }

@@ -24,7 +24,7 @@ let backdropElement: HTMLDivElement | null = null;
 export function showChat(host?: HTMLElement): void {
   const h = host ?? hostElement;
   if (!h) return;
-  
+
   h.style.display = "block";
   h.animate(
     [
@@ -33,17 +33,17 @@ export function showChat(host?: HTMLElement): void {
     ],
     { duration: 160, easing: "cubic-bezier(.2,.7,.2,1)", fill: "forwards" }
   );
-  
+
   if (backdropElement) {
     backdropElement.style.display = "block";
   }
-  
+
   // Lock body scroll
   document.documentElement.style.overflow = "hidden";
-  
+
   isOpen = true;
   console.log('[chat] opened');
-  
+
   // Focus composer in iframe after animation
   setTimeout(() => {
     const frame = h.shadowRoot?.querySelector('iframe') as HTMLIFrameElement | null;
@@ -58,7 +58,7 @@ export function showChat(host?: HTMLElement): void {
 export function hideChat(host?: HTMLElement): void {
   const h = host ?? hostElement;
   if (!h) return;
-  
+
   const anim = h.animate(
     [
       { transform: "translateY(0)", opacity: "1" },
@@ -66,18 +66,18 @@ export function hideChat(host?: HTMLElement): void {
     ],
     { duration: 140, easing: "cubic-bezier(.2,.7,.2,1)", fill: "forwards" }
   );
-  
+
   anim.onfinish = () => {
     h.style.display = "none";
   };
-  
+
   if (backdropElement) {
     backdropElement.style.display = "none";
   }
-  
+
   // Restore body scroll
   document.documentElement.style.overflow = "";
-  
+
   isOpen = false;
   console.log('[chat] closed');
 }
@@ -202,13 +202,6 @@ export function mountChatDock(): HTMLElement {
 
     // 7) Start hidden (launcher will show it)
     host.style.display = 'none';
-
-    // 8) Listen for Escape key to close
-    window.addEventListener('keydown', (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isOpen) {
-        hideChat(host!);
-      }
-    });
 
     console.info('[chat] iframe host created');
     return host;
