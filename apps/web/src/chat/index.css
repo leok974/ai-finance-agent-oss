@@ -169,6 +169,15 @@
   background: var(--lm-panel);
   border: 1px solid var(--lm-border);
   line-height: 1.35;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+
+.bubble p {
+  margin: 0;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  white-space: pre-wrap;
 }
 
 .bubble--me {
