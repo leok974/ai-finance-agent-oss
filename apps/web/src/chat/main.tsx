@@ -7,6 +7,10 @@
 
 import './react-dom-guard'; // MUST precede any Radix/portal usage
 
+// 🎨 CRITICAL: Import styles for iframe (Tailwind + theme tokens)
+import './index.css';      // Chat-specific Tailwind
+import '@/index.css';      // Global app styles with theme variables
+
 import React from 'react';
 import { createRoot, Root } from 'react-dom/client';
 import { AuthProvider } from '@/state/auth';
@@ -16,7 +20,6 @@ import { ChatErrorBoundary } from './ChatErrorBoundary';
 import { patchCreatePortalToIframe } from './crossDocumentPortalHotfix';
 import { PortalContainerContext } from './portalRoot';
 import { TooltipProvider, Toaster } from './ui'; // Use chat-patched UI with Toaster
-import '@/index.css';
 
 // OVERLAY KILL-SWITCH: Disable all Radix overlays to isolate React #185
 const DISABLE_OVERLAYS = import.meta.env.VITE_DISABLE_OVERLAYS === '1';

@@ -351,6 +351,23 @@ export default function ChatDock() {
 
   // Live message stream (render from UI state, persist via chatStore)
   const [uiMessages, setUiMessages] = useState<Msg[]>([]);
+  
+  // 🔥 NEW: Sync uiMessages from Zustand store messages
+  React.useEffect(() => {
+    if (!storeMessages || !Array.isArray(storeMessages)) return;
+    
+    // Convert Zustand messages to UI message format
+    const mapped: Msg[] = storeMessages.map((m: any) => ({
+      role: (m.role === 'assistant' ? 'assistant' : 'user') as MsgRole,
+      text: String(m.text || m.content || ''),
+      ts: Number(m.at || m.ts || m.createdAt) || Date.now(),
+      meta: m.meta
+    }));
+    
+    setUiMessages(mapped);
+    console.log('[ChatDock] synced messages from store:', mapped.length);
+  }, [storeMessages]);
+  
   // Equality guard to avoid redundant setState on cross-tab updates
   const sameTimeline = React.useCallback((ui: Msg[], basic: BasicMsg[]) => {
     if (!Array.isArray(ui) || !Array.isArray(basic)) return false;
@@ -435,8 +452,21 @@ export default function ChatDock() {
       user
     );
 
-    setUiMessages(cur => [...cur, { role: 'assistant', text: normalized.text, ts, meta: metaPayload }]);
+    // 🔥 Write to Zustand store (primary)
+    const state = useChatSession.getState();
+    useChatSession.setState({
+      messages: [...state.messages, {
+        id: crypto.randomUUID(),
+        role: 'assistant',
+        text: normalized.text,
+        at: ts,
+        meta: metaPayload
+      }]
+    });
+    
+    // Legacy: also write to old chatStore for backwards compat
     chatStore.append({ role: 'assistant', content: normalized.text, createdAt: ts });
+    
     try {
       const provider = metaPayload?.fallback;
       if (provider) {
@@ -711,11 +741,24 @@ export default function ChatDock() {
 
   const appendUser = React.useCallback((text: string) => {
     const ts = Date.now();
-    setUiMessages(cur => [...cur, { role: 'user', text, ts }]); // optimistic UI
+    
+    // 🔥 Write to Zustand store (primary)
+    const state = useChatSession.getState();
+    useChatSession.setState({
+      messages: [...state.messages, {
+        id: crypto.randomUUID(),
+        role: 'user',
+        text,
+        at: ts
+      }]
+    });
+    
+    // Legacy: also write to old chatStore for backwards compat
     chatStore.append({ role: 'user', content: text, createdAt: ts });
-  // If a snapshot exists from a recent Clear, discard it once new chat starts
-  try { chatDiscardSnapshot(); } catch { /* ignore */ }
-  }, [setUiMessages]);
+    
+    // If a snapshot exists from a recent Clear, discard it once new chat starts
+    try { chatDiscardSnapshot(); } catch { /* ignore */ }
+  }, []);
 
   // (appendAssistant moved above first usage)
 
