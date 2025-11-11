@@ -318,11 +318,16 @@ const App: React.FC = () => {
           });
 
           // Escape key handler - must check isChatOpen() dynamically
-          window.addEventListener('keydown', (e: KeyboardEvent) => {
+          // Remove any existing listener first to prevent duplicates
+          const handleEscape = (e: KeyboardEvent) => {
+            console.log('[App] keydown:', e.key, 'isChatOpen:', mountModule.isChatOpen());
             if (e.key === 'Escape' && mountModule.isChatOpen()) {
+              e.preventDefault();
+              e.stopPropagation();
               mountModule.hideChat(host);
             }
-          });
+          };
+          window.addEventListener('keydown', handleEscape);
 
           console.log('[chat-boot] chat entry loaded OK');
         })
