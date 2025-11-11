@@ -41,7 +41,34 @@ export function mountChatDock(): void {
     // 3) Attach shadow root once
     const sr = host.shadowRoot ?? host.attachShadow({ mode: 'open' });
 
-    // 4) Create iframe (sandboxed, same-origin for asset loading)
+    // 4) Add styles for host container (fixed, high-z box)
+    let style = sr.querySelector('#lm-chat-host-styles') as HTMLStyleElement | null;
+    if (!style) {
+      style = document.createElement('style');
+      style.id = 'lm-chat-host-styles';
+      style.textContent = `
+        :host {
+          position: fixed;
+          right: 24px;
+          bottom: 24px;
+          width: 520px;
+          height: 560px;
+          z-index: 2147483000;
+          border-radius: 16px;
+          overflow: hidden;
+          box-shadow: 0 18px 36px rgba(0,0,0,.5);
+        }
+        iframe {
+          display: block;
+          width: 100%;
+          height: 100%;
+          border: 0;
+        }
+      `;
+      sr.appendChild(style);
+    }
+
+    // 5) Create iframe (sandboxed, same-origin for asset loading)
     let frame = sr.querySelector('#lm-chat-frame') as HTMLIFrameElement | null;
     if (!frame) {
       frame = document.createElement('iframe');
@@ -53,8 +80,6 @@ export function mountChatDock(): void {
 
       frame.setAttribute('sandbox', 'allow-scripts allow-popups allow-same-origin');
       frame.setAttribute('referrerpolicy', 'no-referrer');
-      frame.style.cssText =
-        'background:transparent;border:0;display:block;position:fixed;inset:auto 24px 24px auto;width:420px;height:640px;z-index:2147483647;pointer-events:auto;';
 
       // Send init config when iframe loads
       frame.addEventListener('load', () => {
