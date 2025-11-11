@@ -107,6 +107,20 @@
   padding: 12px 12px 4px;
 }
 
+/* Message wrapping - prevent overflow */
+.lm-chat__scroll .bubble {
+  overflow-wrap: anywhere;         /* modern */
+  word-break: break-word;          /* legacy fallback */
+  white-space: pre-wrap;           /* keep newlines */
+}
+
+/* Code/mono blocks still wrap nicely */
+.lm-chat__scroll pre,
+.lm-chat__scroll code {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 .date-divider {
   position: sticky;
   top: 0;
@@ -193,6 +207,15 @@
   outline: none;
   background: rgba(0,0,0,.25);
   color: var(--lm-text);
+}
+
+/* Textarea variant with growth cap */
+.lm-chat__composer textarea {
+  max-height: 28vh;
+  overflow-y: auto;
+  resize: none;
+  padding: 10px 12px;
+  line-height: 1.4;
 }
 
 .input:focus {
