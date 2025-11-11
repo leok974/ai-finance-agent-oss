@@ -1,6 +1,6 @@
 /**
  * mountChat.tsx - Chat iframe bootstrap (parent side)
- * 
+ *
  * CRITICAL ARCHITECTURE:
  * - Chat runs in sandboxed iframe with same-origin (for asset loading)
  * - Sandbox: allow-scripts allow-popups allow-same-origin
@@ -46,12 +46,16 @@ export function mountChatDock(): void {
     if (!frame) {
       frame = document.createElement('iframe');
       frame.id = 'lm-chat-frame';
-      frame.src = '/chat/index.html';
+
+      // Add cache-busting build ID to iframe src
+      const buildId = (globalThis as any).__RUNTIME_BUILD_ID__ ?? Date.now().toString();
+      frame.src = `/chat/index.html?v=${buildId}`;
+
       frame.setAttribute('sandbox', 'allow-scripts allow-popups allow-same-origin');
       frame.setAttribute('referrerpolicy', 'no-referrer');
       frame.style.cssText =
         'background:transparent;border:0;display:block;position:fixed;inset:auto 24px 24px auto;width:420px;height:640px;z-index:2147483647;pointer-events:auto;';
-      
+
       // Send init config when iframe loads
       frame.addEventListener('load', () => {
         frame!.contentWindow?.postMessage(
@@ -79,7 +83,7 @@ export function unmountChatDock(): void {
   // Notify iframe to teardown
   const host = document.querySelector('lm-chatdock-host');
   const frame = host?.shadowRoot?.querySelector('#lm-chat-frame') as HTMLIFrameElement | null;
-  
+
   frame?.contentWindow?.postMessage({ type: 'chat:teardown' }, window.location.origin);
 
   // Remove host element

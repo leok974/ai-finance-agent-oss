@@ -4,7 +4,8 @@ import type { Transaction } from '@/types/agent'
 import Chip from '@/components/ui/chip'
 import { Skeleton } from '@/components/ui/skeleton'
 import { selectTopMerchantCat } from '@/selectors/explain'
-import * as ReactDOM from 'react-dom'
+import ReactDOM from 'react-dom';
+import { getPortalRoot } from '@/lib/portal';
 import { buildDeterministicExplain } from '@/lib/explainFallback'
 import Pill from '@/components/ui/pill'
 import { useSafePortalReady } from '@/hooks/useSafePortal'
@@ -126,6 +127,6 @@ export default function ExplainSignalDrawer({ txnId, open, onOpenChange, txn }: 
         </main>
       </aside>
     </div>,
-    document.body
+    getPortalRoot()
   )
 }

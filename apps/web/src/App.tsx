@@ -291,6 +291,14 @@ const App: React.FC = () => {
     console.log('[App] chat mount effect', { chatEnabled, authReady, authOk });
     if (!chatEnabled || !authReady || !authOk) return;
 
+    // Add global error handlers to catch chat boot failures
+    window.addEventListener('error', (e) => {
+      console.error('[chat-boot] window.onerror', e?.error ?? e?.message ?? e);
+    });
+    window.addEventListener('unhandledrejection', (e) => {
+      console.error('[chat-boot] unhandledrejection', e.reason ?? e);
+    });
+
     console.log('[App] queuing chat mount...');
     queueMicrotask(() => {
       console.log('[App] importing chat module...');
@@ -299,7 +307,11 @@ const App: React.FC = () => {
           console.log('[App] chat module loaded, calling mountChatDock()');
           return m.mountChatDock();
         })
+        .then(() => {
+          console.log('[chat-boot] chat entry loaded OK');
+        })
         .catch(e => {
+          console.error('[chat-boot] failed to load chat entry', e);
           console.error('[chat] mount failed → fuse trip', e);
           sessionStorage.setItem('lm:disableChat', '1');
         });

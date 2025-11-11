@@ -225,7 +225,7 @@ async def callback(request: Request, db: Session = Depends(get_db)):
             # Assign default "user" role
             user_role = db.query(Role).filter(Role.name == "user").first()
             if not user_role:
-                user_role = Role(name="user", description="Standard user")
+                user_role = Role(name="user")
                 db.add(user_role)
                 db.flush()
 

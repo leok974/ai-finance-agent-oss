@@ -70,6 +70,69 @@ Recommended (future):
 - **LLM gating**: Test overrides (`FORCE_HELP_LLM`) isolated; production safe defaults disallow unauthorized model fallback.
 - **Health classification**: Reasons separated into `info` vs `warn` to prevent false container restarts.
 
+### Authentication & Authorization (Google OAuth 2.0 + PKCE)
+
+**Current Posture** (as of Nov 2025):
+
+**OAuth Flow**:
+- Google OAuth 2.0 with PKCE (Proof Key for Code Exchange) for CSRF/replay protection
+- Authorization Code flow with state parameter validation
+- PKCE code_challenge_method=S256 (SHA-256 hashing)
+- Nonce parameter for additional replay protection
+
+**Cookie Security** (enforced in `app/utils/auth.py`):
+- `Secure`: true (HTTPS-only, prevents interception over HTTP)
+- `SameSite`: None (required for cross-site OAuth redirects from accounts.google.com)
+- `Domain`: app.ledger-mind.org (explicit domain scoping)
+- `HttpOnly`: true (prevents XSS cookie theft)
+- `Path`: / (application-wide scope)
+
+**Routing Protection**:
+- Critical endpoints protected by nginx location blocks with X-NGX-Loc headers for debugging
+- `/api/auth/me`: Exact match location (prevents 404 regression that breaks auth bootstrap)
+- `/api/auth/google/*`: Prefix location (preserves full OAuth callback paths)
+- Rate limiting on auth endpoints (prevents brute force/enumeration)
+
+**Session Management**:
+- JWT tokens (access + refresh) stored in HTTP-only cookies
+- Access token expiration: configurable (default 3600s)
+- Refresh token rotation on use
+- Token validation on every authenticated request
+
+**Contract Tests** (prevents regressions):
+- Backend: `tests/test_auth_contract.py` (pytest)
+  - Verifies /auth/me never returns 404
+  - Validates cookie security flags (Secure, SameSite, Domain)
+  - Confirms OpenAPI schema includes OAuth routes
+- E2E: `tests/e2e/auth.oauth.spec.ts` (Playwright)
+  - Verifies login redirects to Google with PKCE
+  - Validates callback sets cookies with correct attributes
+  - Confirms /api/auth/me endpoint exists
+- CI Guards: `.github/workflows/nginx-guards.yml`
+  - Blocks PRs that break auth routing invariants
+  - Validates X-NGX-Loc headers presence
+  - Prevents dangerous nginx patterns (trailing slash proxy_pass)
+- Public Probes: `.github/workflows/auth-contract.yml`
+  - Runs every 30 minutes against production
+  - Alerts on 404s or missing PKCE parameters
+
+**Monitoring & Alerts** (`prometheus/rules/auth_alerts.yml`):
+- **AuthMe404**: Critical alert if /api/auth/me returns any 404s (contract breach)
+- **AuthPath5xxSpike**: Page alert if 5xx rate > 0.5 rps for 5m on auth endpoints
+- **OAuthLoginFailures**: Warning if 4xx/5xx rate > 1 rps on login endpoint
+- **AuthEndpointsAvailabilityLow**: SLO alert if auth availability < 99% over 30m
+
+**Known Limitations**:
+- SameSite=None requires Secure flag (OAuth breaks over HTTP)
+- Cross-site cookie deprecation by browsers may require future migration to alternative OAuth flows
+- Session fixation possible if cookies leaked (mitigated by Secure+HttpOnly flags)
+
+**Planned Improvements**:
+- Add CSRF tokens for state-changing operations (beyond OAuth PKCE)
+- Implement refresh token rotation with family tracking
+- Add session revocation API endpoint
+- Consider fingerprinting/device tracking for anomaly detection
+
 ---
 ## 6. Cryptography (Envelope Model)
 - Sensitive columns encrypted with a Data Encryption Key (DEK).

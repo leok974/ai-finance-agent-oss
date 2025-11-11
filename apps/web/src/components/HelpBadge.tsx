@@ -1,5 +1,6 @@
 import * as React from "react";
 import { createPortal } from "react-dom";
+import { getPortalRoot } from "@/lib/portal";
 import { useExplain } from "@/hooks/useExplain";
 import { Button, pillIconClass } from "@/components/ui/button";
 
@@ -91,7 +92,7 @@ export default function HelpBadge({
             {loading ? "Loading…" : text}
           </div>
         </div>,
-        document.body
+        getPortalRoot()
       )}
     </>
   );

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import ReactDOM from "react-dom";
 import { useSafePortalReady } from "@/hooks/useSafePortal";
+import { getPortalRoot } from "@/lib/portal";
 
 type Props = {
   title: string;
@@ -16,7 +17,7 @@ export function HelpPanelHost() {
   const portalReady = useSafePortalReady();
   const [p, setP] = useState<Props | null>(null);
   useEffect(() => { setStateRef = setP; return () => { setStateRef = null; }; }, []);
-  
+
   if (!p || !portalReady || !document.body) return null;
 
   const margin = 10;
@@ -51,5 +52,5 @@ export function HelpPanelHost() {
       />
     </div>
   );
-  return ReactDOM.createPortal(node, document.body);
+  return ReactDOM.createPortal(node, getPortalRoot());
 }

@@ -1,12 +1,24 @@
 import { defineConfig, configDefaults } from 'vitest/config'
 import react from '@vitejs/plugin-react'
 import tsconfigPaths from 'vite-tsconfig-paths'
+import path from 'path'
 
 export default defineConfig({
   plugins: [react(), tsconfigPaths()],
+  resolve: {
+    alias: [
+      // Chat-only test pathing for shims
+      { find: /^@chat\/react-dom-shim$/, replacement: path.resolve(__dirname, 'src/chat/react-dom-shim.ts') },
+      { find: /^@chat\/radix-portal-shim$/, replacement: path.resolve(__dirname, 'src/chat/radix-portal-shim.tsx') },
+      // Private react-dom-real alias used by the shim
+      { find: /^react-dom-real$/, replacement: path.resolve(__dirname, 'node_modules/react-dom/index.js') },
+    ],
+    dedupe: ['react', 'react-dom'],
+  },
   define: {
     'import.meta.env.VITE_ENABLE_AGUI': JSON.stringify('1'),
     'import.meta.env.VITE_API_BASE': JSON.stringify(''),
+    'import.meta.env.BUILD_CHAT': JSON.stringify('1'),
   },
   test: {
     environment: 'happy-dom',

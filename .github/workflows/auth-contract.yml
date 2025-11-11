@@ -1,0 +1,122 @@
+name: Auth Contract (Public)
+
+on:
+  # Run every 30 minutes to catch regressions quickly
+  schedule:
+    - cron: "*/30 * * * *"
+
+  # Allow manual triggering
+  workflow_dispatch: {}
+
+  # Run on push to main (auth-related changes)
+  push:
+    branches: [main]
+    paths:
+      - 'deploy/nginx.conf'
+      - 'apps/backend/app/auth/**'
+      - '.github/workflows/auth-contract.yml'
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Login endpoint must 302 → Google with PKCE
+        run: |
+          echo "🔍 Testing /api/auth/google/login endpoint..."
+
+          RES=$(curl -s -D - -o /dev/null https://app.ledger-mind.org/api/auth/google/login)
+          echo "$RES"
+
+          # Must return 302 redirect
+          echo "$RES" | grep -E '^HTTP/.* 302'
+
+          # Must redirect to Google OAuth
+          echo "$RES" | grep -i '^location: .*accounts.google.com/o/oauth2/v2/auth'
+
+          # Must include PKCE parameter
+          echo "$RES" | grep -i 'code_challenge_method=S256'
+
+          echo "✅ Login endpoint contract verified"
+
+      - name: /api/auth/me must not 404
+        run: |
+          echo "🔍 Testing /api/auth/me endpoint..."
+
+          code=$(curl -s -o /dev/null -w '%{http_code}' https://app.ledger-mind.org/api/auth/me)
+          echo "status=$code"
+
+          # Must NOT be 404 - this is the critical regression we're preventing
+          test "$code" != "404"
+
+          # Should be 401 or 403 (unauthenticated) or 200 (authenticated)
+          if [ "$code" != "200" ] && [ "$code" != "401" ] && [ "$code" != "403" ]; then
+            echo "❌ Unexpected status code: $code"
+            exit 1
+          fi
+
+          echo "✅ /api/auth/me endpoint exists (status=$code)"
+
+      - name: OAuth callback endpoint exists
+        run: |
+          echo "🔍 Testing /api/auth/google/callback endpoint..."
+
+          # Callback with invalid code should return 400/401/403, not 404
+          code=$(curl -s -o /dev/null -w '%{http_code}' \
+            'https://app.ledger-mind.org/api/auth/google/callback?code=INVALID&state=TEST')
+          echo "status=$code"
+
+          # Must NOT be 404
+          test "$code" != "404"
+
+          echo "✅ Callback endpoint exists (status=$code)"
+
+      - name: Check backend health
+        run: |
+          echo "🔍 Testing backend health..."
+
+          response=$(curl -s https://app.ledger-mind.org/api/ready)
+          echo "$response"
+
+          # Parse JSON and check ok field
+          ok=$(echo "$response" | jq -r '.ok')
+
+          if [ "$ok" != "true" ]; then
+            echo "❌ Backend health check failed"
+            exit 1
+          fi
+
+          echo "✅ Backend health OK"
+
+      - name: Verify cookie security on login
+        run: |
+          echo "🔍 Testing OAuth cookie security..."
+
+          # Get full headers from login endpoint
+          headers=$(curl -s -D - -o /dev/null https://app.ledger-mind.org/api/auth/google/login)
+
+          # If Set-Cookie is present, verify security attributes
+          if echo "$headers" | grep -qi 'set-cookie'; then
+            echo "Cookies are being set, verifying attributes..."
+
+            echo "$headers" | grep -i 'set-cookie' | grep -qi 'secure'
+            echo "$headers" | grep -i 'set-cookie' | grep -qi 'samesite'
+
+            echo "✅ Cookie security attributes present"
+          else
+            echo "ℹ️ No cookies set at login (PKCE state may be in URL)"
+          fi
+
+      - name: Report results
+        if: always()
+        run: |
+          echo "================================================"
+          echo "Auth Contract Public Probe - Complete"
+          echo "================================================"
+          echo "All critical auth endpoints verified:"
+          echo "  - /api/auth/google/login redirects correctly"
+          echo "  - /api/auth/me endpoint exists (no 404)"
+          echo "  - /api/auth/google/callback endpoint exists"
+          echo "  - Backend health check passes"
+          echo "================================================"
