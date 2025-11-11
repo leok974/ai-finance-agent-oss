@@ -1,0 +1,19 @@
+/**
+ * Chat iframe styles
+ * This CSS is bundled with the chat iframe and provides Tailwind + theme tokens
+ */
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Chat-specific utilities */
+.lm-chatdock * {
+  box-sizing: border-box;
+}
+
+/* Ensure chat has proper background in dark mode */
+.lm-chatdock {
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+}

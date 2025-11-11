@@ -27,6 +27,35 @@ console.log('[prelude] document.title:', document.title);
   console.log('[portal-guard] iframe roots ensured');
 })();
 
+// 1.5) 🎨 Sync theme class and CSS variables from parent
+(function syncThemeFromParent() {
+  try {
+    // Copy dark/light class from parent
+    const parentClass = window.parent?.document?.documentElement?.className;
+    if (parentClass) {
+      document.documentElement.className = parentClass;
+      console.log('[prelude] synced theme class:', parentClass);
+    }
+
+    // Copy CSS variables from parent (shadcn tokens, etc.)
+    const parentStyle = window.parent?.getComputedStyle(window.parent.document.documentElement);
+    const iframeStyle = document.documentElement.style;
+    if (parentStyle && iframeStyle) {
+      let copiedCount = 0;
+      for (let i = 0; i < parentStyle.length; i++) {
+        const name = parentStyle[i];
+        if (name.startsWith('--')) {
+          iframeStyle.setProperty(name, parentStyle.getPropertyValue(name));
+          copiedCount++;
+        }
+      }
+      console.log(`[prelude] synced ${copiedCount} CSS variables from parent`);
+    }
+  } catch (err) {
+    console.warn('[prelude] theme sync failed (cross-origin?)', err);
+  }
+})();
+
 // 2) Monkey-patch createPortal BEFORE ReactDOM is imported anywhere
 (function patchCreatePortalEarly() {
   const apply = (ReactDOM: any) => {
