@@ -1,6 +1,11 @@
 // --- PRELUDE: runs before any React/Radix code ---
 // This file MUST load before chat/main.tsx to prevent React #185
 
+console.log('[prelude] Starting iframe prelude...');
+console.log('[prelude] window === window.parent?', window === window.parent);
+console.log('[prelude] window !== window.parent?', window !== window.parent);
+console.log('[prelude] document.title:', document.title);
+
 // 1) Ensure portal roots live in THIS iframe document
 (function ensureIframeRoots() {
   const doc = document;

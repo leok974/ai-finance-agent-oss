@@ -1,92 +1,97 @@
 /**
  * chat/main.tsx - Chat iframe self-mount entry
- * 
+ *
  * CRITICAL: This runs INSIDE the sandboxed iframe (same-origin with allow-same-origin).
  * Portal guards are in prelude.ts which MUST load before this file.
  */
 
+import './react-dom-guard'; // MUST precede any Radix/portal usage
+
 import React from 'react';
 import { createRoot, Root } from 'react-dom/client';
 import { AuthProvider } from '@/state/auth';
-import { TooltipProvider } from '@/components/ui/tooltip';
 import { ChatDockProvider } from '@/context/ChatDockContext';
 import ChatDock from '@/components/ChatDock';
-import ErrorBoundary from '@/components/ErrorBoundary';
+import { ChatErrorBoundary } from './ChatErrorBoundary';
+import { patchCreatePortalToIframe } from './crossDocumentPortalHotfix';
+import { PortalContainerContext } from './portalRoot';
+import { TooltipProvider, Toaster } from './ui'; // Use chat-patched UI with Toaster
 import '@/index.css';
 
-let root: Root | null = null;
+// OVERLAY KILL-SWITCH: Disable all Radix overlays to isolate React #185
+const DISABLE_OVERLAYS = import.meta.env.VITE_DISABLE_OVERLAYS === '1';
+if (DISABLE_OVERLAYS) {
+  console.warn('[chat] 🚨 OVERLAY KILL-SWITCH ACTIVE — All Radix overlays disabled for debugging');
+}
+
+// HOTFIX: Patch createPortal IMMEDIATELY at module load, before any components render
+patchCreatePortalToIframe(document);
 
 /**
- * Self-mount inside iframe
+ * Boot chat with providers
+ * Called by entry.tsx after safe mode check
  */
-function mountChat(): void {
-  const el = document.getElementById('chat-root');
+export function bootChat(root: Root): void {
+  const el = document.getElementById('lm-chat-root');
   const portalRoot = document.getElementById('__LM_PORTAL_ROOT__');
-  
+
   if (!el) {
-    console.error('[chat] no #chat-root — cannot mount');
+    console.error('[chat] no #lm-chat-root — cannot mount');
     window.parent?.postMessage({ type: 'chat:error', error: 'no_chat_root' }, window.location.origin);
     return;
   }
 
   if (!portalRoot) {
-    console.error('[chat] no #__LM_PORTAL_ROOT__ — portals will fail');
-    window.parent?.postMessage({ type: 'chat:error', error: 'no_portal_root' }, window.location.origin);
-    return;
+    console.warn('[chat] no #__LM_PORTAL_ROOT__ — creating fallback');
+    const fallback = document.createElement('div');
+    fallback.id = '__LM_PORTAL_ROOT__';
+    document.body.appendChild(fallback);
   }
 
   try {
-    // DIAGNOSTIC: Log container state before createRoot
+    // DIAGNOSTIC: Log container state before render
     console.log('[chat] container:', {
       tag: el.tagName,
       id: el.id,
       childCount: el.childNodes?.length ?? 0,
-      html: el.innerHTML?.slice(0, 120),
-      hasRootContainer: !!(el as any).__root
+      html: el.innerHTML?.slice(0, 120)
     });
 
-    // Guard against duplicate roots (HMR safety)
-    if ((el as any).__root) {
-      console.warn('[chat] root already exists — reusing');
-      root = (el as any).__root;
-    } else {
-      // Clear any stale DOM
-      if (el.childNodes.length > 0) {
-        console.warn('[chat] container not empty before createRoot — clearing');
-        el.textContent = '';
-      }
+    console.log('[chat] root.render() ABOUT TO BE CALLED');
+    console.log('[chat] root object:', root);
 
-      console.log('[chat] creating root in iframe...');
-      root = createRoot(el);
-      (el as any).__root = root;
-      console.log('[chat] root created successfully');
-    }
-
-    // Render with providers
-    root!.render(
-      <ErrorBoundary
-        fallback={(error) => {
-          console.error('[chat] ErrorBoundary caught:', error);
-          window.parent?.postMessage({ type: 'chat:error', error: error.message }, window.location.origin);
-          return <div style={{ display: 'none' }} />;
-        }}
-      >
-        <AuthProvider>
-          <TooltipProvider delayDuration={200}>
-            <ChatDockProvider>
-              <ChatDock />
-            </ChatDockProvider>
-          </TooltipProvider>
-        </AuthProvider>
-      </ErrorBoundary>
+    // Render with providers (PortalContainerContext points to iframe's document for safe portals)
+    root.render(
+      <ChatErrorBoundary>
+        <PortalContainerContext.Provider value={document.body}>
+          <AuthProvider>
+            {DISABLE_OVERLAYS ? (
+              // KILL-SWITCH: No overlay providers when debugging
+              <ChatDockProvider>
+                <ChatDock />
+              </ChatDockProvider>
+            ) : (
+              // Normal: Full overlay stack
+              <TooltipProvider delayDuration={200}>
+                <ChatDockProvider>
+                  <ChatDock />
+                  <Toaster />
+                </ChatDockProvider>
+              </TooltipProvider>
+            )}
+          </AuthProvider>
+        </PortalContainerContext.Provider>
+      </ChatErrorBoundary>
     );
 
+    console.log('[chat] root.render() COMPLETED');
+
     console.info('[chat] mounted successfully');
-    
+
     // Notify parent that chat is ready
     window.parent?.postMessage({ type: 'chat:ready' }, window.location.origin);
   } catch (error) {
-    console.error('[chat] mount failed:', error);
+    console.error('[chat] boot failed:', error);
     window.parent?.postMessage({ type: 'chat:error', error: String(error) }, window.location.origin);
   }
 }
@@ -96,18 +101,9 @@ function mountChat(): void {
  */
 window.addEventListener('message', (e: MessageEvent) => {
   if (e.origin !== window.location.origin) return;
-  
+
   if (e.data?.type === 'chat:init') {
     console.log('[chat] received init config:', e.data.config);
     // Apply config if needed
   }
 });
-
-/**
- * Mount when DOM is ready
- */
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', mountChat);
-} else {
-  mountChat();
-}

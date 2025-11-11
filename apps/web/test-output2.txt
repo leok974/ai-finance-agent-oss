@@ -1,0 +1,82 @@
+[global-setup] PW_EMAIL or PW_PASSWORD not set, skipping auth setup
+[global-setup] Set these env vars to enable authenticated tests
+Γ£à Using saved auth state from: C:\ai-finance-agent-oss-clean\apps\web\tests\e2e\.auth\prod-state.json
+
+Running 1 test using 1 worker
+
+[1A[2KΓ£à Using saved auth state from: C:\ai-finance-agent-oss-clean\apps\web\tests\e2e\.auth\prod-state.json
+
+[1A[2K[1/1] [chromium] ΓÇ║ tests\e2e\test-safe-mode-v2.spec.ts:18:1 ΓÇ║ safe mode - iframe created and shows minimal boot
+[1A[2K[chromium] ΓÇ║ tests\e2e\test-safe-mode-v2.spec.ts:18:1 ΓÇ║ safe mode - iframe created and shows minimal boot
+Γ£à Page loaded, waiting for auth and iframe...
+
+[1A[2K[CONSOLE] [chat] iframe host created
+
+[1A[2K[CONSOLE] [chat] ≡ƒÜ¿ OVERLAY KILL-SWITCH ACTIVE ΓÇö All Radix overlays disabled for debugging
+
+[1A[2K[CONSOLE] [chat] container: {tag: DIV, id: lm-chat-root, childCount: 0, html: }
+
+[1A[2K[CONSOLE] [chat] mounted successfully
+
+
+[1A[2K[PAGE ERROR] Maximum update depth exceeded. This can happen when a component repeatedly calls setState inside componentWillUpdate or componentDidUpdate. React limits the number of nested updates to prevent infinite loops.
+[1A[2K[CONSOLE] [chat] ErrorBoundary caught: Error: Maximum update depth exceeded. This can happen when a component repeatedly calls setState inside componentWillUpdate or componentDidUpdate. React limits the number of nested updates to prevent infinite loops.
+    at jF (https://app.ledger-mind.org/assets/vendor-react-uzk-sCvp.js:176:759)
+    at Rn (https://app.ledger-mind.org/assets/vendor-react-uzk-sCvp.js:172:16184)
+    at U0 (https://app.ledger-mind.org/assets/vendor-react-uzk-sCvp.js:141:5688)
+    at B0 (https://app.ledger-mind.org/assets/vendor-react-uzk-sCvp.js:141:5490)
+    at qi (https://app.ledger-mind.org/assets/vendor-react-uzk-sCvp.js:159:22921)
+    at Hz (https://app.ledger-mind.org/assets/vendor-react-uzk-sCvp.js:172:13026)
+    at Uz (https://app.ledger-mind.org/assets/vendor-react-uzk-sCvp.js:172:12774)
+    at Fz (https://app.ledger-mind.org/assets/vendor-react-uzk-sCvp.js:172:12682)
+    at zz (https://app.ledger-mind.org/assets/vendor-react-uzk-sCvp.js:172:12560)
+    at CF (https://app.ledger-mind.org/assets/vendor-react-uzk-sCvp.js:172:24884)
+
+[1A[2KTotal frames: [33m4[39m
+
+[1A[2KFrame 0: https://app.ledger-mind.org/?chat=1
+
+[1A[2KFrame 1: about:blank
+
+[1A[2KFrame 2: https://app.ledger-mind.org/chat/index.html?v=1762895785567
+
+[1A[2KFrame 3: about:blank
+
+[1A[2KΓ£à Chat iframe found: https://app.ledger-mind.org/chat/index.html?v=1762895785567
+
+[1A[2K  1) [chromium] ΓÇ║ tests\e2e\test-safe-mode-v2.spec.ts:18:1 ΓÇ║ safe mode - iframe created and shows minimal boot
+
+    Error: [2mexpect([22m[31mlocator[39m[2m).[22mtoBeVisible[2m([22m[2m)[22m failed
+
+    Locator: locator('[data-chat-safe="1"]')
+    Expected: visible
+    Timeout: 5000ms
+    Error: element(s) not found
+
+    Call log:
+    [2m  - Expect "toBeVisible" with timeout 5000ms[22m
+    [2m  - waiting for locator('[data-chat-safe="1"]')[22m
+
+
+      67 |   // Check for safe mode div inside iframe
+      68 |   const safeDiv = chatFrame.locator('[data-chat-safe="1"]');
+    > 69 |   await expect(safeDiv).toBeVisible({ timeout: 5000 });
+         |                         ^
+      70 |
+      71 |   const text = await safeDiv.textContent();
+      72 |   console.log('Γ£à Safe mode text:', text);
+        at C:\ai-finance-agent-oss-clean\apps\web\tests\e2e\test-safe-mode-v2.spec.ts:69:25
+
+    attachment #1: screenshot (image/png) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+    test-results\test-safe-mode-v2-safe-mod-a70a6-ated-and-shows-minimal-boot-chromium\test-failed-1.png
+    ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+
+    attachment #2: video (video/webm) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+    test-results\test-safe-mode-v2-safe-mod-a70a6-ated-and-shows-minimal-boot-chromium\video.webm
+    ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+
+    Error Context: test-results\test-safe-mode-v2-safe-mod-a70a6-ated-and-shows-minimal-boot-chromium\error-context.md
+
+
+[1A[2K  1 failed
+    [chromium] ΓÇ║ tests\e2e\test-safe-mode-v2.spec.ts:18:1 ΓÇ║ safe mode - iframe created and shows minimal boot

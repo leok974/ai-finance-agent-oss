@@ -59,3 +59,59 @@ If the pipeline breaks due to CSP during an incident, short-term mitigation:
 1. Rebuild `deploy/nginx.conf` with a temporary appended source: `script-src 'self' 'unsafe-inline'` (DO NOT commit long-term unless root cause understood).
 2. Add incident note referencing violation reports (Report-To group `csp`).
 3. Revert to hash-only mode post-fix.
+
+---
+
+## Auth Verification (Post-Deploy Checklist)
+
+After deploying nginx or backend auth changes, run these commands to verify the OAuth contract:
+
+### PowerShell (Windows)
+
+```powershell
+# Verify login endpoint redirects to Google with PKCE
+curl -sI https://app.ledger-mind.org/api/auth/google/login | Select-String "HTTP","location","x-ngx-loc"
+
+# Verify /api/auth/me endpoint exists (never 404)
+curl -sI https://app.ledger-mind.org/api/auth/me | Select-String "HTTP","x-ngx-loc"
+
+# Verify callback endpoint exists
+curl -sI "https://app.ledger-mind.org/api/auth/google/callback?code=TEST&state=TEST" | Select-String "HTTP"
+```
+
+### Bash (Linux/Mac)
+
+```bash
+# Verify login endpoint redirects to Google with PKCE
+curl -sI https://app.ledger-mind.org/api/auth/google/login | grep -iE "HTTP|location|x-ngx-loc"
+
+# Verify /api/auth/me endpoint exists (never 404)
+curl -sI https://app.ledger-mind.org/api/auth/me | grep -iE "HTTP|x-ngx-loc"
+
+# Verify callback endpoint exists
+curl -sI "https://app.ledger-mind.org/api/auth/google/callback?code=TEST&state=TEST" | grep -i "HTTP"
+```
+
+### Expected Results
+
+✅ `/api/auth/google/login`:
+- HTTP/2 302 (redirect)
+- `location: https://accounts.google.com/o/oauth2/v2/auth...code_challenge_method=S256...`
+- `x-ngx-loc: google-prefix`
+
+✅ `/api/auth/me`:
+- HTTP/2 401 or 403 (unauthenticated) or 200 (authenticated)
+- **NEVER 404** - this breaks auth bootstrap
+- `x-ngx-loc: auth-me-exact`
+
+✅ `/api/auth/google/callback`:
+- HTTP/2 400, 401, or 403 (invalid code is expected)
+- **NEVER 404**
+- `x-ngx-loc: google-prefix`
+
+### Rollback Trigger
+
+If ANY of these return 404 or x-ngx-loc is missing:
+1. Rollback nginx.conf immediately
+2. Re-run nginx-guards.yml workflow locally
+3. Check Prometheus alerts for AuthMe404 or AuthPath5xxSpike

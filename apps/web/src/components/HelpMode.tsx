@@ -1,5 +1,6 @@
 import * as React from "react";
 import { createPortal } from "react-dom";
+import { getPortalRoot } from "@/lib/portal";
 import { useExplain } from "@/hooks/useExplain";
 import HelpLayer from "@/features/help/HelpLayer";
 
@@ -40,7 +41,7 @@ export default function HelpMode() {
   }, [on]);
 
   if (!on) return null;
-  
+
   // ⛑️ Safety: ensure DOM is ready before creating portal
   if (typeof window === 'undefined' || !document.body) return null;
 
@@ -59,6 +60,6 @@ export default function HelpMode() {
         <div className="mt-2 text-xs">Press <kbd>?</kbd> to exit.</div>
       </div>
     </div>,
-    document.body
+    getPortalRoot()
   );
 }

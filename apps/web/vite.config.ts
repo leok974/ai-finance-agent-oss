@@ -174,6 +174,8 @@ export default defineConfig(({ mode }) => {
       __WEB_BUILD_ID__: JSON.stringify(BUILD_ID),
       __RUNTIME_BUILD_ID__: JSON.stringify(runtimeBuildId),
       "import.meta.env.BUILD_CHAT": JSON.stringify(env.BUILD_CHAT ?? "0"),
+      "import.meta.env.VITE_CHAT_SAFE_MODE": JSON.stringify(env.VITE_CHAT_SAFE_MODE ?? "0"),
+      "import.meta.env.VITE_DISABLE_OVERLAYS": JSON.stringify(env.VITE_DISABLE_OVERLAYS ?? "0"),
       "process.env.NODE_ENV": JSON.stringify(isChat ? "development" : "production"),
     },
     resolve: {

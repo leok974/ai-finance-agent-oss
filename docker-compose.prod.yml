@@ -1,24 +1,25 @@
 services:
   postgres:
+    container_name: lm-postgres
     image: pgvector/pgvector:pg15
+    restart: unless-stopped
     environment:
-      POSTGRES_USER: myuser
+      POSTGRES_USER: lm
       POSTGRES_PASSWORD_FILE: /run/secrets/db_password
-      POSTGRES_DB: finance
+      POSTGRES_DB: lm
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - lm-pgdata:/var/lib/postgresql/data
     secrets:
       - db_password
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U myuser -d finance || exit 1"]
-      interval: 10s
+      test: ["CMD-SHELL", "pg_isready -U lm -d lm || exit 1"]
+      interval: 5s
       timeout: 3s
-      retries: 5
-    restart: unless-stopped
+      retries: 20
+    # No host port - avoid conflicts
     networks:
-      shared-ollama:
-        aliases:
-          - postgres
+      - infra_net
+      - shared-ollama
 
   redis:
     image: redis:7-alpine
@@ -37,12 +38,14 @@ services:
       - shared-ollama
 
   backend:
+    container_name: ai-finance-backend
     build:
       context: ./apps/backend
       args:
         GIT_BRANCH: ${GIT_BRANCH:-unknown}
         GIT_COMMIT: ${GIT_COMMIT:-unknown}
         BUILD_TIME: ${BUILD_TIME:-unknown}
+    restart: unless-stopped
     env_file:
       - ./secrets/backend.env
     environment:
@@ -60,6 +63,12 @@ services:
       CRYPTO_REQUIRED: "false"
       # Use DATABASE_URL_FILE secret indirection (populated via entrypoint sh wrapper)
       DATABASE_URL_FILE: /run/secrets/backend_db_url
+      # Database connection robustness
+      SQLA_POOL_PRE_PING: "1"
+      DB_CONNECT_MAX_RETRIES: "30"
+      DB_CONNECT_RETRY_SECONDS: "2"
+      # Google OAuth
+      ENABLE_GOOGLE_OAUTH: "1"
       CORS_ALLOW_ORIGINS: "https://ledger-mind.org,https://www.ledger-mind.org"
       FRONTEND_ORIGIN: "https://ledger-mind.org"
       COOKIE_SAMESITE: ${COOKIE_SAMESITE:-none}
@@ -93,6 +102,11 @@ services:
       RAG_MIN_SCORE: "${RAG_MIN_SCORE:-0.15}"
       HELP_CACHE_TTL_SEC: "${HELP_CACHE_TTL_SEC:-600}"
       REDIS_URL: "redis://redis:6379/0"
+      # DevDiag
+      DEVDIAG_TIMEOUT_S: "${DEVDIAG_TIMEOUT_S:-120}"
+      DEVDIAG_ALLOW_HOSTS: "${DEVDIAG_ALLOW_HOSTS:-app.ledger-mind.org}"
+      DEVDIAG_BASE: "${DEVDIAG_BASE:-}"
+      DEVDIAG_JWT: "${DEVDIAG_JWT:-}"
     entrypoint: []
     command: >
       python -m uvicorn app.main:app
@@ -119,11 +133,11 @@ services:
       timeout: 3s
       retries: 10
       start_period: 10s
-    restart: unless-stopped
     volumes:
       # Mount the actual service account JSON file (not the directory) so GOOGLE_APPLICATION_CREDENTIALS points to a file
       - ./secrets/gcp-sa.json/ledgermind-backend-sa.json:/secrets/gcp-sa.json:ro
     networks:
+      - infra_net
       - shared-ollama
 
   nginx:
@@ -321,11 +335,13 @@ services:
       - shared-ollama
 
 networks:
+  infra_net:
+    external: true
   shared-ollama:
     external: true
 
 volumes:
-  pgdata:
+  lm-pgdata:
   redis_data:
   certbot_www:
   letsencrypt:

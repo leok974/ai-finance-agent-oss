@@ -542,6 +542,14 @@ try:
 except Exception:
     pass
 
+# DevDiag proxy (ops endpoints)
+try:
+    from app.routes import devdiag_proxy
+
+    app.include_router(devdiag_proxy.router, prefix="/api")
+except Exception:
+    pass
+
 # Session middleware already configured above (line ~328) - don't add duplicate
 
 # Mount RAG routers (no auth gating here; rely on global auth/CSRF config if needed)

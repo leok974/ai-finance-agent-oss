@@ -52,6 +52,10 @@ import {
 } from "@/components/ui/dropdown-menu";
 // Minimal process env typing for test gating without pulling full @types/node
 declare const process: { env?: Record<string,string|undefined> } | undefined;
+
+// OVERLAY KILL-SWITCH: Disable all Radix overlays (Dialog, DropdownMenu, etc.) to isolate React #185
+const DISABLE_OVERLAYS = import.meta.env.VITE_DISABLE_OVERLAYS === '1';
+
 // --- layout constants (right/bottom anchored) ---
 const MARGIN = 24;     // default bottom-right margin
 const BUBBLE = 48;     // bubble size (px)
@@ -155,10 +159,22 @@ declare global { interface Window { __CHATDOCK_MOUNT_COUNT__?: number } }
 // Module-scoped singleton tracker
 let __CHATDOCK_ACTIVE__: symbol | null = null;
 
+// Diagnostic: catch setState-during-render
+function useRenderGuard(name: string) {
+  const updating = React.useRef(false);
+  if (updating.current) console.warn(`[guard] ${name} setState during render`);
+  updating.current = true;
+  React.useEffect(() => { updating.current = false; });
+}
+
 export default function ChatDock() {
+  console.log('[ChatDock] render start');
+
+  useRenderGuard('ChatDock');
+
   // ⛑️ CRITICAL: Only allow portal creation after complete page load
   const portalReady = useSafePortalReady();
-  
+
   // Safe singleton: claim primary in effect; always run hooks, render only if primary
   const idRef = useRef(Symbol("chatdock"));
   const [isPrimary, setIsPrimary] = useState(false);
@@ -301,12 +317,34 @@ export default function ChatDock() {
     try { return String(import.meta.env.VITE_ENABLE_AGUI || '').trim() === '1'; } catch { return false; }
   })();   // experimental AGUI integration
 
-  // Get version from store for force-rerender after clear/reset
-  const { version, messages: storeMessages, sessionId } = useChatSession((state) => ({
-    version: state.version,
-    messages: state.messages,
-    sessionId: state.sessionId
-  }));
+  // 🔥 FIX: Zustand persist middleware was causing infinite render loop in iframe
+  // Use state directly on first render, then subscribe in effect to avoid hydration during render
+  const [chatState, setChatState] = React.useState(() => {
+    try {
+      const state = useChatSession.getState();
+      return {
+        version: state.version,
+        messages: state.messages,
+        sessionId: state.sessionId
+      };
+    } catch {
+      return { version: 0, messages: [], sessionId: 'fallback-session' };
+    }
+  });
+
+  // Subscribe to store changes AFTER initial render
+  React.useEffect(() => {
+    const unsub = useChatSession.subscribe((state) => {
+      setChatState({
+        version: state.version,
+        messages: state.messages,
+        sessionId: state.sessionId
+      });
+    });
+    return unsub;
+  }, []);
+
+  const { version, messages: storeMessages, sessionId } = chatState;
 
   // Request abort controller for canceling in-flight requests
   const reqRef = React.useRef<AbortController | null>(null);
@@ -753,9 +791,13 @@ export default function ChatDock() {
   const hasSeededGreetingRef = React.useRef(false);
 
   // Seed conversational greeting when chat first opens with empty messages
+  // ONE-SHOT: Guard with ref and remove function dependencies to prevent re-render loops
   React.useEffect(() => {
     // Only seed greeting once, when panel first opens with no messages
     if (hasSeededGreetingRef.current || !open || uiMessages.length > 0) return;
+
+    // Mark as seeded immediately to prevent re-entry
+    hasSeededGreetingRef.current = true;
 
     const seedGreeting = async () => {
       try {
@@ -773,29 +815,31 @@ export default function ChatDock() {
 
         const greeting = buildAgentGreeting(ctx);
 
-        appendAssistant(greeting, {
-          kind: "greeting",
-          used_data: {
-            month: ctx.monthLabel,
-            totalOut: ctx.totalOut ?? ctx.totalOutCents,
-            topMerchant: ctx.topMerchant,
-            merchantsN: ctx.merchantsN,
-            anomaliesN: ctx.anomaliesN,
-          },
+        // Use microtask to decouple from current render cycle
+        queueMicrotask(() => {
+          appendAssistant(greeting, {
+            kind: "greeting",
+            used_data: {
+              month: ctx.monthLabel,
+              totalOut: ctx.totalOut ?? ctx.totalOutCents,
+              topMerchant: ctx.topMerchant,
+              merchantsN: ctx.merchantsN,
+              anomaliesN: ctx.anomaliesN,
+            },
+          });
         });
-
-        hasSeededGreetingRef.current = true;
       } catch (_err) {
         // If greeting fails, fall back to simple message
-        appendAssistant("Hey! 👋 How can I help you with your finances today?", { kind: "greeting" });
-        hasSeededGreetingRef.current = true;
+        queueMicrotask(() => {
+          appendAssistant("Hey! 👋 How can I help you with your finances today?", { kind: "greeting" });
+        });
       }
     };
 
     // Small delay to let month context settle
     const timer = setTimeout(seedGreeting, 300);
     return () => clearTimeout(timer);
-  }, [open, uiMessages.length, month, appendAssistant]);
+  }, [open, uiMessages.length]); // Removed: month, appendAssistant - read from closure instead
 
   // Listen for agent:prefill custom event from CardHelpTooltip
   React.useEffect(() => {
@@ -1899,42 +1943,50 @@ export default function ChatDock() {
             <button type="button" onClick={(e) => { telemetry.track(AGENT_TOOL_EVENTS.CASHFLOW); runCashflow(e as any); }} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50" data-testid="agent-tool-cashflow">Cashflow</button>
             <button type="button" onClick={(e) => { telemetry.track(AGENT_TOOL_EVENTS.TRENDS); runTrends(e as any); }} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50" data-testid="agent-tool-trends">Trends</button>
             {/* Consolidated Insights button with dropdown */}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <button
-                  type="button"
-                  disabled={busy}
-                  className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50 inline-flex items-center gap-1"
-                  data-testid="agent-tool-insights"
-                  title={`Insights (${insightsSize}) — Choose Compact or Expanded`}
-                  aria-label={`Insights (${insightsSize})`}
-                >
-                  Insights <ChevronDown className="h-3 w-3 opacity-70" />
-                </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start">
-                <DropdownMenuItem
-                  onClick={() => {
-                    setInsightsSize("compact");
-                    telemetry.track(AGENT_TOOL_EVENTS.INSIGHTS, { size: "compact" });
-                    runInsights({ size: "compact" });
-                  }}
-                  data-testid="agent-tool-insights-compact"
-                >
-                  Compact
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={() => {
-                    setInsightsSize("expanded");
-                    telemetry.track(AGENT_TOOL_EVENTS.INSIGHTS, { size: "expanded" });
-                    runInsights({ size: "expanded" });
-                  }}
-                  data-testid="agent-tool-insights-expanded"
-                >
-                  Expanded
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+            {DISABLE_OVERLAYS ? (
+              // KILL-SWITCH: Simple buttons when overlays disabled
+              <>
+                <button type="button" onClick={() => { setInsightsSize("compact"); telemetry.track(AGENT_TOOL_EVENTS.INSIGHTS, { size: "compact" }); runInsights({ size: "compact" }); }} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50" data-testid="agent-tool-insights-compact">Insights (C)</button>
+                <button type="button" onClick={() => { setInsightsSize("expanded"); telemetry.track(AGENT_TOOL_EVENTS.INSIGHTS, { size: "expanded" }); runInsights({ size: "expanded" }); }} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50" data-testid="agent-tool-insights-expanded">Insights (E)</button>
+              </>
+            ) : (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50 inline-flex items-center gap-1"
+                    data-testid="agent-tool-insights"
+                    title={`Insights (${insightsSize}) — Choose Compact or Expanded`}
+                    aria-label={`Insights (${insightsSize})`}
+                  >
+                    Insights <ChevronDown className="h-3 w-3 opacity-70" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start">
+                  <DropdownMenuItem
+                    onClick={() => {
+                      setInsightsSize("compact");
+                      telemetry.track(AGENT_TOOL_EVENTS.INSIGHTS, { size: "compact" });
+                      runInsights({ size: "compact" });
+                    }}
+                    data-testid="agent-tool-insights-compact"
+                  >
+                    Compact
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => {
+                      setInsightsSize("expanded");
+                      telemetry.track(AGENT_TOOL_EVENTS.INSIGHTS, { size: "expanded" });
+                      runInsights({ size: "expanded" });
+                    }}
+                    data-testid="agent-tool-insights-expanded"
+                  >
+                    Expanded
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
             <button type="button" onClick={(e) => runBudgetCheck(e as any)} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50" data-testid="agent-tool-budget-check">Budget check</button>
             <button type="button" onClick={(e) => runAlerts(e as any)} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50">Alerts</button>
             {/* Analytics quick buttons */}
@@ -2206,21 +2258,22 @@ export default function ChatDock() {
       />
 
       {/* Why? Modal - Shows explanation and sources */}
-      <Dialog open={showWhyModal} onOpenChange={setShowWhyModal}>
-        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Why? - Explanation</DialogTitle>
-            <DialogDescription>
-              Detailed explanation of the agent&apos;s response
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            {whyContent.explain && (
-              <div>
-                <h3 className="text-sm font-semibold text-white mb-2">Explanation:</h3>
-                <div className="text-sm text-gray-300 whitespace-pre-wrap">
-                  {whyContent.explain}
-                </div>
+      {!DISABLE_OVERLAYS && (
+        <Dialog open={showWhyModal} onOpenChange={setShowWhyModal}>
+          <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Why? - Explanation</DialogTitle>
+              <DialogDescription>
+                Detailed explanation of the agent&apos;s response
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              {whyContent.explain && (
+                <div>
+                  <h3 className="text-sm font-semibold text-white mb-2">Explanation:</h3>
+                  <div className="text-sm text-gray-300 whitespace-pre-wrap">
+                    {whyContent.explain}
+                  </div>
               </div>
             )}
             {whyContent.sources && whyContent.sources.length > 0 && (
@@ -2251,6 +2304,7 @@ export default function ChatDock() {
           </div>
         </DialogContent>
       </Dialog>
+      )}
 
 
       {/* Composer - textarea with Enter to send, Shift+Enter newline */}

@@ -14,11 +14,14 @@
   </style>
 </head>
 <body>
-  <div id="chat-root"></div>
+  <div id="lm-chat-root"></div>
 
   <!-- CRITICAL: Prelude MUST load before main chat bundle -->
-  <!-- Vite will transform these to hashed asset URLs in the same order -->
+  <!-- Entry.tsx handles safe mode and normal boot -->
   <script type="module" src="/src/chat/prelude.ts"></script>
-  <script type="module" src="/src/chat/main.tsx"></script>
+  <script type="module">
+    import { mountChatDock } from '/src/chat/entry.tsx';
+    mountChatDock();
+  </script>
 </body>
 </html>

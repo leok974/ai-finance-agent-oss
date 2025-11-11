@@ -1,5 +1,6 @@
 import React, { useMemo, useState, useEffect } from 'react';
-import * as ReactDOM from 'react-dom';
+import ReactDOM from 'react-dom';
+import { getPortalRoot } from '@/lib/portal';
 import { usePersistentFlag } from '@/lib/usePersistentFlag';
 import type { SeedDraft } from '@/lib/rulesSeed';
 import { testRule, saveTrainReclassify, saveRule, type RuleInput } from '@/api';
@@ -414,9 +415,9 @@ export default function RuleTesterPanel({ onChanged }: { onChanged?: () => void 
       </div>
     </div>
   );
-  
+
   // ⛑️ Safety: ensure DOM is ready before creating portal
   if (typeof window === 'undefined' || !document.body) return null;
-  
-  return ReactDOM.createPortal(panel, document.body);
+
+  return ReactDOM.createPortal(panel, getPortalRoot());
 }
