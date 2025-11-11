@@ -109,10 +109,10 @@ export function ChatIframe() {
 
   return (
     <div className="lm-chat">
-      {/* Tools header (row 1) */}
+      {/* Tools header (row 1) - sticky with horizontal scroll */}
       {showTools && (
-        <div className="lm-chat__tools">
-          <div className="lm-chiprow">
+        <header className="lm-chat__tools sticky top-0 z-20">
+          <div className="lm-chiprow overflow-x-auto" style={{ scrollbarWidth: 'thin' }}>
             <button className="chip" disabled={busy}>Month summary</button>
             <button className="chip" disabled={busy}>Trends</button>
             <button className="chip" disabled={busy}>Alerts</button>
@@ -125,7 +125,7 @@ export function ChatIframe() {
             <button className="chip" disabled={busy}>Search transactions (NL)</button>
           </div>
 
-          <div className="lm-toolsbar">
+          <div className="lm-toolsbar overflow-x-auto" style={{ scrollbarWidth: 'thin' }}>
             <span className="badge badge--ok">LLM: OK</span>
             <button className="btn btn--ghost">Export JSON</button>
             <button className="btn btn--ghost">Export Markdown</button>
@@ -134,7 +134,7 @@ export function ChatIframe() {
             <button className="btn btn--ghost">Clear</button>
             <button className="btn btn--ghost" onClick={() => setShowTools(false)}>Hide tools</button>
           </div>
-        </div>
+        </header>
       )}
 
       {/* Scrollable messages (row 2) */}

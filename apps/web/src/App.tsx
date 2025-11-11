@@ -302,12 +302,21 @@ const App: React.FC = () => {
     console.log('[App] queuing chat mount...');
     queueMicrotask(() => {
       console.log('[App] importing chat module...');
-      import('@/boot/mountChat')
-        .then(m => {
-          console.log('[App] chat module loaded, calling mountChatDock()');
-          return m.mountChatDock();
-        })
-        .then(() => {
+      Promise.all([
+        import('@/boot/mountChat'),
+        import('@/boot/chatLauncher')
+      ])
+        .then(([mountModule, launcherModule]) => {
+          console.log('[App] chat modules loaded, creating host and launcher');
+          
+          // Create host element (hidden by default)
+          const host = mountModule.mountChatDock();
+          
+          // Create launcher button that toggles chat
+          launcherModule.ensureChatLauncher(() => {
+            mountModule.toggleChat(host);
+          });
+          
           console.log('[chat-boot] chat entry loaded OK');
         })
         .catch(e => {
