@@ -14,6 +14,12 @@ import buildStamp from './build-stamp.json';
 import { version as reactVersion } from 'react';
 import { version as reactDomVersion } from 'react-dom';
 
+// ✅ Global error handlers to catch initialization failures
+window.addEventListener('error', e =>
+  console.error('[main-boot] onerror', e?.error ?? e?.message ?? e));
+window.addEventListener('unhandledrejection', e =>
+  console.error('[main-boot] unhandledrejection', e.reason ?? e));
+
 // ✅ Prevent double mount if the bundle is executed twice
 // (route-replace, OAuth popup shenanigans, duplicate script tag, etc.)
 declare global { interface Window { __APP_MOUNTED__?: boolean } }
@@ -96,7 +102,7 @@ if (!(window as any).__chatHandshakeBound) {
     if (e.origin !== location.origin) return;
     const host = document.querySelector('lm-chatdock-host') as HTMLElement | null;
     if (!host) return;
-    
+
     if (e.data?.type === 'chat:ready') {
       host.classList.add('ready');
       console.log('[chat-host] revealed (ready)');
