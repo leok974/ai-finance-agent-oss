@@ -16,6 +16,11 @@ html, body, #root {
   overflow: hidden; /* Prevent double scrollbars */
 }
 
+/* Universal box-sizing: prevents padding from blowing past 100% widths */
+:where(#lm-chat-root, #lm-chat-root *) {
+  box-sizing: border-box;
+}
+
 body {
   overflow: hidden; /* Host clips, not body */
 }
@@ -29,6 +34,18 @@ body {
 }
 
 /* === BULLET-PROOF GRID LAYOUT === */
+/* Never allow any row/tool to exceed the iframe width */
+.lm-grid,
+.lm-messages,
+.lm-row,
+.lm-bubble,
+.lm-msg,
+.lm-tools,
+.lm-toolbar {
+  min-width: 0; /* Prevent flex/grid children from forcing parent growth */
+  max-width: 100%;
+}
+
 .lm-grid {
   display: grid;
   grid-template-rows: auto 1fr auto;
@@ -108,8 +125,8 @@ body {
   display: flex;
   gap: 0.5rem;
   align-items: center;
-  flex-wrap: nowrap;
-  overflow-x: auto; /* Horizontal scroll for chips when needed */
+  flex-wrap: wrap; /* Prevents single long row pushing width */
+  overflow: hidden;
   padding: 0.5rem 0.75rem;
 }
 
@@ -191,6 +208,21 @@ body {
   overflow-wrap: anywhere;
   word-break: break-word;
   min-width: 0;
+}
+
+/* Ensure messages container never grows beyond viewport */
+.lm-messages {
+  overflow: auto;
+  min-height: 0;
+  max-width: 100%;
+}
+
+/* Message content must wrap and never overflow */
+.lm-msg,
+.lm-msg * {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 /* Textarea growth cap to prevent escaping viewport */
@@ -290,6 +322,20 @@ textarea.lm-input,
   border-top: 1px solid var(--lm-border);
   background: linear-gradient(to top, rgba(0,0,0,.35), rgba(0,0,0,0));
   backdrop-filter: blur(4px);
+}
+
+/* Input area overflow guards */
+.lm-inputbar {
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.lm-inputbar textarea,
+.lm-inputbar input[type="text"] {
+  width: 100%;
+  min-width: 0; /* critical for flex/grids */
+  max-width: 100%;
+  resize: vertical;
 }
 
 .input {

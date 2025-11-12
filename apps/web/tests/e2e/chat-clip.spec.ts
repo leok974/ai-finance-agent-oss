@@ -189,4 +189,67 @@ test.describe('Chat Panel Positioning @prod', () => {
     expect(snapshot.rect.w).toBeGreaterThan(0);
     expect(snapshot.rect.h).toBeGreaterThan(0);
   });
+
+  test('chat stays fully inside viewport bounds', async ({ page }) => {
+    await page.goto(`${BASE_URL}?chat=1`, { waitUntil: 'domcontentloaded' });
+    await page.waitForTimeout(100);
+
+    await page.goto(`${BASE_URL}?chat=diag`, { waitUntil: 'networkidle' });
+    await page.waitForTimeout(2000);
+
+    const url = page.url();
+    if (url.includes('google.com') || url.includes('accounts')) {
+      test.skip(true, 'Not authenticated - skipping test');
+      return;
+    }
+
+    const bubble = page.locator('[data-testid="lm-chat-bubble"]');
+    await bubble.waitFor({ state: 'visible', timeout: 15000 });
+
+    const iframe = page.locator('[data-testid="lm-chat-iframe"]');
+    await iframe.waitFor({ state: 'attached', timeout: 5000 });
+
+    // Open chat
+    await bubble.click();
+    await expect(iframe).toHaveCSS('opacity', '1', { timeout: 3000 });
+
+    const bb = await iframe.boundingBox();
+    expect(bb).not.toBeNull();
+
+    const vp = page.viewportSize()!;
+
+    expect(bb!.x).toBeGreaterThanOrEqual(0);
+    expect(bb!.y).toBeGreaterThanOrEqual(0);
+    expect(bb!.x + bb!.width).toBeLessThanOrEqual(vp.width);
+    expect(bb!.y + bb!.height).toBeLessThanOrEqual(vp.height);
+  });
+
+  test('iframe content never overflows panel width', async ({ page }) => {
+    await page.goto(`${BASE_URL}?chat=1`, { waitUntil: 'domcontentloaded' });
+    await page.waitForTimeout(100);
+
+    await page.goto(`${BASE_URL}?chat=diag`, { waitUntil: 'networkidle' });
+    await page.waitForTimeout(2000);
+
+    const url = page.url();
+    if (url.includes('google.com') || url.includes('accounts')) {
+      test.skip(true, 'Not authenticated - skipping test');
+      return;
+    }
+
+    const bubble = page.locator('[data-testid="lm-chat-bubble"]');
+    await bubble.waitFor({ state: 'visible', timeout: 15000 });
+
+    await bubble.click();
+
+    const iframe = page.locator('[data-testid="lm-chat-iframe"]');
+    await expect(iframe).toHaveCSS('opacity', '1', { timeout: 3000 });
+
+    // Check internal content doesn't overflow
+    const ok = await iframe.contentFrame()
+      .locator('#lm-chat-root')
+      .evaluate(el => el.scrollWidth <= el.clientWidth);
+
+    expect(ok).toBeTruthy();
+  });
 });
