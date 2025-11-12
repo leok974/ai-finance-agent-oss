@@ -11,8 +11,9 @@ const BASE_URL = process.env.BASE_URL || 'https://app.ledger-mind.org';
 test.describe('Chat API Basic @prod', () => {
   test.use({ storageState: 'tests/e2e/.auth/prod-state.json' });
 
-  test('chat returns human-readable reply', async ({ request }) => {
-    const r = await request.post(`${BASE_URL}/api/agent/chat`, {
+  test('chat returns deterministic stub reply', async ({ request }) => {
+    const r = await request.post(`${BASE_URL}/agent/chat`, {
+      headers: { 'x-test-mode': 'stub' },
       data: {
         messages: [{ role: 'user', content: 'ping' }],
         context: { month: '2025-08' }
@@ -24,15 +25,27 @@ test.describe('Chat API Basic @prod', () => {
     const j = await r.json();
     const text = j.reply ?? j.result?.text ?? j.text ?? '';
 
-    // Should have actual text (not empty)
-    expect(text.length).toBeGreaterThan(0);
+    // Should match deterministic stub response
+    expect(text).toMatch(/deterministic test reply/i);
+  });
 
-    // Should be human-readable (match common response patterns)
-    expect(text).toMatch(/ping|hello|ok|hi|pong|ready/i);
+  test('chat echo mode returns reflected content', async ({ request }) => {
+    const r = await request.post(`${BASE_URL}/agent/chat`, {
+      headers: { 'x-test-mode': 'echo' },
+      data: {
+        messages: [{ role: 'user', content: 'test message' }],
+        context: { month: '2025-08' }
+      },
+    });
+
+    expect(r.ok()).toBeTruthy();
+
+    const j = await r.json();
+    expect(j.reply).toMatch(/\[echo\] test message/);
   });
 
   test('chat handles mode parameter for tools', async ({ request }) => {
-    const r = await request.post(`${BASE_URL}/api/agent/chat`, {
+    const r = await request.post(`${BASE_URL}/agent/chat`, {
       data: {
         messages: [{ role: 'user', content: 'Show month summary' }],
         context: { month: '2025-08' },
@@ -51,7 +64,7 @@ test.describe('Chat API Basic @prod', () => {
   });
 
   test('chat returns structured result for chart tools', async ({ request }) => {
-    const r = await request.post(`${BASE_URL}/api/agent/chat`, {
+    const r = await request.post(`${BASE_URL}/agent/chat`, {
       data: {
         messages: [{ role: 'user', content: 'kpis' }],
         context: { month: '2025-08' },

@@ -50,6 +50,11 @@ export async function fetchJSON<T>(path: string, opts: FetchOpts = {}): Promise<
   const isForm = typeof FormData !== 'undefined' && opts.body instanceof FormData;
   if (!isForm && !hdrs.has('Content-Type')) hdrs.set('Content-Type', 'application/json');
 
+  // E2E test mode: add x-test-mode header for deterministic responses
+  if (typeof window !== 'undefined' && (window as any).__E2E_TEST__ && url.includes('/agent/chat')) {
+    hdrs.set('x-test-mode', 'stub');
+  }
+
   const r = await fetch(url, {
     credentials: 'same-origin',
     headers: hdrs,

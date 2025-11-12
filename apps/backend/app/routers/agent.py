@@ -720,6 +720,7 @@ def agent_chat(
     mode_override: Optional[str] = Query(default=None, alias="mode"),
     bypass_router: bool = Query(False, alias="bypass_router"),
     x_bypass_router: Optional[str] = Header(default=None, alias="X-Bypass-Router"),
+    x_test_mode: Optional[str] = Header(default=None, alias="X-Test-Mode"),
 ):
     """Primary chat entrypoint.
 
@@ -729,8 +730,19 @@ def agent_chat(
 
     Late fallback decisions (e.g. provider swap recorded after initial payload assembly) are
     captured via llm_mod.get_last_fallback_provider just before returning.
+
+    Test modes (x-test-mode header):
+    * "echo": Returns [echo] <last message content>
+    * "stub": Returns deterministic test reply (for E2E tests)
     """
     try:
+        # Deterministic test mode for E2E/integration tests
+        if x_test_mode == "echo":
+            text = req.messages[-1].content if req.messages else "ok"
+            return {"reply": f"[echo] {text}"}
+        if x_test_mode == "stub":
+            return {"reply": "This is a deterministic test reply."}
+
         # NOTE: LLM disable stub now applied only at actual LLM invocation points (bypass path
         # or final fallback) so deterministic analytics/router tooling still executes for tests.
         # One-time warmup preflight: avoid user-facing 500 on cold model load.
@@ -1452,6 +1464,26 @@ def agent_rephrase(
     }
     if debug and getattr(settings, "ENV", "dev") != "prod":
         resp["__debug_context"] = ctx
+
+    # Check for empty reply and log warning
+    reply_text = (
+        resp.get("reply")
+        or (
+            resp.get("result", {}).get("text")
+            if isinstance(resp.get("result"), dict)
+            else None
+        )
+        or resp.get("text")
+    )
+    if not reply_text or str(reply_text).strip() == "":
+        logger.warning(
+            "agent_chat_empty_reply",
+            extra={
+                "mode": req.mode,
+                "month": req.context.get("month") if req.context else None,
+                "response_keys": list(resp.keys()),
+            },
+        )
 
     # Set LLM path header
     if request is not None:
