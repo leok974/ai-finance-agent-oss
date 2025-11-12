@@ -94,13 +94,45 @@ export function bootChat(root: Root): void {
 }
 
 /**
- * Listen for config from parent (optional)
+ * Listen for config from parent
  */
+type InitCfg = { apiBase: string; baseUrl: string; month?: string; diag?: boolean };
+let INIT: InitCfg | null = null;
+
+// Export INIT for global access (debugging + components)
+(window as any).INIT = INIT;
+
+// Export getter for React components
+export function getInit(): InitCfg | null {
+  return INIT;
+}
+
 window.addEventListener('message', (e: MessageEvent) => {
   if (e.origin !== window.location.origin) return;
 
-  if (e.data?.type === 'chat:init') {
-    console.log('[chat] received init config:', e.data.config);
-    // Apply config if needed
+  if (e.data?.type === 'CHAT_INIT') {
+    INIT = e.data.payload as InitCfg;
+    (window as any).INIT = INIT; // Update global
+    console.info('[chat] init', INIT);
+
+    // Health ping for LLM badge
+    if (INIT?.apiBase) {
+      fetch(`${INIT.apiBase}/ready`, { credentials: 'include' })
+        .then(r => {
+          console.log('[chat] health check:', r.ok ? 'OK' : 'FAILED');
+          // TODO: Wire to setLlmOk state once ChatIframe exposes it
+        })
+        .catch(() => {
+          console.log('[chat] health check: ERROR');
+        });
+    }
+  }
+
+  if (e.data?.type === 'CHAT_RUN_TOOL') {
+    console.log('[chat] run tool request:', e.data.payload);
+    // TODO: Wire to runTool() once implemented in ChatIframe
   }
 });
+
+// Let parent know we're ready to receive INIT
+window.parent?.postMessage({ type: 'CHAT_READY' }, window.location.origin);

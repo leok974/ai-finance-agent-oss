@@ -7,6 +7,7 @@
 
 import * as React from 'react';
 import { useChatSession } from '@/state/chatSession';
+import { getInit } from './main';
 
 const { useEffect, useRef, useState } = React;
 
@@ -73,10 +74,17 @@ export function ChatIframe() {
     }
   }, [uiMessages.length]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!draft.trim() || busy) return;
 
+    const INIT = getInit();
+    if (!INIT) {
+      console.warn('[ChatIframe] no INIT config, cannot submit');
+      return;
+    }
+
+    const text = draft.trim();
     const ts = Date.now();
     const state = useChatSession.getState();
 
@@ -85,15 +93,121 @@ export function ChatIframe() {
       messages: [...state.messages, {
         id: crypto.randomUUID(),
         role: 'user',
-        text: draft,
+        text,
         at: ts
       }]
     });
 
     setDraft('');
-    console.log('[ChatIframe] sent:', draft);
+    setBusy(true);
 
-    // TODO: Call API and add assistant response
+    try {
+      const res = await fetch(`${INIT.apiBase}/agent/chat`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, month: INIT.month }),
+      });
+
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+      const data = await res.json();
+      const reply = data.reply ?? data.text ?? '(no reply)';
+
+      // Add assistant response to store
+      const newState = useChatSession.getState();
+      useChatSession.setState({
+        messages: [...newState.messages, {
+          id: crypto.randomUUID(),
+          role: 'assistant',
+          text: reply,
+          at: Date.now(),
+          meta: data.meta
+        }]
+      });
+
+      console.log('[ChatIframe] received reply:', reply.slice(0, 80));
+    } catch (err) {
+      console.error('[ChatIframe] submit failed:', err);
+
+      const newState = useChatSession.getState();
+      useChatSession.setState({
+        messages: [...newState.messages, {
+          id: crypto.randomUUID(),
+          role: 'assistant',
+          text: `⚠️ Request failed: ${String(err)}`,
+          at: Date.now()
+        }]
+      });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // Tool execution handler
+  const runTool = async (tool: string, args: Record<string, any> = {}) => {
+    const INIT = getInit();
+    if (!INIT) {
+      console.warn('[ChatIframe] no INIT config, cannot run tool');
+      return;
+    }
+
+    if (busy) return;
+
+    const state = useChatSession.getState();
+
+    // Add user message showing tool invocation
+    useChatSession.setState({
+      messages: [...state.messages, {
+        id: crypto.randomUUID(),
+        role: 'user',
+        text: `/${tool}`,
+        at: Date.now()
+      }]
+    });
+
+    setBusy(true);
+
+    try {
+      const res = await fetch(`${INIT.apiBase}/agent/chat`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tool, args, month: INIT.month }),
+      });
+
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+      const data = await res.json();
+      const reply = data.reply ?? data.text ?? '(no reply)';
+
+      const newState = useChatSession.getState();
+      useChatSession.setState({
+        messages: [...newState.messages, {
+          id: crypto.randomUUID(),
+          role: 'assistant',
+          text: reply,
+          at: Date.now(),
+          meta: data.meta
+        }]
+      });
+
+      console.log('[ChatIframe] tool result:', reply.slice(0, 80));
+    } catch (err) {
+      console.error('[ChatIframe] tool failed:', err);
+
+      const newState = useChatSession.getState();
+      useChatSession.setState({
+        messages: [...newState.messages, {
+          id: crypto.randomUUID(),
+          role: 'assistant',
+          text: `⚠️ Tool failed: ${String(err)}`,
+          at: Date.now()
+        }]
+      });
+    } finally {
+      setBusy(false);
+    }
   };
 
   // Format date for dividers
@@ -116,17 +230,17 @@ export function ChatIframe() {
       {showTools && (
         <header className="lm-tools-area">
           <div className="lm-tools-row">
-            <button className="chip" disabled={busy}>Month summary</button>
-            <button className="chip" disabled={busy}>Trends</button>
-            <button className="chip" disabled={busy}>Alerts</button>
-            <button className="chip" disabled={busy}>Recurring</button>
-            <button className="chip" disabled={busy}>Subscriptions</button>
+            <button className="chip" disabled={busy} onClick={() => runTool('month_summary')}>Month summary</button>
+            <button className="chip" disabled={busy} onClick={() => runTool('trends')}>Trends</button>
+            <button className="chip" disabled={busy} onClick={() => runTool('alerts')}>Alerts</button>
+            <button className="chip" disabled={busy} onClick={() => runTool('recurring')}>Recurring</button>
+            <button className="chip" disabled={busy} onClick={() => runTool('subscriptions')}>Subscriptions</button>
             <div className="chip chip--ghost" />
-            <button className="chip" disabled={busy}>Find subscriptions</button>
-            <button className="chip" disabled={busy}>Insights (C)</button>
-            <button className="chip" disabled={busy}>KPIs</button>
-            <button className="chip" disabled={busy}>Budget suggest</button>
-            <button className="chip" disabled={busy}>Search transactions (NL)</button>
+            <button className="chip" disabled={busy} onClick={() => runTool('find_subscriptions')}>Find subscriptions</button>
+            <button className="chip" disabled={busy} onClick={() => runTool('insights')}>Insights (C)</button>
+            <button className="chip" disabled={busy} onClick={() => runTool('kpis')}>KPIs</button>
+            <button className="chip" disabled={busy} onClick={() => runTool('budget_suggest')}>Budget suggest</button>
+            <button className="chip" disabled={busy} onClick={() => runTool('search_transactions')}>Search transactions (NL)</button>
           </div>
 
           <div className="lm-toolsbar">

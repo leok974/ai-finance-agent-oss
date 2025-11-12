@@ -41,6 +41,24 @@ function isDiag() {
 
 declare const __RUNTIME_BUILD_ID__: string;
 
+type ChatInit = {
+  apiBase: string;
+  baseUrl: string;
+  month?: string;
+  diag?: boolean;
+};
+
+function postInit() {
+  if (!ifr?.contentWindow) return;
+  const cfg: ChatInit = {
+    apiBase: '/api',
+    baseUrl: location.origin,
+    month: (window as any).__LM_MONTH__ ?? undefined,
+    diag: ['diag', 'debug'].includes(new URLSearchParams(location.search).get('chat') ?? ''),
+  };
+  ifr.contentWindow.postMessage({ type: 'CHAT_INIT', payload: cfg }, location.origin);
+}
+
 export function ensureIframe() {
   if (ifr) return ifr;
   const el = document.createElement('iframe');
@@ -49,6 +67,7 @@ export function ensureIframe() {
   el.referrerPolicy = 'no-referrer';
   el.sandbox.add('allow-scripts');
   el.sandbox.add('allow-same-origin');
+  el.sandbox.add('allow-forms');
 
   const buildId = __RUNTIME_BUILD_ID__;
   el.src = `/chat/index.html?v=${buildId}`;
@@ -71,7 +90,7 @@ export function ensureIframe() {
   });
 
   el.addEventListener('load', () => {
-    el.contentWindow?.postMessage({ type: 'chat:init', config: {} }, window.location.origin);
+    requestAnimationFrame(postInit);
   });
 
   document.body.appendChild(el);
@@ -199,6 +218,9 @@ export function openChatAt(launcherRect: DOMRect) {
   requestAnimationFrame(() => (armedOutside = true));
 
   isOpen = true;
+
+  // Send config to iframe (in case it reloaded)
+  requestAnimationFrame(postInit);
 
   // Keep it inside viewport on every change
   const reflow = () => applyRect(iframe, clampRectNear(launcherRect));
