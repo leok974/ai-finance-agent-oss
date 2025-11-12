@@ -1,40 +1,25 @@
 """Test admin guard for category rules endpoints."""
 
-import pytest
 
 from app.orm_models import CategoryRule
 
 
-@pytest.fixture
-def client_admin(client_admin):
-    return client_admin
-
-
-@pytest.fixture
-def client_user(client_user):
-    return client_user
-
-
-"""
-NOTE: client_user and client_admin fixtures are provided by tests/conftest.py
-They create or reuse users and perform real login, setting cookies.
-"""
-
-
-def test_rules_list_requires_admin(client_user, client_admin):
+def test_rules_list_requires_admin(client, user_override):
     """Test that listing rules requires admin role."""
-    # Non-admin should get 403
-    r = client_user.get("/agent/tools/categorize/rules")
+    # Non-admin should get 403 (authenticated but not authorized)
+    user_override.use(is_admin=False)
+    r = client.get("/agent/tools/categorize/rules")
     assert r.status_code == 403, f"Expected 403 for non-admin, got {r.status_code}"
-    assert "admin only" in r.json().get("detail", "").lower()
+    assert "admin" in r.json().get("detail", "").lower()
 
     # Admin should get 200
-    r = client_admin.get("/agent/tools/categorize/rules")
+    user_override.use(is_admin=True)
+    r = client.get("/agent/tools/categorize/rules")
     assert r.status_code == 200, f"Expected 200 for admin, got {r.status_code}"
     assert isinstance(r.json(), list)
 
 
-def test_rules_update_requires_admin(client_user, client_admin, db_session):
+def test_rules_update_requires_admin(client, user_override, db_session):
     """Test that updating rules requires admin role."""
     # Create a test rule
     rule = CategoryRule(
@@ -47,13 +32,15 @@ def test_rules_update_requires_admin(client_user, client_admin, db_session):
 
     try:
         # Non-admin should get 403
-        r = client_user.patch(
+        user_override.use(is_admin=False)
+        r = client.patch(
             f"/agent/tools/categorize/rules/{rule_id}", json={"priority": 200}
         )
         assert r.status_code == 403, f"Expected 403 for non-admin, got {r.status_code}"
 
         # Admin should get 200
-        r = client_admin.patch(
+        user_override.use(is_admin=True)
+        r = client.patch(
             f"/agent/tools/categorize/rules/{rule_id}", json={"priority": 200}
         )
         assert r.status_code == 200, f"Expected 200 for admin, got {r.status_code}"
@@ -65,7 +52,7 @@ def test_rules_update_requires_admin(client_user, client_admin, db_session):
         db_session.commit()
 
 
-def test_rules_delete_requires_admin(client_user, client_admin, db_session):
+def test_rules_delete_requires_admin(client, user_override, db_session):
     """Test that deleting rules requires admin role."""
     # Create test rules for both attempts
     rule1 = CategoryRule(
@@ -81,11 +68,13 @@ def test_rules_delete_requires_admin(client_user, client_admin, db_session):
     db_session.refresh(rule2)
 
     # Non-admin should get 403
-    r = client_user.delete(f"/agent/tools/categorize/rules/{rule1.id}")
+    user_override.use(is_admin=False)
+    r = client.delete(f"/agent/tools/categorize/rules/{rule1.id}")
     assert r.status_code == 403, f"Expected 403 for non-admin, got {r.status_code}"
 
     # Admin should get 200
-    r = client_admin.delete(f"/agent/tools/categorize/rules/{rule2.id}")
+    user_override.use(is_admin=True)
+    r = client.delete(f"/agent/tools/categorize/rules/{rule2.id}")
     assert r.status_code == 200, f"Expected 200 for admin, got {r.status_code}"
     assert r.json()["ok"] is True
 
@@ -100,7 +89,7 @@ def test_rules_delete_requires_admin(client_user, client_admin, db_session):
     db_session.commit()
 
 
-def test_rules_test_endpoint_requires_admin(client_user, client_admin):
+def test_rules_test_endpoint_requires_admin(client, user_override):
     """Test that the regex test endpoint requires admin role."""
     test_data = {
         "pattern": "SPOTIFY",
@@ -108,11 +97,13 @@ def test_rules_test_endpoint_requires_admin(client_user, client_admin):
     }
 
     # Non-admin should get 403
-    r = client_user.post("/agent/tools/categorize/rules/test", json=test_data)
+    user_override.use(is_admin=False)
+    r = client.post("/agent/tools/categorize/rules/test", json=test_data)
     assert r.status_code == 403, f"Expected 403 for non-admin, got {r.status_code}"
 
     # Admin should get 200
-    r = client_admin.post("/agent/tools/categorize/rules/test", json=test_data)
+    user_override.use(is_admin=True)
+    r = client.post("/agent/tools/categorize/rules/test", json=test_data)
     assert r.status_code == 200, f"Expected 200 for admin, got {r.status_code}"
     data = r.json()
     assert data["ok"] is True

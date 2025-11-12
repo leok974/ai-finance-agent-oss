@@ -205,7 +205,7 @@ if os.getenv("HERMETIC") != "1":
         c = _TC(_app)
         email = "admin@test.local"
         pwd = "pass1234"
-        r = c.post("/auth/register", json={"email": email, "password": pwd})
+        c.post("/auth/register", json={"email": email, "password": pwd})
         # Ensure admin role exists either way
         db = app_db.SessionLocal()
         _get_or_create_user(db, email, pwd, ("admin", "user"))
@@ -619,3 +619,32 @@ import pytest as _pytest_alias
 @_pytest_alias.fixture
 def db(db_session):
     yield db_session
+
+
+# ===========================================================================
+# Auth Override Fixture for Hermetic Testing
+# ===========================================================================
+
+
+@_pytest_alias.fixture
+def user_override():
+    """Provides AuthOverride instance for dependency injection in tests.
+
+    Usage in tests:
+        def test_admin_required(client, user_override):
+            user_override.use(is_admin=False)
+            res = client.get("/admin/endpoint")
+            assert res.status_code == 403  # authenticated but not admin
+
+            user_override.use(is_admin=True)
+            res = client.get("/admin/endpoint")
+            assert res.status_code == 200  # admin access granted
+    """
+    from tests.utils.auth_overrides import AuthOverride
+    from app.main import app
+
+    mgr = AuthOverride(app)
+    try:
+        yield mgr
+    finally:
+        mgr.reset()
