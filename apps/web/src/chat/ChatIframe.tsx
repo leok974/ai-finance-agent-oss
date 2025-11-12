@@ -193,16 +193,17 @@ export function ChatIframe() {
 
     const mode = TOOL_MAP[tool];
     if (!mode) {
-      // Unknown tool - abort with error message
+      // Unknown tool - abort with friendly message
       const newState = useChatSession.getState();
       useChatSession.setState({
         messages: [...newState.messages, {
           id: crypto.randomUUID(),
           role: 'assistant',
-          text: `⚠️ Unknown tool "${tool}".`,
+          text: `Tool "${tool}" isn't available yet. Try Month summary or Trends instead.`,
           at: Date.now()
         }]
       });
+      setBusy(false);
       return;
     }
 
@@ -270,6 +271,34 @@ export function ChatIframe() {
     return d.toISOString().split('T')[0];
   };
 
+  // Render structured chart data as mini card
+  const renderStructuredData = (data: any, mode?: string) => {
+    if (!data || typeof data !== 'object') return null;
+
+    // Extract key-value pairs (first level only)
+    const entries = Object.entries(data)
+      .filter(([k, v]) => typeof v !== 'object' || Array.isArray(v))
+      .slice(0, 6); // Limit to 6 rows for readability
+
+    if (entries.length === 0) return null;
+
+    return (
+      <div className="result-card">
+        {mode && <div className="result-card-title">{mode.replace(/_/g, ' ')}</div>}
+        <div className="result-card-body">
+          {entries.map(([key, value]) => (
+            <div key={key} className="result-row">
+              <span className="result-key">{key.replace(/_/g, ' ')}:</span>
+              <span className="result-value">
+                {Array.isArray(value) ? value.length + ' items' : String(value)}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
   // Group messages by date
   const messagesByDate = uiMessages.reduce((acc, msg) => {
     const date = formatDate(msg.ts);
@@ -326,26 +355,42 @@ export function ChatIframe() {
               <span>{date}</span>
             </div>
 
-            {msgs.map((m, idx) => (
-              <div key={idx} className={`bubble ${m.role === 'user' ? 'bubble--me' : 'bubble--ai'}`}>
-                <p>{m.text}</p>
-                {m.meta && Object.keys(m.meta).length > 0 && (
-                  <div className="meta">
-                    {m.meta.mode && (
-                      <span className={`pill ${m.meta.mode === 'finance_quick_recap' ? 'pill--accent' : ''}`}>
-                        {m.meta.mode.replace(/_/g, ' ')}
-                      </span>
-                    )}
-                    {m.meta.ctxMonth && (
-                      <span className="pill">month {m.meta.ctxMonth}</span>
-                    )}
-                    {m.meta.model && (
-                      <span className="pill">{m.meta.model}</span>
-                    )}
-                  </div>
-                )}
-              </div>
-            ))}
+            {msgs.map((m, idx) => {
+              // Try to parse text as JSON for structured data
+              let structuredData = null;
+              try {
+                if (m.text.trim().startsWith('{')) {
+                  structuredData = JSON.parse(m.text);
+                }
+              } catch {
+                // Not JSON, render as text
+              }
+
+              return (
+                <div key={idx} className={`bubble ${m.role === 'user' ? 'bubble--me' : 'bubble--ai'}`}>
+                  {structuredData ? (
+                    renderStructuredData(structuredData, m.meta?.mode)
+                  ) : (
+                    <p>{m.text}</p>
+                  )}
+                  {m.meta && Object.keys(m.meta).length > 0 && (
+                    <div className="meta">
+                      {m.meta.mode && (
+                        <span className={`pill ${m.meta.mode === 'finance_quick_recap' ? 'pill--accent' : ''}`}>
+                          {m.meta.mode.replace(/_/g, ' ')}
+                        </span>
+                      )}
+                      {m.meta.ctxMonth && (
+                        <span className="pill">month {m.meta.ctxMonth}</span>
+                      )}
+                      {m.meta.model && (
+                        <span className="pill">{m.meta.model}</span>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         ))}
       </main>

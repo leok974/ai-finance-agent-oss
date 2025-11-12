@@ -45,6 +45,30 @@ Invoke-Check -Path '/ready'
 Invoke-Check -Path '/api/healthz'
 Invoke-Check -Path '/api/openapi.json'
 
+# Agent chat smoke check - verify reply/text in response
+Write-Colored "[info] POST /api/agent/chat (smoke check)" Cyan
+try {
+  $body = @{
+    messages = @(@{ role = "user"; content = "ping" })
+    context = @{ month = "2025-08" }
+  } | ConvertTo-Json -Depth 3
+
+  $resp = Invoke-RestMethod -Method POST -Uri "$BaseUrl/api/agent/chat" `
+    -ContentType "application/json" -Body $body -TimeoutSec 20 -ErrorAction Stop
+
+  $hasReply = $resp.reply -or $resp.text -or $resp.result.text
+  if (-not $hasReply) {
+    Write-Colored "[FAIL] /api/agent/chat: missing reply/text in response" Red
+    $global:Failed = $true
+  } else {
+    Write-Colored "[OK] /api/agent/chat ✅" Green
+  }
+}
+catch {
+  Write-Colored "[ERROR] /api/agent/chat $_" Red
+  $global:Failed = $true
+}
+
 if ($global:Failed) {
   Write-Colored 'Smoke test FAILED' Red
   exit 1

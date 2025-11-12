@@ -36,6 +36,20 @@ check /ready 200
 check /api/healthz 200
 check /api/openapi.json 200 || true
 
+# Agent chat smoke check - verify reply/text in response
+info "POST /api/agent/chat (smoke check)"
+resp=$(curl -fsS -X POST "${BASE_URL}/api/agent/chat" \
+  -H 'Content-Type: application/json' \
+  -d '{"messages":[{"role":"user","content":"ping"}],"context":{"month":"2025-08"}}' || true)
+
+if echo "$resp" | grep -qi '"reply"\|"text"'; then
+  green "[OK] /api/agent/chat ✅"
+else
+  red "[FAIL] /api/agent/chat: missing reply/text in response"
+  echo "$resp" | head -c 200
+  fail=1
+fi
+
 if [[ $fail -ne 0 ]]; then
   red "Smoke test FAILED"
   exit 1

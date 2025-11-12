@@ -7,6 +7,7 @@ import re
 import time
 import uuid
 
+logger = logging.getLogger(__name__)
 print("[agent.py] loaded version: refactor-tagfix-1")
 
 _HERMETIC = _os.getenv("HERMETIC") == "1"
@@ -757,6 +758,17 @@ def agent_chat(
             # If warm check fails, continue; normal timeout/retry path will handle
             pass
         print(f"Agent chat request: {redact_pii(req.model_dump())}")
+
+        # Log mode and month for diagnostic tracking
+        logger.info(
+            "agent_chat",
+            extra={
+                "mode": req.mode,
+                "month": req.context.get("month") if req.context else None,
+                "force_llm": req.force_llm,
+            },
+        )
+
         ctx = _enrich_context(db, req.context, req.txn_id)
         last_user_msg = next(
             (m.content for m in reversed(req.messages) if m.role == "user"), ""
