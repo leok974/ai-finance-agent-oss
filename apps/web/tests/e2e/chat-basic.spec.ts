@@ -5,6 +5,7 @@
  */
 
 import { test, expect } from '@playwright/test';
+import { getAgentChatUrl } from './utils/api';
 
 const BASE_URL = process.env.BASE_URL || 'https://app.ledger-mind.org';
 
@@ -12,7 +13,7 @@ test.describe('Chat API Basic @prod', () => {
   test.use({ storageState: 'tests/e2e/.auth/prod-state.json' });
 
   test('chat returns deterministic stub reply', async ({ request }) => {
-    const r = await request.post(`${BASE_URL}/agent/chat`, {
+    const r = await request.post(getAgentChatUrl(BASE_URL), {
       headers: { 'x-test-mode': 'stub' },
       data: {
         messages: [{ role: 'user', content: 'ping' }],
@@ -30,7 +31,7 @@ test.describe('Chat API Basic @prod', () => {
   });
 
   test('chat echo mode returns reflected content', async ({ request }) => {
-    const r = await request.post(`${BASE_URL}/agent/chat`, {
+    const r = await request.post(getAgentChatUrl(BASE_URL), {
       headers: { 'x-test-mode': 'echo' },
       data: {
         messages: [{ role: 'user', content: 'test message' }],
@@ -45,7 +46,7 @@ test.describe('Chat API Basic @prod', () => {
   });
 
   test('chat handles mode parameter for tools', async ({ request }) => {
-    const r = await request.post(`${BASE_URL}/agent/chat`, {
+    const r = await request.post(getAgentChatUrl(BASE_URL), {
       data: {
         messages: [{ role: 'user', content: 'Show month summary' }],
         context: { month: '2025-08' },
@@ -64,7 +65,7 @@ test.describe('Chat API Basic @prod', () => {
   });
 
   test('chat returns structured result for chart tools', async ({ request }) => {
-    const r = await request.post(`${BASE_URL}/agent/chat`, {
+    const r = await request.post(getAgentChatUrl(BASE_URL), {
       data: {
         messages: [{ role: 'user', content: 'kpis' }],
         context: { month: '2025-08' },

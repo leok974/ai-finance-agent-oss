@@ -734,14 +734,21 @@ def agent_chat(
     Test modes (x-test-mode header):
     * "echo": Returns [echo] <last message content>
     * "stub": Returns deterministic test reply (for E2E tests)
+
+    Note: Test modes require ALLOW_TEST_STUBS=1 env var in production for safety.
     """
     try:
         # Deterministic test mode for E2E/integration tests
-        if x_test_mode == "echo":
-            text = req.messages[-1].content if req.messages else "ok"
-            return {"reply": f"[echo] {text}"}
-        if x_test_mode == "stub":
-            return {"reply": "This is a deterministic test reply."}
+        # In production, require explicit env var to enable (prevents abuse)
+        allow_test_stubs = os.getenv("ALLOW_TEST_STUBS") == "1"
+        is_dev = os.getenv("ENV", "dev") != "prod"
+
+        if x_test_mode in ("echo", "stub") and (is_dev or allow_test_stubs):
+            if x_test_mode == "echo":
+                text = req.messages[-1].content if req.messages else "ok"
+                return {"reply": f"[echo] {text}"}
+            if x_test_mode == "stub":
+                return {"reply": "This is a deterministic test reply."}
 
         # NOTE: LLM disable stub now applied only at actual LLM invocation points (bypass path
         # or final fallback) so deterministic analytics/router tooling still executes for tests.

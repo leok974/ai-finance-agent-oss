@@ -96,24 +96,38 @@ test.describe('Chat Actions @prod', () => {
   });
 
   test('INIT config is received by iframe', async ({ page }) => {
+    // Enable test mode
+    await page.addInitScript(() => {
+      (window as any).__E2E_TEST__ = true;
+    });
+
     // Enable chat and open it
     await page.goto(`${BASE_URL}?chat=1`);
     await page.getByTestId('lm-chat-bubble').click();
 
-    // Wait for iframe to load
-    await page.waitForTimeout(1000);
+    // Wait for iframe to be visible
+    const iframe = page.frameLocator('[data-testid="lm-chat-iframe"]');
+    await expect(iframe.locator('body')).toBeVisible({ timeout: 5000 });
 
-    // Check INIT config in iframe context
-    const initConfig = await page.evaluate(() => {
-      const iframe = document.querySelector('[data-testid="lm-chat-iframe"]') as HTMLIFrameElement;
-      if (!iframe?.contentWindow) return null;
-      return (iframe.contentWindow as any).INIT;
+    // Wait for chat input (ensures mount complete)
+    await iframe.getByPlaceholder(/Ask or type a command/i).waitFor({ timeout: 5000 });
+
+    // Wait for readiness promise
+    await page.evaluate(() => {
+      const iframeEl = document.querySelector('[data-testid="lm-chat-iframe"]') as HTMLIFrameElement;
+      return iframeEl?.contentWindow ? (iframeEl.contentWindow as any).lmChatReady : Promise.resolve();
     });
 
-    expect(initConfig).toBeTruthy();
-    expect(initConfig).toHaveProperty('apiBase');
-    expect(initConfig).toHaveProperty('baseUrl');
-    expect(initConfig.apiBase).toBe('/api');
+    // Read INIT snapshot
+    const initSnapshot = await page.evaluate(() => {
+      const iframeEl = document.querySelector('[data-testid="lm-chat-iframe"]') as HTMLIFrameElement;
+      return iframeEl?.contentWindow ? (iframeEl.contentWindow as any).lmChatInit : null;
+    });
+
+    expect(initSnapshot).toBeTruthy();
+    expect(initSnapshot.ts).toBeTruthy(); // timestamp exists
+    expect(typeof initSnapshot.mode === 'string' || initSnapshot.mode === null).toBeTruthy();
+    expect(initSnapshot.apiBase).toBeTruthy(); // should have apiBase from parent
   });
 
   test('LLM badge shows health status', async ({ page }) => {

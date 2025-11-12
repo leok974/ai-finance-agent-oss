@@ -35,197 +35,123 @@
         - button "Upload CSV" [disabled] [ref=e36]:
           - img [ref=e37]
           - text: Upload CSV
-      - generic [ref=e40]:
-        - generic [ref=e41]:
-          - generic [ref=e42]:
-            - generic [ref=e43]:
-              - heading "Expanded Insights — 2025-11" [level=3] [ref=e44]
-              - generic [ref=e45]: no prior month
-            - generic [ref=e46]:
-              - generic [ref=e47]:
-                - generic [ref=e48]: Income
-                - generic [ref=e49]: $0.00
-              - generic [ref=e50]:
-                - generic [ref=e51]: Spend
-                - generic [ref=e52]: $0.00
-              - generic [ref=e53]:
-                - generic [ref=e54]: Net
-                - generic [ref=e55]: $0.00
-            - generic [ref=e56]: "Unknown spend: $0.00 (0 txns)"
-          - generic [ref=e57]:
-            - generic [ref=e58]:
-              - heading "Top Categories" [level=3] [ref=e59]
-              - table [ref=e60]:
-                - rowgroup [ref=e61]:
-                  - row "Category Amount" [ref=e62]:
-                    - cell "Category" [ref=e63]
-                    - cell "Amount" [ref=e64]
-                - rowgroup
-            - generic [ref=e65]:
-              - heading "Top Merchants" [level=3] [ref=e66]
-              - table [ref=e67]:
-                - rowgroup [ref=e68]:
-                  - row "Merchant Amount" [ref=e69]:
-                    - cell "Merchant" [ref=e70]
-                    - cell "Amount" [ref=e71]
-                - rowgroup
-          - generic [ref=e72]:
-            - heading "Large Transactions" [level=3] [ref=e73]
-            - table [ref=e74]:
-              - rowgroup [ref=e75]:
-                - row "Date Merchant Category Amount" [ref=e76]:
-                  - cell "Date" [ref=e77]
-                  - cell "Merchant" [ref=e78]
-                  - cell "Category" [ref=e79]
-                  - cell "Amount" [ref=e80]
-              - rowgroup
-          - generic [ref=e81]:
-            - generic [ref=e82]:
-              - heading "Anomalies — Categories" [level=3] [ref=e84]
-              - generic [ref=e85]: No category spikes detected.
-            - generic [ref=e86]:
-              - heading "Anomalies — Merchants" [level=3] [ref=e88]
-              - generic [ref=e89]: No merchant spikes detected.
-        - generic [ref=e91]:
-          - heading "⚠ Unusual this month Card help" [level=3] [ref=e93]:
-            - text: ⚠ Unusual this month
-            - button "Card help" [ref=e94] [cursor=pointer]: "?"
-          - generic [ref=e95]: No unusual categories this month.
-      - generic [ref=e96]:
-        - generic [ref=e98]:
-          - generic [ref=e99]:
-            - heading "Overview — 2025-11 Card help" [level=3] [ref=e100]:
-              - text: Overview — 2025-11
-              - button "Card help" [ref=e101] [cursor=pointer]: "?"
-            - generic [ref=e103]:
-              - button "Export" [ref=e104] [cursor=pointer]:
-                - img [ref=e105]
-                - generic [ref=e108]: Export
-              - button "Custom range…" [ref=e109] [cursor=pointer]:
-                - generic [ref=e111]: Custom range…
-          - generic [ref=e112]:
-            - generic [ref=e113]:
-              - generic [ref=e114]: Total Spend
-              - generic [ref=e115]: $0
-            - generic [ref=e116]:
-              - generic [ref=e117]: Total Income
-              - generic [ref=e118]: $0
-            - generic [ref=e119]:
-              - generic [ref=e120]: Net
-              - generic [ref=e121]: $0
-        - generic [ref=e123]:
-          - heading "Top Categories — 2025-11 Card help" [level=3] [ref=e125]:
-            - text: Top Categories — 2025-11
-            - button "Card help" [ref=e126] [cursor=pointer]: "?"
-          - paragraph [ref=e127]: No category data.
-        - generic [ref=e129]:
-          - heading "Top Merchants — 2025-11 Card help" [level=3] [ref=e131]:
-            - text: Top Merchants — 2025-11
-            - button "Card help" [ref=e132] [cursor=pointer]: "?"
-          - paragraph [ref=e133]: No merchant data.
-        - generic [ref=e135]:
-          - heading "Daily Flows — 2025-11 Card help" [level=3] [ref=e137]:
-            - text: Daily Flows — 2025-11
-            - button "Card help" [ref=e138] [cursor=pointer]: "?"
-          - paragraph [ref=e139]: No flow data.
-        - generic [ref=e141]:
-          - heading "Spending Trends — last 6 months Card help" [level=3] [ref=e143]:
-            - text: Spending Trends — last 6 months
-            - button "Card help" [ref=e144] [cursor=pointer]: "?"
-          - paragraph [ref=e145]: No historical data.
-      - generic [ref=e147]:
-        - generic [ref=e148]:
-          - heading "Forecast" [level=3] [ref=e150]
-          - button "Explain this" [ref=e151] [cursor=pointer]: "?"
-        - generic [ref=e152]:
-          - generic [ref=e153]:
-            - generic [ref=e154]: Model
-            - combobox "Model" [ref=e155]:
+      - generic [ref=e42]:
+        - heading "⚠ Unusual this month Card help" [level=3] [ref=e44]:
+          - text: ⚠ Unusual this month
+          - button "Card help" [ref=e45] [cursor=pointer]: "?"
+        - generic [ref=e46]: Scanning…
+      - generic [ref=e47]:
+        - generic [ref=e50]:
+          - heading "Overview — 2025-11 Card help" [level=3] [ref=e51]:
+            - text: Overview — 2025-11
+            - button "Card help" [ref=e52] [cursor=pointer]: "?"
+          - generic [ref=e54]:
+            - button "Export" [ref=e55] [cursor=pointer]:
+              - img [ref=e56]
+              - generic [ref=e59]: Export
+            - button "Custom range…" [ref=e60] [cursor=pointer]:
+              - generic [ref=e62]: Custom range…
+        - heading "Top Categories — 2025-11 Card help" [level=3] [ref=e79]:
+          - text: Top Categories — 2025-11
+          - button "Card help" [ref=e80] [cursor=pointer]: "?"
+        - heading "Top Merchants — 2025-11 Card help" [level=3] [ref=e94]:
+          - text: Top Merchants — 2025-11
+          - button "Card help" [ref=e95] [cursor=pointer]: "?"
+        - heading "Daily Flows — 2025-11 Card help" [level=3] [ref=e109]:
+          - text: Daily Flows — 2025-11
+          - button "Card help" [ref=e110] [cursor=pointer]: "?"
+        - heading "Spending Trends — last 6 months Card help" [level=3] [ref=e117]:
+          - text: Spending Trends — last 6 months
+          - button "Card help" [ref=e118] [cursor=pointer]: "?"
+      - generic [ref=e123]:
+        - generic [ref=e124]:
+          - heading "Forecast" [level=3] [ref=e126]
+          - button "Explain this" [ref=e127] [cursor=pointer]: "?"
+        - generic [ref=e128]:
+          - generic [ref=e129]:
+            - generic [ref=e130]: Model
+            - combobox "Model" [ref=e131]:
               - option "Auto" [selected]
               - option "SARIMAX"
               - option "EMA"
-          - generic [ref=e156]:
-            - generic [ref=e157]: CI
-            - combobox "CI" [ref=e158]:
+          - generic [ref=e132]:
+            - generic [ref=e133]: CI
+            - combobox "CI" [ref=e134]:
               - option "Off"
               - option "80%" [selected]
               - option "90%"
               - option "95%"
-          - generic [ref=e159]:
-            - generic [ref=e160]: Horizon
-            - spinbutton "Horizon" [ref=e161]: "3"
-          - generic [ref=e162]:
-            - button "Run" [ref=e163] [cursor=pointer]
-            - button "Reset forecast options" [ref=e164] [cursor=pointer]: Reset
-        - generic [ref=e167]: Not enough history to forecast yet.
-      - generic [ref=e169]:
-        - generic "Unknowns — 2025-11" [ref=e171]:
-          - generic [ref=e172]:
-            - generic [ref=e173]: No transactions yet
-            - generic [ref=e174]: Upload a CSV to begin. Use the Upload CSV card above.
-            - generic [ref=e175]: Upload a CSV to view and categorize unknowns.
-          - generic [ref=e176]:
-            - generic [ref=e177]:
-              - generic [ref=e178]:
+          - generic [ref=e135]:
+            - generic [ref=e136]: Horizon
+            - spinbutton "Horizon" [ref=e137]: "3"
+          - generic [ref=e138]:
+            - button "Running…" [disabled] [ref=e139]
+            - button "Reset forecast options" [ref=e140] [cursor=pointer]: Reset
+          - generic [ref=e141]: Run a forecast for 2025-11.
+        - generic [ref=e144]: Calculating forecast…
+      - generic [ref=e146]:
+        - generic "Unknowns — 2025-11" [ref=e148]:
+          - generic [ref=e180]:
+            - generic [ref=e181]:
+              - generic [ref=e182]:
                 - text: Uncategorized transactions
-                - button "Card help" [ref=e179] [cursor=pointer]: "?"
-              - button "More info" [ref=e180] [cursor=pointer]: ⓘ
-            - generic [ref=e181]: Review → Seed → Categorize
+                - button "Card help" [ref=e183] [cursor=pointer]: "?"
+              - button "More info" [ref=e184] [cursor=pointer]: ⓘ
+            - generic [ref=e185]: Review → Seed → Categorize
           - list
-        - generic [ref=e182]:
-          - generic [ref=e184]:
-            - generic [ref=e185]: 2025-11
-            - heading "Suggestions" [level=3] [ref=e186]
-          - generic [ref=e188]: No uncategorized transactions found for this month. Try another month or lower the thresholds.
-      - generic [ref=e191]:
-        - generic [ref=e192]:
-          - heading "Rule Suggestions Card help" [level=3] [ref=e193]:
+        - generic [ref=e186]:
+          - generic [ref=e188]:
+            - generic [ref=e189]: 2025-11
+            - heading "Suggestions" [level=3] [ref=e190]
+          - generic [ref=e192]: Loading suggestions…
+      - generic [ref=e195]:
+        - generic [ref=e196]:
+          - heading "Rule Suggestions Card help" [level=3] [ref=e197]:
             - text: Rule Suggestions
-            - button "Card help" [ref=e194] [cursor=pointer]: "?"
-          - generic [ref=e195]:
-            - button "Show ignores" [ref=e196] [cursor=pointer]
-            - button "Refresh" [ref=e197] [cursor=pointer]
-        - generic [ref=e198]: No suggestions right now.
-      - generic [ref=e202]:
-        - generic [ref=e203]:
-          - generic [ref=e204]:
-            - heading "Rules" [level=2] [ref=e205]
-            - generic [ref=e206]: ⓘ
-            - textbox "Search rules…" [ref=e207]
+            - button "Card help" [ref=e198] [cursor=pointer]: "?"
+          - generic [ref=e199]:
+            - button "Show ignores" [ref=e200] [cursor=pointer]
+            - button "Refreshing…" [disabled] [ref=e201]
+        - generic [ref=e202]: Loading…
+      - generic [ref=e206]:
+        - generic [ref=e207]:
           - generic [ref=e208]:
-            - generic [ref=e209]:
-              - button "Refresh" [ref=e210] [cursor=pointer]
-              - button "Create" [disabled] [ref=e211]
-            - generic [ref=e212]: based on last ∞ days of feedback
+            - heading "Rules" [level=2] [ref=e209]
+            - generic [ref=e210]: ⓘ
+            - textbox "Search rules…" [ref=e211]
+          - generic [ref=e212]:
             - generic [ref=e213]:
-              - button "Prev" [disabled] [ref=e214]
-              - generic [ref=e215]: 1–0 of 0
-              - button "Next" [disabled] [ref=e216]
-        - generic [ref=e217]:
-          - generic [ref=e218]:
-            - generic [ref=e219]:
-              - generic "Rule name" [ref=e220]
-              - generic [ref=e221]: ⓘ
-            - textbox "Short, descriptive name for the rule" [ref=e222]:
+              - button "Refreshing…" [disabled] [ref=e214]
+              - button "Create" [disabled] [ref=e215]
+            - generic [ref=e216]:
+              - button "Prev" [disabled] [ref=e217]
+              - generic [ref=e218]: 1–0 of 0
+              - button "Next" [disabled] [ref=e219]
+        - generic [ref=e220]:
+          - generic [ref=e221]:
+            - generic [ref=e222]:
+              - generic "Rule name" [ref=e223]
+              - generic [ref=e224]: ⓘ
+            - textbox "Short, descriptive name for the rule" [ref=e225]:
               - /placeholder: e.g., Coffee shops
-          - generic [ref=e223]:
-            - generic [ref=e224]:
-              - generic "Match — description contains" [ref=e225]: Match contains
-              - generic [ref=e226]: ⓘ
-            - textbox "Substring match against description (SQL ILIKE \"%text%\")" [ref=e227]:
+          - generic [ref=e226]:
+            - generic [ref=e227]:
+              - generic "Match — description contains" [ref=e228]: Match contains
+              - generic [ref=e229]: ⓘ
+            - textbox "Substring match against description (SQL ILIKE \"%text%\")" [ref=e230]:
               - /placeholder: e.g., "STARBUCKS" (case-insensitive)
-          - generic [ref=e228]:
-            - generic [ref=e229]:
-              - generic "Then — set category" [ref=e230]: Set category
-              - generic [ref=e231]: ⓘ
-            - textbox "The category assigned to all matches" [ref=e232]:
+          - generic [ref=e231]:
+            - generic [ref=e232]:
+              - generic "Then — set category" [ref=e233]: Set category
+              - generic [ref=e234]: ⓘ
+            - textbox "The category assigned to all matches" [ref=e235]:
               - /placeholder: e.g., Coffee
-        - paragraph [ref=e233]: No rules yet. Create your first rule above.
+        - paragraph [ref=e236]: No rules yet. Create your first rule above.
     - region "Notifications (F8)":
       - list
-  - button "Open chat" [active] [ref=e235] [cursor=pointer]:
-    - img [ref=e236]
-  - iframe [ref=e238]:
+  - button "Open chat" [active] [ref=e238] [cursor=pointer]:
+    - img [ref=e239]
+  - iframe [ref=e241]:
     - generic [active] [ref=f1e1]:
       - generic [ref=f1e3]:
         - banner [ref=f1e4]:
