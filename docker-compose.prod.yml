@@ -186,12 +186,12 @@ services:
       - no-new-privileges:true
     cap_drop:
       - ALL
-    healthcheck:
-      test: ["CMD-SHELL","wget -q -O /dev/null http://127.0.0.1:80/_up || exit 1"]
-      interval: 10s
-      timeout: 3s
-      retries: 10
-      start_period: 20s
+    # healthcheck:
+    #   test: ["CMD-SHELL","wget -q -O /dev/null http://127.0.0.1:80/_up || exit 1"]
+    #   interval: 10s
+    #   timeout: 3s
+    #   retries: 10
+    #   start_period: 20s
     restart: unless-stopped
     networks:
       - shared-ollama

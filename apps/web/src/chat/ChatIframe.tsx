@@ -63,9 +63,12 @@ export function ChatIframe() {
     const el = listRef.current;
     if (!el) return;
 
-    // Only autoscroll if already near the bottom
-    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
-    if (nearBottom) {
+    // Scroll to bottom with smooth animation
+    const lastBubble = el.querySelector('.bubble:last-of-type');
+    if (lastBubble) {
+      lastBubble.scrollIntoView({ block: 'end', behavior: 'smooth' });
+    } else {
+      // Fallback: scroll container to bottom
       el.scrollTop = el.scrollHeight;
     }
   }, [uiMessages.length]);

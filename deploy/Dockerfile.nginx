@@ -84,7 +84,7 @@ RUN rm -f /etc/nginx/conf.d/default.conf 2>/dev/null || true
 
 # Fast-fail asset integrity assertion (runs automatically via nginx official entrypoint)
 COPY ./deploy/docker-entrypoint.d /docker-entrypoint.d
-COPY ./nginx/entrypoint.d/10-csp-inline-hashes.sh /docker-entrypoint.d/10-csp-inline-hashes.sh
+# COPY ./nginx/entrypoint.d/10-csp-inline-hashes.sh /docker-entrypoint.d/10-csp-inline-hashes.sh # DISABLED - hangs on startup
 COPY ./nginx/entrypoint.d/99-run.sh /docker-entrypoint.d/99-run.sh
 COPY ./nginx/conf.d/security-headers.conf /etc/nginx/conf.d/security-headers.conf
 RUN chmod +x /docker-entrypoint.d/*.sh

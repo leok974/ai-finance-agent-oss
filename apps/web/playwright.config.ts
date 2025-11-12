@@ -18,7 +18,7 @@ const userDataDir = path.join(process.cwd(), '../../.pw-userdata');
 export default defineConfig({
   // Only run E2E specs; unit tests are handled by Vitest
   testDir: './tests/e2e',
-  globalSetup: './tests/setup/global-setup.ts',
+  globalSetup: './tests/e2e/global-setup.ts',  // E2E session mint
   globalTeardown: './tests/setup/global-teardown.ts',
   workers: useDev ? 1 : workers,  // serialize in dev to avoid SQLite locks
   timeout: 30_000,
@@ -26,7 +26,7 @@ export default defineConfig({
   reporter: isCI ? [['html'], ['line']] : [['line']],
   retries: isCI ? 1 : 0,  // retry once in CI to guard against flakes
   use: {
-    headless: false,  // headed mode for Google OAuth stability  
+    headless: false,  // headed mode for Google OAuth stability
     baseURL,
     storageState: AUTH_STORAGE,
     trace: 'on-first-retry',

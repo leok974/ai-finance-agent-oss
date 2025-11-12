@@ -11,6 +11,7 @@ export function ensureChatLauncher(onClick: () => void): HTMLButtonElement {
     btn.id = "lm-chat-launcher";
     btn.type = "button";
     btn.setAttribute("aria-label", "Open chat");
+    btn.setAttribute("data-testid", "lm-chat-bubble"); // For E2E tests
     btn.innerHTML = `
       <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true">
         <path fill="currentColor" d="M12 3C6.48 3 2 6.94 2 11.8c0 2.48 1.24 4.72 3.24 6.3l-1.08 3.9a.6.6 0 0 0 .84.7l4-1.9c.93.24 1.92.37 2.96.37 5.52 0 10-3.94 10-8.8S17.52 3 12 3Z"/>

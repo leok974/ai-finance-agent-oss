@@ -69,9 +69,9 @@ test.describe('Chat Iframe Rendering @prod', () => {
     const iframeSrc = await iframe.evaluate((el: any) => el?.src);
     expect(iframeSrc).toContain('/chat/');
 
-    // Check iframe sandbox attribute (should allow scripts but not same-origin)
+    // Check iframe sandbox attribute (allows scripts, popups, and same-origin for asset loading)
     const iframeSandbox = await iframe.evaluate((el: any) => el?.getAttribute('sandbox'));
-    expect(iframeSandbox).toBe('allow-scripts allow-popups');
+    expect(iframeSandbox).toBe('allow-scripts allow-popups allow-same-origin');
   });
 
   test('chat iframe should load without CSP errors', async ({ page }) => {

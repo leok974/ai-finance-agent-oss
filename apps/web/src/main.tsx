@@ -28,13 +28,20 @@ if (window.__APP_MOUNTED__) {
 }
 window.__APP_MOUNTED__ = true;
 
+// eslint-disable-next-line no-console
+console.log("[build]", `${__WEB_BRANCH__}@${__WEB_COMMIT__}`, __WEB_BUILD_TIME__);
+
+// DevDiag structured logging helper (for console capture)
+(window as any).__DEVLOG = (tag: string, data: unknown) =>
+  console.log(`[devlog] ${tag}`, JSON.stringify(data, null, 2));
+
 (() => {
   try {
     // Attach structured metadata for debugging & cache-bust influence
     (window as any).__LEDGERMIND_BUILD__ = {
-      branch: (globalThis as any).__WEB_BRANCH__ ?? '__WEB_BRANCH__',
-      commit: (globalThis as any).__WEB_COMMIT__ ?? '__WEB_COMMIT__',
-      buildId: (globalThis as any).__WEB_BUILD_ID__ ?? '__WEB_BUILD_ID__',
+      branch: __WEB_BRANCH__,
+      commit: __WEB_COMMIT__,
+      buildId: __WEB_BUILD_ID__,
       stamp: buildStamp,
     };
     const meta = document.createElement('meta');
@@ -96,25 +103,25 @@ if (import.meta.env.PROD) {
   console.info('[boot] React root mounted once (production mode)');
 }
 
-// Chat handshake listener (debounced for HMR safety)
+// Chat handshake listener (iframe architecture - no custom element wrapper)
 if (!(window as any).__chatHandshakeBound) {
   const chatListener = (e: MessageEvent) => {
     if (e.origin !== location.origin) return;
-    const host = document.querySelector('lm-chatdock-host') as HTMLElement | null;
-    if (!host) return;
+    const iframe = document.querySelector('#lm-chat-iframe') as HTMLIFrameElement | null;
+    if (!iframe) return;
 
     if (e.data?.type === 'chat:ready') {
-      host.classList.add('ready');
-      console.log('[chat-host] revealed (ready)');
+      iframe.classList.add('ready');
+      console.log('[chat-iframe] revealed (ready)');
       (window as any).__CHAT_READY_SEEN__ = true; // For e2e tests
     }
     if (e.data?.type === 'chat:error') {
-      host.classList.remove('ready');
-      console.warn('[chat-host] hidden (error)');
+      iframe.classList.remove('ready');
+      console.warn('[chat-iframe] hidden (error)');
     }
     if (e.data?.type === 'chat:teardown') {
-      host.classList.remove('ready');
-      console.log('[chat-host] hidden (teardown)');
+      iframe.classList.remove('ready');
+      console.log('[chat-iframe] hidden (teardown)');
     }
   };
   window.addEventListener('message', chatListener);

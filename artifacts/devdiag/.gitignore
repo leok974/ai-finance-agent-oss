@@ -1,0 +1,6 @@
+# DevDiag artifacts
+*.ndjson
+*.json
+*.png
+*.har
+*.trace

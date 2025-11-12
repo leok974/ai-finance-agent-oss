@@ -2,234 +2,243 @@
  * mountChat.tsx - Chat iframe bootstrap (parent side)
  *
  * CRITICAL ARCHITECTURE:
- * - Chat runs in sandboxed iframe with same-origin (for asset loading)
- * - Sandbox: allow-scripts allow-popups allow-same-origin
- * - Blocks: top navigation, forms, modals, downloads
- * - Iframe loads /chat/index.html (real page, no srcdoc tricks)
- * - Communication via postMessage ONLY (chat:ready, chat:error, chat:teardown)
- * - Custom element wraps iframe, reveals on 'chat:ready' message
- * - CSP: /chat/ has frame-ancestors 'self' to allow embedding
+ * - Iframe IS the panel (no wrapper, no clipping)
+ * - NEVER uses display:none (opacity + pointerEvents only)
+ * - Overlay armed in requestAnimationFrame to prevent same-click close
+ * - Repositions on viewport changes (resize, scroll, zoom, keyboard)
  */
 
-import { ChatDockHost } from './ChatDockHost';
+import { ensureChatLauncher } from './chatLauncher';
 
-// Track open/closed state
-let isOpen = false;
-let hostElement: HTMLElement | null = null;
-let backdropElement: HTMLDivElement | null = null;
+const Z_OVERLAY = 2147483645;
+const Z_IFRAME = 2147483646;
+const MARGIN = 16;
+const MIN_W = 320,
+  MIN_H = 320,
+  PREF_W = 420,
+  PREF_H = 560;
 
-/**
- * Show chat with animation
- */
-export function showChat(host?: HTMLElement): void {
-  const h = host ?? hostElement;
-  if (!h) return;
+let armedOutside = false;
+let ifr: HTMLIFrameElement | null = null;
+let overlayEl: HTMLDivElement | null = null;
+let mounted = false;
 
-  h.style.display = "block";
-  h.animate(
-    [
-      { transform: "translateY(20px)", opacity: "0" },
-      { transform: "translateY(0)", opacity: "1" }
-    ],
-    { duration: 160, easing: "cubic-bezier(.2,.7,.2,1)", fill: "forwards" }
-  );
+interface ChatState {
+  isOpen: boolean;
+}
+const state: ChatState = { isOpen: false };
 
-  if (backdropElement) {
-    backdropElement.style.display = "block";
-  }
+function getState() { return state; }
+function setState(s: Partial<ChatState>) { Object.assign(state, s); }
 
-  // Lock body scroll
-  document.documentElement.style.overflow = "hidden";
-
-  isOpen = true;
-  console.log('[chat] opened');
-
-  // Focus composer in iframe after animation
-  setTimeout(() => {
-    const frame = h.shadowRoot?.querySelector('iframe') as HTMLIFrameElement | null;
-    const input = frame?.contentDocument?.querySelector('.input') as HTMLInputElement | null;
-    input?.focus();
-  }, 180);
+function vv() {
+  const v = (window as any).visualViewport;
+  return v
+    ? { x: v.offsetLeft || 0, y: v.offsetTop || 0, w: v.width, h: v.height }
+    : { x: 0, y: 0, w: window.innerWidth, h: window.innerHeight };
 }
 
-/**
- * Hide chat with animation
- */
-export function hideChat(host?: HTMLElement): void {
-  const h = host ?? hostElement;
-  if (!h) return;
-
-  const anim = h.animate(
-    [
-      { transform: "translateY(0)", opacity: "1" },
-      { transform: "translateY(16px)", opacity: "0" }
-    ],
-    { duration: 140, easing: "cubic-bezier(.2,.7,.2,1)", fill: "forwards" }
-  );
-
-  anim.onfinish = () => {
-    h.style.display = "none";
-  };
-
-  if (backdropElement) {
-    backdropElement.style.display = "none";
-  }
-
-  // Restore body scroll
-  document.documentElement.style.overflow = "";
-
-  isOpen = false;
-  console.log('[chat] closed');
+function isDiag() {
+  return new URLSearchParams(location.search).get('chat') === 'diag';
 }
 
-/**
- * Toggle chat visibility
- */
-export function toggleChat(host?: HTMLElement): void {
-  if (isOpen) {
-    hideChat(host);
-  } else {
-    showChat(host);
-  }
+declare const __RUNTIME_BUILD_ID__: string;
+
+export function ensureIframe() {
+  if (ifr) return ifr;
+  const el = document.createElement('iframe');
+  el.id = 'lm-chat-iframe';
+  el.dataset.testid = 'lm-chat-iframe';
+  el.referrerPolicy = 'no-referrer';
+  el.sandbox.add('allow-scripts');
+  el.sandbox.add('allow-same-origin');
+
+  const buildId = __RUNTIME_BUILD_ID__;
+  el.src = `/chat/index.html?v=${buildId}`;
+
+  Object.assign(el.style, {
+    position: 'fixed',
+    left: '0px',
+    top: '0px',
+    width: `${PREF_W}px`,
+    height: `${PREF_H}px`,
+    zIndex: String(Z_IFRAME),
+    border: '0',
+    borderRadius: '12px',
+    background: 'transparent',
+    boxShadow: '0 10px 30px rgba(0,0,0,.45)',
+    transformOrigin: 'right bottom',
+    opacity: '0',
+    pointerEvents: 'none',
+    transition: 'opacity 120ms ease-out',
+  });
+
+  el.addEventListener('load', () => {
+    el.contentWindow?.postMessage({ type: 'chat:init', config: {} }, window.location.origin);
+  });
+
+  document.body.appendChild(el);
+  ifr = el;
+  return el;
 }
 
-/**
- * Get current open state
- */
-export function isChatOpen(): boolean {
-  return isOpen;
-}
+function ensureOverlay() {
+  if (overlayEl) return overlayEl;
+  const el = document.createElement('div');
+  el.id = 'lm-chat-overlay';
+  el.setAttribute('data-testid', 'lm-chat-overlay');
+  el.className = 'lm-chat-overlay';
 
-/**
- * Mounts chat iframe in custom element
- * Safe to call multiple times - will reuse existing host
- * Returns host element for show/hide control
- */
-export function mountChatDock(): HTMLElement {
-  // Safety guard: prevent duplicate chat host creation
-  if ((window as any).__LM_CHAT_HOST_CREATED__) {
-    console.warn('[lm] duplicate chat host creation blocked');
-    return hostElement!;
-  }
-  (window as any).__LM_CHAT_HOST_CREATED__ = true;
+  Object.assign(el.style, {
+    position: 'fixed',
+    inset: '0',
+    background: 'rgba(0,0,0,.35)',
+    zIndex: String(Z_OVERLAY),
+    opacity: '0',
+    pointerEvents: 'none',
+    transition: 'opacity 120ms ease-out',
+  });
 
-  try {
-    // 1) Ensure custom element is registered
-    if (!customElements.get('lm-chatdock-host')) {
-      customElements.define('lm-chatdock-host', ChatDockHost);
+  el.addEventListener('click', () => {
+    if (!armedOutside) return;
+    if (isDiag()) return;
+    closeChat();
+  });
+
+  el.addEventListener('transitionend', () => {
+    if (!getState().isOpen) {
+      el.remove();
+      overlayEl = null;
+      document.documentElement.classList.remove('lm-chat-blur');
     }
+  });
 
-    // 2) Get or create host element
-    let host = document.querySelector('lm-chatdock-host') as HTMLElement | null;
-    if (!host) {
-      host = document.createElement('lm-chatdock-host');
-      document.body.appendChild(host);
-    }
-    hostElement = host;
-
-    // 3) Create backdrop (click to close)
-    if (!backdropElement) {
-      const backdrop = document.createElement("div");
-      backdrop.id = "lm-chat-backdrop";
-      Object.assign(backdrop.style, {
-        position: "fixed",
-        inset: "0",
-        background: "rgba(0,0,0,.35)",
-        backdropFilter: "blur(1.5px)",
-        zIndex: "2147482998",
-        display: "none",
-      });
-      backdrop.addEventListener("click", () => hideChat(host!));
-      document.body.appendChild(backdrop);
-      backdropElement = backdrop;
-    }
-
-    // 4) Attach shadow root once
-    const sr = host.shadowRoot ?? host.attachShadow({ mode: 'open' });
-
-    // 5) Apply positioning styles directly to host element (more reliable than :host selector)
-    Object.assign(host.style, {
-      position: 'fixed',
-      right: '20px',
-      bottom: '20px',
-      width: 'min(520px, 92vw)',
-      height: 'min(620px, 84vh)',
-      zIndex: '2147483000',
-      borderRadius: '16px',
-      overflow: 'hidden',
-      boxShadow: '0 22px 48px rgba(0,0,0,.55)',
-      display: 'none',
-    });
-
-    // 6) Add styles for iframe inside shadow DOM
-    let style = sr.querySelector('#lm-chat-host-styles') as HTMLStyleElement | null;
-    if (!style) {
-      style = document.createElement('style');
-      style.id = 'lm-chat-host-styles';
-      style.textContent = `
-        iframe {
-          display: block;
-          width: 100%;
-          height: 100%;
-          border: 0;
-          contain: layout paint style size;
-        }
-      `;
-      sr.appendChild(style);
-    }
-
-    // 7) Create iframe (sandboxed, same-origin for asset loading)
-    let frame = sr.querySelector('#lm-chat-frame') as HTMLIFrameElement | null;
-    if (!frame) {
-      frame = document.createElement('iframe');
-      frame.id = 'lm-chat-frame';
-
-      // Add cache-busting build ID to iframe src
-      const buildId = (globalThis as any).__RUNTIME_BUILD_ID__ ?? Date.now().toString();
-      frame.src = `/chat/index.html?v=${buildId}`;
-
-      frame.setAttribute('sandbox', 'allow-scripts allow-popups allow-same-origin');
-      frame.setAttribute('referrerpolicy', 'no-referrer');
-
-      // Send init config when iframe loads
-      frame.addEventListener('load', () => {
-        frame!.contentWindow?.postMessage(
-          { type: 'chat:init', config: {} },
-          window.location.origin
-        );
-      });
-
-      sr.appendChild(frame);
-    }
-
-    // Note: host.style.display already set to 'none' in step 5
-
-    console.info('[chat] iframe host created');
-    return host;
-  } catch (error) {
-    console.error('[chat] host creation failed', error);
-    sessionStorage.setItem('lm:disableChat', '1');
-    delete (window as any).__LM_CHAT_HOST_CREATED__;
-    throw error;
-  }
+  document.body.appendChild(el);
+  overlayEl = el;
+  return el;
 }
 
-/**
- * Unmounts chat (for cleanup if needed)
- */
-export function unmountChatDock(): void {
-  // Notify iframe to teardown
-  const host = document.querySelector('lm-chatdock-host');
-  const frame = host?.shadowRoot?.querySelector('#lm-chat-frame') as HTMLIFrameElement | null;
-
-  frame?.contentWindow?.postMessage({ type: 'chat:teardown' }, window.location.origin);
-
-  // Remove host element
-  if (host) {
-    host.remove();
-  }
-
-  delete (window as any).__LM_CHAT_HOST_CREATED__;
-
-  console.info('[chat] host unmounted');
+function styleIframeOpen(iframe: HTMLIFrameElement, rect: DOMRect) {
+  Object.assign(iframe.style, {
+    position: 'fixed',
+    left: `${rect.left}px`,
+    top: `${rect.top}px`,
+    width: `${rect.width}px`,
+    height: `${rect.height}px`,
+    zIndex: String(Z_IFRAME),
+    borderRadius: '12px',
+    border: '0',
+    background: 'transparent',
+    boxShadow: 'rgba(0,0,0,.45) 0 10px 30px',
+    transformOrigin: 'right bottom',
+    opacity: '1',
+    pointerEvents: 'auto',
+  } as CSSStyleDeclaration);
 }
+
+function styleIframeClosed(iframe: HTMLIFrameElement) {
+  Object.assign(iframe.style, {
+    opacity: '0',
+    pointerEvents: 'none',
+  } as CSSStyleDeclaration);
+}
+
+function showOverlay() {
+  const el = ensureOverlay();
+  el.style.opacity = '1';
+  el.style.pointerEvents = 'auto';
+  document.documentElement.classList.add('lm-chat-blur');
+  armedOutside = false;
+  requestAnimationFrame(() => (armedOutside = true));
+}
+
+export function openChatAt(launcherRect: DOMRect) {
+  const off = vv();
+  const vw = Math.min(window.innerWidth, off.w);
+  const vh = Math.min(window.innerHeight, off.h);
+
+  const W = Math.min(PREF_W, vw - MARGIN * 2);
+  const H = Math.min(PREF_H, vh - MARGIN * 2);
+
+  const left = Math.min(Math.max(launcherRect.right - W, MARGIN), vw - W - MARGIN) + off.x;
+  const top = Math.min(Math.max(launcherRect.top - H - 8, MARGIN), vh - H - MARGIN) + off.y;
+
+  const rect = new DOMRect(left, top, W, H);
+  styleIframeOpen(ensureIframe(), rect);
+  showOverlay();
+  setState({ isOpen: true });
+}
+
+export function closeChat() {
+  const iframe = ensureIframe();
+  styleIframeClosed(iframe);
+  if (overlayEl) {
+    overlayEl.style.opacity = '0';
+    overlayEl.style.pointerEvents = 'none';
+  }
+  setState({ isOpen: false });
+}
+
+function anchorToLauncher() {
+  if (!state.isOpen) return;
+  const launcher = document.querySelector<HTMLElement>('[data-testid="lm-chat-bubble"]');
+  if (!launcher) return;
+  const r = launcher.getBoundingClientRect();
+  openChatAt(r);
+}
+
+export function ensureChatMounted() {
+  if (mounted) return;
+  mounted = true;
+
+  const launcher = ensureChatLauncher(() => {
+    const r = launcher.getBoundingClientRect();
+    openChatAt(r);
+  });
+
+  ensureIframe();
+
+  const vvp = (window as any).visualViewport;
+  if (vvp) {
+    vvp.addEventListener('resize', anchorToLauncher);
+    vvp.addEventListener('scroll', anchorToLauncher);
+  }
+  window.addEventListener('resize', anchorToLauncher);
+
+  window.addEventListener('keydown', (ev) => {
+    if (ev.key === '`' && !state.isOpen) {
+      openChatAt(launcher.getBoundingClientRect());
+    }
+  });
+
+  console.log('[mountChat] initialized');
+}
+
+(window as any).lmChat = {
+  snapshot() {
+    const iframe = ifr;
+    if (!iframe) return { mounted: false };
+    const s = iframe.style;
+    const r = iframe.getBoundingClientRect();
+    return {
+      isOpen: state.isOpen,
+      armedOutside,
+      overlay: !!overlayEl,
+      style: {
+        op: s.opacity,
+        pe: s.pointerEvents,
+        disp: s.display,
+        vis: s.visibility,
+        left: s.left,
+        top: s.top,
+        w: s.width,
+        h: s.height,
+      },
+      rect: { x: r.x, y: r.y, w: r.width, h: r.height },
+      vp: { w: window.innerWidth, h: window.innerHeight },
+    };
+  },
+  force(style: Partial<CSSStyleDeclaration>) {
+    if (ifr) Object.assign(ifr.style, style);
+  },
+};

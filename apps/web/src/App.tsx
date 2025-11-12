@@ -29,6 +29,7 @@ import NetActivityBlip from "@/components/NetActivityBlip";
 // import LoginForm from "@/components/LoginForm"; // Replaced with AuthMenu for OAuth
 import AuthMenu from "@/components/AuthMenu";
 import { useAuth, useIsAdmin } from "@/state/auth";
+import { ensureChatMounted } from "@/boot/mountChat";
 import { useChartsStore } from "@/state/charts";
 import { initBroadcastChannelSync } from "@/state/chatSession";
 // import AgentChat from "./components/AgentChat"; // legacy chat bubble disabled
@@ -64,8 +65,9 @@ const App: React.FC = () => {
   const CHAT_QP = qp.get('chat');
   console.log('[App] CHAT_QP =', CHAT_QP, 'type=', typeof CHAT_QP);
   // Default: chat ON (can disable with ?chat=0 for debugging)
+  // Allow diagnostic modes: ?chat=diag or ?chat=debug
   const CHAT_FLAG = CHAT_QP !== null
-    ? CHAT_QP === '1'
+    ? CHAT_QP !== '0' // Enable for '1', 'diag', 'debug', or any truthy value
     : true; // Changed from env check - chat ON by default
   console.log('[App] CHAT_FLAG =', CHAT_FLAG);
 
@@ -286,68 +288,13 @@ const App: React.FC = () => {
 
   const showChatDock = useChatDockStore(s => s.visible);
 
-  // Chat mounting: dynamically import from boot module
+  // Chat mounting: auth-gated, mount-once
   useEffect(() => {
     console.log('[App] chat mount effect', { chatEnabled, authReady, authOk });
     if (!chatEnabled || !authReady || !authOk) return;
-
-    // Add global error handlers to catch chat boot failures
-    window.addEventListener('error', (e) => {
-      console.error('[chat-boot] window.onerror', e?.error ?? e?.message ?? e);
-    });
-    window.addEventListener('unhandledrejection', (e) => {
-      console.error('[chat-boot] unhandledrejection', e.reason ?? e);
-    });
-
-    console.log('[App] queuing chat mount...');
-    queueMicrotask(() => {
-      console.log('[App] importing chat module...');
-      Promise.all([
-        import('@/boot/mountChat'),
-        import('@/boot/chatLauncher')
-      ])
-        .then(([mountModule, launcherModule]) => {
-          console.log('[App] chat modules loaded, creating host and launcher');
-
-          // Create host element (hidden by default)
-          const host = mountModule.mountChatDock();
-
-          // Create launcher button that toggles chat
-          launcherModule.ensureChatLauncher(() => {
-            mountModule.toggleChat(host);
-          });
-
-          // Escape key handler - must check isChatOpen() dynamically
-          // Remove any existing listener first to prevent duplicates
-          const handleEscape = (e: KeyboardEvent) => {
-            // Log ALL keydown events to debug
-            if (e.key === 'Escape') {
-              console.log('[App] *** ESCAPE KEY PRESSED ***');
-              console.log('[App] isChatOpen:', mountModule.isChatOpen());
-              console.log('[App] event:', e);
-
-              if (mountModule.isChatOpen()) {
-                console.log('[App] Closing chat...');
-                e.preventDefault();
-                e.stopPropagation();
-                mountModule.hideChat(host);
-              } else {
-                console.log('[App] Chat is already closed, ignoring Escape');
-              }
-            }
-          };
-
-          console.log('[App] Adding Escape key handler');
-          window.addEventListener('keydown', handleEscape, true); // Use capture phase
-
-          console.log('[chat-boot] chat entry loaded OK');
-        })
-        .catch(e => {
-          console.error('[chat-boot] failed to load chat entry', e);
-          console.error('[chat] mount failed → fuse trip', e);
-          sessionStorage.setItem('lm:disableChat', '1');
-        });
-    });
+    // Mount only once per page load
+    (window as any).__lmChatBoot ||= Date.now();
+    ensureChatMounted();
   }, [chatEnabled, authReady, authOk]);
 
   // Always call hooks above; render gates below
