@@ -171,17 +171,19 @@ class Settings(BaseSettings):
     E2E_SESSION_ENABLED: bool = _env_bool("E2E_SESSION_ENABLED", False)
     E2E_SESSION_HMAC_SECRET: str | None = os.getenv("E2E_SESSION_HMAC_SECRET", None)
 
+    # === Redis (Replay Cache) ===
+    REDIS_URL: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+    REDIS_REPLAY_PREFIX: str = "hmac:replay:"
+    REDIS_REPLAY_TTL: int = 300  # 5 minutes
+
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 
 settings = Settings()
 
-# Normalize HELP_REPHRASE_DEFAULT if explicitly set via env for prod toggle
-import os as _os
-
 if settings.ENV == "prod":
     # New policy: default ON in prod unless explicitly disabled with 0
-    _env_val = _os.getenv("HELP_REPHRASE_DEFAULT")
+    _env_val = os.getenv("HELP_REPHRASE_DEFAULT")
     if _env_val is not None:
         try:
             settings.HELP_REPHRASE_DEFAULT = bool(int(_env_val))

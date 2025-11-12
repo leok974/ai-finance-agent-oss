@@ -49,7 +49,8 @@ services:
     env_file:
       - ./secrets/backend.env
     environment:
-      UVICORN_WORKERS: "1"
+      UVICORN_WORKERS: "${UVICORN_WORKERS:-2}"  # ✅ Updated default from 1 to 2
+      WEB_CONCURRENCY: "${WEB_CONCURRENCY:-2}"
       LOG_LEVEL: "info"
       ENV: "prod"
       DEBUG: "0"
@@ -79,7 +80,13 @@ services:
       OPENAI_API_KEY_FILE: /run/secrets/openai_api_key
       OPENAI_FALLBACK_MODEL: "${OPENAI_FALLBACK_MODEL:-gpt-4o-mini}"
       MODEL: "${MODEL:-gpt-oss:20b}"
+      # E2E testing: allow stub/echo modes without auth (safe with env guard)
+      ALLOW_TEST_STUBS: "${ALLOW_TEST_STUBS:-1}"
       DEV_ALLOW_NO_LLM: "${DEV_ALLOW_NO_LLM:-0}"
+      # Database pool sizing (prevent pool starvation under load)
+      DB_POOL_SIZE: "${DB_POOL_SIZE:-10}"
+      DB_MAX_OVERFLOW: "${DB_MAX_OVERFLOW:-20}"
+      DB_POOL_PRE_PING: "${DB_POOL_PRE_PING:-1}"
       ALLOWED_HOSTS: "localhost,127.0.0.1,ledger-mind.org,app.ledger-mind.org,api.ledger-mind.org,nginx"
       ANALYTICS_DB: "1"
       OPENAI_API_KEY: ${OPENAI_API_KEY}
@@ -110,7 +117,9 @@ services:
       python -m uvicorn app.main:app
       --host 0.0.0.0
       --port 8000
-      --workers ${UVICORN_WORKERS:-1}
+      --workers ${UVICORN_WORKERS:-2}
+      --limit-concurrency 200
+      --timeout-keep-alive 20
       --proxy-headers
       --forwarded-allow-ips="*"
       --log-level ${LOG_LEVEL:-info}

@@ -13,28 +13,30 @@ import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { request, type FullConfig } from "@playwright/test";
+import { getHmacCredentials } from "./utils/hmac";
 
 export default async function globalSetup(config: FullConfig) {
   console.log("[global-setup] Starting E2E session mint...");
 
   const baseURL = process.env.BASE_URL;
-  const secret = process.env.E2E_SESSION_HMAC_SECRET;
-  const user = process.env.E2E_USER ?? "e2e@ledgermind.org";
+  const creds = getHmacCredentials();
+  const user = creds.clientId;
 
   // Skip if no credentials configured
-  if (!baseURL || !secret) {
-    console.log("[global-setup] BASE_URL or E2E_SESSION_HMAC_SECRET not set, skipping session mint");
+  if (!baseURL) {
+    console.log("[global-setup] BASE_URL not set, skipping session mint");
     return;
   }
 
-  // Create HMAC signature
-  const ts = Math.floor(Date.now() / 1000).toString();
-  const msg = `${user}.${ts}`;
-  const sig = crypto.createHmac("sha256", secret).update(msg).digest("hex");
-
   console.log(`[global-setup] Minting session for ${user}...`);
 
-  // Create API context with HMAC headers
+  // E2E session endpoint uses simpler signature: HMAC-SHA256(user.ts, secret)
+  // NOT the same as /agent/* endpoints (which use canonical string)
+  const ts = Math.floor(Date.now() / 1000).toString();
+  const msg = `${user}.${ts}`;
+  const sig = crypto.createHmac("sha256", creds.secret).update(msg).digest("hex");
+
+  // Create API context with E2E-specific headers
   const ctx = await request.newContext({
     baseURL,
     extraHTTPHeaders: {
