@@ -18,6 +18,11 @@ test.describe('Chat Actions @prod', () => {
       }
     });
 
+    // Enable test mode for deterministic responses
+    await page.addInitScript(() => {
+      (window as any).__E2E_TEST__ = true;
+    });
+
     // Enable chat and open it
     await page.goto(`${BASE_URL}?chat=1`);
     await page.getByTestId('lm-chat-bubble').click();
@@ -26,7 +31,10 @@ test.describe('Chat Actions @prod', () => {
     const iframe = page.frameLocator('[data-testid="lm-chat-iframe"]');
     await expect(iframe.locator('body')).toBeVisible({ timeout: 5000 });
 
-    // Wait for chat input to be ready (indicates iframe is fully initialized)
+    // Wait for chat readiness (eliminates race conditions)
+    await page.evaluate(() => (window as any).frames[0]?.lmChatReady);
+
+    // Wait for chat input to be ready
     const input = iframe.getByPlaceholder(/Ask or type a command/i);
     await expect(input).toBeVisible({ timeout: 5000 });
 
@@ -34,7 +42,7 @@ test.describe('Chat Actions @prod', () => {
     await input.fill('ping');
     await page.keyboard.press('Enter');
 
-    // Wait for the request to be made (backend may not respond yet)
+    // Wait for the request to be made
     await expect.poll(() => chatRequests.length > 0, {
       timeout: 5000,
       message: 'Expected chat message to trigger /agent/chat API call'
@@ -55,6 +63,11 @@ test.describe('Chat Actions @prod', () => {
       }
     });
 
+    // Enable test mode
+    await page.addInitScript(() => {
+      (window as any).__E2E_TEST__ = true;
+    });
+
     // Enable chat and open it
     await page.goto(`${BASE_URL}?chat=1`);
     await page.getByTestId('lm-chat-bubble').click();
@@ -63,17 +76,20 @@ test.describe('Chat Actions @prod', () => {
     const iframe = page.frameLocator('[data-testid="lm-chat-iframe"]');
     await expect(iframe.locator('body')).toBeVisible({ timeout: 5000 });
 
+    // Wait for chat readiness
+    await page.evaluate(() => (window as any).frames[0]?.lmChatReady);
+
     // Click a tool button
     const toolButton = iframe.getByRole('button', { name: /Month summary/i });
     await toolButton.click();
 
-    // Wait for the request to be made (not response, just request)
+    // Wait for the request to be made
     await expect.poll(() => toolRequests.length > 0, {
       timeout: 3000,
       message: 'Expected tool button to trigger /agent/chat API call'
     }).toBeTruthy();
 
-    // Verify request structure (tool validation prevents unknown tools)
+    // Verify request structure
     expect(toolRequests[0].method).toBe('POST');
     expect(toolRequests[0].postData).toHaveProperty('messages');
     expect(toolRequests[0].postData).toHaveProperty('mode', 'charts.month_summary');

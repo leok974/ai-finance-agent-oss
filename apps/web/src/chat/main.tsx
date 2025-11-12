@@ -107,6 +107,18 @@ export function getInit(): InitCfg | null {
   return INIT;
 }
 
+// Readiness promise for E2E tests (eliminates race conditions)
+declare global {
+  interface Window {
+    lmChatReady?: Promise<void>;
+  }
+}
+
+let resolveChatReady: () => void;
+window.lmChatReady = new Promise<void>((resolve) => {
+  resolveChatReady = resolve;
+});
+
 window.addEventListener('message', (e: MessageEvent) => {
   if (e.origin !== window.location.origin) return;
 
@@ -114,6 +126,9 @@ window.addEventListener('message', (e: MessageEvent) => {
     INIT = e.data.payload as InitCfg;
     (window as any).INIT = INIT; // Update global
     console.info('[chat] init', INIT);
+
+    // Resolve readiness promise after INIT received
+    resolveChatReady();
 
     // Health ping for LLM badge
     if (INIT?.apiBase) {
