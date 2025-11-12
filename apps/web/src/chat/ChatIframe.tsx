@@ -106,13 +106,16 @@ export function ChatIframe() {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text, month: INIT.month }),
+        body: JSON.stringify({
+          messages: [{ role: 'user', content: text }],
+          context: { month: INIT.month }
+        }),
       });
 
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
       const data = await res.json();
-      const reply = data.reply ?? data.text ?? '(no reply)';
+      const reply = data.reply ?? data.result?.text ?? data.text ?? '(no reply)';
 
       // Add assistant response to store
       const newState = useChatSession.getState();
@@ -122,7 +125,7 @@ export function ChatIframe() {
           role: 'assistant',
           text: reply,
           at: Date.now(),
-          meta: data.meta
+          meta: data.meta ?? { mode: data.mode }
         }]
       });
 
@@ -169,17 +172,38 @@ export function ChatIframe() {
     setBusy(true);
 
     try {
+      // Map tool names to backend mode names
+      const modeMap: Record<string, string> = {
+        'month_summary': 'charts.month_summary',
+        'trends': 'charts.month_trends',
+        'alerts': 'charts.month_alerts',
+        'recurring': 'charts.recurring',
+        'subscriptions': 'charts.subscriptions',
+        'find_subscriptions': 'find_subscriptions',
+        'insights': 'insights',
+        'kpis': 'kpis',
+        'budget_suggest': 'budget_suggest',
+        'search_transactions': 'nl_txns',
+      };
+
+      const mode = modeMap[tool] || tool;
+
       const res = await fetch(`${INIT.apiBase}/agent/chat`, {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tool, args, month: INIT.month }),
+        body: JSON.stringify({
+          messages: [{ role: 'user', content: `Run ${tool}` }],
+          context: { month: INIT.month },
+          mode: mode,
+          force_llm: false
+        }),
       });
 
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
       const data = await res.json();
-      const reply = data.reply ?? data.text ?? '(no reply)';
+      const reply = data.reply ?? data.result?.text ?? data.text ?? JSON.stringify(data.result ?? data, null, 2);
 
       const newState = useChatSession.getState();
       useChatSession.setState({
@@ -188,7 +212,7 @@ export function ChatIframe() {
           role: 'assistant',
           text: reply,
           at: Date.now(),
-          meta: data.meta
+          meta: { mode: data.mode, ...data.meta }
         }]
       });
 
