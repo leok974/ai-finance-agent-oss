@@ -4,20 +4,17 @@ import * as path from 'node:path';
 const E2E_DB_HOST = process.env.E2E_DB_HOST || '127.0.0.1';
 const isCI = !!process.env.CI;
 const workers = parseInt(process.env.PW_WORKERS ?? '24', 10);
-const prodWorkers = parseInt(process.env.PW_PROD_WORKERS ?? '2', 10); // ✅ Conservative default for prod
+const prodWorkers = parseInt(process.env.PW_PROD_WORKERS ?? '2', 10);
 const baseURL = process.env.BASE_URL ?? 'http://127.0.0.1:5173';
-// default to dev server so /api proxy works in E2E unless explicitly disabled
 const useDev = process.env.USE_DEV === '0' || process.env.USE_DEV === 'false' ? false : true;
-const storageStatePath = './tests/e2e/.auth/state.json';
-const PROD_STATE = './tests/e2e/.auth/prod-state.json';
-const AUTH_STORAGE = './tests/.auth/storageState.json';
 
-// Use prod state when BASE_URL points to production, otherwise use dev state
-const isProdURL = baseURL.includes('ledger-mind.org') || baseURL.includes('app.ledger');
-const defaultStorageState = isProdURL ? PROD_STATE : AUTH_STORAGE;
+// Auto-detect production vs local
+const IS_PROD = /https?:\/\/(app\.)?ledger-mind\.org/i.test(baseURL);
+const AUTH_STORAGE = './tests/.auth/storageState.json';
+const PROD_STATE = './tests/e2e/.auth/prod-state.json';
+const storageState = IS_PROD ? PROD_STATE : AUTH_STORAGE;
 
 // Persistent profile for Google OAuth stability (zero re-login)
-// Path relative to repository root
 const userDataDir = path.join(process.cwd(), '../../.pw-userdata');
 
 export default defineConfig({
@@ -33,7 +30,7 @@ export default defineConfig({
   use: {
     headless: false,  // headed mode for Google OAuth stability
     baseURL,
-    storageState: defaultStorageState,  // Use prod state for prod URLs
+    storageState: storageState,
     trace: 'on-first-retry',
     video: 'retain-on-failure',
     screenshot: 'only-on-failure',
@@ -41,31 +38,34 @@ export default defineConfig({
     navigationTimeout: 15_000,
     ignoreHTTPSErrors: true,
   },
-  projects: [
-    // Main chromium tests with shared auth state
-    {
-      name: 'chromium',
-      use: { ...devices['Desktop Chrome'] },
-    },
-    // Production testing project (uses captured state for CI)
-    {
-      name: 'chromium-prod',
-      use: {
-        ...devices['Desktop Chrome'],
-        baseURL: process.env.BASE_URL || 'https://app.ledger-mind.org',
-        storageState: PROD_STATE,            // ✅ use captured prod state if available
-        video: 'retain-on-failure',
-        trace: 'on-first-retry',
-        headless: true,
-        actionTimeout: 15_000,               // ✅ Longer timeout for prod network latency
-        navigationTimeout: 20_000,           // ✅ Longer timeout for prod navigation
-      },
-      testIgnore: /@dev-only|@needs-seed/,    // ✅ skip any dev/seed-only tests
-      grep: /@prod/,                          // ✅ only run tests tagged @prod
-      grepInvert: /@requires-llm/,            // ✅ exclude LLM-dependent tests by default
-      retries: 1,                             // ✅ Retry once on prod to handle flakes
-    },
-  ],
+  projects: IS_PROD 
+    ? [
+        // Production: only run chromium-prod with @prod filter
+        {
+          name: 'chromium-prod',
+          use: {
+            ...devices['Desktop Chrome'],
+            baseURL: process.env.BASE_URL || 'https://app.ledger-mind.org',
+            storageState: PROD_STATE,
+            video: 'retain-on-failure',
+            trace: 'on-first-retry',
+            headless: true,
+            actionTimeout: 15_000,
+            navigationTimeout: 20_000,
+          },
+          testIgnore: /@dev-only|@needs-seed/,
+          grep: /@prod/,
+          grepInvert: /@requires-llm/,
+          retries: 1,
+        },
+      ]
+    : [
+        // Local: only run chromium (no @prod filter)
+        {
+          name: 'chromium',
+          use: { ...devices['Desktop Chrome'] },
+        },
+      ],
   webServer: process.env.PW_SKIP_WS ? undefined : [
     {
       command: 'pnpm run dev',
