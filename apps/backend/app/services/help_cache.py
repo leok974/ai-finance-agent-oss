@@ -30,11 +30,13 @@ def make_key(
     month: Optional[str],
     filters_hash: str,
     rephrase: bool,
+    user_id: Optional[int] = None,
     mode: Optional[str] = None,
 ) -> str:
     mode_token = (mode or ("explain" if rephrase else "learn")) or "learn"
     safe_mode = mode_token.replace("|", ":")
-    return f"{panel_id}|{safe_mode}|{month or 'none'}|{filters_hash}|r={1 if rephrase else 0}"
+    user_token = f"u{user_id}" if user_id is not None else "u0"
+    return f"{panel_id}|{safe_mode}|{user_token}|{month or 'none'}|{filters_hash}|r={1 if rephrase else 0}"
 
 
 def get(key: str) -> Optional[Dict[str, Any]]:

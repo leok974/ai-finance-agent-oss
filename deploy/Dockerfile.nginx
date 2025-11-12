@@ -13,6 +13,9 @@ ARG VITE_GIT_COMMIT=unknown
 ARG GIT_BRANCH=unknown
 ARG GIT_COMMIT=unknown
 ARG BUILD_ID=not_set
+ARG VITE_ENABLE_LOCAL_AUTH=0
+ARG VITE_ENABLE_GOOGLE_OAUTH=1
+ARG VITE_ENABLE_GITHUB_OAUTH=0
 WORKDIR /w
 # Copy only manifest files first for dependency install.
 COPY apps/web/package.json apps/web/pnpm-lock.yaml* ./apps/web/
@@ -23,6 +26,7 @@ RUN corepack enable && corepack prepare pnpm@latest --activate \
 # Copy source (exclude node_modules via .dockerignore); copy only dirs needed for build
 COPY apps/web/src ./src
 COPY apps/web/index.html ./
+COPY apps/web/chat ./chat
 COPY apps/web/tsconfig*.json ./
 COPY apps/web/vite.config.ts ./
 COPY apps/web/vitest.config.ts ./
@@ -44,7 +48,10 @@ ENV WEB_BRANCH=${WEB_BRANCH} \
 	VITE_GIT_COMMIT=${VITE_GIT_COMMIT} \
 	GIT_BRANCH=${GIT_BRANCH} \
 	GIT_COMMIT=${GIT_COMMIT} \
-	BUILD_ID=${BUILD_ID}
+	BUILD_ID=${BUILD_ID} \
+	VITE_ENABLE_LOCAL_AUTH=${VITE_ENABLE_LOCAL_AUTH} \
+	VITE_ENABLE_GOOGLE_OAUTH=${VITE_ENABLE_GOOGLE_OAUTH} \
+	VITE_ENABLE_GITHUB_OAUTH=${VITE_ENABLE_GITHUB_OAUTH}
 
 # Create a build-stamp file (must occur after src copied so it lands inside src/) then build
 # If a build-stamp already exists (from repo or host build), keep it; otherwise generate one
@@ -77,7 +84,7 @@ RUN rm -f /etc/nginx/conf.d/default.conf 2>/dev/null || true
 
 # Fast-fail asset integrity assertion (runs automatically via nginx official entrypoint)
 COPY ./deploy/docker-entrypoint.d /docker-entrypoint.d
-COPY ./nginx/entrypoint.d/10-csp-inline-hashes.sh /docker-entrypoint.d/10-csp-inline-hashes.sh
+# COPY ./nginx/entrypoint.d/10-csp-inline-hashes.sh /docker-entrypoint.d/10-csp-inline-hashes.sh # DISABLED - hangs on startup
 COPY ./nginx/entrypoint.d/99-run.sh /docker-entrypoint.d/99-run.sh
 COPY ./nginx/conf.d/security-headers.conf /etc/nginx/conf.d/security-headers.conf
 RUN chmod +x /docker-entrypoint.d/*.sh

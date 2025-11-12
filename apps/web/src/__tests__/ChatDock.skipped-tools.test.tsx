@@ -2,6 +2,22 @@ import { describe, it, expect, vi } from 'vitest'
 import { render, screen, waitFor, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
+// Mock useChatSession to avoid persist middleware issues
+vi.mock('@/state/chatSession', () => ({
+  useChatSession: vi.fn((selector?: any) => {
+    const state = {
+      sessionId: 'test-session-123',
+      messages: [],
+      version: 0,
+      clearedAt: null,
+      addMessage: vi.fn(),
+      clearChat: vi.fn(),
+      resetSession: vi.fn(),
+    };
+    return selector ? selector(state) : state;
+  }),
+}));
+
 // Mock aguiStream with the actual two-arg signature used in ChatDock
 vi.mock('@/lib/aguiStream', () => {
   let lastHandlers: any = null;

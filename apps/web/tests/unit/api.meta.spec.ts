@@ -15,7 +15,7 @@ describe('api/meta.fetchLatestMonth', () => {
   it('POSTs to /agent/tools/meta/latest_month and returns {month}', async () => {
     const spy = vi.spyOn(globalThis, 'fetch').mockImplementationOnce(async (input, init) => {
       expect(typeof input).toBe('string');
-      expect(input).toBe('/api/agent/tools/meta/latest_month');
+      expect(input).toBe('/agent/tools/meta/latest_month'); // No /api prefix per copilot-instructions
       expect(init?.method).toBe('POST');
       // body not semantically required, minimal '{}' is acceptable
       return okJSON({ month: '2025-08' });

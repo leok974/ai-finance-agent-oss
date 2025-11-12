@@ -15,7 +15,6 @@ from ...metrics_ml import (
     suggest_compare_total,
     suggest_source_total,
     lm_ml_predictions_total,
-    lm_ml_fallback_total,
     lm_ml_predict_latency_seconds,
 )
 from ...ml.runtime import predict_row as ml_predict_row
@@ -23,6 +22,12 @@ from ...ml.feature_build import normalize_description
 from .heuristics import suggest_for_txn
 from .features import extract_features, FEATURE_NAMES
 from .registry import ensure_model_registered
+from .merchant_labeler import suggest_from_majority
+from .logging import log_suggestion
+from .metrics import (
+    record_merchant_majority_hit,
+    record_ask_agent,
+)
 
 # Global model cache (lazy-loaded)
 _MODEL_CACHE: Dict[str, any] = {}
@@ -198,24 +203,50 @@ def _mk_row(txn: Dict) -> Dict:
 
 
 def suggest_auto(
-    txn: Dict, user_id: Optional[str] = None
+    txn: Dict, user_id: Optional[str] = None, db=None
 ) -> Tuple[List[Dict], str, Optional[str], str]:
     """Generate suggestions with shadow mode, canary, and per-class thresholds.
 
     Args:
         txn: Transaction dict with amount, merchant, description, created_at, etc.
         user_id: Optional user ID for sticky canary rollout
+        db: Database session for merchant labeler
 
     Returns:
         Tuple of (candidates, model_id, features_hash, source)
         - candidates: List of {label, confidence, reasons}
         - model_id: Model identifier string
         - features_hash: Hash of features used (None for heuristic)
-        - source: "rule", "model", "shadow"
+        - source: "rule", "model", "shadow", "ask"
     """
-    # 1) PRIMARY = RULES (always compute)
+    candidates = []
+
+    # 0) HIGHEST PRIORITY: Merchant Majority (Top-K)
+    if db is not None:
+        maj_result = suggest_from_majority(db, txn)
+        if maj_result:
+            label, conf, reason = maj_result
+            record_merchant_majority_hit(label)
+            candidates.append(
+                {
+                    "label": label,
+                    "confidence": float(conf),
+                    "source": "rule",
+                    "model_version": "merchant-majority@v1",
+                    "reasons": [reason],
+                }
+            )
+
+    # 1) PRIMARY = RULES (heuristics)
     rule_cands = suggest_for_txn(txn)
-    rule_label = rule_cands[0]["label"] if rule_cands else None
+    for cand in rule_cands:
+        candidates.append(
+            {
+                **cand,
+                "source": "rule",
+                "model_version": "heuristic@v1",
+            }
+        )
 
     # 2) SHADOW = MODEL (always predict if enabled)
     model_available = False
@@ -228,19 +259,17 @@ def suggest_auto(
     if config.SUGGEST_ENABLE_SHADOW:
         # Build feature row
         model_features = _mk_row(txn)
-        
+
         # Time the prediction
         t0 = time.time()
         model_result = ml_predict_row(model_features)
         latency = time.time() - t0
-        
+
         # Record latency
         lm_ml_predict_latency_seconds.observe(latency)
-        
+
         model_available = model_result.get("available", False)
-        ml_predict_requests_total.labels(
-            available=str(model_available)
-        ).inc()
+        ml_predict_requests_total.labels(available=str(model_available)).inc()
 
         if model_available:
             model_label = model_result.get("label")
@@ -250,69 +279,108 @@ def suggest_auto(
             run_id = model_meta.get("run_id", "unknown")[:8]
             model_id = f"lgbm@{run_id}"
 
-            # 3) AGREEMENT METRIC (shadow comparison)
+            # Add model candidates
+            candidates.append(
+                {
+                    "label": model_label,
+                    "confidence": model_conf,
+                    "source": "model",
+                    "model_version": model_id,
+                    "reasons": [
+                        {
+                            "source": "ml:lightgbm",
+                            "f1": model_meta.get("val_f1_macro", 0),
+                        }
+                    ],
+                }
+            )
+
+            # Add top alternatives if available
+            if "probs" in model_result:
+                probs_sorted = sorted(
+                    model_result["probs"].items(),
+                    key=lambda x: x[1],
+                    reverse=True,
+                )
+                for alt_label, alt_prob in probs_sorted[1:3]:  # Next 2 alternatives
+                    if alt_prob >= 0.10:
+                        candidates.append(
+                            {
+                                "label": alt_label,
+                                "confidence": alt_prob,
+                                "source": "model",
+                                "model_version": model_id,
+                                "reasons": [{"source": "ml:lightgbm:alt"}],
+                            }
+                        )
+
+            # Agreement metric (shadow comparison)
+            rule_label = rule_cands[0]["label"] if rule_cands else None
             if rule_label and model_label:
-                agree = (model_label == rule_label)
+                agree = model_label == rule_label
                 suggest_compare_total.labels(agree=str(agree)).inc()
 
-    # 4) CANARY DECISION with per-class thresholds
-    use_model = False
-    fallback_reason = None
+    # 3) RANK CANDIDATES BY CONFIDENCE
+    if not candidates:
+        # No candidates at all - trigger ask
+        if db is not None:
+            record_ask_agent("no_candidates")
+            log_suggestion(
+                db,
+                txn_id=txn.get("txn_id", "unknown"),
+                label="ASK_AGENT",
+                confidence=0.0,
+                reasons=[{"source": "none"}],
+                source="ask",
+                model_version=None,
+            )
+        return [], "none", None, "ask"
 
-    if not model_available:
-        fallback_reason = "unavailable"
-    elif not _in_canary():
-        fallback_reason = "not_in_canary"
-    else:
-        # Check per-class threshold
-        threshold = _threshold_for(model_label) if model_label else 0.70
-        if model_conf < threshold:
-            fallback_reason = "low_confidence"
-        else:
-            use_model = True
+    # Sort by confidence descending
+    candidates.sort(key=lambda c: c.get("confidence", 0), reverse=True)
+    best = candidates[0]
 
-    # 5) EMIT METRICS
-    if use_model:
+    # 4) CONFIDENCE GATE (Ask the Agent)
+    BEST_MIN = 0.50
+    if best["confidence"] < BEST_MIN:
+        if db is not None:
+            record_ask_agent("low_confidence")
+            log_suggestion(
+                db,
+                txn_id=txn.get("txn_id", "unknown"),
+                label="ASK_AGENT",
+                confidence=float(best["confidence"]),
+                reasons=best.get("reasons", []),
+                source="ask",
+                model_version=best.get("model_version"),
+            )
+        # Return ask mode but include the low-confidence candidate for reference
+        return [best], best.get("model_version", "unknown"), features_hash, "ask"
+
+    # 5) EMIT METRICS FOR ACCEPTED SUGGESTION
+    source = best.get("source", "rule")
+    if source == "model":
         lm_ml_predictions_total.labels(accepted="True").inc()
         suggest_source_total.labels(source="model").inc()
     else:
-        lm_ml_predictions_total.labels(accepted="False").inc()
         suggest_source_total.labels(source="rule").inc()
-        if fallback_reason:
-            lm_ml_fallback_total.labels(reason=fallback_reason).inc()
 
-    # 6) RETURN MODEL OR RULE
-    if use_model and model_result:
-        # Build candidates from model predictions
-        candidates = [
-            {
-                "label": model_label,
-                "confidence": model_conf,
-                "reasons": [
-                    "ml:lightgbm",
-                    f"f1={model_result.get('model_meta', {}).get('val_f1_macro', 0):.2f}",
-                ],
-            }
-        ]
+    # 6) LOG ACCEPTED SUGGESTION
+    if db is not None:
+        log_suggestion(
+            db,
+            txn_id=txn.get("txn_id", "unknown"),
+            label=best["label"],
+            confidence=float(best["confidence"]),
+            reasons=best.get("reasons", []),
+            source=source,
+            model_version=best.get("model_version"),
+        )
 
-        # Add top alternatives if available
-        if "probs" in model_result:
-            probs_sorted = sorted(
-                model_result["probs"].items(),
-                key=lambda x: x[1],
-                reverse=True,
-            )
-            for label, prob in probs_sorted[1:3]:  # Next 2 alternatives
-                if prob >= 0.10:  # Minimum alternative threshold
-                    candidates.append(
-                        {
-                            "label": label,
-                            "confidence": prob,
-                            "reasons": ["ml:lightgbm:alt"],
-                        }
-                    )
-
-        return candidates, model_id, features_hash, "model"
-
-    # Default: return rule-based suggestions
-    return rule_cands, "heuristic@v1", None, "rule"
+    # 7) RETURN TOP CANDIDATES
+    return (
+        candidates[:3],
+        best.get("model_version", "heuristic@v1"),
+        features_hash,
+        source,
+    )

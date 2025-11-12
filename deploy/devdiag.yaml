@@ -1,0 +1,63 @@
+# DevDiag Configuration for LedgerMind
+# mcp-devdiag 0.2.1+ diagnostic service configuration
+
+rbac:
+  # Use your IDP JWKS if you have one; otherwise temporarily omit jwks_url to run open.
+  # jwks_url: "https://YOUR-IDP/.well-known/jwks.json"
+  required_aud: "mcp-devdiag"
+
+allowlist:
+  origins:
+    - "https://assistant.ledger-mind.org"
+    - "https://app.ledger-mind.org"
+    - "https://ai-finance.int"
+    - "http://127.0.0.1:5173"
+    - "http://127.0.0.1:8000"
+
+diag:
+  # Use playwright driver to enable DOM and console harvesting
+  driver: "playwright"
+
+  # Diagnostic presets for different app contexts
+  presets: ["app", "embed", "chat"]
+
+  # Portal roots to check (LedgerMind specific)
+  portal_roots: ["#__LM_PORTAL_ROOT__", "#toast-root"]
+
+  # Known suppressions
+  suppress:
+    - code: "PORTAL_ROOT_MISSING"
+      reason: "LedgerMind uses native toasts, not all pages have portal roots"
+
+  # CSP validation rules
+  csp:
+    must_include:
+      - directive: "frame-ancestors"
+        any_of: ["'self'"]
+
+learn:
+  enabled: true
+  # PostgreSQL connection for learning loop
+  store: "postgresql+psycopg://devdiag:DevDiag2025SecurePass!@localhost:5432/devdiag"
+  tenant: "ledgermind"
+
+export:
+  # S3 export for artifacts (screenshots, HAR files)
+  s3_bucket: "mcp-devdiag-artifacts"
+  region: "us-east-1"
+
+runtime:
+  http:
+    # Small but forgiving defaults - prevent CI hangs
+    timeout_seconds: 20
+    max_redirects: 5
+    user_agent: "DevDiag/0.2.1 (+ledgermind)"
+
+  security:
+    # SSRF protection - only allow known hosts
+    ssrf_allow_hosts:
+      - "assistant.ledger-mind.org"
+      - "app.ledger-mind.org"
+      - "ai-finance.int"
+      - "127.0.0.1"
+      - "localhost"

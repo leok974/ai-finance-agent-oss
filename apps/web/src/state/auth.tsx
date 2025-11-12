@@ -1,15 +1,46 @@
-import { createContext, useContext, useMemo, useState, useEffect } from "react";
+import { createContext, useContext, useMemo, useState, useEffect, useCallback } from "react";
 import type { ReactNode } from "react";
 import { postWithCsrf, getWithAuth } from "../lib/auth-helpers";
 import { useDev } from "./dev";
 
-export type User = {
+/**
+ * Current user type - single source of truth for auth state
+ */
+export type CurrentUser = {
+  id?: string;
   email: string;
+  name?: string | null;
+  picture_url?: string | null; // Google photo URL (set during OAuth callback)
+  initial?: string; // Server-provided initial to prevent flicker
   roles: string[];
   is_active?: boolean;
   dev_unlocked?: boolean;
   env?: string;
-} | null;
+  // Legacy field for backwards compatibility
+  picture?: string;
+};
+
+export type User = CurrentUser | null;
+
+/**
+ * Get the user's initial for avatar display
+ * Prefers server-provided initial to prevent client-side jitter.
+ *
+ * @param u - User object (can be null/undefined)
+ * @returns Single uppercase letter for avatar, or "?" if no data
+ */
+export function getUserInitial(u?: CurrentUser | null): string {
+  if (!u) return "?";
+
+  // Prefer server-provided initial (prevents flicker on load)
+  if (u.initial) return u.initial.toUpperCase();
+
+  // Fallback: derive from name or email (for legacy clients)
+  const fromName = u.name?.trim()?.[0];
+  if (fromName) return fromName.toUpperCase();
+  const fromEmail = u.email?.trim()?.[0];
+  return (fromEmail || "?").toUpperCase();
+}
 
 export const AuthContext = createContext<{
   user: User;
@@ -21,6 +52,8 @@ export const AuthContext = createContext<{
 } | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  console.log('[AuthProvider] render');
+
   const [user, setUser] = useState<User>(null);
   const [authReady, setAuthReady] = useState(false);
 
@@ -55,26 +88,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => { alive = false; };
   }, []);
 
-  const login = async (email: string, password: string) => {
+  const login = useCallback(async (email: string, password: string) => {
     await postWithCsrf("/api/auth/login", { email, password });
     const me = await getWithAuth<User>("/api/auth/me");
     setUser(me);
     setAuthReady(true);
-  };
+  }, []);
 
-  const register = async (email: string, password: string) => {
+  const register = useCallback(async (email: string, password: string) => {
     await postWithCsrf("/api/auth/register", { email, password });
     const me = await getWithAuth<User>("/api/auth/me");
     setUser(me);
     setAuthReady(true);
-  };
+  }, []);
 
-  const logout = async () => {
+  const logout = useCallback(async () => {
     try { await postWithCsrf("/api/auth/logout", {}); } catch { /* ignore logout errors */ }
     setUser(null);
-  };
+  }, []);
 
-  const refresh = async (): Promise<boolean> => {
+  const refresh = useCallback(async (): Promise<boolean> => {
     try {
       await postWithCsrf("/api/auth/refresh", {});
       const me = await getWithAuth<User>("/api/auth/me");
@@ -84,9 +117,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch {
       return false;
     }
-  };
+  }, []);
 
-  const value = useMemo(() => ({ user, authReady, login, register, logout, refresh }), [user, authReady]);
+  const value = useMemo(() => ({ user, authReady, login, register, logout, refresh }), [user, authReady, login, register, logout, refresh]);
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 

@@ -3,8 +3,8 @@ import { BASE, dashSlug } from './http';
 
 describe('BASE derivation', () => {
   it('defaults to / when VITE_API_BASE is empty', () => {
-    // In test config VITE_API_BASE is defined as '' so BASE should be '/' (fallback to /api then stripped)
-    expect(BASE).toBe('/api');
+    // In test config VITE_API_BASE is defined as '' so BASE should be '' (empty string - root relative)
+    expect(BASE).toBe('');
   });
 });
 

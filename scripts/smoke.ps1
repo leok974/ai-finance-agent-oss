@@ -45,6 +45,35 @@ Invoke-Check -Path '/ready'
 Invoke-Check -Path '/api/healthz'
 Invoke-Check -Path '/api/openapi.json'
 
+# Agent chat smoke check - verify deterministic stub reply
+Write-Colored "[info] POST /api/agent/chat (deterministic stub)" Cyan
+try {
+  $body = @{
+    messages = @(@{ role = "user"; content = "ping" })
+    context = @{ month = "2025-08" }
+  } | ConvertTo-Json -Depth 3
+
+  $headers = @{
+    "Content-Type" = "application/json"
+    "x-test-mode" = "stub"
+  }
+
+  $resp = Invoke-RestMethod -Method POST -Uri "$BaseUrl/api/agent/chat" `
+    -Headers $headers -Body $body -TimeoutSec 20 -ErrorAction Stop
+
+  if ($resp.reply -and $resp.reply -match "deterministic test reply") {
+    Write-Colored "[OK] /api/agent/chat (stub) ✅" Green
+  } else {
+    Write-Colored "[FAIL] /api/agent/chat: missing deterministic stub reply" Red
+    Write-Colored "Got: $($resp | ConvertTo-Json -Compress)" Yellow
+    $global:Failed = $true
+  }
+}
+catch {
+  Write-Colored "[ERROR] /api/agent/chat $_" Red
+  $global:Failed = $true
+}
+
 if ($global:Failed) {
   Write-Colored 'Smoke test FAILED' Red
   exit 1

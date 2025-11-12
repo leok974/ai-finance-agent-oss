@@ -37,3 +37,6 @@ prometheus-fastapi-instrumentator>=6.1.0
 
 # Caching
 redis>=5.0.0
+
+# DevDiag - diagnostic tooling for web apps
+mcp-devdiag[playwright,export]==0.2.1

@@ -7,6 +7,22 @@ import { AuthContext } from '@/state/auth';
 import { MonthContext } from '@/context/MonthContext';
 import { ChatDockProvider } from '@/context/ChatDockContext';
 
+// Mock useChatSession to avoid persist middleware issues
+vi.mock('@/state/chatSession', () => ({
+  useChatSession: vi.fn((selector?: any) => {
+    const state = {
+      sessionId: 'test-session-123',
+      messages: [],
+      version: 0,
+      clearedAt: null,
+      addMessage: vi.fn(),
+      clearChat: vi.fn(),
+      resetSession: vi.fn(),
+    };
+    return selector ? selector(state) : state;
+  }),
+}));
+
 // 1) Mock the stream helper (alias path used by ChatDock)
 vi.mock('@/lib/aguiStream', () => {
   let lastHandlers: any = null;

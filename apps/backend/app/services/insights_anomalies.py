@@ -35,7 +35,7 @@ def _next_month_start(y: int, m: int) -> date:
 
 
 def _month_bounds(
-    db: Session, target_month: str | None = None
+    db: Session, user_id: int, target_month: str | None = None
 ) -> Tuple[date, date] | None:
     """Return (start_of_month, start_of_next_month) for target_month or latest month if None."""
     if target_month:
@@ -47,7 +47,11 @@ def _month_bounds(
         start = date(y, m, 1)
         end = _next_month_start(y, m)
         return (start, end)
-    max_dt = db.query(func.max(Transaction.date)).scalar()
+    max_dt = (
+        db.query(func.max(Transaction.date))
+        .filter(Transaction.user_id == user_id)
+        .scalar()
+    )
     if not max_dt:
         return None
     start = date(max_dt.year, max_dt.month, 1)
@@ -60,7 +64,7 @@ def _abs_spend(amount: float) -> float:
 
 
 def compute_category_monthly_totals(
-    db: Session, months: int, window_end: date
+    db: Session, user_id: int, months: int, window_end: date
 ) -> Dict[str, Dict[str, float]]:
     """
     Returns category -> { "YYYY-MM" -> total_spend_positive } for last N full months (including current month-to-date).
@@ -98,6 +102,7 @@ def compute_category_monthly_totals(
         )
         .filter(
             and_(
+                Transaction.user_id == user_id,
                 Transaction.date >= earliest,
                 Transaction.date < window_end,
                 Transaction.category.isnot(None),
@@ -129,6 +134,7 @@ def _median(xs: List[float]) -> float:
 
 def compute_anomalies(
     db: Session,
+    user_id: int,
     months: int = 6,
     min_spend_current: float = 50.0,
     threshold_pct: float = 0.4,
@@ -141,14 +147,14 @@ def compute_anomalies(
     - Uses last `months` (incl. current) of data.
     - Only categories with current >= min_spend_current are considered (avoid noise).
     """
-    bounds = _month_bounds(db, target_month=target_month)
+    bounds = _month_bounds(db, user_id, target_month=target_month)
     if not bounds:
         return {"month": None, "anomalies": []}
     cur_start, cur_end = bounds
     y_m = f"{cur_start.year:04d}-{cur_start.month:02d}"
 
     # Build monthly totals
-    cat_month = compute_category_monthly_totals(db, months, cur_end)
+    cat_month = compute_category_monthly_totals(db, user_id, months, cur_end)
     anomalies: List[Anomaly] = []
     ignores = set(ignore_categories or [])
 

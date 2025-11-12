@@ -35,6 +35,7 @@ except Exception:  # pragma: no cover
 
 
 import os
+from typing import Optional
 from app.db import Base
 from sqlalchemy import event
 from datetime import datetime, date
@@ -46,6 +47,9 @@ AAD = b"txn:v1"
 class Transaction(Base):
     __tablename__ = "transactions"
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=True
+    )  # TODO: Make NOT NULL after backfill
     tenant_id: Mapped[int | None] = mapped_column(Integer, index=True, nullable=True)
     date: Mapped[Date] = mapped_column(Date, index=True)
     merchant: Mapped[str | None] = mapped_column(String(256), index=True)
@@ -164,19 +168,19 @@ class Transaction(Base):
     # NOTE: Feedback relationship removed - feedback now decoupled from transaction lifecycle
     # Feedback persists even when transactions are deleted (ML training data preservation)
 
-    # ML training relationships
-    label = relationship(
-        "TransactionLabel",
-        back_populates="transaction",
-        uselist=False,
-        cascade="all, delete-orphan",
-    )
-    features = relationship(
-        "MLFeature",
-        back_populates="transaction",
-        uselist=False,
-        cascade="all, delete-orphan",
-    )
+    # ML training relationships - TEMPORARILY DISABLED (tables don't exist yet)
+    # label = relationship(
+    #     "TransactionLabel",
+    #     back_populates="transaction",
+    #     uselist=False,
+    #     cascade="all, delete-orphan",
+    # )
+    # features = relationship(
+    #     "MLFeature",
+    #     back_populates="transaction",
+    #     uselist=False,
+    #     cascade="all, delete-orphan",
+    # )
 
     @validates("merchant")
     def _on_merchant_set(self, key, value):
@@ -369,6 +373,55 @@ class Feedback(Base):
     action = synonym("source")
 
 
+# --- NEW: Suggestion (ML pipeline logging with explainability) --------------
+class Suggestion(Base):
+    """
+    ML pipeline suggestion log for tracking accepts/rejects and explainability.
+    Supports confidence gating, merchant majority, and "ask agent" tracking.
+    """
+
+    __tablename__ = "suggestions"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+
+    # Transaction reference (nullable - may track suggestions for non-existent txns)
+    txn_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+
+    # Suggested category label
+    label: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+
+    # Confidence score (0-1)
+    confidence: Mapped[float] = mapped_column(Float, nullable=False)
+
+    # Source: "model" | "rule" | "merchant-majority" | "ask"
+    source: Mapped[str] = mapped_column(
+        String(32), nullable=False, server_default="model", index=True
+    )
+
+    # Model version identifier
+    model_version: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+    # Explainability: array of reason dicts
+    reason_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+
+    # User feedback: True (accepted), False (rejected), None (no action yet)
+    accepted: Mapped[bool | None] = mapped_column(Boolean, nullable=True, index=True)
+
+    # Mode: "model" | "shadow" | "canary" | "ask"
+    mode: Mapped[str | None] = mapped_column(String(16), nullable=True, index=True)
+
+    # Timestamp
+    timestamp: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), index=True
+    )
+
+    __table_args__ = (
+        # Index for filtering by source and acceptance status
+        Index("ix_suggestions_source_accepted", "source", "accepted"),
+        # Index for time-based queries
+        Index("ix_suggestions_timestamp_label", "timestamp", "label"),
+    )
+
+
 # --- NEW: RuleSuggestion -----------------------------------------------------
 class RuleSuggestion(Base):
     __tablename__ = "rule_suggestions"
@@ -548,6 +601,8 @@ class User(Base):
     )
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="1")
+    name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    picture: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

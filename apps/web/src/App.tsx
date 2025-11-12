@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useRef, Suspense } from "react";
+import React, { useState, useCallback, useEffect, useRef, Suspense, lazy } from "react";
 import { MonthContext } from "./context/MonthContext";
 import UploadCsv from "./components/UploadCsv";
 import UnknownsPanel from "./components/UnknownsPanel";
@@ -9,10 +9,12 @@ import { emitToastSuccess } from "@/lib/toast-helpers";
 import { t } from '@/lib/i18n';
 // import RulesPanel from "./components/RulesPanel";
 import { getAlerts, getMonthSummary, getHealthz, agentTools, fetchLatestMonth } from './lib/api'
+import { withAuthGuard, safeFetch } from '@/lib/authGuard';
+import { withRetry } from '@/lib/retry';
 import { flags } from "@/lib/flags";
 import AboutDrawer from './components/AboutDrawer';
 import RulesPanel from "./components/RulesPanel";
-import ChatDock from "./components/ChatDock";
+// ChatDock is now mounted via chatMount.tsx (separate React root)
 import { useChatDockStore } from "./stores/chatdock";
 import DevDock from "@/components/dev/DevDock";
 import PlannerDevPanel from "@/components/dev/PlannerDevPanel";
@@ -24,10 +26,12 @@ import ChartsPanel from "./components/ChartsPanel";
 import TopEmptyBanner from "./components/TopEmptyBanner";
 // import MLStatusCard from "./components/MLStatusCard"; // rendered only inside DevDock
 import NetActivityBlip from "@/components/NetActivityBlip";
-import LoginForm from "@/components/LoginForm";
-import AccountMenu from "@/components/AccountMenu";
+// import LoginForm from "@/components/LoginForm"; // Replaced with AuthMenu for OAuth
+import AuthMenu from "@/components/AuthMenu";
 import { useAuth, useIsAdmin } from "@/state/auth";
+import { ensureChatMounted } from "@/boot/mountChat";
 import { useChartsStore } from "@/state/charts";
+import { initBroadcastChannelSync } from "@/state/chatSession";
 // import AgentChat from "./components/AgentChat"; // legacy chat bubble disabled
 import { setGlobalMonth } from "./state/month";
 // Providers are applied at the top-level (main.tsx)
@@ -56,7 +60,52 @@ console.info("[Web] branch=", __WEB_BRANCH__, "commit=", __WEB_COMMIT__);
 
 
 const App: React.FC = () => {
-  const [devDockOpen, setDevDockOpen] = useState<boolean>(() => (import.meta as any).env?.VITE_DEV_UI === '1' || localStorage.getItem('DEV_DOCK') !== '0');
+  // Chat feature flags with runtime fuse for crash protection
+  const qp = new URLSearchParams(window.location.search);
+  const CHAT_QP = qp.get('chat');
+  console.log('[App] CHAT_QP =', CHAT_QP, 'type=', typeof CHAT_QP);
+  // Default: chat ON (can disable with ?chat=0 for debugging)
+  // Allow diagnostic modes: ?chat=diag or ?chat=debug
+  const CHAT_FLAG = CHAT_QP !== null
+    ? CHAT_QP !== '0' // Enable for '1', 'diag', 'debug', or any truthy value
+    : true; // Changed from env check - chat ON by default
+  console.log('[App] CHAT_FLAG =', CHAT_FLAG);
+
+  // Session-scoped fuse (cleared on browser close, not persistent like localStorage)
+  // Allow ?chat=1 query param to force-enable and clear fuse
+  if (CHAT_QP === '1') {
+    sessionStorage.removeItem('lm:disableChat');
+    console.log('[App] chat fuse cleared by ?chat=1 query param');
+  }
+  const CHAT_FUSE_OFF = sessionStorage.getItem('lm:disableChat') === '1';
+  console.log('[App] CHAT_FUSE_OFF =', CHAT_FUSE_OFF);
+  const chatEnabled = CHAT_FLAG && !CHAT_FUSE_OFF;
+  console.log('[App] chatEnabled =', chatEnabled);
+
+  // Global helper for debugging
+  if (typeof window !== 'undefined') {
+    (window as any).enableChat = () => {
+      sessionStorage.removeItem('lm:disableChat');
+      console.log('[App] chat fuse cleared - reload page to enable chat');
+      location.reload();
+    };
+  }
+
+  // Prefetch flag
+  const prefetchEnabled =
+    (import.meta.env.VITE_PREFETCH_ENABLED ?? '1') === '1' &&
+    qp.get('prefetch') !== '0';
+
+  // Deterministic initial state - no localStorage access during render
+  const [devDockOpen, setDevDockOpen] = useState<boolean>(false);
+
+  // Hydrate from localStorage after mount
+  useEffect(() => {
+    const viteDevUI = (import.meta as any).env?.VITE_DEV_UI === '1';
+    const devDockStored = localStorage.getItem('DEV_DOCK') !== '0';
+    setDevDockOpen(viteDevUI || devDockStored);
+  }, []);
+
   const devUI = useDevUI();
   const isAdmin = useIsAdmin();
   const [month, setMonth] = useState<string>("");
@@ -128,22 +177,47 @@ const App: React.FC = () => {
 
   const { user, authReady, logout } = useAuth();
   const authOk = !!user;
+
+  // Initialize BroadcastChannel for cross-tab chat synchronization (client-side only, auth-gated)
+  // TEMPORARILY DISABLED for debugging
+  // useEffect(() => {
+  //   if (!authOk) return; // Only init when authenticated
+  //   initBroadcastChannelSync();
+  // }, [authOk]);
+
   // Load dashboard data whenever month changes (only when authenticated)
   useEffect(() => {
-    if (!authOk || !month) return;
+    // CRITICAL: Never make API calls before auth is confirmed + feature flag check
+    if (!authReady || !authOk || !ready || !month || !prefetchEnabled) return;
     console.info("[boot] loading dashboards for month", month);
     const coreReady = (window as any).__CORE_READY__ === true;
     if (!coreReady) {
       console.info('[boot] skipping charts prefetch (core not ready)');
       return;
     }
-    // Use charts store to fetch and normalize all chart data
-    void refetchAllCharts(month).then(() => {
-      console.log('[boot] charts prefetch completed for month:', month);
-    });
-    // Also prefetch spending trends separately (not in store yet)
-    void agentTools.chartsSpendingTrends({ month, months_back: 6 });
-  }, [authOk, month, refetchAllCharts]);
+    // Wrap in retry logic for resilience
+    const fetchCharts = async () => {
+      try {
+        await withRetry(() => refetchAllCharts(month), { maxAttempts: 3 });
+        console.log('[boot] charts prefetch completed for month:', month);
+      } catch (error) {
+        console.error('[boot] charts prefetch failed after retries:', error);
+      }
+    };
+    // Also prefetch spending trends separately (not in store yet) - use safeFetch for non-critical
+    const fetchTrends = async () => {
+      try {
+        await safeFetch(
+          () => agentTools.chartsSpendingTrends({ month, months_back: 6 }),
+          null
+        );
+      } catch (error) {
+        console.warn('[boot] spending trends prefetch failed:', error);
+      }
+    };
+    void fetchCharts();
+    void fetchTrends();
+  }, [authReady, authOk, ready, month, prefetchEnabled, refetchAllCharts]);
 
   // Log DB health once after CORS/DB are good (boot complete) and capture db revision
   useEffect(() => {
@@ -168,23 +242,41 @@ const App: React.FC = () => {
 
   // Load insights and alerts separately for state management
   useEffect(()=>{ (async()=>{
-  if (!authOk || !ready || !month) return;
+  // CRITICAL: Never make API calls before auth is confirmed
+  if (!authReady || !authOk || !ready || !month) return;
+    let cancelled = false;
     try {
-      setInsights(await agentTools.insightsExpanded({ month, large_limit: 10 }))
-      setAlerts(await getAlerts(month))
-    } catch (_err) { /* intentionally empty: swallow to render empty-state */ }
-  })() }, [authOk, ready, month, refreshKey])
+      // Wrap in retry + auth guard for extra safety
+      const [insightsData, alertsData] = await Promise.all([
+        withRetry(() => withAuthGuard(agentTools.insightsExpanded)({ month, large_limit: 10 }), { maxAttempts: 2 }).catch(() => null),
+        withRetry(() => withAuthGuard(getAlerts)(month), { maxAttempts: 2 }).catch(() => null),
+      ]);
+      if (cancelled) return;
+      // Set benign defaults if tools return null/error
+      setInsights(insightsData || null);
+      setAlerts(alertsData || null);
+    } catch (error) {
+      if (cancelled) return;
+      console.error('[boot] insights/alerts fetch failed:', error);
+      // Set empty states on error to prevent infinite loading
+      setInsights(null);
+      setAlerts(null);
+    }
+    return () => { cancelled = true; };
+  })() }, [authReady, authOk, ready, month, refreshKey])
 
   // Probe backend emptiness (latest by default). If charts summary returns null or month:null, show banner.
   useEffect(() => { (async () => {
-  if (!authOk || !ready || !month) return;
+  // CRITICAL: Never make API calls before auth is confirmed
+  if (!authReady || !authOk || !ready || !month) return;
     try {
-      const s = await getMonthSummary(month);
+      const s = await withRetry(() => withAuthGuard(getMonthSummary)(month), { maxAttempts: 2 });
       setEmpty(!s || s?.month == null);
-    } catch {
+    } catch (error) {
+      console.error('[boot] month summary check failed:', error);
       setEmpty(true);
     }
-  })() }, [authOk, ready, month, refreshKey])
+  })() }, [authReady, authOk, ready, month, refreshKey])
 
   const onCsvUploaded = useCallback(() => {
     setRefreshKey((k) => k + 1);
@@ -196,24 +288,30 @@ const App: React.FC = () => {
 
   const showChatDock = useChatDockStore(s => s.visible);
 
+  // Chat mounting: auth-gated, mount-once
+  useEffect(() => {
+    console.log('[App] chat mount effect', { chatEnabled, authReady, authOk });
+    if (!chatEnabled || !authReady || !authOk) return;
+    // Mount only once per page load
+    (window as any).__lmChatBoot ||= Date.now();
+    ensureChatMounted();
+  }, [chatEnabled, authReady, authOk]);
+
   // Always call hooks above; render gates below
   if (!ready || !authReady) return <div className="p-6 text-[color:var(--text-muted)]">Loading…</div>;
   if (!authOk) return (
-    <div className="p-6">
-      <div className="max-w-md mx-auto">
-        <div className="mb-6 flex items-center justify-center">
-          <img
-            src={logoPng}
-            alt=""
-            width={40}
-            height={40}
-            decoding="async"
-            fetchpriority="high"
-            className="mr-2 h-10 w-10 rounded-[8px] ring-1 ring-white/10"
-          />
-          <span className="text-xl font-semibold">LedgerMind</span>
-        </div>
-        <LoginForm />
+    <div className="min-h-dvh w-full bg-black text-white flex items-center justify-center">
+      <div className="flex flex-col items-center gap-10">
+        {/* Large LedgerMind logo (no card/box) */}
+        <img
+          src={logoPng}
+          alt="LedgerMind"
+          className="w-[240px] sm:w-[320px] md:w-[420px] lg:w-[520px] select-none pointer-events-none"
+          draggable={false}
+        />
+
+        {/* Centered Google button */}
+        <AuthMenu />
       </div>
     </div>
   );
@@ -254,9 +352,7 @@ const App: React.FC = () => {
                 }}
               />
             )}
-            {authOk && (
-              <AccountMenu email={user?.email} onLogout={logout} />
-            )}
+            <AuthMenu />
           </div>
         </header>
   {/* Global mount of RuleTesterPanel (portal overlay) gated by dev flag */}
@@ -338,7 +434,6 @@ const App: React.FC = () => {
             ) : null}
           </div>
         </div>
-          {showChatDock && <ChatDock data-chatdock-root />}
 
           {/* Dev Dock at very bottom: only Planner DevTool */}
           {flags.dev && (

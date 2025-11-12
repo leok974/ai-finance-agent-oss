@@ -9,6 +9,7 @@ from fastapi import (
     HTTPException,
 )
 from sqlalchemy.orm import Session
+from app.deps.auth_guard import get_current_user_id
 from sqlalchemy import select, update
 from io import TextIOWrapper
 import csv
@@ -42,6 +43,7 @@ router = APIRouter(
 
 @router.post("")
 async def ingest_csv(
+    user_id: int = Depends(get_current_user_id),
     file: UploadFile = File(...),
     replace: bool = Query(False),
     expenses_are_positive: bool | None = Query(None),  # <-- now optional
@@ -64,7 +66,7 @@ async def ingest_csv(
         # - suggestion_feedback.event_id set to NULL via FK SET NULL
         # - rules, merchant_overrides remain intact
         try:
-            db.query(Transaction).delete()
+            db.query(Transaction).filter(Transaction.user_id == user_id).delete()
             db.commit()
         except Exception:
             # Track replace failures for monitoring/alerting
@@ -181,8 +183,10 @@ async def ingest_csv(
         if latest_date is None or date > latest_date:
             latest_date = date
 
+        # check dupes (date, amount, description)
         exists = db.execute(
             select(Transaction.id).where(
+                Transaction.user_id == user_id,
                 Transaction.date == date,
                 Transaction.amount == amount,
                 Transaction.description == desc,
@@ -193,6 +197,7 @@ async def ingest_csv(
 
         db.add(
             Transaction(
+                user_id=user_id,
                 date=date,
                 amount=amount,
                 description=desc,

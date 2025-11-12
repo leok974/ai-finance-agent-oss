@@ -36,6 +36,21 @@ check /ready 200
 check /api/healthz 200
 check /api/openapi.json 200 || true
 
+# Agent chat smoke check - verify deterministic stub reply
+info "POST /api/agent/chat (deterministic stub)"
+resp=$(curl -fsS -X POST "${BASE_URL}/api/agent/chat" \
+  -H 'Content-Type: application/json' \
+  -H 'x-test-mode: stub' \
+  -d '{"messages":[{"role":"user","content":"ping"}],"context":{"month":"2025-08"}}' || true)
+
+if echo "$resp" | grep -qi '"reply".*deterministic test reply'; then
+  green "[OK] /api/agent/chat (stub) ✅"
+else
+  red "[FAIL] /api/agent/chat: missing deterministic stub reply"
+  echo "$resp" | head -c 200
+  fail=1
+fi
+
 if [[ $fail -ne 0 ]]; then
   red "Smoke test FAILED"
   exit 1

@@ -1,19 +1,24 @@
 import * as React from "react";
 import { stripToolNamespaces } from "@/utils/prettyToolName";
 import SaveRuleModal from '@/components/SaveRuleModal';
-const { useEffect, useRef, useState } = React;
+const { useEffect, useRef, useState, useMemo } = React;
 import { wireAguiStream } from "@/lib/aguiStream";
 import RobotThinking from "@/components/ui/RobotThinking";
 import EnvAvatar from "@/components/EnvAvatar";
-import { useAuth } from "@/state/auth";
-import { createPortal } from "react-dom";
-import { ChevronUp, Wrench } from "lucide-react";
+import { useAuth, getUserInitial } from "@/state/auth";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { useSafePortalReady } from "@/hooks/useSafePortal";
+import { ChevronUp, ChevronDown, Wrench } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
-import { agentTools, agentChat, type AgentChatRequest, type AgentChatResponse, type TxnQueryResult, explainTxnForChat, agentRephrase, analytics, transactionsNl, telemetry, txnsQueryCsv, txnsQuery, agentStatus, type AgentStatusResponse } from "../lib/api";
+import { agentTools, agentChat, type AgentChatRequest, type AgentChatResponse, type TxnQueryResult, explainTxnForChat, agentRephrase, analytics, transactionsNl, txnsQueryCsv, txnsQuery, agentStatus, type AgentStatusResponse } from "../lib/api";
 import { fmtMonthSummary, fmtTopMerchants, fmtCashflow, fmtTrends } from "../lib/formatters";
+import { renderQuick, renderDeep, type MonthSummary as FinanceMonthSummary } from "../lib/formatters/finance";
+import { adaptChartsSummaryToMonthSummary } from "../lib/formatters/financeAdapters";
 import { runToolWithRephrase } from "../lib/tools-runner";
+import { MessageRenderer } from "@/features/chat/MessageRenderer";
+import { normalizeAssistantReply } from "@/features/chat/normalizeReply";
 import { saveAs } from "../utils/save";
 import { buildAgentGreeting, buildGreetingCtxFromAPI, type AgentGreetingCtx } from "@/lib/agent/greeting";
 import type { MonthSummary, MerchantsResponse } from "@/lib/api.types";
@@ -34,8 +39,23 @@ import { handleTransactionsNL } from "./AgentTools";
 import FallbackBadge from "./FallbackBadge";
 import { useShowDevTools } from "@/state/auth";
 import { RagToolChips } from "./RagToolChips";
+import { ChatControls, type ChatControlsRef } from "@/features/chat/ChatControls";
+import { financeName } from "../utils/filename";
+import { detectFinanceReply } from "@/features/chat/exportSmart";
+import { useChatSession } from "@/state/chatSession";
+import { telemetry, AGENT_TOOL_EVENTS } from "@/lib/telemetry";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 // Minimal process env typing for test gating without pulling full @types/node
 declare const process: { env?: Record<string,string|undefined> } | undefined;
+
+// OVERLAY KILL-SWITCH: Disable all Radix overlays (Dialog, DropdownMenu, etc.) to isolate React #185
+const DISABLE_OVERLAYS = import.meta.env.VITE_DISABLE_OVERLAYS === '1';
+
 // --- layout constants (right/bottom anchored) ---
 const MARGIN = 24;     // default bottom-right margin
 const BUBBLE = 48;     // bubble size (px)
@@ -139,7 +159,22 @@ declare global { interface Window { __CHATDOCK_MOUNT_COUNT__?: number } }
 // Module-scoped singleton tracker
 let __CHATDOCK_ACTIVE__: symbol | null = null;
 
+// Diagnostic: catch setState-during-render
+function useRenderGuard(name: string) {
+  const updating = React.useRef(false);
+  if (updating.current) console.warn(`[guard] ${name} setState during render`);
+  updating.current = true;
+  React.useEffect(() => { updating.current = false; });
+}
+
 export default function ChatDock() {
+  console.log('[ChatDock] render start');
+
+  useRenderGuard('ChatDock');
+
+  // ⛑️ CRITICAL: Only allow portal creation after complete page load
+  const portalReady = useSafePortalReady();
+
   // Safe singleton: claim primary in effect; always run hooks, render only if primary
   const idRef = useRef(Symbol("chatdock"));
   const [isPrimary, setIsPrimary] = useState(false);
@@ -228,6 +263,8 @@ export default function ChatDock() {
   // Persist the last successful NL query + resolved filters so we can export without re-prompting
   type LastNlq = { q: string; flow?: "expenses"|"income"|"all"; filters?: any; intent?: string };
   const lastNlqRef = useRef<LastNlq | null>(null);
+  // Track last month summary for deep-dive follow-up
+  const lastMonthSummaryRef = useRef<any>(null);
   // NEW: Tiny tools panel state
   const [showTools, setShowTools] = useState<boolean>(true);
   const [activePreset, setActivePreset] = useState<ToolPresetKey>('insights_expanded');
@@ -246,6 +283,12 @@ export default function ChatDock() {
   // Toast for fallback notifications
   const { toast } = useToast();
 
+  // Insights size toggle state
+  const [insightsSize, setInsightsSize] = useState<"compact" | "expanded">("compact");
+
+  // Ref for ChatControls to expose openResetModal
+  const chatControlsRef = useRef<ChatControlsRef>(null);
+
   useEffect(() => {
     return registerComposerControls({
       setValue: (value: string) => setInput(value),
@@ -255,6 +298,18 @@ export default function ChatDock() {
     });
   }, [setInput, setComposerPlaceholderState]);
 
+  // Wire up abort callback to ChatControls
+  useEffect(() => {
+    if (chatControlsRef.current) {
+      (chatControlsRef.current as any).abortRequest = () => {
+        if (reqRef.current) {
+          reqRef.current.abort();
+          reqRef.current = null;
+        }
+      };
+    }
+  }, []);
+
   // --- feature flags to forcibly hide legacy UI ---
   const ENABLE_TOPBAR_TOOL_BUTTONS = false;   // keep a single "Agent tools" toggle
   const ENABLE_LEGACY_TOOL_FORM    = false;   // hide Payload/Result/Insert context/Run
@@ -262,8 +317,57 @@ export default function ChatDock() {
     try { return String(import.meta.env.VITE_ENABLE_AGUI || '').trim() === '1'; } catch { return false; }
   })();   // experimental AGUI integration
 
+  // 🔥 FIX: Zustand persist middleware was causing infinite render loop in iframe
+  // Use state directly on first render, then subscribe in effect to avoid hydration during render
+  const [chatState, setChatState] = React.useState(() => {
+    try {
+      const state = useChatSession.getState();
+      return {
+        version: state.version,
+        messages: state.messages,
+        sessionId: state.sessionId
+      };
+    } catch {
+      return { version: 0, messages: [], sessionId: 'fallback-session' };
+    }
+  });
+
+  // Subscribe to store changes AFTER initial render
+  React.useEffect(() => {
+    const unsub = useChatSession.subscribe((state) => {
+      setChatState({
+        version: state.version,
+        messages: state.messages,
+        sessionId: state.sessionId
+      });
+    });
+    return unsub;
+  }, []);
+
+  const { version, messages: storeMessages, sessionId } = chatState;
+
+  // Request abort controller for canceling in-flight requests
+  const reqRef = React.useRef<AbortController | null>(null);
+
   // Live message stream (render from UI state, persist via chatStore)
   const [uiMessages, setUiMessages] = useState<Msg[]>([]);
+  
+  // 🔥 NEW: Sync uiMessages from Zustand store messages
+  React.useEffect(() => {
+    if (!storeMessages || !Array.isArray(storeMessages)) return;
+    
+    // Convert Zustand messages to UI message format
+    const mapped: Msg[] = storeMessages.map((m: any) => ({
+      role: (m.role === 'assistant' ? 'assistant' : 'user') as MsgRole,
+      text: String(m.text || m.content || ''),
+      ts: Number(m.at || m.ts || m.createdAt) || Date.now(),
+      meta: m.meta
+    }));
+    
+    setUiMessages(mapped);
+    console.log('[ChatDock] synced messages from store:', mapped.length);
+  }, [storeMessages]);
+  
   // Equality guard to avoid redundant setState on cross-tab updates
   const sameTimeline = React.useCallback((ui: Msg[], basic: BasicMsg[]) => {
     if (!Array.isArray(ui) || !Array.isArray(basic)) return false;
@@ -341,8 +445,28 @@ export default function ChatDock() {
     if (!metaPayload.used_context && metaPayload.ctxMonth) {
       metaPayload.used_context = { month: metaPayload.ctxMonth };
     }
-    setUiMessages(cur => [...cur, { role: 'assistant', text, ts, meta: metaPayload }]);
-    chatStore.append({ role: 'assistant', content: text, createdAt: ts });
+
+    // Normalize the reply before appending (strip "Hey", apply templates, add variety)
+    const normalized = normalizeAssistantReply(
+      { role: 'assistant', text, meta: metaPayload },
+      user
+    );
+
+    // 🔥 Write to Zustand store (primary)
+    const state = useChatSession.getState();
+    useChatSession.setState({
+      messages: [...state.messages, {
+        id: crypto.randomUUID(),
+        role: 'assistant',
+        text: normalized.text,
+        at: ts,
+        meta: metaPayload
+      }]
+    });
+    
+    // Legacy: also write to old chatStore for backwards compat
+    chatStore.append({ role: 'assistant', content: normalized.text, createdAt: ts });
+    
     try {
       const provider = metaPayload?.fallback;
       if (provider) {
@@ -396,17 +520,35 @@ export default function ChatDock() {
       const isUser = m.role === 'user';
       const meta = ((m as any).meta ?? (i === (uiMessages.length - 1) ? (chatResp as any) : undefined)) || {};
       const isThinking = (m as any).thinking || (m as any).meta?.thinking;
+
+      // Get user initial for avatar
+      const userInitial = getUserInitial(user);
+      const userPicture = user?.picture_url || user?.picture;
+
       out.push(
         <div key={`${m.role}-${ts}-${i}`} className={`px-3 py-2 my-1 flex items-end gap-2 ${isUser ? 'justify-end' : 'justify-start'}`}>
-          {!isUser && <EnvAvatar who="agent" className="size-7" />}
+          {!isUser && (
+            <Avatar className="size-7 shrink-0" data-testid="chat-avatar-assistant">
+              <AvatarFallback className="bg-primary/10 text-primary text-xs font-semibold">
+                LM
+              </AvatarFallback>
+            </Avatar>
+          )}
           <div className={`max-w-[72%] rounded-2xl px-3 py-2 text-sm leading-relaxed ${isUser ? 'bg-blue-600 text-white rounded-br-sm' : 'bg-slate-800 text-slate-100 rounded-bl-sm'}`}>
             {isThinking ? (
               <div className="py-1"><span className="sr-only">Thinking.</span><RobotThinking size={32} /></div>
             ) : (
-              m.role === 'assistant' ? <div className="chat-markdown"><Markdown>{m.text}</Markdown></div> : <>{m.text}</>
+              m.role === 'assistant' ? <MessageRenderer text={m.text} /> : <>{m.text}</>
             )}
           </div>
-          {isUser && <EnvAvatar who="user" className="size-7" title={userName} />}
+          {isUser && (
+            <Avatar className="size-7 shrink-0 ring-1 ring-primary/30" data-testid="chat-avatar-me">
+              {userPicture && <AvatarImage src={userPicture} alt={user?.name || user?.email || "me"} />}
+              <AvatarFallback className="bg-primary/10 text-primary text-xs font-semibold">
+                {userInitial}
+              </AvatarFallback>
+            </Avatar>
+          )}
         </div>
       );
       // Meta line under each message (add ModeChip + ForecastFollowUps when applicable)
@@ -455,7 +597,11 @@ export default function ChatDock() {
               meta.mode === "primary" &&
               !!meta.explain;
 
-            if (!chips.length && !canSaveRule && !canShowWhy) return null;
+            // Check for finance-specific chips
+            const showDeeperBreakdown = meta.showDeeperBreakdown === true;
+            const showFinanceActions = meta.showFinanceActions === true;
+
+            if (!chips.length && !canSaveRule && !canShowWhy && !showDeeperBreakdown && !showFinanceActions) return null;
             return (
               <div className="flex flex-wrap gap-2 mt-2 items-center">
                 {chips.map((chip: any) => (
@@ -470,6 +616,57 @@ export default function ChatDock() {
                     onClick={()=>handleSuggestionChip({ label: chip.label, action: chip.action || chip.label, source: chip.source })}
                   >{chip.label}</button>
                 ))}
+                {showDeeperBreakdown && (
+                  <button
+                    type="button"
+                    data-testid="action-chip-deeper-breakdown"
+                    aria-label="Deeper breakdown"
+                    className="chip chip-suggest-gw"
+                    onClick={() => handleSuggestionChip({ label: 'Deeper breakdown', action: 'deeper_breakdown', source: 'finance' })}
+                  >
+                    Deeper breakdown
+                  </button>
+                )}
+                {showFinanceActions && (
+                  <>
+                    <button
+                      type="button"
+                      data-testid="action-chip-categorize-unknowns"
+                      aria-label="Categorize unknowns"
+                      className="chip chip-suggest-gw"
+                      onClick={() => handleSuggestionChip({ label: 'Categorize unknowns', action: 'categorize_unknowns', source: 'finance' })}
+                    >
+                      Categorize unknowns
+                    </button>
+                    <button
+                      type="button"
+                      data-testid="action-chip-show-spikes"
+                      aria-label="Show only spikes"
+                      className="chip chip-suggest-gw"
+                      onClick={() => handleSuggestionChip({ label: 'Show only spikes', action: 'show_spikes', source: 'finance' })}
+                    >
+                      Show only spikes
+                    </button>
+                    <button
+                      type="button"
+                      data-testid="action-chip-top-merchants"
+                      aria-label="Top merchants detail"
+                      className="chip chip-suggest-gw"
+                      onClick={() => handleSuggestionChip({ label: 'Top merchants detail', action: 'top_merchants', source: 'finance' })}
+                    >
+                      Top merchants detail
+                    </button>
+                    <button
+                      type="button"
+                      data-testid="action-chip-budget-check"
+                      aria-label="Budget check"
+                      className="chip chip-suggest-gw"
+                      onClick={() => handleSuggestionChip({ label: 'Budget check', action: 'budget_check', source: 'finance' })}
+                    >
+                      Budget check
+                    </button>
+                  </>
+                )}
                 {canShowWhy && (
                   <button
                     type="button"
@@ -544,61 +741,33 @@ export default function ChatDock() {
 
   const appendUser = React.useCallback((text: string) => {
     const ts = Date.now();
-    setUiMessages(cur => [...cur, { role: 'user', text, ts }]); // optimistic UI
+    
+    // 🔥 Write to Zustand store (primary)
+    const state = useChatSession.getState();
+    useChatSession.setState({
+      messages: [...state.messages, {
+        id: crypto.randomUUID(),
+        role: 'user',
+        text,
+        at: ts
+      }]
+    });
+    
+    // Legacy: also write to old chatStore for backwards compat
     chatStore.append({ role: 'user', content: text, createdAt: ts });
-  // If a snapshot exists from a recent Clear, discard it once new chat starts
-  try { chatDiscardSnapshot(); } catch { /* ignore */ }
-  }, [setUiMessages]);
+    
+    // If a snapshot exists from a recent Clear, discard it once new chat starts
+    try { chatDiscardSnapshot(); } catch { /* ignore */ }
+  }, []);
 
   // (appendAssistant moved above first usage)
 
   // History toggle (reads directly from messages)
   const [historyOpen, setHistoryOpen] = useState<boolean>(false);
 
-  // Clear history handler (with snapshot + animated Undo)
-  const handleClearHistory = React.useCallback(() => {
-    const existing = chatStore.get();
-    if (!existing?.length) return;
-    try {
-      const ok = window.confirm('Clear chat history across tabs?');
-      if (!ok) return;
-    } catch { /* ignore */ }
-    // 1) take snapshot for undo
-    const snap = chatSnapshot();
-    // 2) clear store and local UI
-    try {
-      chatStore.clear();
-      setUiMessages([]);
-    } catch (e) { /* ignore */ }
-    // 3) offer undo that restores snapshot via chatStore
-    showUndo('Chat cleared', () => {
-      const res = chatRestoreFromSnapshot();
-      if (res.ok) {
-        try {
-          const restored = chatStore.get() || [];
-          const mapped = (restored || []).map(b => ({
-            role: (b.role === 'assistant' ? 'assistant' : 'user') as MsgRole,
-            text: String(b.content || ''),
-            ts: Number(b.createdAt) || Date.now(),
-          }));
-          setUiMessages(mapped);
-        } catch { /* ignore */ }
-  try { sessionStorage.setItem('chat:restored_at', String(Date.now())); } catch (_err) { /* intentionally empty: swallow to render empty-state */ }
-  setRestoredVisible(true);
-  window.setTimeout(() => setRestoredVisible(false), 4500);
-        try { /* optional: clear snapshot explicitly if needed */ chatDiscardSnapshot(); } catch (_err) { /* intentionally empty: swallow to render empty-state */ }
-      }
-      // close snackbar shortly after click
-      setUndoClosing(true);
-      window.setTimeout(() => setUndoVisible(false), 800);
-    });
-  }, []);
-
   const mapBasicToMsg = React.useCallback((arr: BasicMsg[]): Msg[] => {
     return (arr || []).map(b => ({ role: (b.role === 'assistant' ? 'assistant' : 'user') as MsgRole, text: String(b.content || ''), ts: Number(b.createdAt) || Date.now() }));
   }, []);
-
-  // no-op cleanup needed for new snackbar timers (scoped to showUndo)
 
   // Auto-run state for debounced month changes
   const isAutoRunning = useRef(false);
@@ -636,7 +805,17 @@ export default function ChatDock() {
   React.useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape" && open) setOpen(false);
-  if (e.key.toLowerCase() === "k" && e.shiftKey && e.ctrlKey) { e.preventDefault(); setOpen((v: boolean) => !v); }
+      if (e.key.toLowerCase() === "k" && e.shiftKey && e.ctrlKey) { e.preventDefault(); setOpen((v: boolean) => !v); }
+      // Ctrl+Shift+C opens Clear modal
+      if (e.key.toLowerCase() === "c" && e.shiftKey && e.ctrlKey) {
+        e.preventDefault();
+        chatControlsRef.current?.openClearModal();
+      }
+      // Ctrl+Shift+R opens Reset modal
+      if (e.key.toLowerCase() === "r" && e.shiftKey && e.ctrlKey) {
+        e.preventDefault();
+        chatControlsRef.current?.openResetModal();
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -655,9 +834,13 @@ export default function ChatDock() {
   const hasSeededGreetingRef = React.useRef(false);
 
   // Seed conversational greeting when chat first opens with empty messages
+  // ONE-SHOT: Guard with ref and remove function dependencies to prevent re-render loops
   React.useEffect(() => {
     // Only seed greeting once, when panel first opens with no messages
     if (hasSeededGreetingRef.current || !open || uiMessages.length > 0) return;
+
+    // Mark as seeded immediately to prevent re-entry
+    hasSeededGreetingRef.current = true;
 
     const seedGreeting = async () => {
       try {
@@ -675,29 +858,31 @@ export default function ChatDock() {
 
         const greeting = buildAgentGreeting(ctx);
 
-        appendAssistant(greeting, {
-          kind: "greeting",
-          used_data: {
-            month: ctx.monthLabel,
-            totalOut: ctx.totalOut ?? ctx.totalOutCents,
-            topMerchant: ctx.topMerchant,
-            merchantsN: ctx.merchantsN,
-            anomaliesN: ctx.anomaliesN,
-          },
+        // Use microtask to decouple from current render cycle
+        queueMicrotask(() => {
+          appendAssistant(greeting, {
+            kind: "greeting",
+            used_data: {
+              month: ctx.monthLabel,
+              totalOut: ctx.totalOut ?? ctx.totalOutCents,
+              topMerchant: ctx.topMerchant,
+              merchantsN: ctx.merchantsN,
+              anomaliesN: ctx.anomaliesN,
+            },
+          });
         });
-
-        hasSeededGreetingRef.current = true;
       } catch (_err) {
         // If greeting fails, fall back to simple message
-        appendAssistant("Hey! 👋 How can I help you with your finances today?", { kind: "greeting" });
-        hasSeededGreetingRef.current = true;
+        queueMicrotask(() => {
+          appendAssistant("Hey! 👋 How can I help you with your finances today?", { kind: "greeting" });
+        });
       }
     };
 
     // Small delay to let month context settle
     const timer = setTimeout(seedGreeting, 300);
     return () => clearTimeout(timer);
-  }, [open, uiMessages.length, month, appendAssistant]);
+  }, [open, uiMessages.length]); // Removed: month, appendAssistant - read from closure instead
 
   // Listen for agent:prefill custom event from CardHelpTooltip
   React.useEffect(() => {
@@ -892,6 +1077,13 @@ export default function ChatDock() {
     if (busy) return;
     const text = input.trim();
     if (!text) return;
+
+    // Cancel any previous in-flight request
+    if (reqRef.current) {
+      reqRef.current.abort();
+      reqRef.current = null;
+    }
+
     if (ENABLE_AGUI) {
       // Unified AGUI streaming via wireAguiStream
       appendUser(text);
@@ -902,6 +1094,11 @@ export default function ChatDock() {
       setAguiTools([]);
       setAguiRunActive(true);
       let aggregated = '';
+
+      // Create abort controller for this request
+      reqRef.current = new AbortController();
+      const currentReqRef = reqRef.current;
+
       aguiLog('agui.run', { from: 'text', month, q: text });
       wireAguiStream({ q: text, month }, {
         onStart(meta) { appendAssistant('...', { thinking: true }); if (meta?.intent) setIntentBadge(meta.intent); },
@@ -948,9 +1145,11 @@ export default function ChatDock() {
             aggregated += `\n\n⚠️ Skipped: ${pretty.join(', ')} (unavailable). I used everything else.`;
           }
           setBusy(false); setAguiRunActive(false); appendAssistant(aggregated || '(no content)');
+          if (reqRef.current === currentReqRef) reqRef.current = null;
         },
         onError() {
           setBusy(false); setAguiRunActive(false); appendAssistant('(stream error – fallback)');
+          if (reqRef.current === currentReqRef) reqRef.current = null;
         }
       });
       return;
@@ -960,6 +1159,11 @@ export default function ChatDock() {
     focusComposer();
     appendUser(text);
     setBusy(true);
+
+    // Create abort controller for this request
+    reqRef.current = new AbortController();
+    const currentReqRef = reqRef.current;
+
     try {
       const req: AgentChatRequest = {
         messages: [{ role: 'user', content: text }],
@@ -971,9 +1175,12 @@ export default function ChatDock() {
       handleAgentResponse(resp);
       syncFromStoreDebounced(120);
     } catch (e: any) {
-      appendAssistant(`Send failed: ${e?.message ?? String(e)}`);
+      if (e?.name !== 'AbortError') {
+        appendAssistant(`Send failed: ${e?.message ?? String(e)}`);
+      }
     } finally {
       setBusy(false);
+      if (reqRef.current === currentReqRef) reqRef.current = null;
     }
   }, [busy, input, handleAgentResponse, month, appendUser, appendAssistant]);
 
@@ -985,28 +1192,35 @@ export default function ChatDock() {
   // --- ONE-CLICK TOOL RUNNERS (top bar) ---
   const runMonthSummary = React.useCallback(async (_ev?: React.MouseEvent) => {
     if (busy) return;
-  if (startAguiRun('overview', AGUI_ACTIONS['overview'].prompt, month)) return;
+    if (startAguiRun('overview', AGUI_ACTIONS['overview'].prompt, month)) return;
     setBusy(true);
     try {
-      appendUser('Summarize my spending this month in 4 bullets and one action.');
-      await runToolWithRephrase(
-  'charts.month_summary',
-        () => agentTools.chartsSummary({ month: month || '', include_daily: false } as any),
-        (raw: any) => {
-          const norm = {
-            income_total: raw?.total_inflows ?? 0,
-            spend_total: raw?.total_outflows ?? 0,
-            net: raw?.net ?? (raw?.total_inflows ?? 0) - Math.abs(raw?.total_outflows ?? 0),
-            categories: [],
-          };
-          return fmtMonthSummary(month || '', norm);
-        },
-  (msg, meta) => appendAssistant(msg, { ...meta, ctxMonth: month }),
-  (on) => setBusy(on),
-  () => ({ context: getContext() })
-      );
+      appendUser('Summarize my spending this month');
+
+      // Fetch data without LLM rephrase
+      const data = await agentTools.chartsSummary({ month: month || '', include_daily: false } as any);
+
+      // Transform to MonthSummary format
+      const summary = adaptChartsSummaryToMonthSummary(data, month || '');
+      lastMonthSummaryRef.current = summary;
+
+      // Render quick recap
+      const quickRecap = renderQuick(summary);
+
+      // Add with special meta to show "Deeper breakdown" chip
+      appendAssistant(quickRecap, {
+        ctxMonth: month,
+        mode: 'finance_quick_recap',
+        showDeeperBreakdown: true,
+        monthSummary: summary, // Store for smart export
+      });
+
       syncFromStoreDebounced(120);
-    } finally { setBusy(false); }
+    } catch (err: any) {
+      appendAssistant(`Failed to load month summary: ${err?.message || String(err)}`);
+    } finally {
+      setBusy(false);
+    }
   }, [busy, month, appendAssistant]);
 
   const runFindSubscriptions = React.useCallback(async (_ev?: React.MouseEvent) => {
@@ -1097,41 +1311,35 @@ export default function ChatDock() {
     console.debug('[bind] Budget check handler attached', month);
   }, [month]);
 
-  const runInsightsSummary = React.useCallback(async (_ev?: React.MouseEvent) => {
+  // Merged Insights function with size parameter
+  const runInsights = React.useCallback(async ({ size }: { size: "compact" | "expanded" }) => {
     if (busy) return;
-  if (startAguiRun('overview', AGUI_ACTIONS['insights-summary'].prompt, month)) return;
+    const aguiAction = size === "compact" ? "insights-summary" : "insights-expanded";
+    if (startAguiRun('overview', AGUI_ACTIONS[aguiAction].prompt, month)) return;
     setBusy(true);
     try {
-      appendUser('Summarize key insights for this month.');
-      await runToolWithRephrase(
-        'insights.expanded',
-        () => agentTools.insightsExpanded({ month }),
-        (raw) => `Turn these insights for ${month} into a friendly paragraph with one recommendation: ${JSON.stringify(raw)}`,
-  (msg, meta) => appendAssistant(msg, { ...meta, ctxMonth: month }),
-  (on) => setBusy(on),
-  () => ({ context: getContext() })
-      );
-      syncFromStore();
-    } finally { setBusy(false); }
-  }, [busy, month, appendAssistant]);
+      const userPrompt = size === "compact"
+        ? 'Summarize key insights for this month.'
+        : 'Expand insights (month-over-month + anomalies).';
+      appendUser(userPrompt);
 
-  const runInsightsExpanded = React.useCallback(async (_ev?: React.MouseEvent) => {
-    if (busy) return;
-  if (startAguiRun('overview', AGUI_ACTIONS['insights-expanded'].prompt, month)) return;
-    setBusy(true);
-    try {
-      appendUser('Expand insights (month-over-month + anomalies).');
+      const rephrasePrompt = size === "compact"
+        ? `Turn these insights for ${month} into a friendly paragraph with one recommendation: `
+        : `Expand insights for ${month} with MoM and anomalies: `;
+
+      telemetry.track(AGENT_TOOL_EVENTS.INSIGHTS, { size });
+
       await runToolWithRephrase(
         'insights.expanded',
         () => agentTools.insightsExpanded({ month }),
-        (raw) => `Expand insights for ${month} with MoM and anomalies: ${JSON.stringify(raw)}`,
-  (msg, meta) => appendAssistant(msg, { ...meta, ctxMonth: month }),
-  (on) => setBusy(on),
-  () => ({ context: getContext() })
+        (raw) => rephrasePrompt + JSON.stringify(raw),
+        (msg, meta) => appendAssistant(msg, { ...meta, ctxMonth: month }),
+        (on) => setBusy(on),
+        () => ({ context: getContext() })
       );
       syncFromStore();
     } finally { setBusy(false); }
-  }, [busy, month, appendAssistant]);
+  }, [busy, month, appendAssistant, insightsSize]);
 
   const runBudgetCheck = React.useCallback(async (_ev?: React.MouseEvent) => {
     if (busy) return;
@@ -1447,6 +1655,35 @@ export default function ChatDock() {
     }
     const currentMonth = month;
     switch (chip.action) {
+      case 'deeper_breakdown':
+        // Show deep dive for last month summary
+        if (lastMonthSummaryRef.current) {
+          appendUser('Show deeper breakdown');
+          const deepDive = renderDeep(lastMonthSummaryRef.current);
+          appendAssistant(deepDive, {
+            ctxMonth: currentMonth,
+            mode: 'finance_deep_dive',
+            showFinanceActions: true,
+            monthSummary: lastMonthSummaryRef.current, // Store for smart export
+          });
+        }
+        break;
+      case 'categorize_unknowns':
+        appendUser(`Categorize unknowns for ${currentMonth}`);
+        startAguiRun('overview', `Show me all uncategorized transactions for ${currentMonth} and suggest categories`, currentMonth);
+        break;
+      case 'show_spikes':
+        appendUser(`Show only spikes for ${currentMonth}`);
+        startAguiRun('anomalies', `Show unusual spending spikes and large transactions for ${currentMonth}`, currentMonth);
+        break;
+      case 'top_merchants':
+        appendUser(`Top merchants detail for ${currentMonth}`);
+        startAguiRun('merchants', `Show top merchants for ${currentMonth} with spending breakdown`, currentMonth);
+        break;
+      case 'budget_check':
+        appendUser(`Budget check for ${currentMonth}`);
+        startAguiRun('budget', `Check my budget status for ${currentMonth}`, currentMonth);
+        break;
       case 'budget_from_forecast':
         startAguiRun('budget', 'Suggest a budget using the forecast', currentMonth);
         break;
@@ -1589,11 +1826,18 @@ export default function ChatDock() {
 
   const panelEl = open && (
     <div
+      key={version}
       ref={panelRef}
   className="fixed z-[70] w-[min(760px,calc(100vw-2rem))] max-h-[80vh] rounded-2xl border border-neutral-700 shadow-xl bg-neutral-900/95 backdrop-blur p-4 flex flex-col min-h-[320px]"
   style={{ right: rb.right, bottom: rb.bottom, position: 'fixed' as const }}
   data-chatdock-root
     >
+      {/* Debug overlay (dev only) */}
+      {typeof process !== 'undefined' && process.env?.NODE_ENV !== "production" && (
+        <div className="fixed right-2 top-2 z-[9999] text-xs px-2 py-1 rounded bg-black/70 text-white pointer-events-none">
+          v:{version} · msgs:{uiMessages.length} · sid:{sessionId.slice(0,6)}
+        </div>
+      )}
   <style>{`.intent-badge{display:inline-flex;align-items:center;gap:.35rem;padding:.15rem .45rem;border-radius:9999px;border:1px solid rgba(120,120,120,.35);font-size:.6rem;letter-spacing:.5px;text-transform:uppercase;background:rgba(255,255,255,0.06);} .chip{display:inline-flex;align-items:center;padding:.25rem .6rem;border-radius:9999px;border:1px solid rgba(120,120,120,.35);font-size:.7rem;line-height:1;font-weight:500;cursor:pointer;user-select:none} .chip-suggest{background:rgba(59,130,246,.10);} .chip-suggest-gw{background:rgba(16,185,129,.12);} .chip:focus{outline:2px solid currentColor;outline-offset:1px}`}</style>
       <div
         className="flex items-center justify-between mb-2 select-none border-b border-border pb-1"
@@ -1623,31 +1867,71 @@ export default function ChatDock() {
           {/* Export */}
           <button
             type="button"
+            data-testid="agent-tool-export-json"
             onPointerDown={(e) => e.stopPropagation()}
-            onClick={(e) => { e.stopPropagation();
-              const normalized = (uiMessages || []).map(m => ({ role: m.role, content: m.text, createdAt: m.ts }));
-              const firstUser = (uiMessages || []).find(m => m.role === 'user');
-              const trimmed = (firstUser?.text || '').split('\n')[0].slice(0, 40).trim();
-              const title = trimmed ? `finance-agent-chat-${trimmed.replace(/\s+/g, '_')}` : 'finance-agent-chat';
-              exportThreadAsJSON(title, normalized);
+            onClick={(e) => {
+              e.stopPropagation();
+
+              // Get current session ID
+              const sessionId = useChatSession.getState().sessionId;
+
+              // Try smart export first
+              const financePayload = detectFinanceReply(uiMessages, sessionId);
+
+              telemetry.track(AGENT_TOOL_EVENTS.EXPORT_JSON, { mode: financePayload ? 'finance' : 'thread' });
+
+              if (financePayload) {
+                // Export structured finance JSON
+                const month = financePayload.month;
+                const kind = financePayload.kind === 'finance_quick_recap' ? 'quick' : 'deep';
+                const filename = financeName(month, kind);
+                const blob = new Blob([JSON.stringify(financePayload, null, 2)], { type: 'application/json' });
+                saveAs(blob, filename);
+              } else {
+                // Export full thread
+                const normalized = (uiMessages || []).map(m => ({ role: m.role, content: m.text, createdAt: m.ts }));
+                const firstUser = (uiMessages || []).find(m => m.role === 'user');
+                const trimmed = (firstUser?.text || '').split('\n')[0].slice(0, 40).trim();
+                const title = trimmed ? `finance-agent-chat-${trimmed.replace(/\s+/g, '_')}` : 'finance-agent-chat';
+                exportThreadAsJSON(title, normalized);
+              }
             }}
-            className="text-xs px-2 py-1 border rounded-md hover:bg-muted"
-            title="Download chat as JSON"
+            disabled={!uiMessages || uiMessages.length === 0}
+            className="text-xs px-2 py-1 border rounded-md hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed"
+            title="Export last finance summary (if present) or full thread"
           >
             Export JSON
           </button>
           <button
             type="button"
+            data-testid="agent-tool-export-markdown"
             onPointerDown={(e) => e.stopPropagation()}
-            onClick={(e) => { e.stopPropagation();
-              const normalized = (uiMessages || []).map(m => ({ role: m.role, content: m.text, createdAt: m.ts }));
-              const firstUser = (uiMessages || []).find(m => m.role === 'user');
-              const trimmed = (firstUser?.text || '').split('\n')[0].slice(0, 40).trim();
-              const title = trimmed ? `finance-agent-chat-${trimmed.replace(/\s+/g, '_')}` : 'finance-agent-chat';
-              exportThreadAsMarkdown(title, normalized);
+            onClick={(e) => {
+              e.stopPropagation();
+              // Smart export: if last reply is a finance summary, export it; otherwise export full thread
+              const lastAssistant = [...(uiMessages || [])].reverse().find(m => m.role === 'assistant');
+              const isFinanceSummary = lastAssistant?.meta?.mode === 'finance_quick_recap' || lastAssistant?.meta?.mode === 'finance_deep_dive';
+
+              telemetry.track(AGENT_TOOL_EVENTS.EXPORT_MARKDOWN, { mode: isFinanceSummary ? 'finance' : 'thread' });
+
+              if (isFinanceSummary && lastAssistant) {
+                // Export just the last finance reply
+                const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+                const month = lastAssistant.meta?.ctxMonth || 'unknown';
+                const filename = `finance-summary-${month}-${timestamp}.md`;
+                const blob = new Blob([lastAssistant.text], { type: 'text/markdown;charset=utf-8' });
+                saveAs(blob, filename);
+              } else {
+                // Export full thread
+                const normalized = (uiMessages || []).map(m => ({ role: m.role, content: m.text, createdAt: m.ts }));
+                const firstUser = (uiMessages || []).find(m => m.role === 'user');
+                const trimmed = (firstUser?.text || '').split('\n')[0].slice(0, 40).trim();
+                const title = trimmed ? `finance-agent-chat-${trimmed.replace(/\s+/g, '_')}` : 'finance-agent-chat';
+                exportThreadAsMarkdown(title, normalized);
+              }
             }}
             className="text-xs px-2 py-1 border rounded-md hover:bg-muted"
-            title="Download chat as Markdown"
+            title="Export last finance summary (if present) or full thread"
           >
             Export Markdown
           </button>
@@ -1664,24 +1948,7 @@ export default function ChatDock() {
           >
             {historyOpen ? 'Hide history' : 'History'}
           </button>
-          <button
-            type="button"
-            onPointerDown={(e) => e.stopPropagation()}
-            onClick={(e) => { e.stopPropagation(); setRb({ right: MARGIN, bottom: MARGIN }); }}
-            className="text-xs px-2 py-1 border rounded-md hover:bg-muted"
-            title="Reset to bottom-right"
-          >
-            Reset
-          </button>
-          <button
-            type="button"
-            onPointerDown={(e) => e.stopPropagation()}
-            onClick={(e) => { e.stopPropagation(); handleClearHistory(); }}
-            className="text-xs px-2 py-1 border rounded-md hover:bg-muted"
-            title="Clear chat history (all tabs)"
-          >
-            Clear
-          </button>
+          <ChatControls ref={chatControlsRef} />
           <button
             type="button"
             onPointerDown={(e) => e.stopPropagation()}
@@ -1713,14 +1980,57 @@ export default function ChatDock() {
         <div id="agent-tools-panel" className="px-3 py-2 border-b bg-muted/10">
           {/* Tabs */}
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 mb-2">
-            <button type="button" onClick={(e) => runMonthSummary(e as any)} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50">Month summary</button>
-            <button type="button" onClick={(e) => runFindSubscriptions(e as any)} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50">Find subscriptions</button>
-            <button type="button" onClick={(e) => runTopMerchants(e as any)} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50">Top merchants</button>
-            <button type="button" onClick={(e) => runCashflow(e as any)} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50">Cashflow</button>
-            <button type="button" onClick={(e) => runTrends(e as any)} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50">Trends</button>
-            <button type="button" onClick={(e) => runInsightsSummary(e as any)} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50">Insights: Summary</button>
-            <button type="button" onClick={(e) => runInsightsExpanded(e as any)} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50">Insights: Expanded</button>
-            <button type="button" onClick={(e) => runBudgetCheck(e as any)} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50">Budget check</button>
+            <button type="button" onClick={(e) => { telemetry.track(AGENT_TOOL_EVENTS.MONTH_SUMMARY); runMonthSummary(e as any); }} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50" data-testid="agent-tool-month-summary">Month summary</button>
+            <button type="button" onClick={(e) => { telemetry.track(AGENT_TOOL_EVENTS.FIND_SUBSCRIPTIONS); runFindSubscriptions(e as any); }} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50" data-testid="agent-tool-find-subscriptions">Find subscriptions</button>
+            <button type="button" onClick={(e) => { telemetry.track(AGENT_TOOL_EVENTS.TOP_MERCHANTS); runTopMerchants(e as any); }} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50" data-testid="agent-tool-top-merchants">Top merchants</button>
+            <button type="button" onClick={(e) => { telemetry.track(AGENT_TOOL_EVENTS.CASHFLOW); runCashflow(e as any); }} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50" data-testid="agent-tool-cashflow">Cashflow</button>
+            <button type="button" onClick={(e) => { telemetry.track(AGENT_TOOL_EVENTS.TRENDS); runTrends(e as any); }} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50" data-testid="agent-tool-trends">Trends</button>
+            {/* Consolidated Insights button with dropdown */}
+            {DISABLE_OVERLAYS ? (
+              // KILL-SWITCH: Simple buttons when overlays disabled
+              <>
+                <button type="button" onClick={() => { setInsightsSize("compact"); telemetry.track(AGENT_TOOL_EVENTS.INSIGHTS, { size: "compact" }); runInsights({ size: "compact" }); }} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50" data-testid="agent-tool-insights-compact">Insights (C)</button>
+                <button type="button" onClick={() => { setInsightsSize("expanded"); telemetry.track(AGENT_TOOL_EVENTS.INSIGHTS, { size: "expanded" }); runInsights({ size: "expanded" }); }} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50" data-testid="agent-tool-insights-expanded">Insights (E)</button>
+              </>
+            ) : (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50 inline-flex items-center gap-1"
+                    data-testid="agent-tool-insights"
+                    title={`Insights (${insightsSize}) — Choose Compact or Expanded`}
+                    aria-label={`Insights (${insightsSize})`}
+                  >
+                    Insights <ChevronDown className="h-3 w-3 opacity-70" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start">
+                  <DropdownMenuItem
+                    onClick={() => {
+                      setInsightsSize("compact");
+                      telemetry.track(AGENT_TOOL_EVENTS.INSIGHTS, { size: "compact" });
+                      runInsights({ size: "compact" });
+                    }}
+                    data-testid="agent-tool-insights-compact"
+                  >
+                    Compact
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => {
+                      setInsightsSize("expanded");
+                      telemetry.track(AGENT_TOOL_EVENTS.INSIGHTS, { size: "expanded" });
+                      runInsights({ size: "expanded" });
+                    }}
+                    data-testid="agent-tool-insights-expanded"
+                  >
+                    Expanded
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+            <button type="button" onClick={(e) => runBudgetCheck(e as any)} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50" data-testid="agent-tool-budget-check">Budget check</button>
             <button type="button" onClick={(e) => runAlerts(e as any)} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50">Alerts</button>
             {/* Analytics quick buttons */}
             <button type="button" onClick={(e) => runAnalyticsKpis(e as any)} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50">KPIs</button>
@@ -1741,8 +2051,10 @@ export default function ChatDock() {
             </button>
             <button
               type="button"
+              data-testid="agent-tool-export-csv"
               onClick={async () => {
                 if (busy) return;
+                telemetry.track(AGENT_TOOL_EVENTS.EXPORT_CSV);
                 try {
                   setBusy(true);
                   const last = lastNlqRef.current;
@@ -1768,13 +2080,14 @@ export default function ChatDock() {
               }}
               disabled={busy}
               className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50"
-              title="Download CSV of the last NL transactions query"
+              title="Exports results from your last natural-language search"
             >
               Export CSV (last NL query)
             </button>
             {/* Prev/Next paging for last NL list results */}
             <button
               type="button"
+              data-testid="agent-tool-prev-nl"
               onClick={async () => {
                 if (busy) return;
                 const last = lastNlqRef.current;
@@ -1812,6 +2125,7 @@ export default function ChatDock() {
             </button>
             <button
               type="button"
+              data-testid="agent-tool-next-nl"
               onClick={async () => {
                 if (busy) return;
                 const last = lastNlqRef.current;
@@ -1874,7 +2188,7 @@ export default function ChatDock() {
             <div className="text-xs opacity-70">This tab's recent messages</div>
             <button
               className="text-xs px-2 py-1 border rounded-md hover:bg-muted"
-              onClick={handleClearHistory}
+              onClick={() => chatControlsRef.current?.openClearModal()}
               title="Clear chat history (all tabs)"
             >
               Clear
@@ -1916,7 +2230,7 @@ export default function ChatDock() {
           </div>
         </div>
       ) : null}
-      <div className="flex-1 overflow-auto chat-scroll" ref={listRef}>
+      <div className="flex-1 overflow-auto chat-scroll" key={`${sessionId}:${version}`} ref={listRef} aria-live="polite" aria-atomic="false" role="log">
         {renderedMessages}
         {busy && (
           <div className="px-3 py-2">
@@ -1987,21 +2301,22 @@ export default function ChatDock() {
       />
 
       {/* Why? Modal - Shows explanation and sources */}
-      <Dialog open={showWhyModal} onOpenChange={setShowWhyModal}>
-        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Why? - Explanation</DialogTitle>
-            <DialogDescription>
-              Detailed explanation of the agent&apos;s response
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            {whyContent.explain && (
-              <div>
-                <h3 className="text-sm font-semibold text-white mb-2">Explanation:</h3>
-                <div className="text-sm text-gray-300 whitespace-pre-wrap">
-                  {whyContent.explain}
-                </div>
+      {!DISABLE_OVERLAYS && (
+        <Dialog open={showWhyModal} onOpenChange={setShowWhyModal}>
+          <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Why? - Explanation</DialogTitle>
+              <DialogDescription>
+                Detailed explanation of the agent&apos;s response
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              {whyContent.explain && (
+                <div>
+                  <h3 className="text-sm font-semibold text-white mb-2">Explanation:</h3>
+                  <div className="text-sm text-gray-300 whitespace-pre-wrap">
+                    {whyContent.explain}
+                  </div>
               </div>
             )}
             {whyContent.sources && whyContent.sources.length > 0 && (
@@ -2032,6 +2347,7 @@ export default function ChatDock() {
           </div>
         </DialogContent>
       </Dialog>
+      )}
 
 
       {/* Composer - textarea with Enter to send, Shift+Enter newline */}
@@ -2064,10 +2380,19 @@ export default function ChatDock() {
     </div>
   );
 
-  // Render via portal; show bubble when closed, panel when open
-  // Render only the primary instance
-  if (!isPrimary) return null;
-  return createPortal(<>{open ? panelEl : bubbleEl}</>, document.body);
+  // Since we're already mounted in Shadow DOM via chatMount.tsx,
+  // just return the content directly instead of creating another root
+  if (!portalReady || !isPrimary) return null;
+
+  return (
+    <ErrorBoundary fallback={(e) => (
+      <div className="fixed bottom-4 right-4 p-4 bg-red-500/10 border border-red-500 rounded text-sm text-red-500 max-w-md z-[9999]">
+        Chat panel error: {String(e?.message || e)}
+      </div>
+    )}>
+      {open ? panelEl : bubbleEl}
+    </ErrorBoundary>
+  );
 }
 
 // Helper: format NL transaction query result for chat rendering

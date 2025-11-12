@@ -2,33 +2,33 @@
   "cookies": [
     {
       "name": "access_token",
-      "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJmaW5hbmNlLWFnZW50LWFwcCIsImV4cCI6MTc1OTcyMjQ0NywiaWF0IjoxNzU5NzIwNjQ3LCJpc3MiOiJmaW5hbmNlLWFnZW50Iiwicm9sZXMiOlsiYWRtaW4iXSwic3ViIjoibGVva2xlbWV0LnBhQGdtYWlsLmNvbSIsInR5cGUiOiJhY2Nlc3MifQ.MFCvBNc-CYP2IiQKiDi5GgDBDRBAds1ExBtlsKPCfmw",
-      "domain": "127.0.0.1",
+      "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJmaW5hbmNlLWFnZW50LWFwcCIsImV4cCI6MTc2Mjc4OTcxMiwiaWF0IjoxNzYyNzg3OTEyLCJpc3MiOiJmaW5hbmNlLWFnZW50Iiwicm9sZXMiOltdLCJzdWIiOiJsZW9rbGVtZXQucGFAZ21haWwuY29tIiwidHlwZSI6ImFjY2VzcyJ9.0ZIVej1VruG3hHBPsqZBAnZJ4wHfMxvBVoJ9_uPWw9Y",
+      "domain": ".ledger-mind.org",
       "path": "/",
-      "expires": 1759722447.936081,
+      "expires": 1762789711.767364,
       "httpOnly": true,
-      "secure": false,
-      "sameSite": "Lax"
+      "secure": true,
+      "sameSite": "None"
     },
     {
       "name": "refresh_token",
-      "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJmaW5hbmNlLWFnZW50LWFwcCIsImV4cCI6MTc2MDkzMDI0NywiaWF0IjoxNzU5NzIwNjQ3LCJpc3MiOiJmaW5hbmNlLWFnZW50Iiwicm9sZXMiOlsiYWRtaW4iXSwic3ViIjoibGVva2xlbWV0LnBhQGdtYWlsLmNvbSIsInR5cGUiOiJyZWZyZXNoIn0.fzUXseT-dD8YCx5GCua1En_D2y6c_QX0SU9rPBdofWI",
-      "domain": "127.0.0.1",
+      "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJmaW5hbmNlLWFnZW50LWFwcCIsImV4cCI6MTc2Mzk5NzUxMiwiaWF0IjoxNzYyNzg3OTEyLCJpc3MiOiJmaW5hbmNlLWFnZW50Iiwicm9sZXMiOltdLCJzdWIiOiJsZW9rbGVtZXQucGFAZ21haWwuY29tIiwidHlwZSI6InJlZnJlc2gifQ.xCSpvl-l-8GWapQ2Im2lNjt56fJB0kKLVrQmGHfoWBY",
+      "domain": ".ledger-mind.org",
       "path": "/",
-      "expires": 1760930247.936152,
+      "expires": 1763997511.767452,
       "httpOnly": true,
-      "secure": false,
-      "sameSite": "Lax"
+      "secure": true,
+      "sameSite": "None"
     },
     {
       "name": "csrf_token",
-      "value": "nAARGdZRad3dQYzOZOETCeaBirEx6-ja_7dPU2gpPoc",
-      "domain": "127.0.0.1",
+      "value": "SB02-neo0ezfYSbqPU1fFgEDV3-TT7QISa7j0cbYNyY",
+      "domain": ".ledger-mind.org",
       "path": "/",
-      "expires": 1759749447.936168,
+      "expires": 1762816711.767473,
       "httpOnly": false,
-      "secure": false,
-      "sameSite": "Lax"
+      "secure": true,
+      "sameSite": "None"
     }
   ],
   "origins": []

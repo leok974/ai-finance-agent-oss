@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field, RootModel, ConfigDict
 from app.orm_models import Budget, Transaction
 from app.utils.state import TEMP_BUDGETS, current_month_key
 from app.utils.csrf import csrf_protect
+from app.deps.auth_guard import get_current_user_id
 
 router = APIRouter()
 # Separate router exposing "/budgets" prefix for temp budget overlay endpoints
@@ -43,11 +44,17 @@ class BudgetCheckItem(BaseModel):
     summary="Compare current month spend vs budget caps",
 )
 def budget_check(
-    month: Optional[str] = None, db: Session = Depends(get_db)
+    user_id: int = Depends(get_current_user_id),
+    month: Optional[str] = None,
+    db: Session = Depends(get_db),
 ) -> List[Dict]:
     # Resolve month (YYYY-MM) from DB if not provided
     if not month:
-        max_dt = db.query(func.max(Transaction.date)).scalar()
+        max_dt = (
+            db.query(func.max(Transaction.date))
+            .filter(Transaction.user_id == user_id)
+            .scalar()
+        )
         if not max_dt:
             return []
         month = f"{max_dt.year:04d}-{max_dt.month:02d}"
@@ -68,6 +75,7 @@ def budget_check(
     rows = (
         db.query(Transaction.category, func.sum(func.abs(Transaction.amount)))
         .filter(
+            Transaction.user_id == user_id,
             Transaction.date >= start_date,
             Transaction.date < end_date,
             Transaction.amount < 0,

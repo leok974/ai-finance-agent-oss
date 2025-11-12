@@ -5,6 +5,54 @@
 
 > Production-ready personal finance + LLM agent stack (FastAPI + React + Ollama/OpenAI) with KMS-backed encryption, Cloudflare tunnel ingress, and hardened nginx edge.
 
+## ML Pipeline (Phase 2.1) — Status 🚀
+**Production-ready** merchant-majority suggestions with confidence gating, durable logs, and drift guards.
+
+**What's live**
+- Merchant Top-K majority (≥3 support, p≥0.70) → rule suggestion `merchant-majority@v1`
+- Confidence gate: `<0.50` → **Ask the agent** (logged for learning)
+- Durable logs: `suggestions.reason_json`, `model_version`, `source`
+- CI drift guard: `.github/workflows/db-drift.yml`
+- Self-tests: `help-selftest`, ML nightly (LightGBM + isotonic calibration)
+
+**Quick smoke**
+```bash
+make ml-drift-check          # alembic upgrade + drift check
+make ml-smoke-test           # end-to-end suggest_auto smoke
+make ml-verify-logs          # view recent suggestions (formatted table)
+```
+
+**Key endpoints**
+- `POST /ml/suggestions` → best candidate or `{ mode: "ask" }`
+- `POST /ml/suggestions/{id}/accept` → accept suggestion (idempotent)
+- `GET  /ml/status` → shadow/canary/calibration status
+- `GET  /agent/describe/_selftest?month=YYYY-MM` → RAG/Help self-test
+
+**Canary rollout**
+```bash
+make canary-status           # check current SUGGEST_USE_MODEL_CANARY %
+make canary-10              # ramp to 10%
+make canary-50              # ramp to 50%
+make canary-100             # full rollout
+make canary-0               # emergency rollback
+```
+
+**Next (tracked)**
+1) ✅ UI acceptance → set `suggestions.accepted=true` (COMPLETE)
+2) Grafana: accept-rate & top labels by model_version (see `docs/GRAFANA_ML_PANELS.md`)
+3) Canary ramp: `SUGGEST_USE_MODEL_CANARY=0→10%→50%→100%` (see `docs/ML_CANARY_RAMP_PLAYBOOK.md`)
+
+**Docs**
+- [`apps/backend/ML_DEPLOYMENT_COMPLETE.md`](apps/backend/ML_DEPLOYMENT_COMPLETE.md) - Integration summary
+- [`apps/backend/ML_PIPELINE_SMOKE_TEST.md`](apps/backend/ML_PIPELINE_SMOKE_TEST.md) - Test checklist
+- [`docs/GRAFANA_ML_PANELS.md`](docs/GRAFANA_ML_PANELS.md) - Prometheus queries (paste-ready)
+- [`docs/ML_CANARY_RAMP_PLAYBOOK.md`](docs/ML_CANARY_RAMP_PLAYBOOK.md) - Full rollout strategy
+- [`docs/CANARY_RAMP_QUICKOPS.md`](docs/CANARY_RAMP_QUICKOPS.md) - Daily ops checklist ⚡
+- [`docs/ML_E2E_SMOKE_TEST.md`](docs/ML_E2E_SMOKE_TEST.md) - E2E validation guide
+- [`docs/GITHUB_BRANCH_PROTECTION.md`](docs/GITHUB_BRANCH_PROTECTION.md) - CI/CD required checks
+
+---
+
 ## Quick Start (Prod Compose Path)
 
 ```bash
@@ -331,6 +379,29 @@ E2E tests run automatically in CI via `.github/workflows/e2e-dev.yml`. The workf
 - Installs dependencies (pnpm, Python, Playwright browsers)
 - Runs tests with `CI=true` (enables retries and trace capture)
 - Uploads Playwright reports and traces as artifacts on failure
+
+## Production E2E Testing
+
+Run e2e tests against **production** (`https://app.ledger-mind.org`) using captured OAuth state:
+
+```powershell
+# Interactive setup wizard (capture auth + run tests)
+.\scripts\prod-e2e.ps1
+
+# Or manually:
+cd apps/web
+pnpm exec tsx tests/e2e/.auth/capture-prod-state.ts  # One-time: manual Google OAuth
+BASE_URL=https://app.ledger-mind.org PW_SKIP_WS=1 pnpm exec playwright test --project=chromium-prod
+```
+
+**Features:**
+- ✅ Manual Google OAuth (no automation, more reliable)
+- ✅ Durable session cookies (lasts 1-2 weeks)
+- ✅ Read-only smoke tests + user-scoped mutation tests
+- ✅ Automatic skip of `@dev-only` tests
+- ✅ CI/CD ready (store `prod-state.json` in secrets)
+
+**Documentation:** See [`apps/web/tests/e2e/PROD-TESTING.md`](apps/web/tests/e2e/PROD-TESTING.md) for complete setup guide, security best practices, and CI/CD integration examples.
 
 ## Fast Playwright (Chromium-only local runs)
 

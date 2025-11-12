@@ -1,0 +1,2 @@
+# Playwright auth state - contains sensitive session cookies
+storageState.json
