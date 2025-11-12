@@ -1,0 +1,70 @@
+# Prometheus Alert Rules for Agent Chat
+# Monitors chat health, auth failures, and LLM availability
+
+groups:
+  - name: agent-chat-alerts
+    interval: 30s
+    rules:
+      # Empty reply spike (LLM issues)
+      - alert: AgentChatEmptyReplySpike
+        expr: job:agent_chat_empty_reply_rate:5m > 0.5
+        for: 5m
+        labels:
+          severity: warning
+          component: agent
+          category: llm
+        annotations:
+          summary: "Agent chat empty replies elevated"
+          description: "Empty replies > 0.5 rps for 5m. Check LLM health (/agent/status), backend logs, and request queue."
+          runbook: "https://github.com/leok974/ai-finance-agent-oss/blob/main/docs/runbooks/empty-replies.md"
+
+      # High auth failure rate (security/config issue)
+      - alert: AgentChatAuthFailureHigh
+        expr: sum(job:agent_chat_auth_fail_rate:5m) > 0.1
+        for: 3m
+        labels:
+          severity: warning
+          component: agent
+          category: security
+        annotations:
+          summary: "Agent chat auth failures elevated"
+          description: "Auth failures > 0.1 rps for 3m. Check HMAC signatures, clock sync, and E2E_SESSION_HMAC_SECRET."
+          runbook: "https://github.com/leok974/ai-finance-agent-oss/blob/main/E2E_HMAC_AUTH.md#troubleshooting"
+
+      # Replay attack attempts
+      - alert: AgentChatReplayAttackDetected
+        expr: job:agent_chat_replay_rate:5m > 0.01
+        for: 1m
+        labels:
+          severity: critical
+          component: agent
+          category: security
+        annotations:
+          summary: "Replay attack detected on agent chat"
+          description: "Replay attempts > 0.01 rps for 1m. Possible attack or client retry storm. Check logs for source IP."
+          runbook: "https://github.com/leok974/ai-finance-agent-oss/blob/main/REDIS_PROMETHEUS_MIGRATION.md#security-notes"
+
+      # Excessive clock skew (client/server time drift)
+      - alert: AgentChatClockSkewHigh
+        expr: job:agent_auth_skew_p95:5m > 30000
+        for: 5m
+        labels:
+          severity: warning
+          component: agent
+          category: infrastructure
+        annotations:
+          summary: "Agent chat clock skew elevated"
+          description: "p95 clock skew > 30s for 5m. Check NTP on client devices and backend servers."
+          runbook: "https://github.com/leok974/ai-finance-agent-oss/blob/main/E2E_HMAC_AUTH.md#timestamp-skew-408400"
+
+      # No requests (potential routing/deployment issue)
+      - alert: AgentChatNoRequests
+        expr: job:agent_chat_req_rate:5m == 0
+        for: 10m
+        labels:
+          severity: info
+          component: agent
+          category: monitoring
+        annotations:
+          summary: "Agent chat receiving no requests"
+          description: "No requests for 10m. May be normal (low traffic) or indicate routing issue. Verify nginx/backend health."

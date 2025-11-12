@@ -1,0 +1,26 @@
+# Prometheus Recording Rules for Agent Chat
+# Recording rules pre-compute frequently accessed metrics
+
+groups:
+  - name: agent-chat-recordings
+    interval: 30s
+    rules:
+      # Request rate baseline (5-minute window)
+      - record: job:agent_chat_req_rate:5m
+        expr: sum(rate(agent_chat_requests_total[5m]))
+
+      # Empty reply rate (should be near zero in healthy state)
+      - record: job:agent_chat_empty_reply_rate:5m
+        expr: sum(rate(agent_chat_empty_reply_total[5m])) OR on() vector(0)
+
+      # Auth failure rate by mode
+      - record: job:agent_chat_auth_fail_rate:5m
+        expr: sum(rate(agent_chat_requests_total{auth="fail"}[5m])) by (mode)
+
+      # Replay attempt rate (security monitoring)
+      - record: job:agent_chat_replay_rate:5m
+        expr: sum(rate(agent_chat_replay_attempts_total[5m]))
+
+      # Clock skew p95 (sync health)
+      - record: job:agent_auth_skew_p95:5m
+        expr: histogram_quantile(0.95, sum(rate(agent_auth_skew_milliseconds_bucket[5m])) by (le))

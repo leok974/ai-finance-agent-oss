@@ -1,0 +1,102 @@
+name: E2E Production Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Nightly LLM tests at 2 AM UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+
+jobs:
+  e2e-fast:
+    name: E2E Fast Lane (Critical Tests)
+    runs-on: ubuntu-latest
+    env:
+      PW_SKIP_WS: '1'
+      BASE_URL: https://app.ledger-mind.org
+      AGENT_PATH: /agent/chat
+      E2E_USER: ${{ secrets.E2E_USER }}
+      E2E_SESSION_HMAC_SECRET: ${{ secrets.E2E_SESSION_HMAC_SECRET }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install pnpm
+        run: npm install -g pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright browsers
+        run: cd apps/web && pnpm exec playwright install --with-deps chromium
+
+      - name: HMAC Smoke Test (stub/echo modes)
+        run: ./scripts/smoke-hmac.sh
+
+      - name: E2E Critical Tests (@prod-critical)
+        run: cd apps/web && pnpm run test:e2e:prod -- -g "@prod-critical" --workers=2 --reporter=line
+
+      - name: Upload test results
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-fast
+          path: apps/web/playwright-report/
+          retention-days: 7
+
+  e2e-llm:
+    name: E2E LLM Lane (Nightly/Manual)
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    env:
+      PW_SKIP_WS: '1'
+      BASE_URL: https://app.ledger-mind.org
+      AGENT_PATH: /agent/chat
+      E2E_USER: ${{ secrets.E2E_USER }}
+      E2E_SESSION_HMAC_SECRET: ${{ secrets.E2E_SESSION_HMAC_SECRET }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install pnpm
+        run: npm install -g pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright browsers
+        run: cd apps/web && pnpm exec playwright install --with-deps chromium
+
+      - name: LLM Health Check
+        shell: bash
+        run: |
+          BASE=${BASE_URL} bash scripts/llm-health.sh || {
+            echo "⚠️ LLM warmup failed, proceeding anyway..."
+            exit 0
+          }
+
+      - name: LLM E2E Tests (serial execution)
+        run: cd apps/web && pnpm run test:e2e:prod:llm -- --workers=1 --reporter=line
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-llm
+          path: apps/web/playwright-report/
+          retention-days: 30
