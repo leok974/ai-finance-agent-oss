@@ -2,7 +2,7 @@ import json
 import os
 import tempfile
 from fastapi.testclient import TestClient
-from apps.backend.app.main import app
+from app.main import app
 
 
 def test_jsonl_sink_is_scrubbed(monkeypatch):
