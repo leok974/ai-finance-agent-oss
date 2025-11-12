@@ -15,7 +15,7 @@ from sqlalchemy import (
     Date,
     SmallInteger,
     Boolean,
-    ARRAY,
+    JSON,
     ForeignKey,
     DOUBLE_PRECISION,
 )
@@ -80,7 +80,7 @@ class MLFeature(Base):
     norm_desc: Mapped[Optional[str]] = mapped_column(
         Text, nullable=True
     )  # normalized description
-    tokens: Mapped[Optional[list[str]]] = mapped_column(ARRAY(Text), nullable=True)
+    tokens: Mapped[Optional[list[str]]] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP, nullable=False, server_default="NOW()"
     )
