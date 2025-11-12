@@ -107,17 +107,27 @@ export function getInit(): InitCfg | null {
   return INIT;
 }
 
-// Readiness promise for E2E tests (eliminates race conditions)
+// Readiness promise + snapshot for E2E tests (eliminates race conditions)
 declare global {
   interface Window {
     lmChatReady?: Promise<void>;
+    lmChatResolveReady?: () => void;
+    lmChatInit?: {
+      ts: string;
+      mode: string | null;
+      month?: string | null;
+      build?: string;
+      apiBase?: string;
+    };
   }
 }
 
-let resolveChatReady: () => void;
-window.lmChatReady = new Promise<void>((resolve) => {
-  resolveChatReady = resolve;
-});
+// One-time promise creation
+if (!window.lmChatReady) {
+  window.lmChatReady = new Promise<void>((resolve) => {
+    window.lmChatResolveReady = resolve;
+  });
+}
 
 window.addEventListener('message', (e: MessageEvent) => {
   if (e.origin !== window.location.origin) return;
@@ -127,8 +137,19 @@ window.addEventListener('message', (e: MessageEvent) => {
     (window as any).INIT = INIT; // Update global
     console.info('[chat] init', INIT);
 
-    // Resolve readiness promise after INIT received
-    resolveChatReady();
+    // Create testable snapshot after INIT processed
+    window.lmChatInit = {
+      ts: new Date().toISOString(),
+      mode: INIT?.diag ? 'diag' : null,
+      month: INIT?.month ?? null,
+      build: (window as any).__BUILD_ID__ ?? undefined,
+      apiBase: INIT?.apiBase ?? undefined,
+    };
+
+    // Resolve readiness promise after INIT and snapshot ready
+    window.lmChatResolveReady?.();
+
+    console.info('[chat] ready snapshot:', window.lmChatInit);
 
     // Health ping for LLM badge
     if (INIT?.apiBase) {
