@@ -19,18 +19,11 @@ const MIN_W = 320,
   PREF_W = 420,
   PREF_H = 560;
 
+let isOpen = false;
 let armedOutside = false;
 let ifr: HTMLIFrameElement | null = null;
 let overlayEl: HTMLDivElement | null = null;
 let mounted = false;
-
-interface ChatState {
-  isOpen: boolean;
-}
-const state: ChatState = { isOpen: false };
-
-function getState() { return state; }
-function setState(s: Partial<ChatState>) { Object.assign(state, s); }
 
 function vvp() {
   const vv = (window as any).visualViewport;
@@ -99,18 +92,19 @@ function ensureOverlay() {
     background: 'rgba(0,0,0,.35)',
     zIndex: String(Z_OVERLAY),
     opacity: '0',
-    pointerEvents: 'none',
+    pointerEvents: 'none', // will be set to 'auto' when open
     transition: 'opacity 120ms ease-out',
   });
 
   el.addEventListener('click', () => {
+    if (!isOpen) return;
     if (!armedOutside) return;
     if (isDiag()) return;
     closeChat();
   });
 
   el.addEventListener('transitionend', () => {
-    if (!getState().isOpen) {
+    if (!isOpen) {
       el.remove();
       overlayEl = null;
       document.documentElement.classList.remove('lm-chat-blur');
@@ -197,14 +191,14 @@ export function openChatAt(launcherRect: DOMRect) {
   });
 
   const overlay = ensureOverlay();
-  overlay.style.pointerEvents = 'none'; // overlay must not intercept typing
+  overlay.style.pointerEvents = 'auto'; // MUST be clickable to close
   overlay.style.zIndex = '2147483645';
   overlay.style.opacity = '1';
   document.documentElement.classList.add('lm-chat-blur');
   armedOutside = false;
   requestAnimationFrame(() => (armedOutside = true));
 
-  setState({ isOpen: true });
+  isOpen = true;
 
   // Keep it inside viewport on every change
   const reflow = () => applyRect(iframe, clampRectNear(launcherRect));
@@ -240,7 +234,7 @@ export function closeChat() {
     overlayEl.style.opacity = '0';
     overlayEl.style.pointerEvents = 'none';
   }
-  setState({ isOpen: false });
+  isOpen = false;
 }
 
 export function ensureChatMounted() {
@@ -254,8 +248,17 @@ export function ensureChatMounted() {
 
   ensureIframe();
 
+  // Global Escape key handler
   window.addEventListener('keydown', (ev) => {
-    if (ev.key === '`' && !state.isOpen) {
+    if (!isOpen) return;
+    if (ev.key !== 'Escape') return;
+    if (isDiag()) return;
+    closeChat();
+  });
+
+  // Backtick quick-open
+  window.addEventListener('keydown', (ev) => {
+    if (ev.key === '`' && !isOpen) {
       openChatAt(launcher.getBoundingClientRect());
     }
   });
@@ -274,7 +277,7 @@ export function ensureChatMounted() {
       height: window.innerHeight,
     };
     return {
-      isOpen: state.isOpen,
+      isOpen: isOpen,
       armedOutside,
       overlay: !!overlayEl,
       opacity: s.opacity,
