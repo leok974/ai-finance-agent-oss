@@ -403,6 +403,44 @@ BASE_URL=https://app.ledger-mind.org PW_SKIP_WS=1 pnpm exec playwright test --pr
 
 **Documentation:** See [`apps/web/tests/e2e/PROD-TESTING.md`](apps/web/tests/e2e/PROD-TESTING.md) for complete setup guide, security best practices, and CI/CD integration examples.
 
+### LLM E2E Testing
+
+Production tests now include LLM-specific scenarios tagged with `@requires-llm`:
+
+```powershell
+# Run LLM tests only (requires active LLM backend)
+cd apps/web
+pnpm run test:e2e:prod:llm
+
+# Or manually with serial execution
+BASE_URL=https://app.ledger-mind.org PW_SKIP_WS=1 pnpm exec playwright test --grep "@requires-llm" --workers=1
+```
+
+**CI Integration:**
+- **Fast Lane**: Runs `@prod-critical` tests on every push/PR (2-3 minutes)
+- **LLM Lane**: Runs `@requires-llm` tests nightly at 2 AM UTC or on manual dispatch (5-10 minutes)
+- **HMAC Authentication**: Tests include pre-flight HMAC smoke checks with stub/echo modes
+
+**Test Categories:**
+- `@prod-critical` - Fast, non-LLM critical path tests (auth, routing, smoke)
+- `@requires-llm` - LLM-dependent tests (chat, agent tools, explanations)
+- `@dev-only` - Development-only tests (skipped in production)
+
+**Health Checks:**
+Pre-flight LLM verification is available via:
+```powershell
+# PowerShell (Windows CI)
+.\scripts\llm-health.ps1
+
+# Bash (Linux CI)
+bash scripts/llm-health.sh
+```
+
+Exit codes: 0=healthy, 1=LLM unavailable
+
+**Monitoring:**
+LLM test results feed into Prometheus metrics and Grafana dashboards. See [`docs/E2E_HMAC_AUTH.md`](docs/E2E_HMAC_AUTH.md) for authentication details and [`docs/REDIS_PROMETHEUS_MIGRATION.md`](docs/REDIS_PROMETHEUS_MIGRATION.md) for monitoring setup.
+
 ## Fast Playwright (Chromium-only local runs)
 
 We provide fast, Chromium-only Playwright runs locally with higher parallelism and a no-webServer pattern (you prestart the app):
