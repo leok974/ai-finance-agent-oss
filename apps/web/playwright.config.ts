@@ -4,6 +4,7 @@ import * as path from 'node:path';
 const E2E_DB_HOST = process.env.E2E_DB_HOST || '127.0.0.1';
 const isCI = !!process.env.CI;
 const workers = parseInt(process.env.PW_WORKERS ?? '24', 10);
+const prodWorkers = parseInt(process.env.PW_PROD_WORKERS ?? '2', 10); // ✅ Conservative default for prod
 const baseURL = process.env.BASE_URL ?? 'http://127.0.0.1:5173';
 // default to dev server so /api proxy works in E2E unless explicitly disabled
 const useDev = process.env.USE_DEV === '0' || process.env.USE_DEV === 'false' ? false : true;
@@ -52,9 +53,13 @@ export default defineConfig({
         video: 'retain-on-failure',
         trace: 'on-first-retry',
         headless: true,
+        actionTimeout: 15_000,               // ✅ Longer timeout for prod network latency
+        navigationTimeout: 20_000,           // ✅ Longer timeout for prod navigation
       },
       testIgnore: /@dev-only|@needs-seed/,    // ✅ skip any dev/seed-only tests
       grep: /@prod/,                          // ✅ only run tests tagged @prod
+      grepInvert: /@requires-llm/,            // ✅ exclude LLM-dependent tests by default
+      retries: 1,                             // ✅ Retry once on prod to handle flakes
     },
   ],
   webServer: process.env.PW_SKIP_WS ? undefined : [

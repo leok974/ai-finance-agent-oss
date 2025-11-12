@@ -32,6 +32,10 @@ if _HERMETIC:
 
             return _wrap
 
+    # HMAC auth no-op in hermetic mode
+    def verify_hmac_auth(*args, **kwargs):  # type: ignore
+        return {"client_id": "hermetic", "auth_mode": "bypass", "test_mode": None}
+
         def delete(self, *a, **k):  # type: ignore
             def _wrap(fn):
                 return fn
@@ -154,6 +158,7 @@ else:
         HTTPException,
         Query,
         Header,
+        Request,
     )
     from starlette.responses import JSONResponse, RedirectResponse
 
@@ -174,6 +179,7 @@ else:
         detect_rag_intent,
     )
     from app.services.txns_nl_query import run_txn_query
+    from app.auth.hmac import verify_hmac_auth  # HMAC authentication
     from app.services.agent_tools import route_to_tool
     from app.services.agent.router_fallback import route_to_tool_with_fallback
     from app.services.agent.analytics_tag import tag_if_analytics
@@ -713,9 +719,10 @@ def _enrich_context(
 @router.post("/chat")
 def agent_chat(
     req: AgentChatRequest,
+    request: Request,
     db: "Session" = Depends(get_db),
+    auth: dict = Depends(verify_hmac_auth),
     background_tasks=None,
-    request=None,
     debug: bool = Query(False, description="Return raw CONTEXT in response (dev only)"),
     mode_override: Optional[str] = Query(default=None, alias="mode"),
     bypass_router: bool = Query(False, alias="bypass_router"),
@@ -735,9 +742,24 @@ def agent_chat(
     * "echo": Returns [echo] <last message content>
     * "stub": Returns deterministic test reply (for E2E tests)
 
+    Authentication:
+    * Test modes (stub, echo): HMAC auth bypassed for E2E testing
+    * Real modes: HMAC-SHA256 required with ±5min clock skew tolerance
+
     Note: Test modes require ALLOW_TEST_STUBS=1 env var in production for safety.
     """
     try:
+        # Log authentication info (signature already redacted in hmac.py)
+        logger.info(
+            "agent_chat_auth",
+            extra={
+                "client_id": auth.get("client_id"),
+                "auth_mode": auth.get("auth_mode"),
+                "test_mode": auth.get("test_mode"),
+                "skew_ms": auth.get("skew_ms"),
+            },
+        )
+
         # Deterministic test mode for E2E/integration tests
         # In production, require explicit env var to enable (prevents abuse)
         allow_test_stubs = os.getenv("ALLOW_TEST_STUBS") == "1"

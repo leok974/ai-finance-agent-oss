@@ -9,19 +9,17 @@ import { test, expect } from '@playwright/test';
 const BASE_URL = process.env.BASE_URL || 'https://app.ledger-mind.org';
 
 test.describe('Chat Actions @prod', () => {
-  test('chat responds to a user message', async ({ page }) => {
+  test('chat responds to a user message @prod-critical', async ({ page }) => {
     // Monitor network requests BEFORE opening chat
     const chatRequests: any[] = [];
     page.on('request', req => {
+      // Match both /agent/chat and /api/agent/chat
       if (req.url().includes('/agent/chat')) {
         chatRequests.push({ url: req.url(), method: req.method(), postData: req.postDataJSON() });
       }
     });
 
-    // Enable test mode for deterministic responses
-    await page.addInitScript(() => {
-      (window as any).__E2E_TEST__ = true;
-    });
+    // DON'T enable test mode here - we want to see actual requests without stub mode
 
     // Enable chat and open it
     await page.goto(`${BASE_URL}?chat=1`);
@@ -32,7 +30,10 @@ test.describe('Chat Actions @prod', () => {
     await expect(iframe.locator('body')).toBeVisible({ timeout: 5000 });
 
     // Wait for chat readiness (eliminates race conditions)
-    await page.evaluate(() => (window as any).frames[0]?.lmChatReady);
+    await page.evaluate(() => {
+      const iframeEl = document.querySelector('[data-testid="lm-chat-iframe"]') as HTMLIFrameElement;
+      return iframeEl?.contentWindow ? (iframeEl.contentWindow as any).lmChatReady : Promise.resolve();
+    });
 
     // Wait for chat input to be ready
     const input = iframe.getByPlaceholder(/Ask or type a command/i);
@@ -63,10 +64,7 @@ test.describe('Chat Actions @prod', () => {
       }
     });
 
-    // Enable test mode
-    await page.addInitScript(() => {
-      (window as any).__E2E_TEST__ = true;
-    });
+    // DON'T enable test mode here - we want to see actual requests without stub mode
 
     // Enable chat and open it
     await page.goto(`${BASE_URL}?chat=1`);
@@ -77,7 +75,10 @@ test.describe('Chat Actions @prod', () => {
     await expect(iframe.locator('body')).toBeVisible({ timeout: 5000 });
 
     // Wait for chat readiness
-    await page.evaluate(() => (window as any).frames[0]?.lmChatReady);
+    await page.evaluate(() => {
+      const iframeEl = document.querySelector('[data-testid="lm-chat-iframe"]') as HTMLIFrameElement;
+      return iframeEl?.contentWindow ? (iframeEl.contentWindow as any).lmChatReady : Promise.resolve();
+    });
 
     // Click a tool button
     const toolButton = iframe.getByRole('button', { name: /Month summary/i });
@@ -95,7 +96,7 @@ test.describe('Chat Actions @prod', () => {
     expect(toolRequests[0].postData).toHaveProperty('mode', 'charts.month_summary');
   });
 
-  test('INIT config is received by iframe', async ({ page }) => {
+  test('INIT config is received by iframe @prod-critical', async ({ page }) => {
     // Enable test mode
     await page.addInitScript(() => {
       (window as any).__E2E_TEST__ = true;
