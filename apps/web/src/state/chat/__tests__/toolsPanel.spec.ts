@@ -43,7 +43,7 @@ describe('toolsPanel', () => {
     expect(states[2]).toBe(true);
 
     unsub();
-    
+
     // After unsubscribe, no more notifications
     toolsPanel.toggleTools();
     expect(states.length).toBe(3);

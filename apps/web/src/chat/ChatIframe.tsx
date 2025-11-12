@@ -9,6 +9,7 @@ import * as React from 'react';
 import { useChatSession } from '@/state/chatSession';
 import { getInit } from './main';
 import { fetchJSON } from '@/lib/http';
+import { toolsPanel } from '@/state/chat/toolsPanel';
 
 const { useEffect, useRef, useState } = React;
 
@@ -19,9 +20,16 @@ export function ChatIframe() {
   const listRef = useRef<HTMLDivElement>(null);
   const [draft, setDraft] = useState('');
   const [uiMessages, setUiMessages] = useState<Msg[]>([]);
-  const [showTools, setShowTools] = useState(true);
+  const [showTools, setShowTools] = useState(() => toolsPanel.getState().visible);
   const [busy, setBusy] = useState(false);
   const [authOk, setAuthOk] = useState(true);
+
+  // Subscribe to toolsPanel store
+  useEffect(() => {
+    return toolsPanel.subscribe((state) => {
+      setShowTools(state.visible);
+    });
+  }, []);
 
   // 🔥 Deferred subscription to Zustand store (prevents infinite render loop)
   const [chatState, setChatState] = useState(() => {
@@ -343,10 +351,10 @@ export function ChatIframe() {
           <button className="btn btn--ghost">History</button>
           <button className="btn btn--ghost">Reset</button>
           <button className="btn btn--ghost">Clear</button>
-          <button 
+          <button
             data-testid="chat-tools-toggle"
-            className="btn btn--ghost" 
-            onClick={() => setShowTools(!showTools)}
+            className="btn btn--ghost"
+            onClick={() => toolsPanel.toggleTools()}
           >
             {showTools ? 'Hide tools' : 'Show tools'}
           </button>
@@ -413,8 +421,8 @@ export function ChatIframe() {
       {/* Composer (row 3) */}
       <footer className="lm-composer">
         {!authOk && (
-          <div 
-            data-testid="chat-auth-banner" 
+          <div
+            data-testid="chat-auth-banner"
             style={{
               backgroundColor: 'rgba(217, 119, 6, 0.1)',
               border: '1px solid rgba(217, 119, 6, 0.3)',

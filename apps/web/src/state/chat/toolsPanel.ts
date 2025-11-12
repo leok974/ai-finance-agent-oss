@@ -1,6 +1,6 @@
 /**
  * Chat tools panel visibility state
- * 
+ *
  * Manages the visibility of the agent tools panel in the chat UI.
  * Provides actions to show, hide, and toggle the panel.
  */
