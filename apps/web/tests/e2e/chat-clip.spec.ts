@@ -252,4 +252,68 @@ test.describe('Chat Panel Positioning @prod', () => {
 
     expect(ok).toBeTruthy();
   });
+
+  test('overlay click closes in normal mode', async ({ page }) => {
+    await page.goto(`${BASE_URL}?chat=1`, { waitUntil: 'domcontentloaded' });
+    await page.waitForTimeout(100);
+
+    const url = page.url();
+    if (url.includes('google.com') || url.includes('accounts')) {
+      test.skip(true, 'Not authenticated - skipping test');
+      return;
+    }
+
+    const bubble = page.locator('[data-testid="lm-chat-bubble"]');
+    await bubble.waitFor({ state: 'visible', timeout: 15000 });
+    await bubble.click();
+
+    const iframe = page.locator('[data-testid="lm-chat-iframe"]');
+    await expect(iframe).toHaveCSS('opacity', '1', { timeout: 3000 });
+
+    // Wait for arming
+    await page.waitForTimeout(100);
+
+    // Click overlay area outside the iframe
+    const box = await iframe.boundingBox();
+    if (box) {
+      await page.mouse.click(box.x - 10, box.y + 10);
+    }
+
+    await expect(iframe).toHaveCSS('opacity', '0', { timeout: 3000 });
+    await expect(iframe).toHaveCSS('pointer-events', 'none');
+  });
+
+  test('Escape closes in normal mode (not in diag)', async ({ page }) => {
+    // Test normal mode closes on Escape
+    await page.goto(`${BASE_URL}?chat=1`, { waitUntil: 'domcontentloaded' });
+    await page.waitForTimeout(100);
+
+    const url = page.url();
+    if (url.includes('google.com') || url.includes('accounts')) {
+      test.skip(true, 'Not authenticated - skipping test');
+      return;
+    }
+
+    const bubble = page.locator('[data-testid="lm-chat-bubble"]');
+    await bubble.waitFor({ state: 'visible', timeout: 15000 });
+    await bubble.click();
+
+    const iframe = page.locator('[data-testid="lm-chat-iframe"]');
+    await expect(iframe).toHaveCSS('opacity', '1', { timeout: 3000 });
+
+    await page.keyboard.press('Escape');
+    await expect(iframe).toHaveCSS('opacity', '0', { timeout: 3000 });
+
+    // Now test diag mode ignores ESC
+    await page.goto(`${BASE_URL}?chat=diag`, { waitUntil: 'networkidle' });
+    await page.waitForTimeout(2000);
+
+    await bubble.click();
+    await expect(iframe).toHaveCSS('opacity', '1', { timeout: 3000 });
+
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(500);
+    await expect(iframe).toHaveCSS('opacity', '1'); // still open
+  });
 });
+
