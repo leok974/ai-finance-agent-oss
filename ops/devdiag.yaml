@@ -1,0 +1,26 @@
+rbac:
+  jwks_url: ""
+  required_aud: "mcp-devdiag"
+
+allowlist:
+  origins: ["https://app.ledger-mind.org", "http://localhost", "http://127.0.0.1"]
+
+diag:
+  presets: ["app"]  # or "chat"
+
+capture:
+  console: true         # capture console.* from all frames (incl. iframe)
+  js_errors: true
+  network: true
+  screenshots: false
+
+pages:
+  - url: "https://app.ledger-mind.org/?chat=diag"
+    wait_until: "networkidle"
+    timeout_ms: 20000
+
+export:
+  dir: "artifacts/devdiag"
+  files:
+    - "console.ndjson"
+    - "network.ndjson"

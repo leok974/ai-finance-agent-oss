@@ -7,6 +7,7 @@ fi
 
 CONF="${NGINX_RUNTIME_CONF:-/var/run/nginx-runtime/nginx.conf}"
 mkdir -p "$(dirname "$CONF")"
+mkdir -p /var/run/nginx-runtime/conf.d
 if [ ! -f "$CONF" ]; then
   echo "[nginx][WARN] temp config $CONF missing; copying original"
   if [ -f /etc/nginx/conf.d/app.conf ]; then
@@ -14,6 +15,10 @@ if [ ! -f "$CONF" ]; then
   else
     cp /etc/nginx/nginx.conf "$CONF"
   fi
+fi
+# Copy security headers if they exist
+if [ -f /etc/nginx/conf.d/security-headers.conf ]; then
+  cp /etc/nginx/conf.d/security-headers.conf /var/run/nginx-runtime/conf.d/security-headers.conf
 fi
 
 # Sanity check: ensure no CSP placeholder in active config

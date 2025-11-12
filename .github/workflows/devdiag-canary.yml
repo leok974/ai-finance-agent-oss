@@ -1,0 +1,120 @@
+name: DevDiag Canary
+
+"on":
+  schedule:
+    # Run every hour at 12 minutes past (cron: "min hour day month weekday")
+    - cron: "12 * * * *"
+  workflow_dispatch: {}
+
+jobs:
+  canary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Canary Quickcheck - Production
+        env:
+          DEVDIAG_BASE: ${{ secrets.DEVDIAG_BASE }}
+          DEVDIAG_READER_JWT: ${{ secrets.DEVDIAG_READER_JWT }}
+          LM_CANARY_URL: ${{ secrets.LM_CANARY_URL }}
+        run: |
+          set -e
+
+          echo "Running DevDiag canary against: $LM_CANARY_URL"
+
+          response=$(curl -sS -X POST "$DEVDIAG_BASE/mcp/diag/quickcheck" \
+            -H "Authorization: Bearer $DEVDIAG_READER_JWT" \
+            -H "Content-Type: application/json" \
+            -d "{\"url\":\"$LM_CANARY_URL\",\"preset\":\"app\",\"tenant\":\"ledgermind\"}")
+
+          echo "$response" | jq .
+
+          # Export for next step
+          echo "DEVDIAG_RESPONSE<<EOF" >> $GITHUB_ENV
+          echo "$response" >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+
+          # Check for critical failures
+          critical_count=$(echo "$response" | jq '.problems | map(select(.severity == "critical")) | length')
+
+          if [ "$critical_count" -gt 0 ]; then
+            echo "::error::DevDiag canary found $critical_count critical issues"
+            exit 1
+          fi
+
+          echo "✅ DevDiag canary passed"
+
+      - name: Canary Quickcheck - Embed Test
+        env:
+          DEVDIAG_BASE: ${{ secrets.DEVDIAG_BASE }}
+          DEVDIAG_READER_JWT: ${{ secrets.DEVDIAG_READER_JWT }}
+          LM_EMBED_TEST_URL: ${{ secrets.LM_EMBED_TEST_URL }}
+        run: |
+          set -e
+
+          echo "Running DevDiag embed test against: $LM_EMBED_TEST_URL"
+
+          response=$(curl -sS -X POST "$DEVDIAG_BASE/mcp/diag/quickcheck" \
+            -H "Authorization: Bearer $DEVDIAG_READER_JWT" \
+            -H "Content-Type: application/json" \
+            -d "{\"url\":\"$LM_EMBED_TEST_URL\",\"preset\":\"embed\",\"tenant\":\"ledgermind\"}")
+
+          echo "$response" | jq .
+
+          # Check for embed-specific issues
+          embed_errors=$(echo "$response" | jq '.problems | map(select(.code | contains("EMBED") or contains("FRAME"))) | length')
+
+          if [ "$embed_errors" -gt 0 ]; then
+            echo "::warning::DevDiag found $embed_errors embed-related issues"
+          fi
+
+      - name: Create Issue on Failure
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const response = process.env.DEVDIAG_RESPONSE || '{}';
+            const result = JSON.parse(response);
+
+            const problems = result.problems || [];
+            const critical = problems.filter(p => p.severity === 'critical');
+
+            const title = `🚨 DevDiag Canary Failed - ${critical.length} Critical Issues`;
+            const body = `## DevDiag Canary Failure Report
+
+            **Time:** ${new Date().toISOString()}
+            **Target:** \`${process.env.LM_CANARY_URL}\`
+
+            ### Critical Issues
+            ${critical.map(p => `- **${p.code}**: ${p.message}`).join('\n')}
+
+            ### All Problems
+            \`\`\`json
+            ${JSON.stringify(problems, null, 2)}
+            \`\`\`
+
+            ### Action Required
+            - [ ] Investigate critical issues
+            - [ ] Deploy fix
+            - [ ] Verify with manual DevDiag run
+
+            cc: @leok974
+            `;
+
+            // Check if similar issue exists
+            const issues = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: 'devdiag-canary,critical'
+            });
+
+            if (issues.data.length === 0) {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: title,
+                body: body,
+                labels: ['devdiag-canary', 'critical', 'automated']
+              });
+            }

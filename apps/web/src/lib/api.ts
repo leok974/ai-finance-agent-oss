@@ -453,6 +453,27 @@ export async function getMonthCategories(month?: string): Promise<UICategory[]> 
   }
 }
 
+/**
+ * Get all unique category names from transactions
+ * Used for category picker dropdown
+ */
+export async function getAllCategoryNames(): Promise<string[]> {
+  try {
+    const result = await listTxns({ limit: 10000, offset: 0 });
+    const categories = new Set<string>();
+    result.items.forEach((t) => {
+      const cat = typeof t === 'object' && t !== null ? (t as Record<string, unknown>).category : null;
+      if (cat && typeof cat === 'string' && cat.trim()) {
+        categories.add(cat.trim());
+      }
+    });
+    return Array.from(categories).sort();
+  } catch (e) {
+    console.warn('[api] getAllCategoryNames failed:', e);
+    return [];
+  }
+}
+
 export async function getMonthFlows(month?: string): Promise<UIDaily[]> {
   // Daily flows = summary.daily (reuse from getMonthSummary logic)
   const summary = await getMonthSummary(month);
@@ -1202,42 +1223,42 @@ export async function listTxns(params: {
     usp.set(k, String(v));
   }
   const qs = usp.toString();
-  return http<{ items: Array<Record<string, unknown>>; total: number; limit: number; offset: number }>(`/txns/edit${qs ? `?${qs}` : ""}`);
+  return fetchJSON<{ items: Array<Record<string, unknown>>; total: number; limit: number; offset: number }>(`txns/edit${qs ? `?${qs}` : ""}`);
 }
 
 export function getTxn(id: number): Promise<Transaction> {
-  return http<Transaction>(`/txns/edit/${id}`);
+  return fetchJSON<Transaction>(`txns/edit/${id}`);
 }
 
 export function patchTxn(id: number, patch: Record<string, unknown>) {
-  return http(`/txns/edit/${id}`, { method: "PATCH", body: JSON.stringify(patch) });
+  return fetchJSON(`txns/edit/${id}`, { method: "PATCH", body: JSON.stringify(patch) });
 }
 
 export function bulkPatchTxns(ids: number[], patch: Record<string, unknown>) {
-  return http(`/txns/edit/bulk`, { method: "POST", body: JSON.stringify({ ids, patch }) });
+  return fetchJSON(`txns/edit/bulk`, { method: "POST", body: JSON.stringify({ ids, patch }) });
 }
 
 export function deleteTxn(id: number) {
-  return http(`/txns/edit/${id}`, { method: "DELETE" });
+  return fetchJSON(`txns/edit/${id}`, { method: "DELETE" });
 }
 
 export function restoreTxn(id: number) {
-  return http(`/txns/edit/${id}/restore`, { method: "POST" });
+  return fetchJSON(`txns/edit/${id}/restore`, { method: "POST" });
 }
 
 export function splitTxn(
   id: number,
   parts: { amount: number | string; category?: string; note?: string }[]
 ) {
-  return http(`/txns/edit/${id}/split`, { method: "POST", body: JSON.stringify({ parts }) });
+  return fetchJSON(`txns/edit/${id}/split`, { method: "POST", body: JSON.stringify({ parts }) });
 }
 
 export function mergeTxns(ids: number[], merged_note?: string) {
-  return http(`/txns/edit/merge`, { method: "POST", body: JSON.stringify({ ids, merged_note }) });
+  return fetchJSON(`txns/edit/merge`, { method: "POST", body: JSON.stringify({ ids, merged_note }) });
 }
 
 export function linkTransfer(id: number, counterpart_id: number, group?: string) {
-  return http(`/txns/edit/${id}/transfer`, { method: "POST", body: JSON.stringify({ counterpart_id, group }) });
+  return fetchJSON(`txns/edit/${id}/transfer`, { method: "POST", body: JSON.stringify({ counterpart_id, group }) });
 }
 export type ApplyBudgetsResp = {
   ok: boolean;

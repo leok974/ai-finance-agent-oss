@@ -1,0 +1,439 @@
+/**
+ * Chat iframe styles
+ * This CSS is bundled with the chat iframe and provides Tailwind + theme tokens
+ */
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ===== IFRAME VIEWPORT FILL ===== */
+html, body, #root {
+  height: 100%;
+  width: 100%;
+  margin: 0;
+  box-sizing: border-box;
+  overflow: hidden; /* Prevent double scrollbars */
+}
+
+/* Universal box-sizing: prevents padding from blowing past 100% widths */
+:where(#lm-chat-root, #lm-chat-root *) {
+  box-sizing: border-box;
+}
+
+body {
+  overflow: hidden; /* Host clips, not body */
+}
+
+/* Ensure iframe root fills but never exceeds */
+#__LM_IFRAME_ROOT__ {
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+/* === BULLET-PROOF GRID LAYOUT === */
+/* Never allow any row/tool to exceed the iframe width */
+.lm-grid,
+.lm-messages,
+.lm-row,
+.lm-bubble,
+.lm-msg,
+.lm-tools,
+.lm-toolbar {
+  min-width: 0; /* Prevent flex/grid children from forcing parent growth */
+  max-width: 100%;
+}
+
+.lm-grid {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  height: 100%;
+  min-height: 100%;
+}
+
+.lm-header {
+  min-height: 40px;
+}
+
+.lm-messages {
+  min-height: 0; /* CRITICAL for grid overflow to work */
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.lm-composer {
+  min-height: 56px;
+}
+
+/* ===== CHAT THEME VARIABLES ===== */
+:root {
+  --lm-bg: rgba(18, 21, 28, .96);
+  --lm-border: rgba(255,255,255,.09);
+  --lm-panel: rgba(255,255,255,.03);
+  --lm-panel-2: rgba(255,255,255,.06);
+  --lm-text: #e6e6e6;
+  --lm-muted: #9aa3b2;
+  --lm-ok: #49d17d;
+  --lm-me: #4da3ff;
+  --lm-ai: #7ed7c4;
+  --lm-chip: rgba(255,255,255,.06);
+  --radius: 14px;
+}
+
+/* ===== 3-ROW GRID: tools | thread | composer ===== */
+.lm-iframe {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  min-height: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  overflow: hidden; /* Host clips, grid doesn't extend it */
+}
+
+.lm-chat {
+  position: relative;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  width: 100%;
+  height: 100%;
+  background: var(--lm-bg);
+  color: var(--lm-text);
+  border: 1px solid var(--lm-border);
+  border-radius: var(--radius);
+  box-shadow: 0 10px 30px rgba(0,0,0,.45);
+  box-sizing: border-box;
+  min-height: 0;                /* enables child overflow scroll */
+  overflow: hidden;             /* clip INSIDE the panel only */
+}
+
+/* ===== TOOLS HEADER (ROW 1) - STICKY ===== */
+.lm-chat__tools,
+.lm-tools-area {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  padding: 10px 12px 8px;
+  background: color-mix(in srgb, #000 30%, transparent);
+  backdrop-filter: blur(6px);
+  border-bottom: 1px solid rgba(255,255,255,.08);
+}
+
+.lm-toolsbar,
+.lm-tools-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap; /* Prevents single long row pushing width */
+  overflow: hidden;
+  padding: 0.5rem 0.75rem;
+}
+
+.lm-toolsbar {
+  margin-top: 8px;
+  flex-wrap: wrap;
+  padding: 0;
+}
+
+.badge {
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  border: 1px solid var(--lm-panel-2);
+}
+
+.badge--ok {
+  color: var(--lm-ok);
+  border-color: rgba(73,209,125,.4);
+}
+
+.lm-chiprow {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0,1fr)) 12px repeat(5, minmax(0,1fr));
+  gap: 8px;
+}
+
+.chip {
+  padding: 8px 10px;
+  background: var(--lm-chip);
+  border: 1px solid var(--lm-border);
+  border-radius: 10px;
+  font-size: 12px;
+  text-align: center;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.chip:hover:not(:disabled) {
+  background: var(--lm-panel);
+}
+
+.chip:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.chip--ghost {
+  background: transparent;
+  border: 0;
+  cursor: default;
+}
+
+/* ===== SCROLLABLE MESSAGES (ROW 2) - THE ONLY VERTICAL SCROLLER ===== */
+.lm-chat__scroll,
+.lm-thread {
+  min-height: 0;     /* CRITICAL for grid - middle row can shrink */
+  overflow-y: auto;
+  overscroll-behavior: contain; /* Prevent scroll chaining */
+  padding: 12px 12px 4px;
+}
+
+/* Prevent accidental global nowraps */
+.lm-thread > * {
+  display: block;
+  max-width: 100%;
+}
+
+/* ===== ROBUST TEXT WRAPPING FOR BUBBLES ===== */
+.lm-msg,
+.lm-msg *,
+.lm-row,
+.lm-bubble,
+.lm-tools,
+.bubble,
+.bubble * {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  min-width: 0;
+}
+
+/* Ensure messages container never grows beyond viewport */
+.lm-messages {
+  overflow: auto;
+  min-height: 0;
+  max-width: 100%;
+}
+
+/* Message content must wrap and never overflow */
+.lm-msg,
+.lm-msg * {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+/* Textarea growth cap to prevent escaping viewport */
+textarea.lm-input,
+.lm-chat__composer textarea,
+.lm-composer textarea {
+  resize: vertical;
+  max-height: 40vh; /* Constrain to 40% of viewport height */
+  overflow-y: auto;
+  padding: 10px 12px;
+  line-height: 1.4;
+}
+
+.date-divider {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  justify-content: center;
+  margin: 8px 0 12px;
+}
+
+.date-divider span {
+  font-size: 12px;
+  color: var(--lm-muted);
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--lm-panel);
+  border: 1px solid var(--lm-border);
+}
+
+/* ===== MESSAGE BUBBLES ===== */
+.bubble {
+  max-width: 86%;
+  margin: 8px 0;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: var(--lm-panel);
+  border: 1px solid var(--lm-border);
+  line-height: 1.35;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+
+.bubble p {
+  margin: 0;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  white-space: pre-wrap;
+}
+
+.bubble--me {
+  margin-left: auto;
+  color: #dbeaff;
+  border-color: rgba(77,163,255,.35);
+  background: rgba(77,163,255,.12);
+}
+
+.bubble--ai {
+  color: #d7fff4;
+  border-color: rgba(126,215,196,.35);
+  background: rgba(126,215,196,.10);
+}
+
+.meta {
+  margin-top: 8px;
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.pill {
+  font-size: 11px;
+  color: var(--lm-muted);
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: var(--lm-panel);
+  border: 1px solid var(--lm-border);
+}
+
+.pill--accent {
+  color: #ffd28a;
+  border-color: rgba(255,210,138,.35);
+  background: rgba(255,210,138,.08);
+}
+
+/* ===== STRUCTURED DATA CARDS ===== */
+.result-card {
+  background: rgba(255,255,255,.03);
+  border: 1px solid var(--lm-border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.result-card-title {
+  padding: 8px 12px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--lm-accent);
+  background: rgba(255,255,255,.02);
+  border-bottom: 1px solid var(--lm-border);
+  text-transform: capitalize;
+}
+
+.result-card-body {
+  padding: 8px 12px;
+}
+
+.result-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 0;
+  font-size: 13px;
+}
+
+.result-row:not(:last-child) {
+  border-bottom: 1px solid rgba(255,255,255,.05);
+}
+
+.result-key {
+  color: var(--lm-muted);
+  text-transform: capitalize;
+  flex-shrink: 0;
+}
+
+.result-value {
+  color: var(--lm-text);
+  font-weight: 500;
+  text-align: right;
+}
+
+/* ===== COMPOSER (ROW 3) ===== */
+.lm-chat__composer,
+.lm-composer {
+  position: sticky;
+  bottom: 0;
+  z-index: 3; /* ensure composer is clickable above overlay */
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  padding: 10px 12px 12px;
+  border-top: 1px solid var(--lm-border);
+  background: linear-gradient(to top, rgba(0,0,0,.35), rgba(0,0,0,0));
+  backdrop-filter: blur(4px);
+}
+
+/* Input area overflow guards */
+.lm-inputbar {
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.lm-inputbar textarea,
+.lm-inputbar input[type="text"] {
+  width: 100%;
+  min-width: 0; /* critical for flex/grids */
+  max-width: 100%;
+  resize: vertical;
+}
+
+.input {
+  height: 42px;
+  padding: 0 12px;
+  border-radius: 10px;
+  border: 1px solid var(--lm-panel-2);
+  outline: none;
+  background: rgba(0,0,0,.25);
+  color: var(--lm-text);
+}
+
+/* Textarea variant with growth cap to prevent escaping viewport */
+.lm-chat__composer textarea,
+.lm-composer textarea {
+  max-height: 28svh; /* Use svh for small viewport units */
+  overflow-y: auto;
+  resize: none;
+  padding: 10px 12px;
+  line-height: 1.4;
+}
+
+.input:focus {
+  border-color: var(--lm-me);
+}
+
+.btn {
+  height: 42px;
+  padding: 0 14px;
+  border-radius: 10px;
+  background: var(--lm-panel);
+  border: 1px solid var(--lm-panel-2);
+  color: var(--lm-text);
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.btn:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.btn--ghost {
+  background: transparent;
+}
+
+.btn--primary {
+  background: #246bff;
+  border-color: #246bff;
+  color: #fff;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

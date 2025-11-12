@@ -1,0 +1,80 @@
+name: Nginx Guards
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'deploy/nginx.conf'
+      - 'nginx/**'
+  pull_request:
+    paths:
+      - 'deploy/nginx.conf'
+      - 'nginx/**'
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Assert oauth and legacy auth locations coexist without collisions
+        run: |
+          file="deploy/nginx.conf"
+
+          echo "✅ Checking for Google OAuth prefix location..."
+          grep -qE 'location \^~ /api/auth/google/' "$file"
+
+          echo "✅ Checking for legacy auth exact match (/api/auth/me)..."
+          grep -qE 'location = /api/auth/me' "$file"
+
+          echo "✅ Checking for legacy auth regex location..."
+          grep -qE 'location ~ \^/api/auth/(login|register|refresh|me)(/.*)?\$' "$file"
+
+          echo "✅ Checking for generic /api/ location..."
+          grep -qE 'location /api/ \{' "$file"
+
+          echo "✅ Checking for named upstream usage (NO trailing slash)..."
+          grep -qE 'proxy_pass\s+http://ai_finance_backend' "$file"
+
+          echo "✅ Ensuring NO rewrite of /api/auth/google/*..."
+          ! grep -Eq 'rewrite .* /auth/google' "$file"
+
+          echo "✅ Nginx guards OK - all routing invariants preserved"
+
+      - name: Verify X-NGX-Loc headers for runtime debugging
+        run: |
+          file="deploy/nginx.conf"
+
+          echo "✅ Checking for X-NGX-Loc headers in auth locations..."
+
+          # Should have X-NGX-Loc in Google OAuth location
+          grep -A 10 'location \^~ /api/auth/google/' "$file" | grep -q 'X-NGX-Loc'
+
+          # Should have X-NGX-Loc in legacy auth location
+          grep -A 10 'location ~ \^/api/auth/(login|register|refresh|me)' "$file" | grep -q 'X-NGX-Loc'
+
+          # Should have X-NGX-Loc in generic /api/ location
+          grep -A 10 'location /api/' "$file" | grep -q 'X-NGX-Loc'
+
+          echo "✅ X-NGX-Loc headers present for runtime debugging"
+
+      - name: Check for dangerous patterns
+        run: |
+          file="deploy/nginx.conf"
+
+          echo "🔍 Checking for dangerous nginx patterns..."
+
+          # NO trailing slash on proxy_pass with path preservation
+          if grep -E 'proxy_pass\s+http://[^;]+/;' "$file" | grep -v '# OK:'; then
+            echo "❌ DANGER: Found proxy_pass with trailing slash - this strips path prefixes!"
+            exit 1
+          fi
+
+          # NO hardcoded localhost in production config
+          if grep -E 'proxy_pass\s+http://localhost' "$file"; then
+            echo "❌ DANGER: Found hardcoded localhost in nginx config!"
+            exit 1
+          fi
+
+          echo "✅ No dangerous patterns found"

@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.transactions import Transaction
+from app.deps.auth_guard import get_current_user_id
 
 router = APIRouter(
     prefix="/agent/tools/transactions", tags=["agent-tools:transactions"]
@@ -104,9 +105,11 @@ def _apply_order(query, field: OrderField, direction: OrderDir):
 # ---------- Endpoints ----------
 @router.post("/search", response_model=SearchResponse)
 def search_transactions(
-    body: SearchQuery, db: Session = Depends(get_db)
+    user_id: int = Depends(get_current_user_id),
+    body: SearchQuery = ...,
+    db: Session = Depends(get_db),
 ) -> SearchResponse:
-    q = db.query(Transaction)
+    q = db.query(Transaction).filter(Transaction.user_id == user_id)
 
     if body.month:
         q = q.filter(Transaction.month == body.month)
@@ -149,10 +152,14 @@ def search_transactions(
 @router.post(
     "/categorize", response_model=Dict[str, Any], dependencies=[Depends(csrf_protect)]
 )
-def categorize_transactions(body: CategorizeBody, db: Session = Depends(get_db)):
+def categorize_transactions(
+    user_id: int = Depends(get_current_user_id),
+    body: CategorizeBody = ...,
+    db: Session = Depends(get_db),
+):
     updated = (
         db.query(Transaction)
-        .filter(Transaction.id.in_(body.txn_ids))
+        .filter(Transaction.user_id == user_id, Transaction.id.in_(body.txn_ids))
         .update({Transaction.category: body.category}, synchronize_session=False)
     )
     db.commit()
@@ -160,8 +167,16 @@ def categorize_transactions(body: CategorizeBody, db: Session = Depends(get_db))
 
 
 @router.post("/get_by_ids", response_model=GetByIdsResponse)
-def get_by_ids(body: GetByIdsBody, db: Session = Depends(get_db)) -> GetByIdsResponse:
-    rows = db.query(Transaction).filter(Transaction.id.in_(body.txn_ids)).all()
+def get_by_ids(
+    user_id: int = Depends(get_current_user_id),
+    body: GetByIdsBody = ...,
+    db: Session = Depends(get_db),
+) -> GetByIdsResponse:
+    rows = (
+        db.query(Transaction)
+        .filter(Transaction.user_id == user_id, Transaction.id.in_(body.txn_ids))
+        .all()
+    )
     if not rows:
         # Keep it 200 for agent friendliness, but signal empty
         return GetByIdsResponse(items=[])

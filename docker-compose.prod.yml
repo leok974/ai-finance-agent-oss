@@ -1,24 +1,25 @@
 services:
   postgres:
+    container_name: lm-postgres
     image: pgvector/pgvector:pg15
+    restart: unless-stopped
     environment:
-      POSTGRES_USER: myuser
+      POSTGRES_USER: lm
       POSTGRES_PASSWORD_FILE: /run/secrets/db_password
-      POSTGRES_DB: finance
+      POSTGRES_DB: lm
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - lm-pgdata:/var/lib/postgresql/data
     secrets:
       - db_password
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U myuser -d finance || exit 1"]
-      interval: 10s
+      test: ["CMD-SHELL", "pg_isready -U lm -d lm || exit 1"]
+      interval: 5s
       timeout: 3s
-      retries: 5
-    restart: unless-stopped
+      retries: 20
+    # No host port - avoid conflicts
     networks:
-      shared-ollama:
-        aliases:
-          - postgres
+      - infra_net
+      - shared-ollama
 
   redis:
     image: redis:7-alpine
@@ -37,16 +38,19 @@ services:
       - shared-ollama
 
   backend:
+    container_name: ai-finance-backend
     build:
       context: ./apps/backend
       args:
         GIT_BRANCH: ${GIT_BRANCH:-unknown}
         GIT_COMMIT: ${GIT_COMMIT:-unknown}
         BUILD_TIME: ${BUILD_TIME:-unknown}
+    restart: unless-stopped
     env_file:
       - ./secrets/backend.env
     environment:
-      UVICORN_WORKERS: "1"
+      UVICORN_WORKERS: "${UVICORN_WORKERS:-2}"  # ✅ Updated default from 1 to 2
+      WEB_CONCURRENCY: "${WEB_CONCURRENCY:-2}"
       LOG_LEVEL: "info"
       ENV: "prod"
       DEBUG: "0"
@@ -60,6 +64,12 @@ services:
       CRYPTO_REQUIRED: "false"
       # Use DATABASE_URL_FILE secret indirection (populated via entrypoint sh wrapper)
       DATABASE_URL_FILE: /run/secrets/backend_db_url
+      # Database connection robustness
+      SQLA_POOL_PRE_PING: "1"
+      DB_CONNECT_MAX_RETRIES: "30"
+      DB_CONNECT_RETRY_SECONDS: "2"
+      # Google OAuth
+      ENABLE_GOOGLE_OAUTH: "1"
       CORS_ALLOW_ORIGINS: "https://ledger-mind.org,https://www.ledger-mind.org"
       FRONTEND_ORIGIN: "https://ledger-mind.org"
       COOKIE_SAMESITE: ${COOKIE_SAMESITE:-none}
@@ -70,7 +80,13 @@ services:
       OPENAI_API_KEY_FILE: /run/secrets/openai_api_key
       OPENAI_FALLBACK_MODEL: "${OPENAI_FALLBACK_MODEL:-gpt-4o-mini}"
       MODEL: "${MODEL:-gpt-oss:20b}"
+      # E2E testing: allow stub/echo modes without auth (safe with env guard)
+      ALLOW_TEST_STUBS: "${ALLOW_TEST_STUBS:-1}"
       DEV_ALLOW_NO_LLM: "${DEV_ALLOW_NO_LLM:-0}"
+      # Database pool sizing (prevent pool starvation under load)
+      DB_POOL_SIZE: "${DB_POOL_SIZE:-10}"
+      DB_MAX_OVERFLOW: "${DB_MAX_OVERFLOW:-20}"
+      DB_POOL_PRE_PING: "${DB_POOL_PRE_PING:-1}"
       ALLOWED_HOSTS: "localhost,127.0.0.1,ledger-mind.org,app.ledger-mind.org,api.ledger-mind.org,nginx"
       ANALYTICS_DB: "1"
       OPENAI_API_KEY: ${OPENAI_API_KEY}
@@ -93,12 +109,17 @@ services:
       RAG_MIN_SCORE: "${RAG_MIN_SCORE:-0.15}"
       HELP_CACHE_TTL_SEC: "${HELP_CACHE_TTL_SEC:-600}"
       REDIS_URL: "redis://redis:6379/0"
+      # DevDiag
+      DEVDIAG_TIMEOUT_S: "${DEVDIAG_TIMEOUT_S:-120}"
+      DEVDIAG_ALLOW_HOSTS: "${DEVDIAG_ALLOW_HOSTS:-app.ledger-mind.org}"
     entrypoint: []
     command: >
       python -m uvicorn app.main:app
       --host 0.0.0.0
       --port 8000
-      --workers ${UVICORN_WORKERS:-1}
+      --workers ${UVICORN_WORKERS:-2}
+      --limit-concurrency 200
+      --timeout-keep-alive 20
       --proxy-headers
       --forwarded-allow-ips="*"
       --log-level ${LOG_LEVEL:-info}
@@ -119,11 +140,11 @@ services:
       timeout: 3s
       retries: 10
       start_period: 10s
-    restart: unless-stopped
     volumes:
       # Mount the actual service account JSON file (not the directory) so GOOGLE_APPLICATION_CREDENTIALS points to a file
       - ./secrets/gcp-sa.json/ledgermind-backend-sa.json:/secrets/gcp-sa.json:ro
     networks:
+      - infra_net
       - shared-ollama
 
   nginx:
@@ -138,12 +159,16 @@ services:
         WEB_BUILD_ID: ${WEB_BUILD_ID:-not_set}
         VITE_SUGGESTIONS_ENABLED: ${VITE_SUGGESTIONS_ENABLED:-1}
         VITE_ANALYTICS_ENABLED: ${VITE_ANALYTICS_ENABLED:-0}
-        VITE_API_BASE: ${VITE_API_BASE:-/api}
+        VITE_API_BASE: ""
         VITE_GIT_BRANCH: ${VITE_GIT_BRANCH:-unknown}
         VITE_GIT_COMMIT: ${VITE_GIT_COMMIT:-unknown}
         GIT_BRANCH: ${VITE_GIT_BRANCH:-unknown}
         GIT_COMMIT: ${VITE_GIT_COMMIT:-unknown}
         BUILD_ID: ${BUILD_ID:-not_set}
+        # OAuth provider toggles
+        VITE_ENABLE_LOCAL_AUTH: "0"
+        VITE_ENABLE_GOOGLE_OAUTH: "1"
+        VITE_ENABLE_GITHUB_OAUTH: "0"
     image: ai-finance-agent-oss-clean-nginx:latest
     depends_on:
       backend:
@@ -154,9 +179,10 @@ services:
       - ./deploy/nginx.conf:/etc/nginx/nginx.conf:ro
       - certbot_www:/var/www/certbot
       - letsencrypt:/etc/letsencrypt:ro
-    ports:
-      - "127.0.0.1:80:80"
-      - "127.0.0.1:443:443"
+    # Ports disabled for tunnel-based setup - Cloudflare tunnel connects directly to nginx:80 internally
+    # ports:
+    #   - "127.0.0.1:80:80"
+    #   - "127.0.0.1:443:443"
     user: "101:101"
     read_only: true
     tmpfs:
@@ -167,12 +193,12 @@ services:
       - no-new-privileges:true
     cap_drop:
       - ALL
-    healthcheck:
-      test: ["CMD-SHELL","wget -q -O /dev/null http://127.0.0.1:80/_up || exit 1"]
-      interval: 10s
-      timeout: 3s
-      retries: 10
-      start_period: 20s
+    # healthcheck:
+    #   test: ["CMD-SHELL","wget -q -O /dev/null http://127.0.0.1:80/_up || exit 1"]
+    #   interval: 10s
+    #   timeout: 3s
+    #   retries: 10
+    #   start_period: 20s
     restart: unless-stopped
     networks:
       - shared-ollama
@@ -316,11 +342,13 @@ services:
       - shared-ollama
 
 networks:
+  infra_net:
+    external: true
   shared-ollama:
     external: true
 
 volumes:
-  pgdata:
+  lm-pgdata:
   redis_data:
   certbot_www:
   letsencrypt:

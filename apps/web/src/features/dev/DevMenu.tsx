@@ -1,5 +1,5 @@
 import { useDev } from '@/state/dev';
-import { Wrench, Sparkles, DatabaseZap, RefreshCw, LayoutDashboard, Cpu } from 'lucide-react';
+import { Wrench, Sparkles, DatabaseZap, RefreshCw, LayoutDashboard, Cpu, MessageSquare } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -49,6 +49,13 @@ export function DevMenu({
     });
   };
 
+  const enableChatTest = () => {
+    sessionStorage.removeItem('lm:disableChat');
+    window.location.href = window.location.pathname + '?chat=1';
+  };
+
+  const chatFuseTripped = sessionStorage.getItem('lm:disableChat') === '1';
+
   // If not unlocked, show disabled pill with tooltip
   if (!isUnlocked) {
     return (
@@ -86,6 +93,18 @@ export function DevMenu({
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-64">
         <DropdownMenuLabel>Dev Tools</DropdownMenuLabel>
+        
+        {/* Chat fuse reset */}
+        {chatFuseTripped && (
+          <>
+            <DropdownMenuItem onClick={enableChatTest} className="gap-2 text-amber-600 dark:text-amber-400" data-testid="dev-enable-chat">
+              <MessageSquare className="size-4" />
+              Enable Chat (fuse tripped)
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+          </>
+        )}
+
         <DropdownMenuItem onClick={seedDemoData} className="gap-2" data-testid="dev-seed-data">
           <Sparkles className="size-4" />
           Seed Demo Data

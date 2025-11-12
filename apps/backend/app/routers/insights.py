@@ -11,27 +11,29 @@ from app.services.anomaly_ignores_store import (
     add_ignore as ai_add,
     remove_ignore as ai_remove,
 )
+from app.deps.auth_guard import get_current_user_id
 
 router = APIRouter(prefix="/insights", tags=["insights"])
 
 
 @router.get("")
-def insights(month: str | None = Query(None), db: Session = Depends(get_db)):
+def insights(
+    user_id: int = Depends(get_current_user_id),
+    month: str | None = Query(None),
+    db: Session = Depends(get_db),
+):
     # Total net amount (income positive, spend negative)
-    total = (
-        db.execute(
-            select(func.sum(Transaction.amount)).where(
-                Transaction.month == month if month else True
-            )
-        ).scalar()
-        or 0.0
-    )
+    q_total = select(func.sum(Transaction.amount)).where(Transaction.user_id == user_id)
+    if month:
+        q_total = q_total.where(Transaction.month == month)
+
+    total = db.execute(q_total).scalar() or 0.0
 
     # Top merchants by absolute net amount
     q_merch = select(
         Transaction.merchant,
         func.sum(Transaction.amount).label("sum"),
-    )
+    ).where(Transaction.user_id == user_id)
     if month:
         q_merch = q_merch.where(Transaction.month == month)
     q_merch = (
@@ -86,6 +88,7 @@ class AnomaliesResp(BaseModel):
     summary="Flag categories with unusual current-month spend",
 )
 def get_anomalies(
+    user_id: int = Depends(get_current_user_id),
     months: int = Query(6, ge=3, le=24, description="History window"),
     min_spend_current: float = Query(
         50.0, ge=0, description="Ignore very small categories"
@@ -100,6 +103,7 @@ def get_anomalies(
     ignores = ai_list(db)
     return compute_anomalies(
         db,
+        user_id,
         months=months,
         min_spend_current=min_spend_current,
         threshold_pct=threshold_pct,

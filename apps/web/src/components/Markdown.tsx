@@ -13,15 +13,37 @@ const LazyMarkdown = React.lazy(async () => {
   const rehypeRaw = rehypeRawMod.default;
   const rehypeSanitize = rehypeSanitizeMod.default;
   const MarkdownInner = ({ children }: { children: string }) => (
-    <ReactMarkdown
-      remarkPlugins={[remarkGfm]}
-      rehypePlugins={[
-        rehypeRaw,
-        [rehypeSanitize, sanitizeSchema],
-      ]}
-    >
-      {children}
-    </ReactMarkdown>
+    <div className="prose prose-invert max-w-none prose-headings:text-slate-100 prose-strong:text-white prose-strong:font-semibold prose-a:text-blue-400 prose-ul:text-slate-200 prose-ol:text-slate-200 prose-li:text-slate-200">
+      <style>{`
+        .prose-invert details {
+          margin: 0.5rem 0;
+          padding: 0.5rem;
+          border: 1px solid rgba(148, 163, 184, 0.2);
+          border-radius: 0.375rem;
+        }
+        .prose-invert details summary {
+          cursor: pointer;
+          font-weight: 500;
+          color: rgb(203, 213, 225);
+          user-select: none;
+        }
+        .prose-invert details summary:hover {
+          color: rgb(226, 232, 240);
+        }
+        .prose-invert details[open] summary {
+          margin-bottom: 0.5rem;
+        }
+      `}</style>
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        rehypePlugins={[
+          rehypeRaw,
+          [rehypeSanitize, sanitizeSchema],
+        ]}
+      >
+        {children}
+      </ReactMarkdown>
+    </div>
   );
   return { default: MarkdownInner };
 });
@@ -29,7 +51,7 @@ const LazyMarkdown = React.lazy(async () => {
 // Allow only a safe subset of elements; include our Explain button control
 const sanitizeSchema = {
   tagNames: [
-    "a","code","em","strong","p","ul","ol","li","table","thead","tbody","tr","th","td","blockquote","pre","span","button"
+    "a","code","em","strong","p","ul","ol","li","table","thead","tbody","tr","th","td","blockquote","pre","span","button","details","summary"
   ],
   attributes: {
     button: ["data-explain-id", "class"],
@@ -38,6 +60,8 @@ const sanitizeSchema = {
     code: ["class"],
     th: ["align"],
     td: ["align"],
+    details: ["open"],
+    summary: []
   }
 };
 

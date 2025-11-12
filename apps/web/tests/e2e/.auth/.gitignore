@@ -1,0 +1,8 @@
+# Captured production authentication state (contains session cookies/tokens)
+prod-state.json
+
+# Persistent browser profile directory
+.user-data-prod/
+
+# Dev/local auth state (already ignored by root .gitignore, but explicit here)
+state.json

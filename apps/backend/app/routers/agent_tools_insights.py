@@ -1,4 +1,5 @@
 from typing import List, Optional, Literal, Dict, Any
+import logging
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 from sqlalchemy import func, case
@@ -7,7 +8,9 @@ from sqlalchemy.orm import Session
 from app.db import get_db
 from app.transactions import Transaction
 from app.services.insights_expanded import build_expanded_insights
+from app.deps.auth_guard import get_current_user_id
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/agent/tools/insights", tags=["agent-tools:insights"])
 
 Severity = Literal["info", "warn", "critical"]
@@ -79,30 +82,45 @@ class ExpandedIn(BaseModel):
 
 @router.post("/expanded")
 def insights_expanded(
-    body: ExpandedIn, db: Session = Depends(get_db)
+    body: ExpandedIn,
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id),
 ) -> Dict[str, Any]:
-    return build_expanded_insights(
-        db=db, month=body.month, large_limit=body.large_limit or 10
-    )
+    try:
+        result = build_expanded_insights(
+            db=db, month=body.month, large_limit=body.large_limit or 10
+        )
+        # If service returns None/empty, provide safe fallback
+        if not result:
+            return {
+                "month": body.month or "",
+                "top_merchants": [],
+                "unknown_spend": 0.0,
+                "stats": {"count": 0, "total": 0.0},
+            }
+        return result
+    except Exception:
+        logger.exception("insights_expanded failed for month=%s", body.month)
+        return {
+            "month": body.month or "",
+            "top_merchants": [],
+            "unknown_spend": 0.0,
+            "stats": {"count": 0, "total": 0.0},
+        }
 
 
 # --- Minimal helper for /agent/chat resilience --------------------------------
 # These are permissive shapes/utilities that allow the chat endpoint to
 # normalize whatever "insights" payload exists, without crashing the request.
-from typing import (
-    Any as _Any,
-    Optional as _Optional,
-    List as _List,
-)  # aliases to avoid shadowing
 
 
 class ExpandedBody(BaseModel):
     summary: str = ""
-    bullets: _List[str] = []
-    sources: _List[str] = []
+    bullets: List[str] = []
+    sources: List[str] = []
 
 
-def expand(raw: _Optional[dict[str, _Any]] = None) -> ExpandedBody:
+def expand(raw: Optional[dict[str, Any]] = None) -> ExpandedBody:
     if not raw:
         return ExpandedBody()
 

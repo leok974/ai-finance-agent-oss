@@ -35,7 +35,7 @@ describe('api/ingest.uploadCsv', () => {
 
     const spy = vi.spyOn(globalThis, 'fetch').mockImplementationOnce(async (input, init) => {
       expect(typeof input).toBe('string');
-      expect(input).toBe('/api/ingest?replace=false');
+      expect(input).toBe('/ingest?replace=false'); // No /api prefix per copilot-instructions
       expect(init?.method).toBe('POST');
 
       const fd = init?.body as FormData;
@@ -56,7 +56,7 @@ describe('api/ingest.uploadCsv', () => {
 
     const spy = vi.spyOn(globalThis, 'fetch').mockImplementationOnce(async (input, init) => {
       expect(typeof input).toBe('string');
-      expect(input).toBe('/api/ingest?replace=true');
+      expect(input).toBe('/ingest?replace=true'); // No /api prefix per copilot-instructions
       expect(init?.method).toBe('POST');
       const fd = init?.body as FormData;
       const part = fd.get('file') as File;

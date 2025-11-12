@@ -1,5 +1,6 @@
 import * as React from "react";
 import { createPortal } from "react-dom";
+import { getPortalRoot } from "@/lib/portal";
 import { useExplain } from "@/hooks/useExplain";
 import { Button, pillIconClass } from "@/components/ui/button";
 
@@ -21,7 +22,7 @@ export default function ExplainButton({
     await explain(k, { month, withContext });
   }
 
-  const popover = open ? createPortal(
+  const popover = (open && typeof window !== 'undefined' && document.body) ? createPortal(
     <div
       id="ui-help-popover"
       className="fixed z-[9999] w-[340px] rounded-xl border bg-background p-3 shadow-xl animate-in fade-in-0 zoom-in-95"
@@ -37,7 +38,7 @@ export default function ExplainButton({
         {loading ? "Loading…" : text}
       </div>
     </div>,
-    document.body
+    getPortalRoot()
   ) : null;
 
   React.useEffect(() => {

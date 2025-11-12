@@ -3,9 +3,11 @@
  */
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
+import { CategoryCell } from './CategoryCell';
 import { SuggestionList } from './SuggestionChip';
 import type { SuggestItem } from '@/lib/api';
 import { sendSuggestionFeedback } from '@/lib/api';
+import { createCategorizeRule } from '@/api/rules';
 import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -25,6 +27,7 @@ type Transaction = {
 type TransactionRowWithSuggestionsProps = {
   transaction: Transaction;
   suggestion?: SuggestItem;
+  allCategories: string[];
   isSelected: boolean;
   onSelect: (id: number, checked: boolean) => void;
   onEdit: (id: number) => void;
@@ -37,6 +40,7 @@ type TransactionRowWithSuggestionsProps = {
 export function TransactionRowWithSuggestions({
   transaction,
   suggestion,
+  allCategories,
   isSelected,
   onSelect,
   onEdit,
@@ -130,12 +134,50 @@ export function TransactionRowWithSuggestions({
 
   const canUndo = !!(lastEventId || (typeof window !== 'undefined' && localStorage.getItem(`lm:lastEvent:${transaction.id}`)));
 
+  // Convert ML suggestions to CategoryCell format
+  const categoryCandidates = suggestion?.candidates?.map((c) => ({
+    label: c.label,
+    confidence: c.confidence,
+  })) ?? [];
+
+  // Handle category save from inline picker
+  const handleCategorySave = async ({ category, makeRule }: { category: string; makeRule: boolean }) => {
+    // Update transaction category
+    await onAcceptSuggestion(transaction.id, category);
+
+    // Create rule if requested
+    if (makeRule && transaction.merchant) {
+      try {
+        await createCategorizeRule({
+          merchant: transaction.merchant_canonical || transaction.merchant,
+          category,
+        });
+        toast.success('Rule created for similar transactions');
+      } catch (error) {
+        console.error('Failed to create rule:', error);
+        toast.error('Failed to create rule');
+      }
+    }
+
+    // Send feedback if we have an event_id
+    if (suggestion?.event_id) {
+      await sendSuggestionFeedback(suggestion.event_id, 'accept', 'user accepted');
+      setLastEventId(suggestion.event_id);
+      try {
+        localStorage.setItem(`lm:lastEvent:${transaction.id}`, suggestion.event_id);
+      } catch {
+        // Ignore localStorage errors
+      }
+    }
+  };
+
   return (
     <>
       <tr
-        className={`hover:bg-gray-50 ${
-          isSelected ? 'bg-blue-50' : ''
+        className={`transaction-row ${
+          isSelected ? 'bg-primary/5' : ''
         } ${transaction.deleted_at ? 'opacity-50' : ''}`}
+        data-testid={`transaction-row-${transaction.id}`}
       >
         <td className="px-2 py-1">
           <input
@@ -151,9 +193,15 @@ export function TransactionRowWithSuggestions({
           {transaction.merchant_canonical || transaction.merchant || '—'}
         </td>
         <td className="px-2 py-1">
-          {transaction.category || (
-            <span className="opacity-60 italic">uncategorized</span>
-          )}
+          <CategoryCell
+            txnId={transaction.id}
+            merchant={transaction.merchant}
+            category={transaction.category}
+            suggestions={categoryCandidates}
+            allCategories={allCategories}
+            onSave={handleCategorySave}
+            disabled={!!transaction.deleted_at || applying}
+          />
         </td>
         <td className="px-2 py-1 text-right">
           {transaction.amount?.toLocaleString?.(undefined, {

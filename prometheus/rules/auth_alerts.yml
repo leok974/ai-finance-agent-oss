@@ -1,0 +1,100 @@
+groups:
+  - name: auth_alerts
+    interval: 30s
+    rules:
+      # Alert on 5xx spike on auth endpoints
+      - alert: AuthPath5xxSpike
+        expr: |
+          sum by (path) (
+            rate(nginx_http_requests_total{status=~"5..",path=~"/api/auth/.*"}[5m])
+          ) > 0.5
+        for: 5m
+        labels:
+          severity: page
+          component: auth
+        annotations:
+          summary: "5xx errors on /api/auth/* endpoints spiking"
+          description: "Rate of 5xx on auth endpoints is above 0.5 rps for 5m. Path: {{ $labels.path }}"
+          runbook_url: "https://github.com/leok974/ai-finance-agent-oss/blob/main/ops/runbooks/auth-5xx.md"
+
+      # Alert on 404s for /api/auth/me (critical regression detector)
+      - alert: AuthMe404
+        expr: |
+          sum(
+            rate(nginx_http_requests_total{status="404",path="/api/auth/me"}[10m])
+          ) > 0
+        for: 10m
+        labels:
+          severity: critical
+          component: auth
+        annotations:
+          summary: "/api/auth/me returning 404 - auth bootstrap broken"
+          description: "The /api/auth/me endpoint is returning 404s. This breaks auth bootstrap and prevents users from staying logged in."
+          runbook_url: "https://github.com/leok974/ai-finance-agent-oss/blob/main/ops/runbooks/auth-404.md"
+
+      # Alert on OAuth login failures
+      - alert: OAuthLoginFailures
+        expr: |
+          sum(
+            rate(nginx_http_requests_total{status=~"4..|5..",path="/api/auth/google/login"}[5m])
+          ) > 1
+        for: 5m
+        labels:
+          severity: warning
+          component: auth
+        annotations:
+          summary: "OAuth login endpoint experiencing failures"
+          description: "Rate of 4xx/5xx on /api/auth/google/login is above 1 rps for 5m"
+          runbook_url: "https://github.com/leok974/ai-finance-agent-oss/blob/main/ops/runbooks/oauth-failures.md"
+
+      # Alert on OAuth callback failures
+      - alert: OAuthCallbackFailures
+        expr: |
+          sum(
+            rate(nginx_http_requests_total{status=~"5..",path="/api/auth/google/callback"}[5m])
+          ) > 0.5
+        for: 5m
+        labels:
+          severity: warning
+          component: auth
+        annotations:
+          summary: "OAuth callback endpoint experiencing 5xx errors"
+          description: "Rate of 5xx on /api/auth/google/callback is above 0.5 rps for 5m. Users cannot complete OAuth flow."
+          runbook_url: "https://github.com/leok974/ai-finance-agent-oss/blob/main/ops/runbooks/oauth-failures.md"
+
+      # SLO: Auth endpoints availability
+      - alert: AuthEndpointsAvailabilityLow
+        expr: |
+          (
+            sum(rate(nginx_http_requests_total{path=~"/api/auth/.*",status!~"5.."}[5m]))
+            /
+            sum(rate(nginx_http_requests_total{path=~"/api/auth/.*"}[5m]))
+          ) < 0.99
+        for: 10m
+        labels:
+          severity: warning
+          component: auth
+          slo: availability
+        annotations:
+          summary: "Auth endpoints availability below 99% SLO"
+          description: "Auth endpoints are experiencing {{ $value | humanizePercentage }} availability (target: 99%)"
+          runbook_url: "https://github.com/leok974/ai-finance-agent-oss/blob/main/ops/runbooks/auth-availability.md"
+
+      # Alert on missing X-NGX-Loc header (routing misconfiguration detector)
+      - alert: AuthEndpointsMissingRoutingHeader
+        expr: |
+          sum(
+            rate(nginx_http_requests_total{path=~"/api/auth/.*"}[5m])
+          ) > 0
+          unless
+          sum(
+            rate(nginx_http_response_headers_total{header="x-ngx-loc",path=~"/api/auth/.*"}[5m])
+          ) > 0
+        for: 5m
+        labels:
+          severity: info
+          component: auth
+        annotations:
+          summary: "Auth endpoints missing X-NGX-Loc routing header"
+          description: "Auth endpoints are not setting the X-NGX-Loc header, making routing debugging difficult"
+          runbook_url: "https://github.com/leok974/ai-finance-agent-oss/blob/main/ops/runbooks/nginx-headers.md"

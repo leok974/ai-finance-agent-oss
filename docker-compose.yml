@@ -50,7 +50,14 @@ services:
       # Cookie configuration for cross-domain (assistant.ledger-mind.org)
       COOKIE_DOMAIN: ".ledger-mind.org"
       COOKIE_SECURE: "1"
-      COOKIE_SAMESITE: "lax"
+      COOKIE_SAMESITE: "none"  # Changed from "lax" to "none" for OAuth cross-site redirects
+      SESSION_SECRET: "${SESSION_SECRET:-dev-session-secret-change-me}"
+      # OAuth Configuration
+      OAUTH_GOOGLE_CLIENT_ID: "${OAUTH_GOOGLE_CLIENT_ID}"
+      OAUTH_GOOGLE_CLIENT_SECRET: "${OAUTH_GOOGLE_CLIENT_SECRET}"
+      OAUTH_REDIRECT_URL: "https://app.ledger-mind.org/api/auth/google/callback"
+      PUBLIC_ORIGIN: "https://app.ledger-mind.org"
+      BACKEND_PUBLIC_URL: "https://app.ledger-mind.org"
       # SiteAgent Features
       SITEAGENT_DEV_COOKIE_KEY: "${SITEAGENT_DEV_COOKIE_KEY:-dev-secret-change-me}"
       # SEO Intelligence Loop
@@ -92,8 +99,8 @@ services:
 
   web:
     build:
-      context: ./apps/web
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: apps/web/Dockerfile
     environment:
       CI: "true"
       VITE_API_BASE: "http://127.0.0.1:8000"
@@ -114,11 +121,11 @@ services:
       - default
 
   nginx:
-    image: nginx:alpine
+    image: my-nginx-custom
     ports:
       - "80:80"
-    volumes:
-      - ./nginx-simple.conf:/etc/nginx/nginx.conf:ro
+    # volumes:
+      # - ./nginx-simple.conf:/etc/nginx/nginx.conf:ro  # Use config baked into image instead
     depends_on:
       - backend
       - web
