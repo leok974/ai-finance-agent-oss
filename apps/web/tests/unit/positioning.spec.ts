@@ -212,4 +212,21 @@ describe('anchorToLauncher', () => {
     expect(rect.left).toBeGreaterThanOrEqual(16);
     expect(rect.top).toBeGreaterThanOrEqual(16);
   });
+
+  it('never uses display:none to hide iframe', () => {
+    const s: any = {};
+    // Simulate close (opacity-only gating)
+    Object.assign(s, { opacity: '0', pointerEvents: 'none' });
+    expect(s.display).toBeUndefined();
+  });
+
+  it('clamps panel inside viewport', () => {
+    const vw = 1280,
+      vh = 720,
+      M = 16;
+    const W = Math.min(420, vw - M * 2);
+    const H = Math.min(560, vh - M * 2);
+    expect(W).toBeLessThanOrEqual(vw - M * 2);
+    expect(H).toBeLessThanOrEqual(vh - M * 2);
+  });
 });

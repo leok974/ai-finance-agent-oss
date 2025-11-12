@@ -10,7 +10,13 @@ declare const __WEB_COMMIT__: string;
 declare const __WEB_BUILD_TIME__: string;
 
 // eslint-disable-next-line no-console
-console.log("[build/chat]", `${__WEB_BRANCH__}@${__WEB_COMMIT__}`, __WEB_BUILD_TIME__);
+console.log(
+  '%c[build/chat] %s@%s  %s',
+  'color:#34d399;font-weight:bold',
+  __WEB_BRANCH__,
+  __WEB_COMMIT__,
+  __WEB_BUILD_TIME__
+);
 
 // DevDiag structured logging helper (for console capture)
 (window as any).__DEVLOG = (tag: string, data: unknown) =>
