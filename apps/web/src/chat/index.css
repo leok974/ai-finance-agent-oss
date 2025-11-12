@@ -309,6 +309,52 @@ textarea.lm-input,
   background: rgba(255,210,138,.08);
 }
 
+/* ===== STRUCTURED DATA CARDS ===== */
+.result-card {
+  background: rgba(255,255,255,.03);
+  border: 1px solid var(--lm-border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.result-card-title {
+  padding: 8px 12px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--lm-accent);
+  background: rgba(255,255,255,.02);
+  border-bottom: 1px solid var(--lm-border);
+  text-transform: capitalize;
+}
+
+.result-card-body {
+  padding: 8px 12px;
+}
+
+.result-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 0;
+  font-size: 13px;
+}
+
+.result-row:not(:last-child) {
+  border-bottom: 1px solid rgba(255,255,255,.05);
+}
+
+.result-key {
+  color: var(--lm-muted);
+  text-transform: capitalize;
+  flex-shrink: 0;
+}
+
+.result-value {
+  color: var(--lm-text);
+  font-weight: 500;
+  text-align: right;
+}
+
 /* ===== COMPOSER (ROW 3) ===== */
 .lm-chat__composer,
 .lm-composer {
