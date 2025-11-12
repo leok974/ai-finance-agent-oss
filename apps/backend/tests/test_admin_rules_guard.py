@@ -1,6 +1,5 @@
 """Test admin guard for category rules endpoints."""
 
-
 from app.orm_models import CategoryRule
 
 

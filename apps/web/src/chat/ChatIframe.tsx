@@ -21,6 +21,7 @@ export function ChatIframe() {
   const [uiMessages, setUiMessages] = useState<Msg[]>([]);
   const [showTools, setShowTools] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [authOk, setAuthOk] = useState(true);
 
   // 🔥 Deferred subscription to Zustand store (prevents infinite render loop)
   const [chatState, setChatState] = useState(() => {
@@ -111,6 +112,9 @@ export function ChatIframe() {
         }),
       });
 
+      // If request succeeds, ensure auth is marked OK
+      setAuthOk(true);
+
       const reply =
         data.reply ??
         data.text ??
@@ -137,15 +141,30 @@ export function ChatIframe() {
     } catch (err) {
       console.error('[ChatIframe] submit failed:', err);
 
-      const newState = useChatSession.getState();
-      useChatSession.setState({
-        messages: [...newState.messages, {
-          id: crypto.randomUUID(),
-          role: 'assistant',
-          text: `⚠️ Request failed: ${String(err)}`,
-          at: Date.now()
-        }]
-      });
+      // Check if it's a 401 auth error
+      const errMsg = String(err);
+      if (errMsg.includes('401')) {
+        setAuthOk(false);
+        const newState = useChatSession.getState();
+        useChatSession.setState({
+          messages: [...newState.messages, {
+            id: crypto.randomUUID(),
+            role: 'assistant',
+            text: `⚠️ You're not signed in. Please sign in to send messages.`,
+            at: Date.now()
+          }]
+        });
+      } else {
+        const newState = useChatSession.getState();
+        useChatSession.setState({
+          messages: [...newState.messages, {
+            id: crypto.randomUUID(),
+            role: 'assistant',
+            text: `⚠️ Request failed: ${String(err)}`,
+            at: Date.now()
+          }]
+        });
+      }
     } finally {
       setBusy(false);
     }
@@ -300,8 +319,8 @@ export function ChatIframe() {
   return (
     <div className="lm-iframe">
       {/* Tools header (row 1) - sticky with horizontal scroll */}
-      {showTools && (
-        <header className="lm-tools-area">
+      <header className="lm-tools-area">
+        {showTools && (
           <div className="lm-tools-row">
             <button className="chip" disabled={busy} onClick={() => runTool('month_summary')}>Month summary</button>
             <button className="chip" disabled={busy} onClick={() => runTool('trends')}>Trends</button>
@@ -315,18 +334,24 @@ export function ChatIframe() {
             <button className="chip" disabled={busy} onClick={() => runTool('budget_suggest')}>Budget suggest</button>
             <button className="chip" disabled={busy} onClick={() => runTool('search_transactions')}>Search transactions (NL)</button>
           </div>
+        )}
 
-          <div className="lm-toolsbar">
-            <span className="badge badge--ok">LLM: OK</span>
-            <button className="btn btn--ghost">Export JSON</button>
-            <button className="btn btn--ghost">Export Markdown</button>
-            <button className="btn btn--ghost">History</button>
-            <button className="btn btn--ghost">Reset</button>
-            <button className="btn btn--ghost">Clear</button>
-            <button className="btn btn--ghost" onClick={() => setShowTools(false)}>Hide tools</button>
-          </div>
-        </header>
-      )}
+        <div className="lm-toolsbar">
+          <span className="badge badge--ok">LLM: OK</span>
+          <button className="btn btn--ghost">Export JSON</button>
+          <button className="btn btn--ghost">Export Markdown</button>
+          <button className="btn btn--ghost">History</button>
+          <button className="btn btn--ghost">Reset</button>
+          <button className="btn btn--ghost">Clear</button>
+          <button 
+            data-testid="chat-tools-toggle"
+            className="btn btn--ghost" 
+            onClick={() => setShowTools(!showTools)}
+          >
+            {showTools ? 'Hide tools' : 'Show tools'}
+          </button>
+        </div>
+      </header>
 
       {/* Scrollable messages (row 2) */}
       <main className="lm-thread" ref={listRef}>
@@ -387,18 +412,36 @@ export function ChatIframe() {
 
       {/* Composer (row 3) */}
       <footer className="lm-composer">
+        {!authOk && (
+          <div 
+            data-testid="chat-auth-banner" 
+            style={{
+              backgroundColor: 'rgba(217, 119, 6, 0.1)',
+              border: '1px solid rgba(217, 119, 6, 0.3)',
+              borderRadius: '0.375rem',
+              color: 'rgb(251, 191, 36)',
+              fontSize: '0.875rem',
+              padding: '0.5rem 0.75rem',
+              marginBottom: '0.5rem'
+            }}
+          >
+            You're not signed in. <a href="/login" style={{ textDecoration: 'underline' }}>Sign in</a> to enable chat.
+          </div>
+        )}
         <form onSubmit={handleSubmit} style={{ display: 'contents' }}>
           <input
+            data-testid="chat-input"
             className="input"
             placeholder="Ask or type a command…"
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
-            disabled={busy}
+            disabled={busy || !authOk}
           />
           <button
+            data-testid="chat-send"
             type="submit"
             className="btn btn--primary"
-            disabled={!draft.trim() || busy}
+            disabled={!draft.trim() || busy || !authOk}
           >
             {busy ? '...' : 'Send'}
           </button>
