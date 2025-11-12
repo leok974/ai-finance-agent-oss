@@ -50,12 +50,12 @@ export const ChatControls = forwardRef<ChatControlsRef>((props, ref) => {
             <DialogTitle>
               {open === "clear" ? "Clear chat history?" : "Reset session?"}
             </DialogTitle>
+            <DialogDescription>
+              {open === "clear"
+                ? "This will remove the visible messages for this thread across all open tabs."
+                : "This will start a fresh session and clear the assistant's memory for this chat."}
+            </DialogDescription>
           </DialogHeader>
-          <p className="text-sm text-muted-foreground">
-            {open === "clear"
-              ? "This will remove the visible messages for this thread across all open tabs."
-              : "This will start a fresh session and clear the assistant's memory for this chat."}
-          </p>
           <DialogFooter>
             <Button
               variant="pill-outline"

@@ -25,7 +25,9 @@ export default function TransactionsDrawer({ open, onClose }: Props) {
                 <button className="text-sm opacity-80 hover:opacity-100" aria-label="Close">Close</button>
               </Dialog.Close>
             </div>
-            <div className="mt-2 text-[11px] opacity-75"></div>
+            <Dialog.Description className="mt-2 text-[11px] opacity-75">
+              View and manage your transactions
+            </Dialog.Description>
           </header>
           <div className="px-4 py-4 space-y-3">
             <TransactionsPanel />
