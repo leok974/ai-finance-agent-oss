@@ -12,6 +12,10 @@ const storageStatePath = './tests/e2e/.auth/state.json';
 const PROD_STATE = './tests/e2e/.auth/prod-state.json';
 const AUTH_STORAGE = './tests/.auth/storageState.json';
 
+// Use prod state when BASE_URL points to production, otherwise use dev state
+const isProdURL = baseURL.includes('ledger-mind.org') || baseURL.includes('app.ledger');
+const defaultStorageState = isProdURL ? PROD_STATE : AUTH_STORAGE;
+
 // Persistent profile for Google OAuth stability (zero re-login)
 // Path relative to repository root
 const userDataDir = path.join(process.cwd(), '../../.pw-userdata');
@@ -29,7 +33,7 @@ export default defineConfig({
   use: {
     headless: false,  // headed mode for Google OAuth stability
     baseURL,
-    storageState: AUTH_STORAGE,
+    storageState: defaultStorageState,  // Use prod state for prod URLs
     trace: 'on-first-retry',
     video: 'retain-on-failure',
     screenshot: 'only-on-failure',
