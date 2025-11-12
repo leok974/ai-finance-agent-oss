@@ -8,6 +8,7 @@
 import * as React from 'react';
 import { useChatSession } from '@/state/chatSession';
 import { getInit } from './main';
+import { fetchJSON } from '@/lib/http';
 
 const { useEffect, useRef, useState } = React;
 
@@ -102,19 +103,14 @@ export function ChatIframe() {
     setBusy(true);
 
     try {
-      const res = await fetch(`${INIT.apiBase}/agent/chat`, {
+      const data = await fetchJSON<any>('agent/chat', {
         method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           messages: [{ role: 'user', content: text }],
           context: { month: INIT.month }
         }),
       });
 
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
-      const data = await res.json().catch(() => ({}));
       const reply =
         data.reply ??
         data.text ??
@@ -210,11 +206,8 @@ export function ChatIframe() {
     setBusy(true);
 
     try {
-
-      const res = await fetch(`${INIT.apiBase}/agent/chat`, {
+      const data = await fetchJSON<any>('agent/chat', {
         method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           messages: [{ role: 'user', content: `Run ${tool}` }],
           context: { month: INIT.month },
@@ -223,9 +216,6 @@ export function ChatIframe() {
         }),
       });
 
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
-      const data = await res.json().catch(() => ({}));
       const reply =
         data.reply ??
         data.text ??
