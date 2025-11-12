@@ -1811,6 +1811,7 @@ export default function ChatDock() {
   const bubbleEl = (
     <button
       type="button"
+      data-testid="chat-toggle"
       className="fixed z-[80] rounded-full shadow-lg bg-black text-white w-12 h-12 flex items-center justify-center hover:opacity-90 select-none"
       style={{ right: rb.right, bottom: rb.bottom, cursor: "grab", position: 'fixed' as const }}
       data-chatdock-root
