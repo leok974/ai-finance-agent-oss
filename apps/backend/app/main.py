@@ -61,6 +61,7 @@ from .routers import charts
 from app.routers import txns_edit as txns_edit_router
 from app.routers import auth as auth_router
 from app.routers import auth_dev as auth_dev_router
+from app.routers import e2e_session as e2e_session_router  # E2E test session mint
 from app.routers import agent_txns  # NEW
 from app.routers import help_ui as help_ui_router
 from .routers import transactions as transactions_router
@@ -885,6 +886,9 @@ app.include_router(auth_router.router)
 app.include_router(
     auth_dev_router.router
 )  # Dev PIN unlock (only active in APP_ENV=dev)
+
+# === E2E Test Session ===
+app.include_router(e2e_session_router.router)  # Only active when E2E_SESSION_ENABLED=1
 
 # === Google OAuth ===
 from app.auth import google as google_auth

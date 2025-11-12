@@ -2,10 +2,19 @@
  * chat/main.tsx - Chat iframe self-mount entry
  *
  * CRITICAL: This runs INSIDE the sandboxed iframe (same-origin with allow-same-origin).
- * Portal guards are in prelude.ts which MUST load before this file.
  */
 
-import './react-dom-guard'; // MUST precede any Radix/portal usage
+// Build stamp for chat bundle
+declare const __WEB_BRANCH__: string;
+declare const __WEB_COMMIT__: string;
+declare const __WEB_BUILD_TIME__: string;
+
+// eslint-disable-next-line no-console
+console.log("[build/chat]", `${__WEB_BRANCH__}@${__WEB_COMMIT__}`, __WEB_BUILD_TIME__);
+
+// DevDiag structured logging helper (for console capture)
+(window as any).__DEVLOG = (tag: string, data: unknown) =>
+  console.log(`[devlog] ${tag}`, JSON.stringify(data, null, 2));
 
 // 🎨 CRITICAL: Import styles for iframe (Tailwind + theme tokens)
 import './index.css';      // Chat-specific Tailwind
@@ -16,12 +25,8 @@ import { createRoot, Root } from 'react-dom/client';
 import { AuthProvider } from '@/state/auth';
 import { ChatIframe } from './ChatIframe'; // Simplified grid-based chat for iframe
 import { ChatErrorBoundary } from './ChatErrorBoundary';
-import { patchCreatePortalToIframe } from './crossDocumentPortalHotfix';
 import { PortalContainerContext } from './portalRoot';
 import { TooltipProvider, Toaster } from './ui'; // Use chat-patched UI with Toaster
-
-// HOTFIX: Patch createPortal IMMEDIATELY at module load, before any components render
-patchCreatePortalToIframe(document);
 
 /**
  * Boot chat with providers

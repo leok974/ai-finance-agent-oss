@@ -166,6 +166,11 @@ class Settings(BaseSettings):
     OPENAI_API_KEY_FILE: str = "/run/secrets/openai_api_key"
     OLLAMA_BASE_URL: str = "http://ollama:11434"
     DEV_ALLOW_NO_LLM: bool = DEV_ALLOW_NO_LLM  # seed with parsed value
+
+    # === E2E Test Session ===
+    E2E_SESSION_ENABLED: bool = _env_bool("E2E_SESSION_ENABLED", False)
+    E2E_SESSION_HMAC_SECRET: str | None = os.getenv("E2E_SESSION_HMAC_SECRET", None)
+
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 

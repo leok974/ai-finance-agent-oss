@@ -1,23 +1,21 @@
 import { defineConfig, loadEnv, splitVendorChunkPlugin, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
-import { execSync } from "child_process";
+import { execSync } from "node:child_process";
 import path from "path";
 
-// Prefer injected environment variables (Docker build) before attempting local git commands.
-const envBranch = process.env.VITE_GIT_BRANCH ?? process.env.WEB_BRANCH;
-const envCommit = process.env.VITE_GIT_COMMIT ?? process.env.WEB_COMMIT;
-let BRANCH = envBranch || "unknown";
-let COMMIT = envCommit || "unknown";
-const BUILD_ID = process.env.WEB_BUILD_ID || "unknown";
-
-if (BRANCH === "unknown" || COMMIT === "unknown") {
+// Build metadata with git fallback
+function git(cmd: string, fb = "unknown") {
   try {
-    if (BRANCH === "unknown") BRANCH = execSync("git rev-parse --abbrev-ref HEAD").toString().trim();
-    if (COMMIT === "unknown") COMMIT = execSync("git rev-parse --short HEAD").toString().trim();
-  } catch (error) {
-    // ignore git metadata lookup failures in minimal environments
+    return execSync(cmd).toString().trim();
+  } catch {
+    return fb;
   }
 }
+
+const GIT_COMMIT = process.env.GITHUB_SHA || git("git rev-parse --short=12 HEAD");
+const GIT_BRANCH = process.env.GITHUB_REF_NAME || git("git rev-parse --abbrev-ref HEAD");
+const BUILD_TIME = new Date().toISOString();
+const BUILD_ID = process.env.WEB_BUILD_ID || "unknown";
 
 // During local E2E we sometimes run backend on 8001 with encryption disabled.
 // Prefer 8001 if BACKEND_PORT is set; else default to 8000.
@@ -169,9 +167,10 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [react(), splitVendorChunkPlugin(), chatIframeAliases(), injectPreludeScript()],
     define: {
-      __WEB_BRANCH__: JSON.stringify(BRANCH),
-      __WEB_COMMIT__: JSON.stringify(COMMIT),
+      __WEB_BRANCH__: JSON.stringify(GIT_BRANCH),
+      __WEB_COMMIT__: JSON.stringify(GIT_COMMIT),
       __WEB_BUILD_ID__: JSON.stringify(BUILD_ID),
+      __WEB_BUILD_TIME__: JSON.stringify(BUILD_TIME),
       __RUNTIME_BUILD_ID__: JSON.stringify(runtimeBuildId),
       "import.meta.env.BUILD_CHAT": JSON.stringify(env.BUILD_CHAT ?? "0"),
       "import.meta.env.VITE_CHAT_SAFE_MODE": JSON.stringify(env.VITE_CHAT_SAFE_MODE ?? "0"),

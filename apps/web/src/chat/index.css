@@ -7,6 +7,49 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ===== IFRAME VIEWPORT FILL ===== */
+html, body, #root {
+  height: 100%;
+  width: 100%;
+  margin: 0;
+  box-sizing: border-box;
+  overflow: hidden; /* Prevent double scrollbars */
+}
+
+body {
+  overflow: hidden; /* Host clips, not body */
+}
+
+/* Ensure iframe root fills but never exceeds */
+#__LM_IFRAME_ROOT__ {
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+/* === BULLET-PROOF GRID LAYOUT === */
+.lm-grid {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  height: 100%;
+  min-height: 100%;
+}
+
+.lm-header {
+  min-height: 40px;
+}
+
+.lm-messages {
+  min-height: 0; /* CRITICAL for grid overflow to work */
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.lm-composer {
+  min-height: 56px;
+}
+
 /* ===== CHAT THEME VARIABLES ===== */
 :root {
   --lm-bg: rgba(18, 21, 28, .96);
@@ -22,29 +65,33 @@
   --radius: 14px;
 }
 
-/* ===== IFRAME CONTAINMENT & GRID ===== */
+/* ===== 3-ROW GRID: tools | thread | composer ===== */
 .lm-iframe {
   display: grid;
-  grid-template-rows: auto 1fr auto; /* header | scroll | composer */
-  min-height: 100dvh;
-  overflow: hidden;
+  grid-template-rows: auto 1fr auto;
+  min-height: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  overflow: hidden; /* Host clips, grid doesn't extend it */
 }
 
-/* ===== 3-ROW GRID LAYOUT ===== */
 .lm-chat {
   position: relative;
   display: grid;
   grid-template-rows: auto 1fr auto;
   width: 100%;
-  height: 100dvh;
+  height: 100%;
   background: var(--lm-bg);
   color: var(--lm-text);
   border: 1px solid var(--lm-border);
   border-radius: var(--radius);
   box-shadow: 0 10px 30px rgba(0,0,0,.45);
+  box-sizing: border-box;
+  min-height: 0;                /* enables child overflow scroll */
+  overflow: hidden;             /* clip INSIDE the panel only */
 }
 
-/* ===== TOOLS HEADER (ROW 1) ===== */
+/* ===== TOOLS HEADER (ROW 1) - STICKY ===== */
 .lm-chat__tools,
 .lm-tools-area {
   position: sticky;
@@ -59,10 +106,10 @@
 .lm-toolsbar,
 .lm-tools-row {
   display: flex;
-  gap: 8px;
+  gap: 0.5rem;
   align-items: center;
   flex-wrap: nowrap;
-  overflow-x: auto;
+  overflow-x: auto; /* Horizontal scroll for chips when needed */
   padding: 0.5rem 0.75rem;
 }
 
@@ -117,29 +164,44 @@
   cursor: default;
 }
 
-/* ===== SCROLLABLE MESSAGES (ROW 2) ===== */
+/* ===== SCROLLABLE MESSAGES (ROW 2) - THE ONLY VERTICAL SCROLLER ===== */
 .lm-chat__scroll,
 .lm-thread {
-  min-height: 0;     /* CRITICAL for grid overflow - middle row must shrink */
+  min-height: 0;     /* CRITICAL for grid - middle row can shrink */
   overflow-y: auto;
+  overscroll-behavior: contain; /* Prevent scroll chaining */
   padding: 12px 12px 4px;
 }
 
-/* Message wrapping - prevent overflow with bulletproof rules */
-.lm-chat__scroll .bubble,
-.lm-thread .bubble {
-  overflow-wrap: anywhere;         /* modern standard */
-  word-break: break-word;          /* legacy fallback */
-  white-space: pre-wrap;           /* preserve newlines but wrap */
+/* Prevent accidental global nowraps */
+.lm-thread > * {
+  display: block;
+  max-width: 100%;
 }
 
-/* Code/mono blocks still wrap nicely */
-.lm-chat__scroll pre,
-.lm-chat__scroll code,
-.lm-thread pre,
-.lm-thread code {
+/* ===== ROBUST TEXT WRAPPING FOR BUBBLES ===== */
+.lm-msg,
+.lm-msg *,
+.lm-row,
+.lm-bubble,
+.lm-tools,
+.bubble,
+.bubble * {
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
   word-break: break-word;
+  min-width: 0;
+}
+
+/* Textarea growth cap to prevent escaping viewport */
+textarea.lm-input,
+.lm-chat__composer textarea,
+.lm-composer textarea {
+  resize: vertical;
+  max-height: 40vh; /* Constrain to 40% of viewport height */
+  overflow-y: auto;
+  padding: 10px 12px;
+  line-height: 1.4;
 }
 
 .date-divider {
@@ -220,7 +282,7 @@
 .lm-composer {
   position: sticky;
   bottom: 0;
-  z-index: 3;
+  z-index: 3; /* ensure composer is clickable above overlay */
   display: grid;
   grid-template-columns: 1fr auto;
   gap: 8px;
@@ -243,7 +305,7 @@
 /* Textarea variant with growth cap to prevent escaping viewport */
 .lm-chat__composer textarea,
 .lm-composer textarea {
-  max-height: 28vh;
+  max-height: 28svh; /* Use svh for small viewport units */
   overflow-y: auto;
   resize: none;
   padding: 10px 12px;
