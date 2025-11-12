@@ -39,7 +39,8 @@ test.describe('Chat Actions @prod', () => {
 
     // Verify request structure
     expect(chatRequests[0].method).toBe('POST');
-    expect(chatRequests[0].postData).toHaveProperty('text', 'ping');
+    expect(chatRequests[0].postData).toHaveProperty('messages');
+    expect(chatRequests[0].postData.messages[0]).toHaveProperty('content', 'ping');
   });
 
   test('tool button triggers a server call', async ({ page }) => {
@@ -71,7 +72,8 @@ test.describe('Chat Actions @prod', () => {
 
     // Verify request structure
     expect(toolRequests[0].method).toBe('POST');
-    expect(toolRequests[0].postData).toHaveProperty('tool', 'month_summary');
+    expect(toolRequests[0].postData).toHaveProperty('messages');
+    expect(toolRequests[0].postData).toHaveProperty('mode', 'charts.month_summary');
   });
 
   test('INIT config is received by iframe', async ({ page }) => {
