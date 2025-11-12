@@ -1,5 +1,9 @@
 import { defineConfig, devices } from '@playwright/test';
 import * as path from 'node:path';
+import * as dotenv from 'dotenv';
+
+// Load .env from repository root (use relative path from apps/web)
+dotenv.config({ path: '../../.env' });
 
 const E2E_DB_HOST = process.env.E2E_DB_HOST || '127.0.0.1';
 const isCI = !!process.env.CI;
@@ -7,6 +11,16 @@ const workers = parseInt(process.env.PW_WORKERS ?? '24', 10);
 const prodWorkers = parseInt(process.env.PW_PROD_WORKERS ?? '2', 10);
 const baseURL = process.env.BASE_URL ?? 'http://127.0.0.1:5173';
 const useDev = process.env.USE_DEV === '0' || process.env.USE_DEV === 'false' ? false : true;
+
+// Validate HMAC credentials for production tests
+const E2E_USER = process.env.E2E_USER;
+const E2E_SESSION_HMAC_SECRET = process.env.E2E_SESSION_HMAC_SECRET;
+
+if (!E2E_USER || !E2E_SESSION_HMAC_SECRET) {
+  console.warn(
+    '[playwright] E2E_USER or E2E_SESSION_HMAC_SECRET missing – prod HMAC tests will fail.'
+  );
+}
 
 // Auto-detect production vs local
 const IS_PROD = /https?:\/\/(app\.)?ledger-mind\.org/i.test(baseURL);
@@ -38,7 +52,7 @@ export default defineConfig({
     navigationTimeout: 15_000,
     ignoreHTTPSErrors: true,
   },
-  projects: IS_PROD 
+  projects: IS_PROD
     ? [
         // Production: only run chromium-prod with @prod filter
         {
