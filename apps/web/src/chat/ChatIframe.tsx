@@ -114,8 +114,16 @@ export function ChatIframe() {
 
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
-      const data = await res.json();
-      const reply = data.reply ?? data.result?.text ?? data.text ?? '(no reply)';
+      const data = await res.json().catch(() => ({}));
+      const reply =
+        data.reply ??
+        data.text ??
+        data?.result?.text ??
+        (typeof data === 'string' ? data : '');
+
+      if (!reply) {
+        console.debug('[chat] full response', data);
+      }
 
       // Add assistant response to store
       const newState = useChatSession.getState();
@@ -123,13 +131,13 @@ export function ChatIframe() {
         messages: [...newState.messages, {
           id: crypto.randomUUID(),
           role: 'assistant',
-          text: reply,
+          text: reply || '⚠️ No text returned. See console for full JSON.',
           at: Date.now(),
           meta: data.meta ?? { mode: data.mode }
         }]
       });
 
-      console.log('[ChatIframe] received reply:', reply.slice(0, 80));
+      console.log('[ChatIframe] received reply:', (reply || 'no text').slice(0, 80));
     } catch (err) {
       console.error('[ChatIframe] submit failed:', err);
 
@@ -169,24 +177,38 @@ export function ChatIframe() {
       }]
     });
 
+    // Map tool names to backend mode names
+    const TOOL_MAP: Record<string, string> = {
+      'month_summary': 'charts.month_summary',
+      'trends': 'charts.month_trends',
+      'alerts': 'charts.month_alerts',
+      'recurring': 'charts.recurring',
+      'subscriptions': 'charts.subscriptions',
+      'find_subscriptions': 'find_subscriptions',
+      'insights': 'insights',
+      'kpis': 'kpis',
+      'budget_suggest': 'budget_suggest',
+      'search_transactions': 'nl_txns',
+    };
+
+    const mode = TOOL_MAP[tool];
+    if (!mode) {
+      // Unknown tool - abort with error message
+      const newState = useChatSession.getState();
+      useChatSession.setState({
+        messages: [...newState.messages, {
+          id: crypto.randomUUID(),
+          role: 'assistant',
+          text: `⚠️ Unknown tool "${tool}".`,
+          at: Date.now()
+        }]
+      });
+      return;
+    }
+
     setBusy(true);
 
     try {
-      // Map tool names to backend mode names
-      const modeMap: Record<string, string> = {
-        'month_summary': 'charts.month_summary',
-        'trends': 'charts.month_trends',
-        'alerts': 'charts.month_alerts',
-        'recurring': 'charts.recurring',
-        'subscriptions': 'charts.subscriptions',
-        'find_subscriptions': 'find_subscriptions',
-        'insights': 'insights',
-        'kpis': 'kpis',
-        'budget_suggest': 'budget_suggest',
-        'search_transactions': 'nl_txns',
-      };
-
-      const mode = modeMap[tool] || tool;
 
       const res = await fetch(`${INIT.apiBase}/agent/chat`, {
         method: 'POST',
@@ -202,21 +224,29 @@ export function ChatIframe() {
 
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
-      const data = await res.json();
-      const reply = data.reply ?? data.result?.text ?? data.text ?? JSON.stringify(data.result ?? data, null, 2);
+      const data = await res.json().catch(() => ({}));
+      const reply =
+        data.reply ??
+        data.text ??
+        data?.result?.text ??
+        (typeof data === 'string' ? data : '');
+
+      if (!reply) {
+        console.debug('[chat] tool response', data);
+      }
 
       const newState = useChatSession.getState();
       useChatSession.setState({
         messages: [...newState.messages, {
           id: crypto.randomUUID(),
           role: 'assistant',
-          text: reply,
+          text: reply || JSON.stringify(data.result ?? data, null, 2) || '⚠️ No text returned. See console for full JSON.',
           at: Date.now(),
           meta: { mode: data.mode, ...data.meta }
         }]
       });
 
-      console.log('[ChatIframe] tool result:', reply.slice(0, 80));
+      console.log('[ChatIframe] tool result:', (reply || 'structured data').slice(0, 80));
     } catch (err) {
       console.error('[ChatIframe] tool failed:', err);
 

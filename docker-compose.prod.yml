@@ -105,8 +105,6 @@ services:
       # DevDiag
       DEVDIAG_TIMEOUT_S: "${DEVDIAG_TIMEOUT_S:-120}"
       DEVDIAG_ALLOW_HOSTS: "${DEVDIAG_ALLOW_HOSTS:-app.ledger-mind.org}"
-      DEVDIAG_BASE: "${DEVDIAG_BASE:-}"
-      DEVDIAG_JWT: "${DEVDIAG_JWT:-}"
     entrypoint: []
     command: >
       python -m uvicorn app.main:app

@@ -3,6 +3,7 @@ import { useChatSession } from "@/state/chatSession";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
