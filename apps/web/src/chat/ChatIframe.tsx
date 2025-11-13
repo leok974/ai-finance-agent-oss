@@ -442,10 +442,10 @@ export function ChatIframe() {
       <main data-testid="lm-chat-main">
         <section ref={listRef} data-testid="lm-chat-messages">
         {uiMessages.length === 0 && (
-          <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--lm-muted)' }}>
-            <p>Hey! 👋</p>
-            <p style={{ marginTop: '0.5rem', fontSize: '14px' }}>
-              Start a conversation or use the tools above.
+          <div className="lm-chat-greeting">
+            <p className="lm-chat-greeting-title">Hey! 👋</p>
+            <p className="lm-chat-greeting-body">
+              Start a conversation or pick a tool from the header to explore your spending.
             </p>
           </div>
         )}
