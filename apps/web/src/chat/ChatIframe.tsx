@@ -14,11 +14,32 @@ import {
   subscribe as subscribeTools,
   toggleTools,
 } from '@/state/chat/toolsPanel';
+import {
+  FileJson,
+  FileText,
+  Wrench,
+  CalendarRange,
+  TrendingUp,
+  Bell,
+  RefreshCw,
+  Search,
+  Sparkles,
+} from "lucide-react";
 
 const { useEffect, useRef, useState } = React;
 
 type MsgRole = 'user' | 'assistant';
 type Msg = { role: MsgRole; text: string; ts: number; meta?: any };
+
+const headerChipClass =
+  "inline-flex h-7 items-center gap-1.5 rounded-full border border-border " +
+  "bg-secondary/80 px-3 text-[11px] font-medium text-secondary-foreground " +
+  "shadow-sm transition-colors hover:bg-secondary/90 hover:border-primary/70";
+
+const toolChipClass =
+  "inline-flex h-7 items-center gap-1.5 rounded-full border border-border/80 " +
+  "bg-muted/70 px-3 text-[11px] font-medium text-muted-foreground " +
+  "shadow-sm transition-colors hover:bg-muted/90 hover:border-primary/60";
 
 export function ChatIframe() {
   const listRef = useRef<HTMLDivElement>(null);
@@ -337,11 +358,9 @@ export function ChatIframe() {
                 // Export logic placeholder
                 console.log('[ChatIframe] Export JSON');
               }}
-              className="lm-chip-with-icon"
+              className={headerChipClass}
             >
-              <span className="lm-chip-icon" aria-hidden="true">
-                {"{ }"}
-              </span>
+              <FileJson className="h-3.5 w-3.5" aria-hidden="true" />
               <span>Export JSON</span>
             </button>
 
@@ -351,22 +370,18 @@ export function ChatIframe() {
                 // Export logic placeholder
                 console.log('[ChatIframe] Export Markdown');
               }}
-              className="lm-chip-with-icon"
+              className={headerChipClass}
             >
-              <span className="lm-chip-icon" aria-hidden="true">
-                MD
-              </span>
+              <FileText className="h-3.5 w-3.5" aria-hidden="true" />
               <span>Export Markdown</span>
             </button>
 
             <button
               data-testid="chat-tools-toggle"
               onClick={() => toggleTools()}
-              className="lm-chip-with-icon"
+              className={headerChipClass}
             >
-              <span className="lm-chip-icon" aria-hidden="true">
-                🛠
-              </span>
+              <Wrench className="h-3.5 w-3.5" aria-hidden="true" />
               <span>{showTools ? 'Hide tools' : 'Show tools'}</span>
             </button>
           </div>
@@ -376,15 +391,15 @@ export function ChatIframe() {
         {showTools && (
           <div className="lm-chat-header-tools" data-testid="lm-chat-tools">
             <div className="lm-tools-group">
-              <div className="lm-tools-group-label">Insights</div>
+              <div className="lm-tools-group-label">INSIGHTS</div>
               <div className="lm-tools-chips-row">
                 <button
                   data-testid="chat-tool-month-summary"
                   onClick={() => runTool('month_summary')}
                   disabled={busy}
-                  className="lm-chip-with-icon"
+                  className={toolChipClass}
                 >
-                  <span className="lm-chip-icon" aria-hidden="true">📆</span>
+                  <CalendarRange className="h-3.5 w-3.5" aria-hidden="true" />
                   <span>Month summary</span>
                 </button>
 
@@ -392,9 +407,9 @@ export function ChatIframe() {
                   data-testid="chat-tool-trends"
                   onClick={() => runTool('trends')}
                   disabled={busy}
-                  className="lm-chip-with-icon"
+                  className={toolChipClass}
                 >
-                  <span className="lm-chip-icon" aria-hidden="true">📈</span>
+                  <TrendingUp className="h-3.5 w-3.5" aria-hidden="true" />
                   <span>Trends</span>
                 </button>
 
@@ -402,24 +417,24 @@ export function ChatIframe() {
                   data-testid="chat-tool-alerts"
                   onClick={() => runTool('alerts')}
                   disabled={busy}
-                  className="lm-chip-with-icon"
+                  className={toolChipClass}
                 >
-                  <span className="lm-chip-icon" aria-hidden="true">⚠️</span>
+                  <Bell className="h-3.5 w-3.5" aria-hidden="true" />
                   <span>Alerts</span>
                 </button>
               </div>
             </div>
 
             <div className="lm-tools-group">
-              <div className="lm-tools-group-label">Subscriptions</div>
+              <div className="lm-tools-group-label">SUBSCRIPTIONS</div>
               <div className="lm-tools-chips-row">
                 <button
                   data-testid="chat-tool-recurring"
                   onClick={() => runTool('recurring')}
                   disabled={busy}
-                  className="lm-chip-with-icon"
+                  className={toolChipClass}
                 >
-                  <span className="lm-chip-icon" aria-hidden="true">🔁</span>
+                  <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
                   <span>Recurring</span>
                 </button>
 
@@ -427,24 +442,24 @@ export function ChatIframe() {
                   data-testid="chat-tool-find-subscriptions"
                   onClick={() => runTool('find_subscriptions')}
                   disabled={busy}
-                  className="lm-chip-with-icon"
+                  className={toolChipClass}
                 >
-                  <span className="lm-chip-icon" aria-hidden="true">🔎</span>
+                  <Search className="h-3.5 w-3.5" aria-hidden="true" />
                   <span>Find subscriptions</span>
                 </button>
               </div>
             </div>
 
             <div className="lm-tools-group">
-              <div className="lm-tools-group-label">Search & planning</div>
+              <div className="lm-tools-group-label">SEARCH &amp; PLANNING</div>
               <div className="lm-tools-chips-row">
                 <button
                   data-testid="chat-tool-insights"
                   onClick={() => runTool('insights')}
                   disabled={busy}
-                  className="lm-chip-with-icon"
+                  className={toolChipClass}
                 >
-                  <span className="lm-chip-icon" aria-hidden="true">🧠</span>
+                  <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
                   <span>Insights (Q)</span>
                 </button>
 
@@ -452,9 +467,9 @@ export function ChatIframe() {
                   data-testid="chat-tool-budget-suggest"
                   onClick={() => runTool('budget_suggest')}
                   disabled={busy}
-                  className="lm-chip-with-icon"
+                  className={toolChipClass}
                 >
-                  <span className="lm-chip-icon" aria-hidden="true">💡</span>
+                  <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
                   <span>Budget suggest</span>
                 </button>
 
@@ -462,9 +477,9 @@ export function ChatIframe() {
                   data-testid="chat-tool-search-transactions"
                   onClick={() => runTool('search_transactions')}
                   disabled={busy}
-                  className="lm-chip-with-icon"
+                  className={toolChipClass}
                 >
-                  <span className="lm-chip-icon" aria-hidden="true">🔍</span>
+                  <Search className="h-3.5 w-3.5" aria-hidden="true" />
                   <span>Search transactions (NL)</span>
                 </button>
               </div>
