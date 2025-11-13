@@ -3,12 +3,9 @@ import { test, expect } from '@playwright/test';
 const IS_PROD = process.env.IS_PROD === 'true';
 const BASE_URL = process.env.BASE_URL ?? 'http://127.0.0.1:5173';
 
-test.describe.skip(
-  IS_PROD,
-  'chat-auth-401 is dev-only; prod covers auth via backend tests and login flow.'
-);
-
 test.describe('Chat Auth Handling (dev only)', () => {
+  test.skip(IS_PROD, 'chat-auth-401 is dev-only; prod covers auth via backend tests and login flow');
+
   test('shows auth banner and disables send when unauthenticated', async ({ page, context }) => {
     // Start from a clean unauthenticated state
     await context.clearCookies();
