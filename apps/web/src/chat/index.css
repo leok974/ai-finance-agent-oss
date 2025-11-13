@@ -678,6 +678,34 @@ textarea.lm-input,
   margin: 0;
 }
 
+/* ===== CHIP WITH ICON PATTERN ===== */
+/* Generic chip-with-icon pattern (used for header actions + tools) */
+.lm-chip-with-icon {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding-inline: 0.7rem; /* keep existing vertical padding from button */
+}
+
+.lm-chip-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 0.9rem;
+  height: 0.9rem;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.9);
+  box-shadow: 0 0 0 1px rgba(51, 65, 85, 0.95);
+  font-size: 0.62rem;
+}
+
+/* Slight tweak so chips don't feel cramped */
+.lm-chat-header-actions button.lm-chip-with-icon,
+.lm-tools-chips-row button.lm-chip-with-icon {
+  padding-top: 0.25rem;
+  padding-bottom: 0.25rem;
+}
+
 /* ===== INPUT / FOOTER – REFINED WITH GRADIENT SEND BUTTON ===== */
 [data-testid="lm-chat-input-wrapper"] {
   border-top: 1px solid rgba(30, 64, 175, 0.55);

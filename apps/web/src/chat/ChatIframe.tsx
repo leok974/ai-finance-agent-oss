@@ -337,23 +337,37 @@ export function ChatIframe() {
                 // Export logic placeholder
                 console.log('[ChatIframe] Export JSON');
               }}
+              className="lm-chip-with-icon"
             >
-              Export JSON
+              <span className="lm-chip-icon" aria-hidden="true">
+                {"{ }"}
+              </span>
+              <span>Export JSON</span>
             </button>
+
             <button
               data-testid="chat-export-markdown"
               onClick={() => {
                 // Export logic placeholder
                 console.log('[ChatIframe] Export Markdown');
               }}
+              className="lm-chip-with-icon"
             >
-              Export Markdown
+              <span className="lm-chip-icon" aria-hidden="true">
+                MD
+              </span>
+              <span>Export Markdown</span>
             </button>
+
             <button
               data-testid="chat-tools-toggle"
               onClick={() => toggleTools()}
+              className="lm-chip-with-icon"
             >
-              {showTools ? 'Hide tools' : 'Show tools'}
+              <span className="lm-chip-icon" aria-hidden="true">
+                🛠
+              </span>
+              <span>{showTools ? 'Hide tools' : 'Show tools'}</span>
             </button>
           </div>
         </div>
@@ -368,22 +382,30 @@ export function ChatIframe() {
                   data-testid="chat-tool-month-summary"
                   onClick={() => runTool('month_summary')}
                   disabled={busy}
+                  className="lm-chip-with-icon"
                 >
-                  Month summary
+                  <span className="lm-chip-icon" aria-hidden="true">📆</span>
+                  <span>Month summary</span>
                 </button>
+
                 <button
                   data-testid="chat-tool-trends"
                   onClick={() => runTool('trends')}
                   disabled={busy}
+                  className="lm-chip-with-icon"
                 >
-                  Trends
+                  <span className="lm-chip-icon" aria-hidden="true">📈</span>
+                  <span>Trends</span>
                 </button>
+
                 <button
                   data-testid="chat-tool-alerts"
                   onClick={() => runTool('alerts')}
                   disabled={busy}
+                  className="lm-chip-with-icon"
                 >
-                  Alerts
+                  <span className="lm-chip-icon" aria-hidden="true">⚠️</span>
+                  <span>Alerts</span>
                 </button>
               </div>
             </div>
@@ -395,15 +417,20 @@ export function ChatIframe() {
                   data-testid="chat-tool-recurring"
                   onClick={() => runTool('recurring')}
                   disabled={busy}
+                  className="lm-chip-with-icon"
                 >
-                  Recurring
+                  <span className="lm-chip-icon" aria-hidden="true">🔁</span>
+                  <span>Recurring</span>
                 </button>
+
                 <button
                   data-testid="chat-tool-find-subscriptions"
                   onClick={() => runTool('find_subscriptions')}
                   disabled={busy}
+                  className="lm-chip-with-icon"
                 >
-                  Find subscriptions
+                  <span className="lm-chip-icon" aria-hidden="true">🔎</span>
+                  <span>Find subscriptions</span>
                 </button>
               </div>
             </div>
@@ -415,22 +442,30 @@ export function ChatIframe() {
                   data-testid="chat-tool-insights"
                   onClick={() => runTool('insights')}
                   disabled={busy}
+                  className="lm-chip-with-icon"
                 >
-                  Insights (Q)
+                  <span className="lm-chip-icon" aria-hidden="true">🧠</span>
+                  <span>Insights (Q)</span>
                 </button>
+
                 <button
                   data-testid="chat-tool-budget-suggest"
                   onClick={() => runTool('budget_suggest')}
                   disabled={busy}
+                  className="lm-chip-with-icon"
                 >
-                  Budget suggest
+                  <span className="lm-chip-icon" aria-hidden="true">💡</span>
+                  <span>Budget suggest</span>
                 </button>
+
                 <button
                   data-testid="chat-tool-search-transactions"
                   onClick={() => runTool('search_transactions')}
                   disabled={busy}
+                  className="lm-chip-with-icon"
                 >
-                  Search transactions (NL)
+                  <span className="lm-chip-icon" aria-hidden="true">🔍</span>
+                  <span>Search transactions (NL)</span>
                 </button>
               </div>
             </div>
