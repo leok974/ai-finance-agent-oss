@@ -35,7 +35,11 @@ import { chatStore, type BasicMsg, snapshot as chatSnapshot, restoreFromSnapshot
 import runAndRephrase from "./agent-tools/runAndRephrase";
 import { registerChatHandlers } from "@/state/chat";
 import { DEFAULT_PLACEHOLDER, focusComposer, registerComposerControls, setComposer, setComposerPlaceholder as setComposerPlaceholderUI } from "@/state/chat/ui";
-import { toolsPanel } from "@/state/chat/toolsPanel";
+import {
+  getToolsOpen,
+  subscribe as subscribeTools,
+  toggleTools,
+} from '@/state/chat/toolsPanel';
 import { handleTransactionsNL } from "./AgentTools";
 import FallbackBadge from "./FallbackBadge";
 import { useShowDevTools } from "@/state/auth";
@@ -267,17 +271,23 @@ export default function ChatDock() {
   // Track last month summary for deep-dive follow-up
   const lastMonthSummaryRef = useRef<any>(null);
   // Tools panel visibility (from global store)
-  const [showTools, setShowTools] = useState<boolean>(() => toolsPanel.getState().visible);
+  const [showTools, setShowTools] = useState<boolean>(() => getToolsOpen());
   const [activePreset, setActivePreset] = useState<ToolPresetKey>('insights_expanded');
   const [toolPayload, setToolPayload] = useState<string>(() => JSON.stringify(TOOL_PRESETS['insights_expanded'].defaultPayload ?? {}, null, 2));
-  
+
   // Subscribe to toolsPanel store
   useEffect(() => {
-    return toolsPanel.subscribe((state) => {
-      setShowTools(state.visible);
-    });
+    return subscribeTools(setShowTools);
   }, []);
-  
+
+  // Sync data-tools-open attribute to iframe element for E2E testing
+  useEffect(() => {
+    const iframe = document.getElementById('lm-chat-iframe') as HTMLIFrameElement | null;
+    if (iframe) {
+      iframe.dataset.toolsOpen = showTools ? 'true' : 'false';
+    }
+  }, [showTools]);
+
   // ML selftest UI removed
   // Undo snackbar (animated) for destructive actions like Clear
   const [undoVisible, setUndoVisible] = React.useState(false);
@@ -1838,9 +1848,16 @@ export default function ChatDock() {
     <div
       key={version}
       ref={panelRef}
-  className="fixed z-[70] w-[min(760px,calc(100vw-2rem))] max-h-[80vh] rounded-2xl border border-neutral-700 shadow-xl bg-neutral-900/95 backdrop-blur p-4 flex flex-col min-h-[320px]"
-  style={{ right: rb.right, bottom: rb.bottom, position: 'fixed' as const }}
-  data-chatdock-root
+      className="
+        fixed bottom-6 right-6 z-[2147483645]
+        flex flex-col
+        w-[640px] max-w-[min(640px,90vw)]
+        max-h-[min(720px,80vh)]
+        rounded-2xl border-0
+      "
+      style={{ position: 'fixed' as const }}
+      data-chatdock-root
+      data-testid="chat-panel-shell"
     >
       {/* Debug overlay (dev only) */}
       {typeof process !== 'undefined' && process.env?.NODE_ENV !== "production" && (
@@ -1963,7 +1980,7 @@ export default function ChatDock() {
             type="button"
             data-testid="chat-tools-toggle"
             onPointerDown={(e) => e.stopPropagation()}
-            onClick={(e) => { e.stopPropagation(); toolsPanel.toggleTools(); }}
+            onClick={(e) => { e.stopPropagation(); toggleTools(); }}
             aria-expanded={showTools}
             aria-controls="agent-tools-panel"
             className="text-xs px-2 py-1 border rounded-md hover:bg-muted inline-flex items-center gap-1"
