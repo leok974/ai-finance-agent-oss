@@ -4,11 +4,12 @@ const BASE = process.env.BASE_URL || 'https://app.ledger-mind.org';
 
 test.describe('@prod-critical Chat Tools Toggle', () => {
   test('tools toggle button persists when hiding/showing tools', async ({ page }) => {
-    await page.goto(`${BASE}/?chat=1`);
+    // Use minimal-UI URL to avoid overlay interference
+    await page.goto(`${BASE}/?chat=1&prefetch=0&panel=0`);
     
-    // Open chat dock
-    await page.getByTestId('chat-toggle').click();
+    // Chat should auto-open with ?chat=1, wait for iframe
     const frame = page.frameLocator('#lm-chat-iframe');
+    await frame.locator('body').waitFor({ state: 'visible', timeout: 10000 });
 
     // Tools toggle should be visible
     const toggle = frame.getByTestId('chat-tools-toggle');
