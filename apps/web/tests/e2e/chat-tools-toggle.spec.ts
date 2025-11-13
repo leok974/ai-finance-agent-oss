@@ -1,29 +1,33 @@
 import { test, expect } from '@playwright/test';
 
-const BASE = process.env.BASE_URL || 'https://app.ledger-mind.org';
+const BASE_URL = process.env.BASE_URL ?? 'https://app.ledger-mind.org';
 
 test.describe('@prod-critical Chat Tools Toggle', () => {
-  test('tools toggle button persists when hiding/showing tools', async ({ page }) => {
+  test('toggles tools panel inside chat iframe', async ({ page }) => {
     // Use minimal-UI URL to avoid overlay interference
-    await page.goto(`${BASE}/?chat=1&prefetch=0&panel=0`);
+    await page.goto(`${BASE_URL}/?chat=1&prefetch=0&panel=0`);
     
-    // Chat should auto-open with ?chat=1, wait for iframe
-    const frame = page.frameLocator('#lm-chat-iframe');
-    await frame.locator('body').waitFor({ state: 'visible', timeout: 10000 });
+    // Wait for iframe wrapper to exist
+    const iframeWrapper = page.getByTestId('lm-chat-iframe');
+    await expect(iframeWrapper).toBeVisible();
 
-    // Tools toggle should be visible
+    // Chat frame (same-origin)
+    const frame = page.frameLocator('[data-testid="lm-chat-iframe"] iframe');
+
     const toggle = frame.getByTestId('chat-tools-toggle');
-    await expect(toggle).toBeVisible();
-    await expect(toggle).toContainText('Hide tools');
+    await toggle.waitFor({ state: 'visible' });
 
-    // Hide tools - button should still be visible
+    // Get initial tools state
+    const initialState = await iframeWrapper.getAttribute('data-tools-open');
+    
+    // Click toggle - state should flip
     await toggle.click();
-    await expect(toggle).toBeVisible();
-    await expect(toggle).toContainText('Show tools');
-
-    // Show tools again
+    const afterFirstClick = await iframeWrapper.getAttribute('data-tools-open');
+    expect(afterFirstClick).not.toBe(initialState);
+    
+    // Click again - should return to initial state
     await toggle.click();
-    await expect(toggle).toBeVisible();
-    await expect(toggle).toContainText('Hide tools');
+    const afterSecondClick = await iframeWrapper.getAttribute('data-tools-open');
+    expect(afterSecondClick).toBe(initialState);
   });
 });

@@ -325,7 +325,11 @@ export function ChatIframe() {
   }, {} as Record<string, Msg[]>);
 
   return (
-    <div className="lm-iframe" data-testid="lm-chat-iframe">
+    <div 
+      className="lm-iframe" 
+      data-testid="lm-chat-iframe"
+      data-tools-open={showTools ? 'true' : 'false'}
+    >
       {/* Tools header (row 1) - sticky with horizontal scroll */}
       <header className="lm-tools-area">
         {showTools && (
