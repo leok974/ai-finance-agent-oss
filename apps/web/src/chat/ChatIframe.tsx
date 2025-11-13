@@ -9,7 +9,11 @@ import * as React from 'react';
 import { useChatSession } from '@/state/chatSession';
 import { getInit } from './main';
 import { fetchJSON } from '@/lib/http';
-import { toolsPanel } from '@/state/chat/toolsPanel';
+import {
+  getToolsOpen,
+  subscribe as subscribeTools,
+  toggleTools,
+} from '@/state/chat/toolsPanel';
 
 const { useEffect, useRef, useState } = React;
 
@@ -20,15 +24,13 @@ export function ChatIframe() {
   const listRef = useRef<HTMLDivElement>(null);
   const [draft, setDraft] = useState('');
   const [uiMessages, setUiMessages] = useState<Msg[]>([]);
-  const [showTools, setShowTools] = useState(() => toolsPanel.getState().visible);
+  const [showTools, setShowTools] = useState(() => getToolsOpen());
   const [busy, setBusy] = useState(false);
   const [authOk, setAuthOk] = useState(true);
 
   // Subscribe to toolsPanel store
   useEffect(() => {
-    return toolsPanel.subscribe((state) => {
-      setShowTools(state.visible);
-    });
+    return subscribeTools(setShowTools);
   }, []);
 
   // 🔥 Deferred subscription to Zustand store (prevents infinite render loop)
@@ -152,17 +154,10 @@ export function ChatIframe() {
       // Check if it's a 401 auth error
       const errMsg = String(err);
       if (errMsg.includes('401')) {
+        // Set auth flag to show banner, but don't add error to chat
         setAuthOk(false);
-        const newState = useChatSession.getState();
-        useChatSession.setState({
-          messages: [...newState.messages, {
-            id: crypto.randomUUID(),
-            role: 'assistant',
-            text: `⚠️ You're not signed in. Please sign in to send messages.`,
-            at: Date.now()
-          }]
-        });
       } else {
+        // For non-auth errors, show error in chat
         const newState = useChatSession.getState();
         useChatSession.setState({
           messages: [...newState.messages, {
@@ -325,48 +320,127 @@ export function ChatIframe() {
   }, {} as Record<string, Msg[]>);
 
   return (
-    <div 
-      className="lm-iframe" 
-      data-testid="lm-chat-iframe"
-      data-tools-open={showTools ? 'true' : 'false'}
-    >
-      {/* Tools header (row 1) - sticky with horizontal scroll */}
-      <header className="lm-tools-area">
+    <div data-testid="lm-chat-iframe">
+      {/* HEADER */}
+      <header data-testid="lm-chat-header">
+        {/* Top row: title + status + export actions */}
+        <div className="lm-chat-header-top">
+          <div className="lm-chat-brand">
+            <span className="lm-chat-title">LedgerMind Assistant</span>
+            <span className="lm-chat-status-pill">LLM: OK</span>
+          </div>
+
+          <div className="lm-chat-header-actions">
+            <button
+              data-testid="chat-export-json"
+              onClick={() => {
+                // Export logic placeholder
+                console.log('[ChatIframe] Export JSON');
+              }}
+            >
+              Export JSON
+            </button>
+            <button
+              data-testid="chat-export-markdown"
+              onClick={() => {
+                // Export logic placeholder
+                console.log('[ChatIframe] Export Markdown');
+              }}
+            >
+              Export Markdown
+            </button>
+            <button
+              data-testid="chat-tools-toggle"
+              onClick={() => toggleTools()}
+            >
+              {showTools ? 'Hide tools' : 'Show tools'}
+            </button>
+          </div>
+        </div>
+
+        {/* Second row: grouped tools */}
         {showTools && (
-          <div className="lm-tools-row">
-            <button className="chip" disabled={busy} onClick={() => runTool('month_summary')}>Month summary</button>
-            <button className="chip" disabled={busy} onClick={() => runTool('trends')}>Trends</button>
-            <button className="chip" disabled={busy} onClick={() => runTool('alerts')}>Alerts</button>
-            <button className="chip" disabled={busy} onClick={() => runTool('recurring')}>Recurring</button>
-            <button className="chip" disabled={busy} onClick={() => runTool('subscriptions')}>Subscriptions</button>
-            <div className="chip chip--ghost" />
-            <button className="chip" disabled={busy} onClick={() => runTool('find_subscriptions')}>Find subscriptions</button>
-            <button className="chip" disabled={busy} onClick={() => runTool('insights')}>Insights (C)</button>
-            <button className="chip" disabled={busy} onClick={() => runTool('kpis')}>KPIs</button>
-            <button className="chip" disabled={busy} onClick={() => runTool('budget_suggest')}>Budget suggest</button>
-            <button className="chip" disabled={busy} onClick={() => runTool('search_transactions')}>Search transactions (NL)</button>
+          <div className="lm-chat-header-tools" data-testid="lm-chat-tools">
+            <div className="lm-tools-group">
+              <div className="lm-tools-group-label">Insights</div>
+              <div className="lm-tools-chips-row">
+                <button
+                  data-testid="chat-tool-month-summary"
+                  onClick={() => runTool('month_summary')}
+                  disabled={busy}
+                >
+                  Month summary
+                </button>
+                <button
+                  data-testid="chat-tool-trends"
+                  onClick={() => runTool('trends')}
+                  disabled={busy}
+                >
+                  Trends
+                </button>
+                <button
+                  data-testid="chat-tool-alerts"
+                  onClick={() => runTool('alerts')}
+                  disabled={busy}
+                >
+                  Alerts
+                </button>
+              </div>
+            </div>
+
+            <div className="lm-tools-group">
+              <div className="lm-tools-group-label">Subscriptions</div>
+              <div className="lm-tools-chips-row">
+                <button
+                  data-testid="chat-tool-recurring"
+                  onClick={() => runTool('recurring')}
+                  disabled={busy}
+                >
+                  Recurring
+                </button>
+                <button
+                  data-testid="chat-tool-find-subscriptions"
+                  onClick={() => runTool('find_subscriptions')}
+                  disabled={busy}
+                >
+                  Find subscriptions
+                </button>
+              </div>
+            </div>
+
+            <div className="lm-tools-group">
+              <div className="lm-tools-group-label">Search & planning</div>
+              <div className="lm-tools-chips-row">
+                <button
+                  data-testid="chat-tool-insights"
+                  onClick={() => runTool('insights')}
+                  disabled={busy}
+                >
+                  Insights (Q)
+                </button>
+                <button
+                  data-testid="chat-tool-budget-suggest"
+                  onClick={() => runTool('budget_suggest')}
+                  disabled={busy}
+                >
+                  Budget suggest
+                </button>
+                <button
+                  data-testid="chat-tool-search-transactions"
+                  onClick={() => runTool('search_transactions')}
+                  disabled={busy}
+                >
+                  Search transactions (NL)
+                </button>
+              </div>
+            </div>
           </div>
         )}
-
-        <div className="lm-toolsbar">
-          <span className="badge badge--ok">LLM: OK</span>
-          <button className="btn btn--ghost">Export JSON</button>
-          <button className="btn btn--ghost">Export Markdown</button>
-          <button className="btn btn--ghost">History</button>
-          <button className="btn btn--ghost">Reset</button>
-          <button className="btn btn--ghost">Clear</button>
-          <button
-            data-testid="chat-tools-toggle"
-            className="btn btn--ghost"
-            onClick={() => toolsPanel.toggleTools()}
-          >
-            {showTools ? 'Hide tools' : 'Show tools'}
-          </button>
-        </div>
       </header>
 
-      {/* Scrollable messages (row 2) */}
-      <main className="lm-thread" ref={listRef}>
+      {/* BODY */}
+      <main data-testid="lm-chat-main">
+        <section ref={listRef} data-testid="lm-chat-messages">
         {uiMessages.length === 0 && (
           <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--lm-muted)' }}>
             <p>Hey! 👋</p>
@@ -420,43 +494,64 @@ export function ChatIframe() {
             })}
           </div>
         ))}
-      </main>
+      </section>
+    </main>
 
-      {/* Composer (row 3) */}
-      <footer className="lm-composer">
+      {/* FOOTER */}
+      <footer data-testid="lm-chat-input-wrapper">
         {!authOk && (
           <div
             data-testid="chat-auth-banner"
             style={{
-              backgroundColor: 'rgba(217, 119, 6, 0.1)',
-              border: '1px solid rgba(217, 119, 6, 0.3)',
+              backgroundColor: 'rgb(254, 243, 199)',
+              border: '1px solid rgb(251, 191, 36)',
               borderRadius: '0.375rem',
-              color: 'rgb(251, 191, 36)',
+              color: 'rgb(146, 64, 14)',
               fontSize: '0.875rem',
-              padding: '0.5rem 0.75rem',
-              marginBottom: '0.5rem'
+              padding: '0.75rem',
+              marginBottom: '0.75rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem'
             }}
           >
-            You're not signed in. <a href="/login" style={{ textDecoration: 'underline' }}>Sign in</a> to enable chat.
+            <span style={{ fontSize: '1.125rem' }}>⚠️</span>
+            <span>
+              You're not signed in.{' '}
+              <a
+                href="/login"
+                style={{
+                  color: 'rgb(146, 64, 14)',
+                  fontWeight: '600',
+                  textDecoration: 'underline'
+                }}
+              >
+                Sign in
+              </a>{' '}
+              to enable chat.
+            </span>
           </div>
         )}
-        <form onSubmit={handleSubmit} style={{ display: 'contents' }}>
-          <input
-            data-testid="chat-input"
-            className="input"
-            placeholder="Ask or type a command…"
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            disabled={busy || !authOk}
-          />
-          <button
-            data-testid="chat-send"
-            type="submit"
-            className="btn btn--primary"
-            disabled={!draft.trim() || busy || !authOk}
-          >
-            {busy ? '...' : 'Send'}
-          </button>
+        <form onSubmit={handleSubmit}>
+          <div className="lm-chat-input-row">
+            <textarea
+              data-testid="chat-input"
+              className="input"
+              placeholder="Ask or type a command…"
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              disabled={busy || !authOk}
+              rows={1}
+            />
+            <button
+              data-testid="chat-send"
+              type="submit"
+              className="btn btn--primary"
+              disabled={!draft.trim() || busy || !authOk}
+            >
+              {busy ? '...' : 'Send'}
+            </button>
+          </div>
         </form>
       </footer>
     </div>
