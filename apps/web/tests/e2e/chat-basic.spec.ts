@@ -91,7 +91,7 @@ test.describe('Chat API Basic @prod', () => {
     });
 
     const r = await request.post(getAgentChatUrl(BASE_URL), {
-      headers,
+      headers: { ...headers, 'x-test-mode': 'stub' },
       data: JSON.parse(body),
     });
 
