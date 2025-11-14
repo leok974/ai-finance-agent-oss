@@ -54,6 +54,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { cn } from "@/lib/utils";
 // Minimal process env typing for test gating without pulling full @types/node
 declare const process: { env?: Record<string,string|undefined> } | undefined;
 
@@ -1815,23 +1816,23 @@ export default function ChatDock() {
     window.addEventListener("pointerup", onUp);
   }, [rb]);
 
-  // Unified launcher class based on open state
-  const launcherClass = [
-    "lm-chat-launcher",
-    open ? "lm-chat-launcher--open" : "lm-chat-launcher--closed",
-  ].join(" ");
-
+  // Launcher root with static class only (no state modifiers)
   const launcherEl = (
     <div
-      className={launcherClass}
+      className="lm-chat-launcher"
       data-testid="lm-chat-launcher-root"
       data-chatdock-root
+      data-state={open ? "open" : "closed"}
     >
       {/* Bubble (closed state visual) */}
       <button
         type="button"
         data-testid="lm-chat-launcher-bubble"
-        className="lm-chat-bubble"
+        className={cn(
+          "lm-chat-bubble transition-all duration-200",
+          open && "opacity-0 scale-[0.4] pointer-events-none",
+          !open && "opacity-100 scale-100 pointer-events-auto"
+        )}
         onClick={() => setOpen(true)}
         aria-label="Open LedgerMind assistant"
         title="Open Agent Tools (Ctrl+Shift+K)"
@@ -1843,15 +1844,24 @@ export default function ChatDock() {
       {/* Backdrop (click to close) */}
       <div
         data-testid="lm-chat-launcher-backdrop"
-        className="lm-chat-backdrop"
+        className={cn(
+          "lm-chat-backdrop fixed inset-0 transition-opacity duration-200",
+          open && "opacity-100 pointer-events-auto z-30",
+          !open && "opacity-0 pointer-events-none -z-10"
+        )}
         onClick={() => setOpen(false)}
-        aria-hidden="true"
+        aria-hidden={!open}
       />
 
       {/* Panel shell (iframe etc) */}
       <div
         data-testid="lm-chat-launcher-shell"
-        className="lm-chat-shell"
+        data-state={open ? "open" : "closed"}
+        className={cn(
+          "lm-chat-shell transition-all duration-[220ms] ease-out",
+          open && "opacity-100 scale-100 pointer-events-auto rounded-2xl",
+          !open && "opacity-0 scale-75 pointer-events-none rounded-full"
+        )}
       >
         {/* Existing panel content */}
         {open && (
