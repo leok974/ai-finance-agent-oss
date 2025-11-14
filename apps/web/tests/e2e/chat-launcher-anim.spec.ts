@@ -11,7 +11,7 @@ const BASE_URL = process.env.BASE_URL ?? 'https://app.ledger-mind.org';
 
 test.describe("@prod-critical Chat launcher morph", () => {
   test("bubble hides and panel shows from same corner", async ({ page }) => {
-    await page.goto(`${BASE_URL}/?chat=0&prefetch=0&panel=0`);
+    await page.goto(`${BASE_URL}/?chat=1&prefetch=0&panel=0`);
 
     // Wait for page load
     await page.waitForLoadState('networkidle');
@@ -49,7 +49,7 @@ test.describe("@prod-critical Chat launcher morph", () => {
   });
 
   test("shell and bubble are siblings under launcher root", async ({ page }) => {
-    await page.goto(`${BASE_URL}/?chat=0&prefetch=0&panel=0`);
+    await page.goto(`${BASE_URL}/?chat=1&prefetch=0&panel=0`);
 
     await page.waitForLoadState('networkidle');
 
@@ -74,7 +74,7 @@ test.describe("@prod-critical Chat launcher morph", () => {
   });
 
   test("multiple open/close cycles work correctly", async ({ page }) => {
-    await page.goto(`${BASE_URL}/?chat=0&prefetch=0&panel=0`);
+    await page.goto(`${BASE_URL}/?chat=1&prefetch=0&panel=0`);
 
     await page.waitForLoadState('networkidle');
 
