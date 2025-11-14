@@ -1,3 +1,30 @@
+# =============================================================================
+# AI / COPILOT GUARDRAIL — DOCKER-COMPOSE SERVICE CONTRACTS
+#
+# These names and networks are part of the production routing contract.
+# Cloudflared and nginx config expect them to stay stable.
+#
+# IF YOU ARE AN AI ASSISTANT (COPILOT / CHATGPT / ETC), FOLLOW THESE RULES:
+#
+# 1) DO NOT RENAME THESE SERVICES:
+#      - nginx
+#      - cloudflared
+#      - backend (if referenced by nginx)
+#    - The name "nginx" is used in cloudflared/config.yml as: service: http://nginx:80
+#
+# 2) DO NOT REMOVE nginx OR cloudflared FROM THEIR SHARED NETWORK.
+#    - The tunnel must be able to resolve "nginx" via Docker DNS.
+#    - If you change networks, you MUST update cloudflared/config.yml accordingly.
+#
+# 3) WHEN CHANGING PORTS OR NETWORKS:
+#    - Update: deploy/nginx.conf, cloudflared/config.yml, and E2E tests together.
+#    - Then run the prod verification commands (see nginx.conf header).
+#
+# 4) NEVER EXPOSE INTERNAL BACKEND PORTS DIRECTLY TO THE INTERNET BY ACCIDENT.
+#    - Keep backend reachable only via nginx unless you know exactly why you're
+#      exposing it and have updated security docs accordingly.
+# =============================================================================
+
 services:
   postgres:
     container_name: lm-postgres
@@ -144,10 +171,19 @@ services:
       # Mount the actual service account JSON file (not the directory) so GOOGLE_APPLICATION_CREDENTIALS points to a file
       - ./secrets/gcp-sa.json/ledgermind-backend-sa.json:/secrets/gcp-sa.json:ro
     networks:
-      - infra_net
-      - shared-ollama
+      infra_net:
+        aliases:
+          - backend
+          - ledgermind-api.int   # <- TARGET FOR api.ledger-mind.org IN CF TUNNEL
+      shared-ollama:
+        aliases:
+          - backend
+          - ledgermind-api.int
 
   nginx:
+    # AI/COPILOT: Service name MUST remain "nginx".
+    # cloudflared uses service: http://nginx:80 in its config.
+    # Changing this name will break the tunnel until configs + E2E are updated.
     build:
       context: .
       dockerfile: deploy/Dockerfile.nginx
@@ -180,7 +216,9 @@ services:
       - certbot_www:/var/www/certbot
       - letsencrypt:/etc/letsencrypt:ro
     # Ports disabled for tunnel-based setup - Cloudflare tunnel connects directly to nginx:80 internally
-    # ports:
+    ports:
+      - "127.0.0.1:8083:80"  # Localhost-only for E2E testing bypass
+    # Uncomment below for full local HTTPS:
     #   - "127.0.0.1:80:80"
     #   - "127.0.0.1:443:443"
     user: "101:101"
@@ -201,7 +239,14 @@ services:
     #   start_period: 20s
     restart: unless-stopped
     networks:
-      - shared-ollama
+      infra_net:
+        aliases:
+          - nginx
+          - ledgermind-web.int   # <- TARGET FOR app.ledger-mind.org IN CF TUNNEL
+      shared-ollama:
+        aliases:
+          - nginx
+          - ledgermind-web.int
 
 
   certbot:
@@ -225,6 +270,8 @@ services:
     restart: unless-stopped
 
   cloudflared:
+    # AI/COPILOT: Service name MUST remain "cloudflared".
+    # Health monitoring and configs reference this name.
     image: cloudflare/cloudflared:latest
     command: tunnel run
     # Using credentials-file mode via mounted config/credentials. Remove token env to avoid ambiguity.
@@ -341,6 +388,27 @@ services:
     networks:
       - shared-ollama
 
+# -----------------------------------------------------------------------------------
+# LEDGERMIND / SHARED TUNNEL GUARDRAILS  (read this, Copilot 🤖)
+#
+# - This stack is behind a SINGLE shared Cloudflare Named Tunnel.
+# - The ONLY tunnel connectors should be cfd-a / cfd-b on `infra_net`.
+# - All public hostnames for LedgerMind are configured in the CF dashboard:
+#     app.ledger-mind.org  -> http://ledgermind-web.int:80  (nginx)
+#     api.ledger-mind.org  -> http://ledgermind-api.int:8000 (backend)
+#
+# RULES:
+# - DO NOT remove `infra_net` from nginx or backend.
+# - DO NOT rename or remove the aliases: `ledgermind-web.int`, `ledgermind-api.int`.
+# - DO NOT introduce per-project cloudflared containers for LedgerMind.
+# - DO NOT add any `httpHostHeader` overrides to cloudflared config for this stack.
+# - Origin TLS is TERMINATED AT CLOUDFLARE. Inside Docker everything is plain HTTP.
+#
+# If you change service names, you MUST:
+#   1) Update aliases here.
+#   2) Update Cloudflare tunnel hostnames to match.
+#   3) Run the health script in scripts/lm-health.ps1.
+# -----------------------------------------------------------------------------------
 networks:
   infra_net:
     external: true
