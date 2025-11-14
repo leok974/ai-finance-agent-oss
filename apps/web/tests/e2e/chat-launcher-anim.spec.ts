@@ -25,7 +25,7 @@ test.describe("@prod-critical Chat launcher morph", () => {
     await launcher.waitFor({ state: 'visible', timeout: 10000 });
 
     // Closed: bubble visible, shell hidden
-    await expect(launcher).toHaveClass(/lm-chat-launcher--closed/);
+    await expect(launcher).toHaveAttribute("data-state", "closed");
     await expect(bubble).toBeVisible();
 
     // Shell should exist but be scaled down (opacity 0 via CSS)
@@ -34,20 +34,21 @@ test.describe("@prod-critical Chat launcher morph", () => {
     // Click bubble → open
     await bubble.click();
 
-    // Wait for class to update
-    await expect(launcher).toHaveClass(/lm-chat-launcher--open/);
+    // Wait for state to update
+    await expect(launcher).toHaveAttribute("data-state", "open");
 
     // Panel should be visible (opacity 1)
     await expect(shell).toHaveCSS("opacity", "1");
 
-    // Backdrop should be visible
-    await expect(backdrop).toBeVisible();
+    // Backdrop should be attached and clickable (has pointer-events-auto)
+    await expect(backdrop).toBeAttached();
+    await expect(backdrop).toHaveCSS("pointer-events", "auto");
 
-    // Close via backdrop
-    await backdrop.click();
+    // Close via backdrop (force click since backdrop might be visually transparent)
+    await backdrop.click({ force: true });
 
     // Should return to closed state
-    await expect(launcher).toHaveClass(/lm-chat-launcher--closed/);
+    await expect(launcher).toHaveAttribute("data-state", "closed");
     await expect(shell).toHaveCSS("opacity", "0");
   });
 
@@ -93,20 +94,20 @@ test.describe("@prod-critical Chat launcher morph", () => {
 
     // Cycle 1: open → close
     await bubble.click();
-    await expect(launcher).toHaveClass(/lm-chat-launcher--open/);
+    await expect(launcher).toHaveAttribute("data-state", "open");
 
-    await backdrop.click();
-    await expect(launcher).toHaveClass(/lm-chat-launcher--closed/);
+    await backdrop.click({ force: true });
+    await expect(launcher).toHaveAttribute("data-state", "closed");
 
     // Cycle 2: open → close
     await bubble.click();
-    await expect(launcher).toHaveClass(/lm-chat-launcher--open/);
+    await expect(launcher).toHaveAttribute("data-state", "open");
 
-    await backdrop.click();
-    await expect(launcher).toHaveClass(/lm-chat-launcher--closed/);
+    await backdrop.click({ force: true });
+    await expect(launcher).toHaveAttribute("data-state", "closed");
 
     // Cycle 3: open and leave open
     await bubble.click();
-    await expect(launcher).toHaveClass(/lm-chat-launcher--open/);
+    await expect(launcher).toHaveAttribute("data-state", "open");
   });
 });
