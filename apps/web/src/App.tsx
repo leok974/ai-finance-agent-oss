@@ -14,7 +14,7 @@ import { withRetry } from '@/lib/retry';
 import { flags } from "@/lib/flags";
 import AboutDrawer from './components/AboutDrawer';
 import RulesPanel from "./components/RulesPanel";
-// ChatDock is now mounted via chatMount.tsx (separate React root)
+import ChatDock from "./components/ChatDock";
 import { useChatDockStore } from "./stores/chatdock";
 import DevDock from "@/components/dev/DevDock";
 import PlannerDevPanel from "@/components/dev/PlannerDevPanel";
@@ -29,7 +29,7 @@ import NetActivityBlip from "@/components/NetActivityBlip";
 // import LoginForm from "@/components/LoginForm"; // Replaced with AuthMenu for OAuth
 import AuthMenu from "@/components/AuthMenu";
 import { useAuth, useIsAdmin } from "@/state/auth";
-import { ensureChatMounted } from "@/boot/mountChat";
+// import { ensureChatMounted } from "@/boot/mountChat"; // Removed: ChatDock now renders directly
 import { useChartsStore } from "@/state/charts";
 import { initBroadcastChannelSync } from "@/state/chatSession";
 // import AgentChat from "./components/AgentChat"; // legacy chat bubble disabled
@@ -288,14 +288,8 @@ const App: React.FC = () => {
 
   const showChatDock = useChatDockStore(s => s.visible);
 
-  // Chat mounting: auth-gated, mount-once
-  useEffect(() => {
-    console.log('[App] chat mount effect', { chatEnabled, authReady, authOk });
-    if (!chatEnabled || !authReady || !authOk) return;
-    // Mount only once per page load
-    (window as any).__lmChatBoot ||= Date.now();
-    ensureChatMounted();
-  }, [chatEnabled, authReady, authOk]);
+  // Chat mounting removed: ChatDock now renders directly in JSX below (v2)
+  // (Previously used ensureChatMounted() to create iframe-based chat)
 
   // Always call hooks above; render gates below
   if (!ready || !authReady) return <div className="p-6 text-[color:var(--text-muted)]">Loading…</div>;
@@ -446,6 +440,7 @@ const App: React.FC = () => {
       </div>
   </div>
       <TransactionsDrawer open={txPanelOpen} onClose={() => setTxPanelOpen(false)} />
+      <ChatDock />
   </ChatDockProvider>
     </MonthContext.Provider>
   );

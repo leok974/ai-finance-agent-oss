@@ -16,15 +16,18 @@ test.describe("@prod-critical Chat launcher morph", () => {
     // Wait for page load
     await page.waitForLoadState('networkidle');
 
-    const launcher = page.getByTestId("chat-launcher-root");
-    const bubble = page.getByTestId("chat-toggle");
-    const shell = page.getByTestId("chat-shell");
-    const backdrop = page.getByTestId("chat-backdrop");
+    const launcher = page.getByTestId("lm-chat-launcher-root");
+    const bubble = page.getByTestId("lm-chat-launcher-bubble");
+    const shell = page.getByTestId("lm-chat-launcher-shell");
+    const backdrop = page.getByTestId("lm-chat-launcher-backdrop");
+
+    // Wait for launcher to be visible
+    await launcher.waitFor({ state: 'visible', timeout: 10000 });
 
     // Closed: bubble visible, shell hidden
     await expect(launcher).toHaveClass(/lm-chat-launcher--closed/);
     await expect(bubble).toBeVisible();
-    
+
     // Shell should exist but be scaled down (opacity 0 via CSS)
     await expect(shell).toHaveCSS("opacity", "0");
 
@@ -54,10 +57,13 @@ test.describe("@prod-critical Chat launcher morph", () => {
     await page.waitForLoadState('networkidle');
 
     // Verify DOM structure
-    const launcher = page.getByTestId("chat-launcher-root");
-    const bubble = page.getByTestId("chat-toggle");
-    const shell = page.getByTestId("chat-shell");
-    const backdrop = page.getByTestId("chat-backdrop");
+    const launcher = page.getByTestId("lm-chat-launcher-root");
+    const bubble = page.getByTestId("lm-chat-launcher-bubble");
+    const shell = page.getByTestId("lm-chat-launcher-shell");
+    const backdrop = page.getByTestId("lm-chat-launcher-backdrop");
+
+    // Wait for launcher to be visible
+    await launcher.waitFor({ state: 'visible', timeout: 10000 });
 
     // All should exist
     await expect(launcher).toBeVisible();
@@ -69,8 +75,8 @@ test.describe("@prod-critical Chat launcher morph", () => {
     const bubbleParent = await bubble.evaluate((el) => el.parentElement?.dataset?.testid);
     const shellParent = await shell.evaluate((el) => el.parentElement?.dataset?.testid);
 
-    expect(bubbleParent).toBe("chat-launcher-root");
-    expect(shellParent).toBe("chat-launcher-root");
+    expect(bubbleParent).toBe("lm-chat-launcher-root");
+    expect(shellParent).toBe("lm-chat-launcher-root");
   });
 
   test("multiple open/close cycles work correctly", async ({ page }) => {
@@ -78,9 +84,12 @@ test.describe("@prod-critical Chat launcher morph", () => {
 
     await page.waitForLoadState('networkidle');
 
-    const launcher = page.getByTestId("chat-launcher-root");
-    const bubble = page.getByTestId("chat-toggle");
-    const backdrop = page.getByTestId("chat-backdrop");
+    const launcher = page.getByTestId("lm-chat-launcher-root");
+    const bubble = page.getByTestId("lm-chat-launcher-bubble");
+    const backdrop = page.getByTestId("lm-chat-launcher-backdrop");
+
+    // Wait for launcher to be visible
+    await launcher.waitFor({ state: 'visible', timeout: 10000 });
 
     // Cycle 1: open → close
     await bubble.click();

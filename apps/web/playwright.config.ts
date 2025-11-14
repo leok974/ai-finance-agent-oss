@@ -66,6 +66,9 @@ export default defineConfig({
             headless: true,
             actionTimeout: 15_000,
             navigationTimeout: 20_000,
+            launchOptions: {
+              args: ['--disable-service-worker'],  // Prevent SW cache issues in prod tests
+            },
           },
           testIgnore: /@dev-only|@needs-seed/,
           grep: /@prod/,
