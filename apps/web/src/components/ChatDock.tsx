@@ -1827,38 +1827,60 @@ export default function ChatDock() {
     window.addEventListener("pointerup", onUp);
   }, [rb]);
 
-  const bubbleEl = (
-    <button
-      type="button"
-      data-testid="chat-toggle"
-      className="fixed z-[80] rounded-full shadow-lg bg-black text-white w-12 h-12 flex items-center justify-center hover:opacity-90 select-none"
-      style={{ right: rb.right, bottom: rb.bottom, cursor: "grab", position: 'fixed' as const }}
-      data-chatdock-root
-      data-chatdock-bubble
-      onPointerDown={(e) => startDragRB(e, BUBBLE, BUBBLE)}
-      onClick={() => setOpen(true)}
-      title="Open Agent Tools (Ctrl+Shift+K)"
-    >
-      <span className="text-base" aria-hidden>💬</span>
-      <span className="sr-only">Open agent chat</span>
-    </button>
-  );
+  // Unified launcher class based on open state
+  const launcherClass = [
+    "lm-chat-launcher",
+    open ? "lm-chat-launcher--open" : "lm-chat-launcher--closed",
+  ].join(" ");
 
-  const panelEl = open && (
-    <div
-      key={version}
-      ref={panelRef}
-      className="
-        fixed bottom-6 right-6 z-[2147483645]
-        flex flex-col
-        w-[640px] max-w-[min(640px,90vw)]
-        max-h-[min(720px,80vh)]
-        rounded-2xl border-0
-      "
-      style={{ position: 'fixed' as const }}
+  const launcherEl = (
+    <div 
+      className={launcherClass} 
+      data-testid="chat-launcher-root"
       data-chatdock-root
-      data-testid="chat-panel-shell"
     >
+      {/* Bubble (closed state visual) */}
+      <button
+        type="button"
+        data-testid="chat-toggle"
+        className="lm-chat-bubble"
+        onClick={() => setOpen(true)}
+        aria-label="Open LedgerMind assistant"
+        title="Open Agent Tools (Ctrl+Shift+K)"
+      >
+        <span className="text-base" aria-hidden>💬</span>
+        <span className="sr-only">Open agent chat</span>
+      </button>
+
+      {/* Backdrop (click to close) */}
+      <div
+        data-testid="chat-backdrop"
+        className="lm-chat-backdrop"
+        onClick={() => setOpen(false)}
+        aria-hidden="true"
+      />
+
+      {/* Panel shell (iframe etc) */}
+      <div
+        data-testid="chat-shell"
+        className="lm-chat-shell"
+      >
+        {/* Existing panel content */}
+        {open && (
+          <div
+            key={version}
+            ref={panelRef}
+            className="
+              fixed bottom-6 right-6 z-[2147483645]
+              flex flex-col
+              w-[640px] max-w-[min(640px,90vw)]
+              max-h-[min(720px,80vh)]
+              rounded-2xl border-0
+            "
+            style={{ position: 'fixed' as const }}
+            data-chatdock-root
+            data-testid="chat-panel-shell"
+          >
       {/* Debug overlay (dev only) */}
       {typeof process !== 'undefined' && process.env?.NODE_ENV !== "production" && (
         <div className="fixed right-2 top-2 z-[9999] text-xs px-2 py-1 rounded bg-black/70 text-white pointer-events-none">
@@ -2402,13 +2424,14 @@ export default function ChatDock() {
           onClick={(e) => handleSend(e)}
           title="Send (Enter). Shift+Enter = newline. Hold Alt to omit context."
         >
-          {busy ? '...' : 'Send'}
-        </button>
+            {busy ? '...' : 'Send'}
+          </button>
+        </div>
+          </div>
+        )}
       </div>
     </div>
-  );
-
-  // Since we're already mounted in Shadow DOM via chatMount.tsx,
+  );  // Since we're already mounted in Shadow DOM via chatMount.tsx,
   // just return the content directly instead of creating another root
   if (!portalReady || !isPrimary) return null;
 
@@ -2418,7 +2441,7 @@ export default function ChatDock() {
         Chat panel error: {String(e?.message || e)}
       </div>
     )}>
-      {open ? panelEl : bubbleEl}
+      {launcherEl}
     </ErrorBoundary>
   );
 }
