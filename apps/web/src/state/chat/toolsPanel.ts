@@ -1,48 +1,42 @@
 /**
  * Chat tools panel visibility state
  *
- * Manages the visibility of the agent tools panel in the chat UI.
- * Provides actions to show, hide, and toggle the panel.
+ * Single source of truth for tools panel visibility.
+ * No duplicate state - all components subscribe to this store.
  */
 
-type ToolsPanelState = {
-  visible: boolean;
-};
+type Listener = (open: boolean) => void;
 
-type Listener = (state: ToolsPanelState) => void;
+let open = true;
 const listeners = new Set<Listener>();
 
-const state: ToolsPanelState = { visible: true };
-
-function notify() {
-  for (const fn of listeners) fn({ ...state });
+export function getToolsOpen(): boolean {
+  return open;
 }
 
-export const toolsPanel = {
-  subscribe(fn: Listener): () => void {
-    listeners.add(fn);
-    fn({ ...state });
-    return () => listeners.delete(fn);
-  },
+function setToolsOpen(next: boolean): void {
+  if (next === open) return;
+  open = next;
+  for (const l of listeners) l(open);
+}
 
-  getState(): ToolsPanelState {
-    return { ...state };
-  },
+export function showTools(): void {
+  setToolsOpen(true);
+}
 
-  showTools(): void {
-    if (state.visible) return;
-    state.visible = true;
-    notify();
-  },
+export function hideTools(): void {
+  setToolsOpen(false);
+}
 
-  hideTools(): void {
-    if (!state.visible) return;
-    state.visible = false;
-    notify();
-  },
+export function toggleTools(): void {
+  setToolsOpen(!open);
+}
 
-  toggleTools(): void {
-    state.visible = !state.visible;
-    notify();
-  },
-};
+export function subscribe(listener: Listener): () => void {
+  listeners.add(listener);
+  // sync immediately
+  listener(open);
+  return () => {
+    listeners.delete(listener);
+  };
+}

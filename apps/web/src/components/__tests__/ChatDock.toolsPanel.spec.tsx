@@ -5,7 +5,7 @@
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { toolsPanel } from '@/state/chat/toolsPanel';
+import { getToolsOpen, hideTools, showTools } from '@/state/chat/toolsPanel';
 import ChatDock from '../ChatDock';
 
 // Mock dependencies
@@ -50,7 +50,7 @@ vi.mock('@/lib/api', () => ({
 describe('ChatDock toolsPanel wiring', () => {
   beforeEach(() => {
     // Reset to known state
-    toolsPanel.hideTools();
+    hideTools();
   });
 
   it('renders without crashing', () => {
@@ -62,7 +62,7 @@ describe('ChatDock toolsPanel wiring', () => {
     render(<ChatDock />);
 
     // Initial state: tools hidden
-    expect(toolsPanel.getState().visible).toBe(false);
+    expect(getToolsOpen()).toBe(false);
 
     // Wait for button to be available (ChatDock renders conditionally)
     await waitFor(() => {
@@ -73,14 +73,14 @@ describe('ChatDock toolsPanel wiring', () => {
     });
 
     // After click, tools should be visible
-    expect(toolsPanel.getState().visible).toBe(true);
+    expect(getToolsOpen()).toBe(true);
   });
 
   it('clicking chat bubble opens tools when they are hidden', async () => {
     render(<ChatDock />);
 
-    toolsPanel.hideTools();
-    expect(toolsPanel.getState().visible).toBe(false);
+    hideTools();
+    expect(getToolsOpen()).toBe(false);
 
     // Click the chat bubble to open
     await waitFor(() => {
@@ -92,25 +92,25 @@ describe('ChatDock toolsPanel wiring', () => {
 
     // Tools state should remain controlled by toolsPanel
     // (ChatDock doesn't force-show tools on open, so state should remain as-is)
-    expect(toolsPanel.getState().visible).toBe(false);
+    expect(getToolsOpen()).toBe(false);
   });
 
   it('multiple toggles flip visibility correctly', async () => {
     render(<ChatDock />);
 
-    toolsPanel.showTools();
-    expect(toolsPanel.getState().visible).toBe(true);
+    showTools();
+    expect(getToolsOpen()).toBe(true);
 
     await waitFor(() => {
       const toggle = screen.queryByTestId('chat-tools-toggle');
       if (toggle) {
         // First click: hide
         fireEvent.click(toggle);
-        expect(toolsPanel.getState().visible).toBe(false);
+        expect(getToolsOpen()).toBe(false);
 
         // Second click: show
         fireEvent.click(toggle);
-        expect(toolsPanel.getState().visible).toBe(true);
+        expect(getToolsOpen()).toBe(true);
       }
     });
   });
