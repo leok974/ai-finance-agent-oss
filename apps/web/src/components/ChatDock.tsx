@@ -7,6 +7,7 @@ import RobotThinking from "@/components/ui/RobotThinking";
 import EnvAvatar from "@/components/EnvAvatar";
 import { useAuth, getUserInitial } from "@/state/auth";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { useSafePortalReady } from "@/hooks/useSafePortal";
 import { ChevronUp, ChevronDown, Wrench } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
@@ -54,7 +55,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { cn } from "@/lib/utils";
 // Minimal process env typing for test gating without pulling full @types/node
 declare const process: { env?: Record<string,string|undefined> } | undefined;
 
@@ -161,8 +161,8 @@ const TOOL_PRESETS: Record<ToolPresetKey, { label: string; intent: 'general'|'ex
 
 declare global { interface Window { __CHATDOCK_MOUNT_COUNT__?: number } }
 
-// ChatDock is now rendered directly in App.tsx (no separate root mount)
-// Removed: __CHATDOCK_ACTIVE__ singleton logic (no longer needed)
+// Module-scoped singleton tracker
+let __CHATDOCK_ACTIVE__: symbol | null = null;
 
 // Diagnostic: catch setState-during-render
 function useRenderGuard(name: string) {
@@ -175,18 +175,27 @@ function useRenderGuard(name: string) {
 export default function ChatDock() {
   console.log('[ChatDock] render start');
 
-  // Ultra-loud debug: prove ChatDock mounts in prod
-  useEffect(() => {
-    console.log('[ChatDock] ✅ MOUNTED', {
-      location: window.location.href,
-      build: import.meta.env.MODE,
-      timestamp: new Date().toISOString(),
-    });
-  }, []);
-
   useRenderGuard('ChatDock');
 
-  // ChatDock is now rendered directly in App.tsx (single instance, no isPrimary guard needed)
+  // ⛑️ CRITICAL: Only allow portal creation after complete page load
+  const portalReady = useSafePortalReady();
+
+  // Safe singleton: claim primary in effect; always run hooks, render only if primary
+  const idRef = useRef(Symbol("chatdock"));
+  const [isPrimary, setIsPrimary] = useState(false);
+  useEffect(() => {
+    if (__CHATDOCK_ACTIVE__ === null) {
+      __CHATDOCK_ACTIVE__ = idRef.current;
+      setIsPrimary(true);
+    } else {
+      setIsPrimary(__CHATDOCK_ACTIVE__ === idRef.current);
+    }
+    return () => {
+      if (__CHATDOCK_ACTIVE__ === idRef.current) {
+        __CHATDOCK_ACTIVE__ = null;
+      }
+    };
+  }, []);
   const { month } = useMonth();
   const chat = useChatDock();
   const [open, setOpen] = React.useState<boolean>(false);
@@ -415,9 +424,11 @@ export default function ChatDock() {
 
   // quick sanity ping so you can confirm the file actually recompiled
   useEffect(() => {
-    console.log("[ChatDock] v0906f loaded");
+    if (isPrimary) {
+      console.log("[ChatDock] v0906f loaded");
+    }
     return () => { if (syncTimerRef.current) window.clearTimeout(syncTimerRef.current); };
-  }, []);
+  }, [isPrimary]);
 
   // If chat was restored very recently (in this tab), briefly show a Restored badge
   useEffect(() => {
@@ -1816,69 +1827,38 @@ export default function ChatDock() {
     window.addEventListener("pointerup", onUp);
   }, [rb]);
 
-  // Launcher root with static class only (no state modifiers)
-  const launcherEl = (
-    <div
-      className="lm-chat-launcher"
-      data-testid="lm-chat-launcher-root"
+  const bubbleEl = (
+    <button
+      type="button"
+      data-testid="chat-toggle"
+      className="fixed z-[80] rounded-full shadow-lg bg-black text-white w-12 h-12 flex items-center justify-center hover:opacity-90 select-none"
+      style={{ right: rb.right, bottom: rb.bottom, cursor: "grab", position: 'fixed' as const }}
       data-chatdock-root
-      data-state={open ? "open" : "closed"}
+      data-chatdock-bubble
+      onPointerDown={(e) => startDragRB(e, BUBBLE, BUBBLE)}
+      onClick={() => setOpen(true)}
+      title="Open Agent Tools (Ctrl+Shift+K)"
     >
-      {/* Bubble (closed state visual) */}
-      <button
-        type="button"
-        data-testid="lm-chat-launcher-bubble"
-        className={cn(
-          "lm-chat-bubble transition-all duration-200",
-          open && "opacity-0 scale-[0.4] pointer-events-none",
-          !open && "opacity-100 scale-100 pointer-events-auto"
-        )}
-        onClick={() => setOpen(true)}
-        aria-label="Open LedgerMind assistant"
-        title="Open Agent Tools (Ctrl+Shift+K)"
-      >
-        <span className="text-base" aria-hidden>💬</span>
-        <span className="sr-only">Open agent chat</span>
-      </button>
+      <span className="text-base" aria-hidden>💬</span>
+      <span className="sr-only">Open agent chat</span>
+    </button>
+  );
 
-      {/* Backdrop (click to close) */}
-      <div
-        data-testid="lm-chat-launcher-backdrop"
-        className={cn(
-          "lm-chat-backdrop fixed inset-0 transition-opacity duration-200",
-          open && "opacity-100 pointer-events-auto z-30",
-          !open && "opacity-0 pointer-events-none -z-10"
-        )}
-        onClick={() => setOpen(false)}
-        aria-hidden={!open}
-      />
-
-      {/* Panel shell (iframe etc) */}
-      <div
-        data-testid="lm-chat-launcher-shell"
-        data-state={open ? "open" : "closed"}
-        className={cn(
-          "lm-chat-shell transition-all duration-[220ms] ease-out",
-          open && "opacity-100 scale-100 pointer-events-auto rounded-2xl",
-          !open && "opacity-0 scale-75 pointer-events-none rounded-full"
-        )}
-      >
-        {/* Existing panel content */}
-        {open && (
-          <div
-            key={version}
-            ref={panelRef}
-            className="
-              fixed bottom-6 right-6 z-[2147483645]
-              flex flex-col
-              w-[640px] max-w-[min(640px,90vw)]
-              max-h-[min(720px,80vh)]
-              rounded-2xl border-0
-            "
-            style={{ position: 'fixed' as const }}
-            data-chatdock-root
-            data-testid="lm-chat-panel-shell"
-          >
+  const panelEl = open && (
+    <div
+      key={version}
+      ref={panelRef}
+      className="
+        fixed bottom-6 right-6 z-[2147483645]
+        flex flex-col
+        w-[640px] max-w-[min(640px,90vw)]
+        max-h-[min(720px,80vh)]
+        rounded-2xl border-0
+      "
+      style={{ position: 'fixed' as const }}
+      data-chatdock-root
+      data-testid="chat-panel-shell"
+    >
       {/* Debug overlay (dev only) */}
       {typeof process !== 'undefined' && process.env?.NODE_ENV !== "production" && (
         <div className="fixed right-2 top-2 z-[9999] text-xs px-2 py-1 rounded bg-black/70 text-white pointer-events-none">
@@ -2422,23 +2402,23 @@ export default function ChatDock() {
           onClick={(e) => handleSend(e)}
           title="Send (Enter). Shift+Enter = newline. Hold Alt to omit context."
         >
-            {busy ? '...' : 'Send'}
-          </button>
-        </div>
-          </div>
-        )}
+          {busy ? '...' : 'Send'}
+        </button>
       </div>
     </div>
   );
-  // ChatDock is now rendered directly in App.tsx (no separate root/iframe)
-  // isPrimary guard removed - single instance guaranteed by App.tsx structure
+
+  // Since we're already mounted in Shadow DOM via chatMount.tsx,
+  // just return the content directly instead of creating another root
+  if (!portalReady || !isPrimary) return null;
+
   return (
     <ErrorBoundary fallback={(e) => (
       <div className="fixed bottom-4 right-4 p-4 bg-red-500/10 border border-red-500 rounded text-sm text-red-500 max-w-md z-[9999]">
         Chat panel error: {String(e?.message || e)}
       </div>
     )}>
-      {launcherEl}
+      {open ? panelEl : bubbleEl}
     </ErrorBoundary>
   );
 }
