@@ -16,13 +16,13 @@ test.describe("@prod-critical Chat launcher morph", () => {
     // Wait for page load
     await page.waitForLoadState('networkidle');
 
-    const launcher = page.getByTestId("lm-chat-launcher-root");
-    const bubble = page.getByTestId("lm-chat-launcher-bubble");
-    const shell = page.getByTestId("lm-chat-launcher-shell");
+    const launcher = page.getByTestId("lm-chat-launcher");
+    const bubble = page.getByTestId("lm-chat-launcher-button");
+    const shell = page.getByTestId("lm-chat-shell");
     const backdrop = page.getByTestId("lm-chat-launcher-backdrop");
 
-    // Wait for launcher to be visible
-    await launcher.waitFor({ state: 'visible', timeout: 10000 });
+    // Wait for launcher to be attached (it's always in DOM, controls visibility via children)
+    await launcher.waitFor({ state: 'attached', timeout: 10000 });
 
     // Closed: bubble visible, shell hidden
     await expect(launcher).toHaveAttribute("data-state", "closed");
@@ -58,16 +58,16 @@ test.describe("@prod-critical Chat launcher morph", () => {
     await page.waitForLoadState('networkidle');
 
     // Verify DOM structure
-    const launcher = page.getByTestId("lm-chat-launcher-root");
-    const bubble = page.getByTestId("lm-chat-launcher-bubble");
-    const shell = page.getByTestId("lm-chat-launcher-shell");
+    const launcher = page.getByTestId("lm-chat-launcher");
+    const bubble = page.getByTestId("lm-chat-launcher-button");
+    const shell = page.getByTestId("lm-chat-shell");
     const backdrop = page.getByTestId("lm-chat-launcher-backdrop");
 
-    // Wait for launcher to be visible
-    await launcher.waitFor({ state: 'visible', timeout: 10000 });
+    // Wait for launcher to be attached (it's always in DOM, controls visibility via children)
+    await launcher.waitFor({ state: 'attached', timeout: 10000 });
 
     // All should exist
-    await expect(launcher).toBeVisible();
+    await expect(launcher).toBeAttached();
     await expect(bubble).toBeVisible();
     await expect(shell).toBeAttached(); // exists in DOM even if invisible
     await expect(backdrop).toBeAttached();
@@ -76,8 +76,8 @@ test.describe("@prod-critical Chat launcher morph", () => {
     const bubbleParent = await bubble.evaluate((el) => el.parentElement?.dataset?.testid);
     const shellParent = await shell.evaluate((el) => el.parentElement?.dataset?.testid);
 
-    expect(bubbleParent).toBe("lm-chat-launcher-root");
-    expect(shellParent).toBe("lm-chat-launcher-root");
+    expect(bubbleParent).toBe("lm-chat-launcher");
+    expect(shellParent).toBe("lm-chat-launcher");
   });
 
   test("multiple open/close cycles work correctly", async ({ page }) => {
@@ -85,12 +85,12 @@ test.describe("@prod-critical Chat launcher morph", () => {
 
     await page.waitForLoadState('networkidle');
 
-    const launcher = page.getByTestId("lm-chat-launcher-root");
-    const bubble = page.getByTestId("lm-chat-launcher-bubble");
+    const launcher = page.getByTestId("lm-chat-launcher");
+    const bubble = page.getByTestId("lm-chat-launcher-button");
     const backdrop = page.getByTestId("lm-chat-launcher-backdrop");
 
-    // Wait for launcher to be visible
-    await launcher.waitFor({ state: 'visible', timeout: 10000 });
+    // Wait for launcher to be attached (it's always in DOM, controls visibility via children)
+    await launcher.waitFor({ state: 'attached', timeout: 10000 });
 
     // Cycle 1: open → close
     await bubble.click();

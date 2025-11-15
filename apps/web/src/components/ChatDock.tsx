@@ -2,6 +2,7 @@ import * as React from "react";
 import { stripToolNamespaces } from "@/utils/prettyToolName";
 import SaveRuleModal from '@/components/SaveRuleModal';
 const { useEffect, useRef, useState, useMemo } = React;
+import { cn } from "@/lib/utils";
 import { wireAguiStream } from "@/lib/aguiStream";
 import RobotThinking from "@/components/ui/RobotThinking";
 import EnvAvatar from "@/components/EnvAvatar";
@@ -199,6 +200,7 @@ export default function ChatDock() {
   const { month } = useMonth();
   const chat = useChatDock();
   const [open, setOpen] = React.useState<boolean>(false);
+  const launcherState = open ? 'open' : 'closed';
   // one shared right/bottom position for bubble and panel (no persistence)
   const [rb, setRb] = React.useState<{ right: number; bottom: number }>(() => ({ right: MARGIN, bottom: MARGIN }));
   const panelRef = useRef<HTMLDivElement | null>(null);
@@ -1830,7 +1832,8 @@ export default function ChatDock() {
   const bubbleEl = (
     <button
       type="button"
-      data-testid="chat-toggle"
+      data-testid="lm-chat-launcher-button"
+      aria-expanded={open}
       className="fixed z-[80] rounded-full shadow-lg bg-black text-white w-12 h-12 flex items-center justify-center hover:opacity-90 select-none"
       style={{ right: rb.right, bottom: rb.bottom, cursor: "grab", position: 'fixed' as const }}
       data-chatdock-root
@@ -2418,7 +2421,25 @@ export default function ChatDock() {
         Chat panel error: {String(e?.message || e)}
       </div>
     )}>
-      {open ? panelEl : bubbleEl}
+      <div
+        className={cn(
+          'lm-chat-launcher',
+          `lm-chat-launcher--${launcherState}`
+        )}
+        data-state={launcherState}
+        data-testid="lm-chat-launcher"
+      >
+        {!open && bubbleEl}
+        <div
+          className="lm-chat-backdrop"
+          data-testid="lm-chat-launcher-backdrop"
+          aria-hidden={!open}
+          onClick={open ? () => setOpen(false) : undefined}
+        />
+        <div className="lm-chat-shell" data-testid="lm-chat-shell">
+          {panelEl}
+        </div>
+      </div>
     </ErrorBoundary>
   );
 }
