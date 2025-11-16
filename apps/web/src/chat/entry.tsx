@@ -6,6 +6,9 @@
  * Use to prove iframe boots before re-enabling portal-heavy components.
  */
 
+// Import chat iframe CSS (includes Tailwind, overflow:hidden for iframe)
+import './index.css';
+
 import { createElement } from 'react';
 import { createRoot } from 'react-dom/client';
 

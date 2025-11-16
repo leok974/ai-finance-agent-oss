@@ -1,7 +1,8 @@
 import * as React from "react";
+import { createPortal } from "react-dom";
 import { stripToolNamespaces } from "@/utils/prettyToolName";
 import SaveRuleModal from '@/components/SaveRuleModal';
-const { useEffect, useRef, useState, useMemo } = React;
+const { useEffect, useRef, useState, useMemo, useCallback } = React;
 import { cn } from "@/lib/utils";
 import { wireAguiStream } from "@/lib/aguiStream";
 import RobotThinking from "@/components/ui/RobotThinking";
@@ -9,10 +10,12 @@ import EnvAvatar from "@/components/EnvAvatar";
 import { useAuth, getUserInitial } from "@/state/auth";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useSafePortalReady } from "@/hooks/useSafePortal";
-import { ChevronUp, ChevronDown, Wrench } from "lucide-react";
+import { ChevronUp, ChevronDown, Wrench, Sparkles, TrendingUp, Bell, Repeat, Search, Wallet, MessageCircle } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardHeader, CardTitle, CardContent, CardFooter } from "@/components/ui/card";
 import { agentTools, agentChat, type AgentChatRequest, type AgentChatResponse, type TxnQueryResult, explainTxnForChat, agentRephrase, analytics, transactionsNl, txnsQueryCsv, txnsQuery, agentStatus, type AgentStatusResponse } from "../lib/api";
 import { fmtMonthSummary, fmtTopMerchants, fmtCashflow, fmtTrends } from "../lib/formatters";
 import { renderQuick, renderDeep, type MonthSummary as FinanceMonthSummary } from "../lib/formatters/finance";
@@ -200,7 +203,19 @@ export default function ChatDock() {
   const { month } = useMonth();
   const chat = useChatDock();
   const [open, setOpen] = React.useState<boolean>(false);
+  const [isClosing, setIsClosing] = React.useState<boolean>(false);
   const launcherState = open ? 'open' : 'closed';
+
+  const handleClose = React.useCallback(() => {
+    if (!open || isClosing) return;
+
+    setIsClosing(true);
+    setTimeout(() => {
+      setOpen(false);
+      setIsClosing(false);
+    }, 220); // 200ms transform + 20ms buffer
+  }, [open, isClosing]);
+
   // one shared right/bottom position for bubble and panel (no persistence)
   const [rb, setRb] = React.useState<{ right: number; bottom: number }>(() => ({ right: MARGIN, bottom: MARGIN }));
   const panelRef = useRef<HTMLDivElement | null>(null);
@@ -223,6 +238,11 @@ export default function ChatDock() {
   const [input, setInput] = useState("");
   const composerRef = React.useRef<HTMLTextAreaElement | null>(null);
   const [composerPlaceholder, setComposerPlaceholderState] = useState(DEFAULT_PLACEHOLDER);
+
+  // 🔐 Refs for click-away detection
+  const shellRef = useRef<HTMLDivElement | null>(null);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+
   // Why? modal state
   const [showWhyModal, setShowWhyModal] = useState(false);
   const [whyContent, setWhyContent] = useState<{ explain?: string; sources?: Array<any> }>({});
@@ -431,6 +451,32 @@ export default function ChatDock() {
     }
     return () => { if (syncTimerRef.current) window.clearTimeout(syncTimerRef.current); };
   }, [isPrimary]);
+
+  // 🔐 Click-away handler: closes when clicking outside bubble + shell
+  useEffect(() => {
+    if (!open) return;
+
+    function handleClickAway(event: MouseEvent) {
+      const shell = shellRef.current;
+      const trigger = triggerRef.current;
+      if (!shell) return; // Shell must exist when panel is open
+      // Note: trigger may be null when panel is open (bubble not rendered)
+
+      const target = event.target as Node | null;
+      if (!target) return;
+
+      // If click is inside shell or bubble (if bubble exists) → do nothing
+      if (shell.contains(target) || (trigger && trigger.contains(target))) {
+        return;
+      }
+
+      // Otherwise: click-away → close
+      handleClose();
+    }
+
+    window.addEventListener("mousedown", handleClickAway);
+    return () => window.removeEventListener("mousedown", handleClickAway);
+  }, [open, handleClose]);
 
   // If chat was restored very recently (in this tab), briefly show a Restored badge
   useEffect(() => {
@@ -1804,6 +1850,29 @@ export default function ChatDock() {
     };
   }, [month, monthReady, tool, insertContext, run, lastRunForTool]); // runs every time month changes
 
+  // Wheel handler: manually drive scrollTop to bypass flex/overflow quirks
+  const handleScrollWheel = useCallback(
+    (event: React.WheelEvent<HTMLDivElement>) => {
+      const el = event.currentTarget;
+      const { scrollHeight, clientHeight, scrollTop } = el;
+
+      // If no vertical overflow, let the page handle the scroll normally
+      if (scrollHeight <= clientHeight) {
+        return;
+      }
+
+      // Apply the wheel delta manually
+      el.scrollTop += event.deltaY;
+
+      // If scrollTop actually changed, we consumed the scroll
+      if (el.scrollTop !== scrollTop) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+    },
+    []
+  );
+
   // Unified right/bottom anchored drag (used by bubble and panel header)
   const startDragRB = React.useCallback((e: React.PointerEvent, w: number, h: number, onClick?: () => void) => {
     const startX = e.clientX;
@@ -1829,586 +1898,240 @@ export default function ChatDock() {
     window.addEventListener("pointerup", onUp);
   }, [rb]);
 
-  const bubbleEl = (
-    <button
-      type="button"
-      data-testid="lm-chat-launcher-button"
-      aria-expanded={open}
-      className="fixed z-[80] rounded-full shadow-lg bg-black text-white w-12 h-12 flex items-center justify-center hover:opacity-90 select-none"
-      style={{ right: rb.right, bottom: rb.bottom, cursor: "grab", position: 'fixed' as const }}
-      data-chatdock-root
-      data-chatdock-bubble
-      onPointerDown={(e) => startDragRB(e, BUBBLE, BUBBLE)}
-      onClick={() => setOpen(true)}
-      title="Open Agent Tools (Ctrl+Shift+K)"
-    >
+  const bubbleIcon = (
+    <>
       <span className="text-base" aria-hidden>💬</span>
-      <span className="sr-only">Open agent chat</span>
-    </button>
+      <span className="sr-only">{open ? "Close agent chat" : "Open agent chat"}</span>
+    </>
   );
 
-  const panelEl = open && (
-    <div
-      key={version}
-      ref={panelRef}
-      className="
-        fixed bottom-6 right-6 z-[2147483645]
-        flex flex-col
-        w-[640px] max-w-[min(640px,90vw)]
-        max-h-[min(720px,80vh)]
-        rounded-2xl border-0
-      "
-      style={{ position: 'fixed' as const }}
-      data-chatdock-root
-      data-testid="chat-panel-shell"
-    >
-      {/* Debug overlay (dev only) */}
-      {typeof process !== 'undefined' && process.env?.NODE_ENV !== "production" && (
-        <div className="fixed right-2 top-2 z-[9999] text-xs px-2 py-1 rounded bg-black/70 text-white pointer-events-none">
-          v:{version} · msgs:{uiMessages.length} · sid:{sessionId.slice(0,6)}
-        </div>
-      )}
-  <style>{`.intent-badge{display:inline-flex;align-items:center;gap:.35rem;padding:.15rem .45rem;border-radius:9999px;border:1px solid rgba(120,120,120,.35);font-size:.6rem;letter-spacing:.5px;text-transform:uppercase;background:rgba(255,255,255,0.06);} .chip{display:inline-flex;align-items:center;padding:.25rem .6rem;border-radius:9999px;border:1px solid rgba(120,120,120,.35);font-size:.7rem;line-height:1;font-weight:500;cursor:pointer;user-select:none} .chip-suggest{background:rgba(59,130,246,.10);} .chip-suggest-gw{background:rgba(16,185,129,.12);} .chip:focus{outline:2px solid currentColor;outline-offset:1px}`}</style>
+  const panel = (
+    <Card className="lm-chat-card bg-transparent border-0 shadow-none" data-testid="lm-chat-panel">
+      {/* Gradient top: header + sections */}
       <div
-        className="flex items-center justify-between mb-2 select-none border-b border-border pb-1"
-        style={{ cursor: "grab" }}
-        onPointerDown={(e) => {
-          const rect = panelRef.current?.getBoundingClientRect();
-          const w = rect?.width ?? PANEL_W_GUESS;
-          const h = rect?.height ?? PANEL_H_GUESS;
-          startDragRB(e, w, h);
-        }}
+        className="lm-chat-gradient"
+        data-testid="lm-chat-scroll"
+        onWheel={handleScrollWheel}
       >
-        <div className="flex items-center gap-2">
-          <div className="text-sm text-neutral-300">Agent Tools</div>
-          {restoredVisible && <RestoredBadge />}
-          {/* LLM Health Badge */}
-          {llmStatus.llm_ok !== undefined && (
-            <Badge
-              variant={llmStatus.llm_ok ? 'default' : 'destructive'}
-              className="text-xs"
-              title={llmStatus.llm_ok ? 'LLM is operational' : 'LLM is using fallback mode'}
-            >
-              {llmStatus.llm_ok ? 'LLM: OK' : 'LLM: Fallback'}
-            </Badge>
-          )}
-        </div>
-  <div className="flex items-center gap-2">
-          {/* Export */}
-          <button
-            type="button"
-            data-testid="agent-tool-export-json"
-            onPointerDown={(e) => e.stopPropagation()}
-            onClick={(e) => {
-              e.stopPropagation();
-
-              // Get current session ID
-              const sessionId = useChatSession.getState().sessionId;
-
-              // Try smart export first
-              const financePayload = detectFinanceReply(uiMessages, sessionId);
-
-              telemetry.track(AGENT_TOOL_EVENTS.EXPORT_JSON, { mode: financePayload ? 'finance' : 'thread' });
-
-              if (financePayload) {
-                // Export structured finance JSON
-                const month = financePayload.month;
-                const kind = financePayload.kind === 'finance_quick_recap' ? 'quick' : 'deep';
-                const filename = financeName(month, kind);
-                const blob = new Blob([JSON.stringify(financePayload, null, 2)], { type: 'application/json' });
-                saveAs(blob, filename);
-              } else {
-                // Export full thread
-                const normalized = (uiMessages || []).map(m => ({ role: m.role, content: m.text, createdAt: m.ts }));
-                const firstUser = (uiMessages || []).find(m => m.role === 'user');
-                const trimmed = (firstUser?.text || '').split('\n')[0].slice(0, 40).trim();
-                const title = trimmed ? `finance-agent-chat-${trimmed.replace(/\s+/g, '_')}` : 'finance-agent-chat';
-                exportThreadAsJSON(title, normalized);
-              }
-            }}
-            disabled={!uiMessages || uiMessages.length === 0}
-            className="text-xs px-2 py-1 border rounded-md hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed"
-            title="Export last finance summary (if present) or full thread"
-          >
-            Export JSON
-          </button>
-          <button
-            type="button"
-            data-testid="agent-tool-export-markdown"
-            onPointerDown={(e) => e.stopPropagation()}
-            onClick={(e) => {
-              e.stopPropagation();
-              // Smart export: if last reply is a finance summary, export it; otherwise export full thread
-              const lastAssistant = [...(uiMessages || [])].reverse().find(m => m.role === 'assistant');
-              const isFinanceSummary = lastAssistant?.meta?.mode === 'finance_quick_recap' || lastAssistant?.meta?.mode === 'finance_deep_dive';
-
-              telemetry.track(AGENT_TOOL_EVENTS.EXPORT_MARKDOWN, { mode: isFinanceSummary ? 'finance' : 'thread' });
-
-              if (isFinanceSummary && lastAssistant) {
-                // Export just the last finance reply
-                const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-                const month = lastAssistant.meta?.ctxMonth || 'unknown';
-                const filename = `finance-summary-${month}-${timestamp}.md`;
-                const blob = new Blob([lastAssistant.text], { type: 'text/markdown;charset=utf-8' });
-                saveAs(blob, filename);
-              } else {
-                // Export full thread
-                const normalized = (uiMessages || []).map(m => ({ role: m.role, content: m.text, createdAt: m.ts }));
-                const firstUser = (uiMessages || []).find(m => m.role === 'user');
-                const trimmed = (firstUser?.text || '').split('\n')[0].slice(0, 40).trim();
-                const title = trimmed ? `finance-agent-chat-${trimmed.replace(/\s+/g, '_')}` : 'finance-agent-chat';
-                exportThreadAsMarkdown(title, normalized);
-              }
-            }}
-            className="text-xs px-2 py-1 border rounded-md hover:bg-muted"
-            title="Export last finance summary (if present) or full thread"
-          >
-            Export Markdown
-          </button>
-          {/* Hide any legacy top-bar tool buttons */}
-          {ENABLE_TOPBAR_TOOL_BUTTONS && (
-            <div className="hidden" />
-          )}
-          <button
-            type="button"
-            onPointerDown={(e) => e.stopPropagation()}
-            onClick={(e) => { e.stopPropagation(); setHistoryOpen(v => !v); }}
-            className="text-xs px-2 py-1 border rounded-md hover:bg-muted"
-            title="Show recent messages"
-          >
-            {historyOpen ? 'Hide history' : 'History'}
-          </button>
-          <ChatControls ref={chatControlsRef} />
-          <button
-            type="button"
-            data-testid="chat-tools-toggle"
-            onPointerDown={(e) => e.stopPropagation()}
-            onClick={(e) => { e.stopPropagation(); toggleTools(); }}
-            aria-expanded={showTools}
-            aria-controls="agent-tools-panel"
-            className="text-xs px-2 py-1 border rounded-md hover:bg-muted inline-flex items-center gap-1"
-            title={showTools ? "Hide tools" : "Show tools"}
-          >
-            {showTools ? <ChevronUp size={14}/> : <Wrench size={14}/>}
-            {showTools ? 'Hide tools' : 'Agent Tools'}
-          </button>
-          {/* Model selection removed - use Dev menu instead */}
-          <button
-            onPointerDown={(e) => e.stopPropagation()}
-            onClick={(e) => { e.stopPropagation(); setOpen(false); }}
-            className="px-2 py-1 rounded-lg bg-neutral-800 text-neutral-200 border border-neutral-700 hover:bg-neutral-700"
-            title="Collapse (Esc)"
-          >
-            Collapse
-          </button>
-        </div>
-      </div>
-
-      {/* Advanced model selection panel removed - use Dev menu instead */}
-
-      {/* Agent tools tray (all tools live here; one-click) */}
-      {showTools && (
-        <div id="agent-tools-panel" className="px-3 py-2 border-b bg-muted/10">
-          {/* Tabs */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 mb-2">
-            <button type="button" onClick={(e) => { telemetry.track(AGENT_TOOL_EVENTS.MONTH_SUMMARY); runMonthSummary(e as any); }} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50" data-testid="agent-tool-month-summary">Month summary</button>
-            <button type="button" onClick={(e) => { telemetry.track(AGENT_TOOL_EVENTS.FIND_SUBSCRIPTIONS); runFindSubscriptions(e as any); }} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50" data-testid="agent-tool-find-subscriptions">Find subscriptions</button>
-            <button type="button" onClick={(e) => { telemetry.track(AGENT_TOOL_EVENTS.TOP_MERCHANTS); runTopMerchants(e as any); }} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50" data-testid="agent-tool-top-merchants">Top merchants</button>
-            <button type="button" onClick={(e) => { telemetry.track(AGENT_TOOL_EVENTS.CASHFLOW); runCashflow(e as any); }} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50" data-testid="agent-tool-cashflow">Cashflow</button>
-            <button type="button" onClick={(e) => { telemetry.track(AGENT_TOOL_EVENTS.TRENDS); runTrends(e as any); }} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50" data-testid="agent-tool-trends">Trends</button>
-            {/* Consolidated Insights button with dropdown */}
-            {DISABLE_OVERLAYS ? (
-              // KILL-SWITCH: Simple buttons when overlays disabled
-              <>
-                <button type="button" onClick={() => { setInsightsSize("compact"); telemetry.track(AGENT_TOOL_EVENTS.INSIGHTS, { size: "compact" }); runInsights({ size: "compact" }); }} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50" data-testid="agent-tool-insights-compact">Insights (C)</button>
-                <button type="button" onClick={() => { setInsightsSize("expanded"); telemetry.track(AGENT_TOOL_EVENTS.INSIGHTS, { size: "expanded" }); runInsights({ size: "expanded" }); }} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50" data-testid="agent-tool-insights-expanded">Insights (E)</button>
-              </>
-            ) : (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <button
-                    type="button"
-                    disabled={busy}
-                    className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50 inline-flex items-center gap-1"
-                    data-testid="agent-tool-insights"
-                    title={`Insights (${insightsSize}) — Choose Compact or Expanded`}
-                    aria-label={`Insights (${insightsSize})`}
-                  >
-                    Insights <ChevronDown className="h-3 w-3 opacity-70" />
-                  </button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start">
-                  <DropdownMenuItem
-                    onClick={() => {
-                      setInsightsSize("compact");
-                      telemetry.track(AGENT_TOOL_EVENTS.INSIGHTS, { size: "compact" });
-                      runInsights({ size: "compact" });
-                    }}
-                    data-testid="agent-tool-insights-compact"
-                  >
-                    Compact
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    onClick={() => {
-                      setInsightsSize("expanded");
-                      telemetry.track(AGENT_TOOL_EVENTS.INSIGHTS, { size: "expanded" });
-                      runInsights({ size: "expanded" });
-                    }}
-                    data-testid="agent-tool-insights-expanded"
-                  >
-                    Expanded
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+        <CardHeader className="lm-chat-header">
+          <div className="lm-chat-header-main">
+            <CardTitle className="lm-chat-title">LEDGERMIND ASSISTANT</CardTitle>
+            {llmStatus.llm_ok !== undefined && (
+              <Badge variant="outline" className="lm-chat-badge">
+                <span className="dot" /> {llmStatus.llm_ok ? 'LLM: OK' : 'LLM: Fallback'}
+              </Badge>
             )}
-            <button type="button" onClick={(e) => runBudgetCheck(e as any)} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50" data-testid="agent-tool-budget-check">Budget check</button>
-            <button type="button" onClick={(e) => runAlerts(e as any)} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50">Alerts</button>
-            {/* Analytics quick buttons */}
-            <button type="button" onClick={(e) => runAnalyticsKpis(e as any)} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50">KPIs</button>
-            <button type="button" onClick={(e) => { if(!busy){ startAguiRun('forecast', 'Forecast next month’s spending.', month); } }} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50">Forecast</button>
-            <button type="button" onClick={(e) => runAnalyticsAnomalies(e as any)} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50">Anomalies</button>
-            <button type="button" onClick={(e) => runAnalyticsRecurring(e as any)} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50">Recurring</button>
-            <button type="button" onClick={(e) => runAnalyticsBudgetSuggest(e as any)} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50">Budget suggest</button>
-            <button type="button" onClick={() => runAnalyticsWhatIf()} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50">What if...</button>
-            {/* Legacy non-NL search removed */}
-            <button
-              type="button"
-              onClick={() => { void handleTransactionsNL(); }}
-              disabled={busy}
-              className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50"
-              title="Search transactions (NL) — Try: “Starbucks this month”, “Delta in Aug 2025”, “transactions > $50 last 90 days”. Pro tips: MTD, YTD, last N days/weeks/months, since YYYY-MM-DD."
-            >
-              Search transactions (NL)
-            </button>
-            <button
-              type="button"
-              data-testid="agent-tool-export-csv"
-              onClick={async () => {
-                if (busy) return;
-                telemetry.track(AGENT_TOOL_EVENTS.EXPORT_CSV);
-                try {
-                  setBusy(true);
-                  const last = lastNlqRef.current;
-                  if (!last) {
-                    window.alert("No previous NL query found. Run a query first.");
-                    return;
-                  }
-                  const { q, flow, filters } = last;
-                  const { blob, filename } = await txnsQueryCsv(q, {
-                    start: filters?.start,
-                    end: filters?.end,
-                    page_size: Math.max(100, Math.min(1000, filters?.page_size || filters?.limit || 200)),
-                    ...(flow ? { flow } as any : {})
-                  });
-                  saveAs(blob, filename || "txns_query.csv");
-
-                  appendAssistant(`Exported CSV for last NL query: ${q}`);
-                } catch (err: any) {
-                  appendAssistant(`**CSV export failed:** ${err?.message || String(err)}`);
-                } finally {
-                  setBusy(false);
+          </div>
+          <div className="lm-chat-header-actions">
+            <Button
+              variant="pill-ghost"
+              size="sm"
+              className="lm-chat-chip"
+              data-testid="agent-tool-export-json"
+              onClick={(e) => {
+                e.stopPropagation();
+                const sessionId = useChatSession.getState().sessionId;
+                const financePayload = detectFinanceReply(uiMessages, sessionId);
+                telemetry.track(AGENT_TOOL_EVENTS.EXPORT_JSON, { mode: financePayload ? 'finance' : 'thread' });
+                if (financePayload) {
+                  const month = financePayload.month;
+                  const kind = financePayload.kind === 'finance_quick_recap' ? 'quick' : 'deep';
+                  const filename = financeName(month, kind);
+                  const blob = new Blob([JSON.stringify(financePayload, null, 2)], { type: 'application/json' });
+                  saveAs(blob, filename);
+                } else {
+                  const normalized = (uiMessages || []).map(m => ({ role: m.role, content: m.text, createdAt: m.ts }));
+                  const firstUser = (uiMessages || []).find(m => m.role === 'user');
+                  const trimmed = (firstUser?.text || '').split('\n')[0].slice(0, 40).trim();
+                  const title = trimmed ? `finance-agent-chat-${trimmed.replace(/\s+/g, '_')}` : 'finance-agent-chat';
+                  exportThreadAsJSON(title, normalized);
                 }
               }}
-              disabled={busy}
-              className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50"
-              title="Exports results from your last natural-language search"
+              disabled={!uiMessages || uiMessages.length === 0}
+              title="Export last finance summary (if present) or full thread"
             >
-              Export CSV (last NL query)
-            </button>
-            {/* Prev/Next paging for last NL list results */}
-            <button
-              type="button"
-              data-testid="agent-tool-prev-nl"
-              onClick={async () => {
-                if (busy) return;
-                const last = lastNlqRef.current;
-                if (!last) { window.alert("No previous NL query found."); return; }
-                if ((last.intent || '').toLowerCase() !== 'list') { window.alert("Paging applies to list results only."); return; }
-                const page = Math.max(1, Number(last.filters?.page || 1) - 1);
-                const page_size = Number(last.filters?.page_size || 50);
-                await runToolWithRephrase(
-                  'transactions.nl_page_prev',
-                  async () => {
-                    const res = await txnsQuery(last.q, {
-                      start: last.filters?.start,
-                      end: last.filters?.end,
-                      page, page_size,
-                      ...(last.flow ? { flow: last.flow as any } : {}),
-                    });
-                    lastNlqRef.current = {
-                      q: last.q,
-                      flow: last.flow,
-                      filters: (res as any)?.filters ?? { ...(last.filters || {}), page, page_size },
-                      intent: (res as any)?.intent,
-                    };
-                    return res as any;
-                  },
-                  (res: any) => formatTxnQueryResult(last.q, res),
-                  (msg, meta) => appendAssistant(msg, { ...meta, ctxMonth: month }),
-                  (on) => setBusy(on)
-                );
+              Export JSON
+            </Button>
+            <Button
+              variant="pill-ghost"
+              size="sm"
+              className="lm-chat-chip"
+              data-testid="agent-tool-export-markdown"
+              onClick={(e) => {
+                e.stopPropagation();
+                const lastAssistant = [...(uiMessages || [])].reverse().find(m => m.role === 'assistant');
+                const isFinanceSummary = lastAssistant?.meta?.mode === 'finance_quick_recap' || lastAssistant?.meta?.mode === 'finance_deep_dive';
+                telemetry.track(AGENT_TOOL_EVENTS.EXPORT_MARKDOWN, { mode: isFinanceSummary ? 'finance' : 'thread' });
+                if (isFinanceSummary && lastAssistant) {
+                  const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+                  const month = lastAssistant.meta?.ctxMonth || 'unknown';
+                  const filename = `finance-summary-${month}-${timestamp}.md`;
+                  const blob = new Blob([lastAssistant.text], { type: 'text/markdown;charset=utf-8' });
+                  saveAs(blob, filename);
+                } else {
+                  const normalized = (uiMessages || []).map(m => ({ role: m.role, content: m.text, createdAt: m.ts }));
+                  const firstUser = (uiMessages || []).find(m => m.role === 'user');
+                  const trimmed = (firstUser?.text || '').split('\n')[0].slice(0, 40).trim();
+                  const title = trimmed ? `finance-agent-chat-${trimmed.replace(/\s+/g, '_')}` : 'finance-agent-chat';
+                  exportThreadAsMarkdown(title, normalized);
+                }
               }}
-              disabled={busy || !lastNlqRef.current || (lastNlqRef.current?.intent || '').toLowerCase() !== 'list' || Number((lastNlqRef.current?.filters || {}).page || 1) <= 1}
-              className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50"
-              title="Previous page of last NL list"
+              title="Export last finance summary (if present) or full thread"
             >
-              ◀ Prev page (NL)
-            </button>
-            <button
-              type="button"
-              data-testid="agent-tool-next-nl"
-              onClick={async () => {
-                if (busy) return;
-                const last = lastNlqRef.current;
-                if (!last) { window.alert("No previous NL query found."); return; }
-                if ((last.intent || '').toLowerCase() !== 'list') { window.alert("Paging applies to list results only."); return; }
-                const page = Math.max(1, Number(last.filters?.page || 1) + 1);
-                const page_size = Number(last.filters?.page_size || 50);
-                await runToolWithRephrase(
-                  'transactions.nl_page_next',
-                  async () => {
-                    const res = await txnsQuery(last.q, {
-                      start: last.filters?.start,
-                      end: last.filters?.end,
-                      page, page_size,
-                      ...(last.flow ? { flow: last.flow as any } : {}),
-                    });
-                    lastNlqRef.current = {
-                      q: last.q,
-                      flow: last.flow,
-                      filters: (res as any)?.filters ?? { ...(last.filters || {}), page, page_size },
-                      intent: (res as any)?.intent,
-                    };
-                    return res as any;
-                  },
-                  (res: any) => formatTxnQueryResult(last.q, res),
-                  (msg, meta) => appendAssistant(msg, { ...meta, ctxMonth: month }),
-                  (on) => setBusy(on)
-                );
-              }}
-              disabled={busy || !lastNlqRef.current || (lastNlqRef.current?.intent || '').toLowerCase() !== 'list'}
-              className="text-xs px-2 py-1 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50"
-              title="Next page of last NL list"
+              Export Markdown
+            </Button>
+            <Button
+              variant="pill-ghost"
+              size="sm"
+              className="lm-chat-chip"
+              onClick={() => setShowTools(false)}
+              title="Hide tools"
             >
-              Next page (NL) ▶
-            </button>
-            {/* Selftest button removed */}
+              Hide tools
+            </Button>
           </div>
-          <div className="text-[11px] opacity-60">Tip: Hold Alt to run without context.</div>
+        </CardHeader>
 
-
-          {ENABLE_LEGACY_TOOL_FORM ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {/* ... existing payload/result form retained behind flag ... */}
+        <CardContent className="lm-chat-body">
+          {/* INSIGHTS */}
+          <section className="lm-chat-section" data-testid="lm-chat-section-insights">
+            <div className="lm-chat-section-header">
+              <span className="lm-chat-section-label">INSIGHTS</span>
             </div>
-          ) : null}
-        </div>
-      )}
+            <div className="lm-chat-tools-grid">
+              <Button
+                variant="pill-outline"
+                size="sm"
+                className="lm-chat-tool"
+                onClick={(e) => { telemetry.track(AGENT_TOOL_EVENTS.MONTH_SUMMARY); runMonthSummary(e as any); }}
+                disabled={busy}
+                data-testid="agent-tool-month-summary"
+              >
+                <Sparkles className="lm-chat-tool-icon" />
+                <span>Month summary</span>
+              </Button>
+              <Button
+                variant="pill-outline"
+                size="sm"
+                className="lm-chat-tool"
+                onClick={(e) => { telemetry.track(AGENT_TOOL_EVENTS.TRENDS); runTrends(e as any); }}
+                disabled={busy}
+                data-testid="agent-tool-trends"
+              >
+                <TrendingUp className="lm-chat-tool-icon" />
+                <span>Trends</span>
+              </Button>
+              <Button
+                variant="pill-outline"
+                size="sm"
+                className="lm-chat-tool"
+                onClick={(e) => runAlerts(e as any)}
+                disabled={busy}
+              >
+                <Bell className="lm-chat-tool-icon" />
+                <span>Alerts</span>
+              </Button>
+            </div>
+          </section>
 
-      {/* RAG dev tools (PIN-gated) */}
-      {showDevTools && (
-        <div data-testid="rag-chips" className="px-3 py-2 border-b bg-muted/10">
-          <RagToolChips onReply={(msg) => appendAssistant(msg)} />
-        </div>
-      )}
+          {/* SUBSCRIPTIONS */}
+          <section className="lm-chat-section" data-testid="lm-chat-section-subscriptions">
+            <div className="lm-chat-section-header">
+              <span className="lm-chat-section-label">SUBSCRIPTIONS</span>
+            </div>
+            <div className="lm-chat-tools-grid">
+              <Button
+                variant="pill-outline"
+                size="sm"
+                className="lm-chat-tool"
+                onClick={(e) => runAnalyticsRecurring(e as any)}
+                disabled={busy}
+              >
+                <Repeat className="lm-chat-tool-icon" />
+                <span>Recurring</span>
+              </Button>
+              <Button
+                variant="pill-outline"
+                size="sm"
+                className="lm-chat-tool"
+                onClick={(e) => { telemetry.track(AGENT_TOOL_EVENTS.FIND_SUBSCRIPTIONS); runFindSubscriptions(e as any); }}
+                disabled={busy}
+                data-testid="agent-tool-find-subscriptions"
+              >
+                <Search className="lm-chat-tool-icon" />
+                <span>Find subscriptions</span>
+              </Button>
+            </div>
+          </section>
 
-      {/* Collapsible History panel */}
-      {historyOpen && (
-        <div className="px-3 py-2 border-b bg-muted/5">
-          <div className="flex items-center justify-between mb-2">
-            <div className="text-xs opacity-70">This tab's recent messages</div>
-            <button
-              className="text-xs px-2 py-1 border rounded-md hover:bg-muted"
-              onClick={() => chatControlsRef.current?.openClearModal()}
-              title="Clear chat history (all tabs)"
-            >
-              Clear
-            </button>
-          </div>
-          <div className="max-h-48 overflow-auto space-y-2 text-sm">
-            {uiMessages.length === 0 ? (
-              <div className="opacity-60 text-xs">No messages yet.</div>
-            ) : uiMessages.slice(-50).map((m, i) => (
-              <div key={i} className="p-2 rounded-md border">
-                <div className="text-[11px] opacity-60 mb-1">
-                  {m.role.toUpperCase()} · {new Date(m.ts).toLocaleTimeString()}
-                  {m.meta?.model ? ` · ${m.meta.model}` : ''}
-                  {m.meta?.ctxMonth ? ` · month ${m.meta.ctxMonth}` : ''}
-                </div>
-                <div className="prose prose-invert max-w-none text-sm">
-                  {m.text}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Messages list (scrollable) with day dividers & timestamps */}
-      {aguiRunActive || aguiTools.length ? (
-        <div className={["px-3", aguiRunActive ? "" : "agui-ribbon-fade"].join(" ")}>
-          <div className="agui-ribbon">
-            {aguiTools.map(t => {
-              const baseClass = t.status === 'active' ? 'agui-chip-active' : t.status === 'done' ? 'agui-chip-done' : t.status === 'error' ? 'agui-chip-error' : 'agui-chip-pending';
-              return (
-                <span key={t.name} className={baseClass} title={t.status}>
-                  {t.status === 'active' && <span className="agui-dot agui-dot-pulse" />}
-                  {t.status !== 'active' && <span className="agui-dot" />}
-                  {t.name.replace('charts.', 'charts/').replace('analytics.', 'analytics/').replace('agent.', 'agent/')}
-                </span>
-              );
-            })}
-          </div>
-        </div>
-      ) : null}
-      <div className="flex-1 overflow-auto chat-scroll" key={`${sessionId}:${version}`} ref={listRef} aria-live="polite" aria-atomic="false" role="log">
-        {renderedMessages}
-        {busy && (
-          <div className="px-3 py-2">
-            <RobotThinking size={64} />
-          </div>
-        )}
-        {/* Fallback chip lane when no assistant messages yet */}
-  {IS_TEST && canSaveRule && !uiMessages.some(m => m.role === 'assistant') && (
-          <div className="flex flex-wrap gap-2 mt-2 px-3">
-            <button
-              type="button"
-              aria-label="Save Rule…"
-              className="chip ml-auto"
-              onClick={() => { setSaveRuleScenario(lastWhatIfScenarioRef.current || ''); setShowSaveRuleModal(true); }}
-            >
-              Save Rule…
-            </button>
-          </div>
-        )}
-        <div id="chatdock-scroll-anchor" ref={bottomRef} />
+          {/* SEARCH & PLANNING */}
+          <section className="lm-chat-section" data-testid="lm-chat-section-search">
+            <div className="lm-chat-section-header">
+              <span className="lm-chat-section-label">SEARCH & PLANNING</span>
+            </div>
+            <div className="lm-chat-tools-grid">
+              <Button
+                variant="pill-outline"
+                size="sm"
+                className="lm-chat-tool"
+                onClick={() => { setInsightsSize("compact"); telemetry.track(AGENT_TOOL_EVENTS.INSIGHTS, { size: "compact" }); runInsights({ size: "compact" }); }}
+                disabled={busy}
+                data-testid="agent-tool-insights-compact"
+              >
+                <MessageCircle className="lm-chat-tool-icon" />
+                <span>Insights (Q)</span>
+              </Button>
+              <Button
+                variant="pill-outline"
+                size="sm"
+                className="lm-chat-tool"
+                onClick={(e) => runAnalyticsBudgetSuggest(e as any)}
+                disabled={busy}
+              >
+                <Wallet className="lm-chat-tool-icon" />
+                <span>Budget suggest</span>
+              </Button>
+              <Button
+                variant="pill-outline"
+                size="sm"
+                className="lm-chat-tool"
+                onClick={() => { void handleTransactionsNL(); }}
+                disabled={busy}
+                title="Search transactions (NL) — Try: 'Starbucks this month', 'Delta in Aug 2025', 'transactions > $50 last 90 days'. Pro tips: MTD, YTD, last N days/weeks/months, since YYYY-MM-DD."
+              >
+                <Search className="lm-chat-tool-icon" />
+                <span>Search transactions (NL)</span>
+              </Button>
+            </div>
+          </section>
+        </CardContent>
       </div>
 
-  {/* Undo Snackbar (fixed) stays as-is */}
-      {undoVisible && (
-        <div
-          className={[
-            "fixed bottom-4 right-4 z-50",
-            "card bg-card border border-border rounded-2xl shadow-lg",
-            "px-3 py-2 text-sm flex items-center gap-3",
-            undoClosing ? "animate-fade-slide-up" : ""
-          ].join(" ")}
-          role="status"
-          aria-live="polite"
-        >
-          <span className="opacity-85">{undoMsg}</span>
-          <button
-            className="px-2 py-1 text-xs rounded-lg border border-border hover:opacity-90"
-            onClick={() => {
-              if (undoActionRef.current) {
-                undoActionRef.current();
-              } else {
-                // graceful dismiss if no action wired
-                setUndoClosing(true);
-                window.setTimeout(() => setUndoVisible(false), 800);
-              }
-            }}
-          >
-            Undo
-          </button>
+      {/* Dark footer */}
+      <CardFooter className="lm-chat-footer">
+        <div className="lm-chat-footer-inner">
+          <div className="lm-chat-greeting">
+            <p className="lm-chat-greeting-title">Hey! 👋</p>
+            <p className="lm-chat-greeting-body">
+              Start a conversation or pick a tool from the header to explore your spending.
+            </p>
+          </div>
+
+          <form className="lm-chat-input-row" onSubmit={(e) => { e.preventDefault(); handleSend(); }}>
+            <input
+              className="lm-chat-input"
+              placeholder="Ask or type a command..."
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              disabled={busy}
+            />
+            <Button className="lm-chat-send-button" type="submit" disabled={!input.trim() || busy} size="sm">
+              Send
+            </Button>
+          </form>
         </div>
-      )}
-
-      <SaveRuleModal
-        open={showSaveRuleModal}
-        onOpenChange={setShowSaveRuleModal}
-        month={month}
-        scenario={saveRuleScenario}
-        defaultCategory={(() => {
-          // Heuristic: attempt to extract category in quotes from scenario text e.g. "Dining out"
-          const src = saveRuleScenario || '';
-            const q = src.match(/"([^"]{2,40})"/);
-            if (q) return q[1];
-            // fallback: look for single word after 'cut' or 'reduce'
-            const m = src.match(/(?:cut|reduce)\s+([A-Za-z][A-Za-z\s]{2,30})/i);
-            if (m) return m[1].trim();
-            return '';
-        })()}
-      />
-
-      {/* Why? Modal - Shows explanation and sources */}
-      {!DISABLE_OVERLAYS && (
-        <Dialog open={showWhyModal} onOpenChange={setShowWhyModal}>
-          <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle>Why? - Explanation</DialogTitle>
-              <DialogDescription>
-                Detailed explanation of the agent&apos;s response
-              </DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4">
-              {whyContent.explain && (
-                <div>
-                  <h3 className="text-sm font-semibold text-white mb-2">Explanation:</h3>
-                  <div className="text-sm text-gray-300 whitespace-pre-wrap">
-                    {whyContent.explain}
-                  </div>
-              </div>
-            )}
-            {whyContent.sources && whyContent.sources.length > 0 && (
-              <div>
-                <h3 className="text-sm font-semibold text-white mb-2">Sources:</h3>
-                <ul className="list-disc list-inside text-sm text-gray-300 space-y-1">
-                  {whyContent.sources.map((source, idx) => (
-                    <li key={idx}>
-                      {source.type}
-                      {source.id && ` (ID: ${source.id})`}
-                      {source.count && ` - ${source.count} items`}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-            {!whyContent.explain && (!whyContent.sources || whyContent.sources.length === 0) && (
-              <p className="text-sm text-gray-400">No explanation available.</p>
-            )}
-          </div>
-          <div className="mt-4 flex justify-end">
-            <button
-              onClick={() => setShowWhyModal(false)}
-              className="px-4 py-2 text-sm rounded-md bg-blue-600 hover:bg-blue-700 text-white"
-            >
-              Close
-            </button>
-          </div>
-        </DialogContent>
-      </Dialog>
-      )}
-
-
-      {/* Composer - textarea with Enter to send, Shift+Enter newline */}
-      <div className="p-3 border-t bg-background sticky bottom-0 z-10 flex items-end gap-2">
-        <textarea
-          id="chat-composer"
-          ref={composerRef}
-          rows={1}
-          placeholder={composerPlaceholder}
-          className="flex-1 resize-none px-3 py-2 rounded-md border bg-background text-sm"
-          value={input}
-          onChange={(e) => {
-            if (composerPlaceholder !== DEFAULT_PLACEHOLDER) {
-              setComposerPlaceholderUI(DEFAULT_PLACEHOLDER);
-            }
-            setInput(e.target.value);
-          }}
-          onKeyDown={onComposerKeyDown}
-          disabled={busy}
-        />
-        <button
-          className="btn hover:bg-muted disabled:opacity-50"
-          disabled={!input.trim() || busy}
-          onClick={(e) => handleSend(e)}
-          title="Send (Enter). Shift+Enter = newline. Hold Alt to omit context."
-        >
-          {busy ? '...' : 'Send'}
-        </button>
-      </div>
-    </div>
+      </CardFooter>
+      </Card>
   );
 
   // Since we're already mounted in Shadow DOM via chatMount.tsx,
@@ -2424,25 +2147,58 @@ export default function ChatDock() {
       <div
         className={cn(
           'lm-chat-launcher',
-          `lm-chat-launcher--${launcherState}`
+          open && !isClosing ? 'lm-chat-launcher--open' : 'lm-chat-launcher--closed'
         )}
-        data-state={launcherState}
+        data-state={open && !isClosing ? 'open' : 'closed'}
         data-testid="lm-chat-launcher"
       >
-        {!open && bubbleEl}
-        <div
-          className="lm-chat-backdrop"
-          data-testid="lm-chat-launcher-backdrop"
-          aria-hidden={!open}
-          onClick={open ? () => setOpen(false) : undefined}
-        />
-        <div className="lm-chat-shell" data-testid="lm-chat-shell">
-          {panelEl}
-        </div>
+        {/* 💬 Bubble (always present) */}
+        <button
+          type="button"
+          ref={triggerRef}
+          data-testid="lm-chat-launcher-button"
+          onClick={() => setOpen((prev) => !prev)}
+          aria-label={open ? "Close LedgerMind Assistant" : "Open LedgerMind Assistant"}
+          className="lm-chat-launcher-bubble fixed z-[80] rounded-full shadow-lg bg-black text-white w-12 h-12 flex items-center justify-center hover:opacity-90 select-none"
+          style={{ right: rb.right, bottom: rb.bottom, cursor: "grab", position: 'fixed' as const }}
+          data-chatdock-root
+          data-chatdock-bubble
+          onPointerDown={(e) => startDragRB(e, BUBBLE, BUBBLE)}
+          title={open ? "Close Agent Tools" : "Open Agent Tools (Ctrl+Shift+K)"}
+        >
+          {bubbleIcon}
+        </button>
+
+        {/* 🌌 Overlay + shell via portal */}
+        {portalReady && createPortal(
+          <div
+            className="lm-chat-overlay"
+            data-testid="lm-chat-overlay"
+          >
+            {/* Backdrop: purely visual darkened layer, no events */}
+            <div
+              className="lm-chat-backdrop"
+              data-testid="lm-chat-backdrop"
+              aria-hidden="true"
+            />
+
+            {/* Shell: the only interactive part */}
+            <div
+              className="lm-chat-shell"
+              ref={shellRef}
+              data-testid="lm-chat-shell"
+            >
+              {panel}
+            </div>
+          </div>,
+          document.body
+        )}
       </div>
     </ErrorBoundary>
   );
 }
+
+// Helper: format NL transaction query result for chat rendering
 
 // Helper: format NL transaction query result for chat rendering
 // --- helper to inject a compact table (markdown + inline HTML for buttons)

@@ -1,0 +1,138 @@
+# ApplyLens Production Alert Rules
+# Monitors container availability and HTTP errors
+
+groups:
+  - name: applylens-prod
+    interval: 30s
+    rules:
+      # Alert when a container goes down
+      - alert: ContainerDown
+        expr: up{job=~"docker.*|applylens.*"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          environment: production
+        annotations:
+          summary: "ApplyLens container down: {{ $labels.instance }}"
+          description: "Container {{ $labels.container_name }} has been down for more than 2 minutes."
+
+      # Alert on public 5xx errors
+      - alert: Public5xxErrors
+        expr: sum(rate(nginx_http_requests_total{status=~"5.."}[5m])) > 0.5
+        for: 5m
+        labels:
+          severity: warning
+          environment: production
+        annotations:
+          summary: "High 5xx error rate on ApplyLens public endpoints"
+          description: "5xx errors detected: {{ $value | humanize }} requests/sec over 5 minutes."
+
+      # Alert when public endpoints are unreachable
+      - alert: PublicEndpointDown
+        expr: probe_success{job="blackbox-applylens"} == 0
+        for: 3m
+        labels:
+          severity: critical
+          environment: production
+        annotations:
+          summary: "ApplyLens public endpoint unreachable: {{ $labels.instance }}"
+          description: "Endpoint {{ $labels.instance }} has been unreachable for 3+ minutes."
+
+      # Alert on slow response times
+      - alert: SlowResponseTime
+        expr: probe_http_duration_seconds{job="blackbox-applylens"} > 5
+        for: 5m
+        labels:
+          severity: warning
+          environment: production
+        annotations:
+          summary: "Slow response time on {{ $labels.instance }}"
+          description: "Response time: {{ $value | humanize }}s (threshold: 5s)"
+
+      # Alert when API ready check fails
+      - alert: APINotReady
+        expr: probe_http_status_code{job="blackbox-applylens", instance="https://applylens.app/api/ready"} != 200
+        for: 2m
+        labels:
+          severity: critical
+          environment: production
+        annotations:
+          summary: "ApplyLens API /ready endpoint failing"
+          description: "API ready check returning non-200 status: {{ $value }}"
+
+      # Alert on container restart loop
+      - alert: ContainerRestartLoop
+        expr: rate(docker_container_restarts_total[10m]) > 0.1
+        for: 10m
+        labels:
+          severity: warning
+          environment: production
+        annotations:
+          summary: "Container restart loop detected: {{ $labels.container_name }}"
+          description: "Container has restarted {{ $value | humanize }} times in 10 minutes."
+
+  # Companion Bandit Safety Alerts (Phase 6)
+  - name: applylens-companion-bandit
+    interval: 30s
+    rules:
+      # Alert when explore rate is too high (>40%)
+      - alert: ApplyLensCompanionBanditExploreRateHigh
+        expr: |
+          (
+            sum(rate(autofill_policy_total{policy="explore"}[1h]))
+            /
+            sum(rate(autofill_policy_total{policy=~"explore|exploit"}[1h]))
+          ) > 0.4
+        for: 15m
+        labels:
+          severity: warning
+          service: applylens-companion
+        annotations:
+          summary: "Companion bandit explore rate is high"
+          description: >
+            Explore rate over the last hour is above 40% (current: {{ $value | humanizePercentage }}).
+            This may indicate an incorrect epsilon or misconfiguration.
+            Expected range: 10-20% for healthy exploration.
+
+      # Alert when fallback policy spikes (bandit degraded or disabled)
+      - alert: ApplyLensCompanionBanditFallbackSpike
+        expr: |
+          (
+            sum(rate(autofill_policy_total{policy="fallback"}[1h]))
+            /
+            sum(rate(autofill_policy_total[1h]))
+          ) > 0.2
+        for: 30m
+        labels:
+          severity: warning
+          service: applylens-companion
+        annotations:
+          summary: "Companion bandit fallback policy spike"
+          description: >
+            Fallback policy accounts for more than 20% of bandit events over the last hour (current: {{ $value | humanizePercentage }}).
+            This may indicate bandit is disabled, failing, or style selection is not working.
+            Check COMPANION_BANDIT_ENABLED flag and autofill aggregator logs.
+
+      # Alert when no-recommendation rate is high per ATS family
+      - alert: ApplyLensCompanionBanditNoRecommendationSpike
+        expr: |
+          (
+            sum by (host_family)(
+              rate(applylens_autofill_style_choice_total{source="none"}[1h])
+            )
+            /
+            sum by (host_family)(
+              rate(applylens_autofill_style_choice_total[1h])
+            )
+          ) > 0.5
+        for: 30m
+        labels:
+          severity: warning
+          service: applylens-companion
+        annotations:
+          summary: "High no-recommendation rate for Companion styles"
+          description: >
+            For ATS family '{{ $labels.host_family }}', more than 50% of style choices
+            over the last hour are 'none' (current: {{ $value | humanizePercentage }}).
+            This may indicate a regression in style selection for this ATS family.
+            Check FormProfile aggregation and style_hint computation.

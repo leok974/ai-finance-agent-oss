@@ -1,6 +1,47 @@
 # Shared Cloudflare Tunnel Connector Guardrails
 
-**Location**: The shared tunnel connectors (`cfd-a`, `cfd-b`) are managed in a separate docker-compose file (outside this repository).
+**Location**: The shared tunnel connectors (`cfd-a`, `cfd-b`, `infra-cloudflared`) are managed in a separate docker-compose file at `D:\ApplyLens\infra\docker-compose.yml` (outside this repository).
+
+**⚠️ CRITICAL FIX REQUIRED**: The `infra-cloudflared` container **MUST** be on the `infra_net` network to reach LedgerMind services.
+
+**Current Issue**: `infra-cloudflared` is only on `infra_default` and `applylens_applylens-prod` networks, so it **cannot resolve `ledgermind-web.int`** → results in 502 Bad Gateway for `app.ledger-mind.org`.
+
+**Temporary Fix Applied**:
+```bash
+docker network connect infra_net infra-cloudflared
+```
+⚠️ **This is NOT persistent** — will be lost if container is recreated.
+
+**Permanent Fix Required** (in `D:\ApplyLens\infra\docker-compose.yml`):
+```yaml
+services:
+  infra-cloudflared:
+    # ... existing config ...
+    networks:
+      - infra_net              # ✅ ADD THIS - needed for ledgermind-web.int / ledgermind-api.int
+      - infra_default          # existing
+      - applylens_applylens-prod  # existing (if present)
+
+networks:
+  infra_net:
+    external: true
+  infra_default:
+    # ... existing ...
+  applylens_applylens-prod:
+    external: true
+```
+
+After editing the external compose file:
+```bash
+# Navigate to the infra directory
+cd D:\ApplyLens\infra
+
+# Recreate the container with new network configuration
+docker compose up -d infra-cloudflared
+
+# Verify it's on infra_net
+docker network inspect infra_net --format '{{range .Containers}}{{.Name}}: {{.IPv4Address}}{{"\n"}}{{end}}' | findstr infra-cloudflared
+```
 
 ## Required Configuration
 
