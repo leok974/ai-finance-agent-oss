@@ -115,3 +115,61 @@ If ANY of these return 404 or x-ngx-loc is missing:
 1. Rollback nginx.conf immediately
 2. Re-run nginx-guards.yml workflow locally
 3. Check Prometheus alerts for AuthMe404 or AuthPath5xxSpike
+
+---
+
+## ChatDock UX Guardrails
+
+The chat panel interaction contract validates that:
+- Panel stays open when clicking inside shell (tool buttons, input field)
+- Panel closes when clicking the backdrop (dark area outside panel)
+- All tool buttons remain clickable without closing panel
+- Scroll behavior works correctly in gradient area
+- Close animation plays smoothly (220ms fade + scale)
+
+### Quick Smoke Tests
+
+```bash
+# Unit tests (component-level validation)
+pnpm test ChatDock.interactions
+
+# E2E tests (production validation)
+pnpm test:e2e:prod:one chat-panel-interactions
+pnpm test:e2e:prod:one chat-panel-scroll-and-close
+```
+
+### Expected Results
+
+✅ **Unit tests** (3 tests):
+- `keeps panel open when clicking inside shell and closes when clicking the backdrop`
+- `all tool buttons are clickable without closing the panel`
+- `text field can be typed into and Send does not close the panel`
+
+✅ **E2E: chat-panel-interactions** (2 tests):
+- `all tool buttons are clickable and panel stays open`
+- `text field can be focused, typed into, and used without closing panel`
+
+✅ **E2E: chat-panel-scroll-and-close** (1 test):
+- `scrolls to bottom and closes with backdrop` (validates fade animation)
+
+### Rollback Trigger
+
+If any of these tests fail after a ChatDock deployment:
+1. Revert `apps/web/src/components/ChatDock.tsx` immediately
+2. Revert `apps/web/src/chat/index.css` if backdrop styles changed
+3. Check for `pointer-events` CSS regressions
+4. Verify backdrop onClick and shell stopPropagation are preserved
+
+### Architecture Notes
+
+**Current implementation**:
+- Backdrop has `onClick={handleClose}` (closes panel with animation)
+- Shell has `onClick={e => e.stopPropagation()}` (prevents backdrop close)
+- `isClosing` state delays React state change by 220ms to allow CSS animation
+- CSS transitions: `opacity 180ms ease-out, transform 200ms ease-out`
+
+**What breaks the contract**:
+- Removing `onClick` from backdrop (panel won't close on backdrop click)
+- Removing `stopPropagation()` from shell (clicking inside would close panel)
+- Removing `isClosing` state (animation won't play on close)
+- Click handlers on individual tool buttons that don't stopPropagation

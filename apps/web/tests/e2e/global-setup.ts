@@ -15,16 +15,145 @@ import path from "node:path";
 import { request, type FullConfig } from "@playwright/test";
 import { getHmacCredentials } from "./utils/hmac";
 
+const PROD_AUTH_STATE = path.resolve('tests/e2e/.auth/prod-state.json');
+
+async function createProdSession(baseUrl: string) {
+  const url = new URL('/api/e2e/session', baseUrl).toString();
+  console.log(`[global-setup] Minting prod E2E session at ${url}`);
+
+  // Get HMAC credentials for E2E endpoint
+  const creds = getHmacCredentials();
+  const user = creds.clientId;
+  const ts = Math.floor(Date.now() / 1000).toString();
+  const msg = `${user}.${ts}`;
+  const sig = crypto.createHmac("sha256", creds.secret).update(msg).digest("hex");
+
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-e2e-ts': ts,
+      'x-e2e-sig': sig,
+    },
+    body: JSON.stringify({ user }),
+  });
+
+  const text = await res.text();
+
+  if (!res.ok) {
+    throw new Error(
+      `E2E session mint failed: ${res.status} ${res.statusText}\n` +
+        `Body: ${text.slice(0, 500)}`
+    );
+  }
+
+  let payload: any;
+  try {
+    payload = JSON.parse(text);
+  } catch {
+    throw new Error(
+      `E2E session returned non-JSON body:\n${text.slice(0, 300)}`
+    );
+  }
+
+  // Backend returns {"ok":true,"user":"..."} with cookies in Set-Cookie headers
+  if (!payload.ok) {
+    throw new Error(
+      `E2E session returned ok=false:\n${text.slice(0, 300)}`
+    );
+  }
+
+  // Extract cookies from Set-Cookie headers (same as HMAC path)
+  const setCookieHeaders = res.headers.get('set-cookie') ?? '';
+  const parsedCookies: Array<{
+    name: string;
+    value: string;
+    domain?: string;
+    path?: string;
+    httpOnly?: boolean;
+    secure?: boolean;
+    sameSite?: string;
+  }> = [];
+
+  if (setCookieHeaders) {
+    const cookieLines = setCookieHeaders.split(',').map(s => s.trim());
+    for (const line of cookieLines) {
+      const parts = line.split(";").map(p => p.trim());
+      const [nameValue] = parts;
+      if (!nameValue || !nameValue.includes('=')) continue;
+
+      const [name, ...valueParts] = nameValue.split("=");
+      const value = valueParts.join('='); // handle values with = in them
+      const parsed: any = { name, value };
+
+      for (const part of parts.slice(1)) {
+        const lower = part.toLowerCase();
+        if (lower === "httponly") parsed.httpOnly = true;
+        else if (lower === "secure") parsed.secure = true;
+        else if (lower.startsWith("samesite=")) {
+          parsed.sameSite = part.split("=")[1];
+        }
+        else if (lower.startsWith("domain=")) {
+          parsed.domain = part.split("=")[1];
+        }
+        else if (lower.startsWith("path=")) {
+          parsed.path = part.split("=")[1];
+        }
+      }
+
+      parsedCookies.push(parsed);
+    }
+  }
+
+  if (parsedCookies.length === 0) {
+    throw new Error(
+      `E2E session response had no Set-Cookie headers. ` +
+      `Response may have failed silently. Check backend /api/e2e/session endpoint.`
+    );
+  }
+
+  const hostname = new URL(baseUrl).hostname;
+
+  const state = {
+    cookies: parsedCookies.map((cookie: any) => ({
+      ...cookie,
+      domain: hostname, // 🔐 force correct domain (app.ledger-mind.org)
+    })),
+    origins: [
+      {
+        origin: baseUrl,
+        localStorage: [],
+      },
+    ],
+  };
+
+  await fs.mkdir(path.dirname(PROD_AUTH_STATE), { recursive: true });
+  await fs.writeFile(PROD_AUTH_STATE, JSON.stringify(state, null, 2), 'utf8');
+
+  console.log(
+    `[global-setup] Wrote ${parsedCookies.length} prod cookies → ${PROD_AUTH_STATE} for ${hostname}`
+  );
+
+  return PROD_AUTH_STATE;
+}
+
 export default async function globalSetup(config: FullConfig) {
   console.log("[global-setup] Starting E2E session mint...");
 
   const BASE_URL = process.env.BASE_URL ?? 'http://127.0.0.1:8083';
   const baseUrl = new URL(BASE_URL);
-  const TEST_HOST = baseUrl.hostname;          // "127.0.0.1" in local run, "app.ledger-mind.org" in prod
+  const TEST_HOST = baseUrl.hostname;
   const TEST_IS_HTTPS = baseUrl.protocol === 'https:';
 
   console.log(`[global-setup] TEST_HOST: ${TEST_HOST}, HTTPS: ${TEST_IS_HTTPS}`);
 
+  // 🔐 Prod path: use simple fetch-based session mint
+  if (process.env.IS_PROD === 'true') {
+    await createProdSession(BASE_URL);
+    return; // skip the HMAC-based dev/local path below
+  }
+
+  // ⬇️ Dev/local path: HMAC-authenticated session minting
   const baseURL = BASE_URL;
   const creds = getHmacCredentials();
   const user = creds.clientId;
@@ -61,10 +190,32 @@ export default async function globalSetup(config: FullConfig) {
 
     if (!r.ok()) {
       const text = await r.text();
-      throw new Error(`E2E session mint failed: ${r.status()} ${text}`);
+      throw new Error(
+        `E2E session mint failed: ${r.status()} ${r.statusText()}\n` +
+        `Body: ${text.slice(0, 500)}`
+      );
     }
 
+    const text = await r.text();
     console.log(`[global-setup] Session minted successfully`);
+
+    // Validate response is JSON (backend returns {"ok":true,"user":"..."})
+    // Cookies come from Set-Cookie headers, not the response body
+    let payload: any;
+    try {
+      payload = JSON.parse(text);
+    } catch (err) {
+      throw new Error(
+        `E2E session returned non-JSON body: ${text.slice(0, 300)}`
+      );
+    }
+
+    // Validate we got a success response
+    if (!payload.ok) {
+      throw new Error(
+        `E2E session returned ok=false: ${text.slice(0, 300)}`
+      );
+    }
 
     // Extract cookies from response headers
     const setCookieHeaders = r.headers()["set-cookie"] ?? "";
@@ -111,6 +262,13 @@ export default async function globalSetup(config: FullConfig) {
     }
 
     console.log(`[global-setup] Extracted ${parsedCookies.length} cookies from response`);
+
+    if (parsedCookies.length === 0) {
+      throw new Error(
+        `E2E session response had no Set-Cookie headers. ` +
+        `Response may have failed silently. Check backend /api/e2e/session endpoint.`
+      );
+    }
 
     // Normalize cookies to the test host
     // Always scope cookies to the host we're actually testing against:

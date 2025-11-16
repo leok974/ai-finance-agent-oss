@@ -288,6 +288,7 @@ services:
     # Tunnel status visible via metrics at localhost:2000/metrics (cloudflared_tunnel_ha_connections)
     restart: unless-stopped
     networks:
+      - infra_net
       - shared-ollama
 
   cf-health:

@@ -9,6 +9,7 @@ RUN corepack enable && corepack prepare pnpm@latest --activate \
 # Copy only necessary web app source files (excluding node_modules)
 COPY apps/web/src ./src
 COPY apps/web/public ./public
+COPY apps/web/chat ./chat
 COPY apps/web/*.json ./
 COPY apps/web/*.ts ./
 COPY apps/web/*.js ./

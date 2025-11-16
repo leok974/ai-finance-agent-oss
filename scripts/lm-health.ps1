@@ -37,6 +37,27 @@ Write-Host "`n========================================" -ForegroundColor Cyan
 Write-Host "LedgerMind Health Check" -ForegroundColor Cyan
 Write-Host "========================================`n" -ForegroundColor Cyan
 
+# Tunnel network membership check (critical for 502 prevention)
+Write-Host "== Tunnel Network Configuration ==" -ForegroundColor Cyan
+Write-Host "Verifying infra-cloudflared is on infra_net...`n" -ForegroundColor Gray
+
+try {
+    $tunnelNetworks = docker network inspect infra_net --format '{{range .Containers}}{{.Name}}{{"\n"}}{{end}}' 2>&1 | Select-String "infra-cloudflared"
+
+    if ($tunnelNetworks) {
+        Write-Host "✅ infra-cloudflared IS on infra_net (can reach ledgermind-web.int)`n" -ForegroundColor Green
+    } else {
+        Write-Host "❌ CRITICAL: infra-cloudflared NOT on infra_net`n" -ForegroundColor Red
+        Write-Host "This will cause 502 Bad Gateway errors for app.ledger-mind.org!`n" -ForegroundColor Red
+        Write-Host "Quick fix (temporary until container restarts):" -ForegroundColor Yellow
+        Write-Host "  docker network connect infra_net infra-cloudflared`n" -ForegroundColor Gray
+        Write-Host "Permanent fix:" -ForegroundColor Yellow
+        Write-Host "  See SHARED_TUNNEL_CONNECTOR_NOTES.md for docker-compose.yml changes.`n" -ForegroundColor Gray
+    }
+} catch {
+    Write-Host "⚠️  Could not verify tunnel network: $_`n" -ForegroundColor Yellow
+}
+
 # Internal (infra_net) checks
 Write-Host "== Internal (infra_net) checks ==" -ForegroundColor Cyan
 Write-Host "Testing connectivity from within Docker network...`n" -ForegroundColor Gray
@@ -74,6 +95,32 @@ try {
         Write-Host "✅ Frontend OK`n" -ForegroundColor Green
     } else {
         Write-Host "❌ Frontend FAILED`n" -ForegroundColor Red
+
+        # Check if tunnel is on infra_net
+        Write-Host "`n🔍 Checking tunnel network configuration..." -ForegroundColor Yellow
+        try {
+            $tunnelOnNetwork = docker network inspect infra_net --format '{{range .Containers}}{{.Name}}{{"\n"}}{{end}}' 2>&1 | Select-String "infra-cloudflared"
+
+            if ($tunnelOnNetwork) {
+                Write-Host "  ✅ infra-cloudflared IS on infra_net" -ForegroundColor Green
+            } else {
+                Write-Host "  ❌ infra-cloudflared NOT on infra_net" -ForegroundColor Red
+                Write-Host "`n  CRITICAL FIX REQUIRED:" -ForegroundColor Red
+                Write-Host "  The tunnel cannot reach ledgermind-web.int without being on infra_net.`n" -ForegroundColor Red
+                Write-Host "  Temporary fix (until next container restart):" -ForegroundColor Yellow
+                Write-Host "    docker network connect infra_net infra-cloudflared`n" -ForegroundColor Gray
+                Write-Host "  Permanent fix:" -ForegroundColor Yellow
+                Write-Host "    Edit D:\ApplyLens\infra\docker-compose.yml to add infra_net to networks:" -ForegroundColor Gray
+                Write-Host "    services:" -ForegroundColor Gray
+                Write-Host "      infra-cloudflared:" -ForegroundColor Gray
+                Write-Host "        networks:" -ForegroundColor Gray
+                Write-Host "          - infra_net" -ForegroundColor Gray
+                Write-Host "          - infra_default" -ForegroundColor Gray
+                Write-Host "`n    Then run: cd D:\ApplyLens\infra && docker compose up -d infra-cloudflared`n" -ForegroundColor Gray
+            }
+        } catch {
+            Write-Host "  ⚠️  Could not check tunnel network: $_" -ForegroundColor Yellow
+        }
     }
 } catch {
     Write-Host "❌ Frontend check failed: $_`n" -ForegroundColor Red
