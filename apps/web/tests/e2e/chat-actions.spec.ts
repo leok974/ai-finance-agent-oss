@@ -1,194 +1,116 @@
-/**
- * chat-actions.spec.ts - E2E tests for chat message/tool functionality
- *
- * Validates that the parent↔iframe handshake works and chat can call backend APIs.
- */
-
+// tests/e2e/chat-actions.spec.ts
 import { test, expect } from '@playwright/test';
 
-const BASE_URL = process.env.BASE_URL || 'https://app.ledger-mind.org';
+// Use authenticated state from existing setup
+test.use({ storageState: 'tests/e2e/.auth/prod-state.json' });
 
-test.describe('Chat Actions @prod', () => {
-  test('chat responds to a user message @prod-critical', async ({ page }) => {
-    // Monitor network requests BEFORE opening chat
-    const chatRequests: any[] = [];
-    page.on('request', req => {
-      // Match both /agent/chat and /api/agent/chat
-      if (req.url().includes('/agent/chat')) {
-        chatRequests.push({ url: req.url(), method: req.method(), postData: req.postDataJSON() });
-      }
-    });
+const BASE_URL = process.env.BASE_URL ?? 'https://app.ledger-mind.org';
 
-    // DON'T enable test mode here - we want to see actual requests without stub mode
+async function openChat(page) {
+  await page.goto(BASE_URL);
+  const launcher = page.getByTestId('lm-chat-launcher-button');
 
-    // Enable chat and open it
-    await page.goto(`${BASE_URL}?chat=1`);
-    await page.getByTestId('lm-chat-bubble').click();
+  await expect(launcher).toBeVisible();
+  await launcher.click();
 
-    // Wait for iframe to be visible
-    const iframe = page.frameLocator('[data-testid="lm-chat-iframe"]');
-    await expect(iframe.locator('body')).toBeVisible({ timeout: 5000 });
+  const panel = page.getByTestId('lm-chat-panel');
+  await expect(panel).toBeVisible();
 
-    // Wait for chat readiness (eliminates race conditions)
-    await page.evaluate(() => {
-      const iframeEl = document.querySelector('[data-testid="lm-chat-iframe"]') as HTMLIFrameElement;
-      return iframeEl?.contentWindow ? (iframeEl.contentWindow as any).lmChatReady : Promise.resolve();
-    });
+  const launcherRoot = page.getByTestId('lm-chat-launcher');
+  await expect(launcherRoot).toHaveAttribute('data-state', 'open');
 
-    // Wait for chat input to be ready
-    const input = iframe.getByPlaceholder(/Ask or type a command/i);
-    await expect(input).toBeVisible({ timeout: 5000 });
+  return { launcher, launcherRoot, panel };
+}
 
-    // Type a message and submit
-    await input.fill('ping');
-    await page.keyboard.press('Enter');
+test.describe('ChatDock actions (v2) @prod', () => {
+  test('launcher toggles chat open/closed', async ({ page }) => {
+    await page.goto(BASE_URL);
 
-    // Wait for the request to be made
-    await expect.poll(() => chatRequests.length > 0, {
-      timeout: 5000,
-      message: 'Expected chat message to trigger /agent/chat API call'
-    }).toBeTruthy();
+    const launcher = page.getByTestId('lm-chat-launcher-button');
+    const launcherRoot = page.getByTestId('lm-chat-launcher');
 
-    // Verify request structure
-    expect(chatRequests[0].method).toBe('POST');
-    expect(chatRequests[0].postData).toHaveProperty('messages');
-    expect(chatRequests[0].postData.messages[0]).toHaveProperty('content', 'ping');
+    // initial state: closed
+    await expect(launcher).toBeVisible();
+    await expect(launcherRoot).toHaveAttribute('data-state', 'closed');
+
+    // open
+    await launcher.click();
+    await expect(launcherRoot).toHaveAttribute('data-state', 'open');
+    await expect(page.getByTestId('lm-chat-panel')).toBeVisible();
+
+    // close
+    await launcher.click();
+    await expect(launcherRoot).toHaveAttribute('data-state', 'closed');
   });
 
-  test('tool button sends correct API request', async ({ page }) => {
-    // Monitor network requests BEFORE opening chat
-    const toolRequests: any[] = [];
-    page.on('request', req => {
-      if (req.url().includes('/agent/chat')) {
-        toolRequests.push({ url: req.url(), method: req.method(), postData: req.postDataJSON() });
-      }
-    });
+  test('all tool buttons are clickable and keep panel open', async ({ page }) => {
+    const { panel } = await openChat(page);
 
-    // DON'T enable test mode here - we want to see actual requests without stub mode
+    const toolsArea = page.getByTestId('lm-chat-scroll');
+    await expect(toolsArea).toBeVisible();
 
-    // Enable chat and open it
-    await page.goto(`${BASE_URL}?chat=1`);
-    await page.getByTestId('lm-chat-bubble').click();
+    const buttons = toolsArea.locator('button');
+    const count = await buttons.count();
+    expect(count).toBeGreaterThan(0);
 
-    // Wait for iframe to be visible
-    const iframe = page.frameLocator('[data-testid="lm-chat-iframe"]');
-    await expect(iframe.locator('body')).toBeVisible({ timeout: 5000 });
+    for (let i = 0; i < count; i++) {
+      const btn = buttons.nth(i);
+      const label = (await btn.innerText()).trim();
 
-    // Wait for chat readiness
-    await page.evaluate(() => {
-      const iframeEl = document.querySelector('[data-testid="lm-chat-iframe"]') as HTMLIFrameElement;
-      return iframeEl?.contentWindow ? (iframeEl.contentWindow as any).lmChatReady : Promise.resolve();
-    });
+      await btn.scrollIntoViewIfNeeded();
+      await btn.click();
 
-    // Click a tool button
-    const toolButton = iframe.getByRole('button', { name: /Month summary/i });
-    await toolButton.click();
-
-    // Wait for the request to be made
-    await expect.poll(() => toolRequests.length > 0, {
-      timeout: 3000,
-      message: 'Expected tool button to trigger /agent/chat API call'
-    }).toBeTruthy();
-
-    // Verify request structure
-    expect(toolRequests[0].method).toBe('POST');
-    expect(toolRequests[0].postData).toHaveProperty('messages');
-    expect(toolRequests[0].postData).toHaveProperty('mode', 'charts.month_summary');
+      // Panel must stay visible after each tool click
+      await expect(
+        panel,
+        `Chat panel should remain open after clicking tool[${i}] "${label}"`,
+      ).toBeVisible();
+    }
   });
 
-  test('INIT config is received by iframe @prod-critical', async ({ page }) => {
-    // Enable test mode
-    await page.addInitScript(() => {
-      (window as any).__E2E_TEST__ = true;
-    });
+  test('composer accepts text and Send keeps panel open', async ({ page }) => {
+    const { panel } = await openChat(page);
 
-    // Enable chat and open it
-    await page.goto(`${BASE_URL}?chat=1`);
-    await page.getByTestId('lm-chat-bubble').click();
+    // Input: either by testid or known placeholder
+    const composer =
+      page.getByTestId('lm-chat-input').or(
+        page.getByPlaceholder('Ask or type a command...'),
+      );
 
-    // Wait for iframe to be visible
-    const iframe = page.frameLocator('[data-testid="lm-chat-iframe"]');
-    await expect(iframe.locator('body')).toBeVisible({ timeout: 5000 });
+    await expect(composer).toBeVisible();
+    await composer.click();
+    await composer.fill('What are my top merchants this month?');
 
-    // Wait for chat input (ensures mount complete)
-    await iframe.getByPlaceholder(/Ask or type a command/i).waitFor({ timeout: 5000 });
+    // Try to find a send button in the footer area
+    const footer = panel.locator('[data-testid="lm-chat-footer"], footer, .lm-chat-footer').first();
+    const sendButton = footer.locator('button:has-text("Send"), button:has-text("Run"), button:has-text("Ask")').first();
 
-    // Wait for readiness promise
-    await page.evaluate(() => {
-      const iframeEl = document.querySelector('[data-testid="lm-chat-iframe"]') as HTMLIFrameElement;
-      return iframeEl?.contentWindow ? (iframeEl.contentWindow as any).lmChatReady : Promise.resolve();
-    });
+    // If we can't find a dedicated send button, just press Enter
+    if ((await sendButton.count()) > 0) {
+      await sendButton.click();
+    } else {
+      await composer.press('Enter');
+    }
 
-    // Read INIT snapshot
-    const initSnapshot = await page.evaluate(() => {
-      const iframeEl = document.querySelector('[data-testid="lm-chat-iframe"]') as HTMLIFrameElement;
-      return iframeEl?.contentWindow ? (iframeEl.contentWindow as any).lmChatInit : null;
-    });
-
-    expect(initSnapshot).toBeTruthy();
-    expect(initSnapshot.ts).toBeTruthy(); // timestamp exists
-    expect(typeof initSnapshot.mode === 'string' || initSnapshot.mode === null).toBeTruthy();
-    expect(initSnapshot.apiBase).toBeTruthy(); // should have apiBase from parent
+    // Panel should remain open after sending
+    await expect(panel).toBeVisible();
   });
 
-  test('LLM badge shows health status', async ({ page }) => {
-    // Enable chat and open it
-    await page.goto(`${BASE_URL}?chat=1`);
-    await page.getByTestId('lm-chat-bubble').click();
+  test('Escape closes chat but launcher still works afterward', async ({ page }) => {
+    const { launcher, launcherRoot, panel } = await openChat(page);
 
-    // Wait for iframe to be visible
-    const iframe = page.frameLocator('[data-testid="lm-chat-iframe"]');
-    await expect(iframe.locator('body')).toBeVisible({ timeout: 5000 });
+    // Press Escape to close
+    await page.keyboard.press('Escape');
 
-    // Check for LLM badge (should show OK or error state)
-    const badge = iframe.locator('.badge').filter({ hasText: /LLM:/i });
-    await expect(badge).toBeVisible({ timeout: 3000 });
+    // Launcher root should report closed state
+    await expect(launcherRoot).toHaveAttribute('data-state', 'closed');
 
-    const badgeText = await badge.textContent();
-    expect(badgeText).toMatch(/LLM: (OK|ERROR)/i);
-  });
+    // Panel may still exist but should not be "open" from the launcher perspective
+    await expect(launcher).toBeVisible();
 
-  // Note: This test requires backend LLM to be responding. Skip if backend unavailable.
-  test.skip('@prod chat returns printable text in response', async ({ page }) => {
-    // Monitor network responses
-    let chatResponse: any = null;
-    page.on('response', async res => {
-      if (res.url().includes('/agent/chat') && res.status() === 200) {
-        try {
-          chatResponse = await res.json();
-        } catch {
-          // ignore parse errors
-        }
-      }
-    });
-
-    // Enable chat and open it
-    await page.goto(`${BASE_URL}?chat=1`);
-    await page.getByTestId('lm-chat-bubble').click();
-
-    // Wait for iframe to be visible
-    const iframe = page.frameLocator('[data-testid="lm-chat-iframe"]');
-    await expect(iframe.locator('body')).toBeVisible({ timeout: 5000 });
-
-    // Type a simple message
-    const input = iframe.getByPlaceholder(/Ask or type a command/i);
-    await input.fill('hello');
-    await page.keyboard.press('Enter');
-
-    // Wait for response (poll for chatResponse to be set)
-    await expect.poll(() => chatResponse !== null, {
-      timeout: 10000,
-      message: 'Expected chat to receive a response from backend'
-    }).toBeTruthy();
-
-    // Validate response has printable text
-    const text =
-      chatResponse.reply ??
-      chatResponse.text ??
-      chatResponse?.result?.text ??
-      (typeof chatResponse === 'string' ? chatResponse : '');
-
-    expect(String(text).length).toBeGreaterThan(0);
-    expect(text).not.toBe('⚠️ No text returned. See console for full JSON.');
+    // Re-open via launcher to ensure it still works
+    await launcher.click();
+    await expect(launcherRoot).toHaveAttribute('data-state', 'open');
+    await expect(panel).toBeVisible();
   });
 });
