@@ -6,7 +6,7 @@ test.use({ storageState: 'tests/e2e/.auth/prod-state.json' });
 const BASE_URL = process.env.BASE_URL || 'https://app.ledger-mind.org';
 
 test.describe('Chat Panel Positioning @prod', () => {
-  test('chat never clips and stays anchored within viewport', async ({ page }) => {
+  test('chat panel is visible and anchored within viewport', async ({ page }) => {
     // Clear any chat fuse from previous failures
     await page.goto(`${BASE_URL}?chat=1`, { waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(100);

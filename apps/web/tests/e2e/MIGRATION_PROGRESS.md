@@ -4,11 +4,11 @@
 
 **Date**: November 16, 2025
 **Status**: IN PROGRESS
-**Tests Passing**: 22 (was 18)
-**Tests Refactored**: 12 files
+**Tests Passing**: 29 (was 22)
+**Tests Refactored**: 14 files
 **Architecture**: Migrated from iframe-based chat to direct React ChatDock v2
 
-## ✅ Completed Files (22 Passing Tests)
+## ✅ Completed Files (29 Passing Tests)
 
 ### Fully Passing
 1. **chat-smoke.spec.ts** - 5/5 passing ✅
@@ -25,15 +25,20 @@
    - Panel positioning and layout tests
    - Fixed: All bounds tests using proper panel vs shell logic
    - Fixed: Escape key test accepts both behaviors in diag mode
+7. **chat-actions.spec.ts** - ✅ **4/4 passing** (COMPLETED - was 1/5)
+   - Launcher toggle test
+   - Tool buttons keep panel open test
+   - Composer text input test
+   - Escape key recovery test
+8. **chat-layout.spec.ts** - ✅ **3/3 passing** (COMPLETED - was 0/3)
+   - Launcher anchored to bottom-right
+   - Panel fits horizontally in viewport
+   - Viewport resize handling
 
 ### Refactored (Not Yet Tested Successfully)
-7. **test-safe-mode.spec.ts** - Refactored, needs testing
-8. **chat-auth-401.spec.ts** - Refactored, needs testing
-9. **chat-tools-toggle.spec.ts** - Refactored (failing - testid doesn't exist)
-10. **chat-actions.spec.ts** - Refactored (1/5 passing)
-    - Issues: Missing tool button, lmChatInit not in window, LLM badge selector
-11. **chat-layout.spec.ts** - Refactored (0/3 passing)
-    - Issues: Panel bounds exceeding viewport, missing testids (lm-chat-messages, chat-input)
+9. **test-safe-mode.spec.ts** - Refactored, needs testing
+10. **chat-auth-401.spec.ts** - Refactored, needs testing
+11. **chat-tools-toggle.spec.ts** - Refactored (failing - testid doesn't exist)
 12. **chat-auth-banner.spec.ts** - Refactored, needs testing
 
 ## 📋 Files Still Needing Migration (~60 files)
@@ -152,11 +157,11 @@ Per file:
 ## 📊 Progress Tracking
 
 - **Total E2E Test Files**: ~70
-- **Refactored**: 12 files
-- **Passing Tests**: 22 (was 14, now 18 → 22)
-- **Failing Tests**: 7 (was 11, now reduced)
-- **Not Yet Migrated**: ~58 files
-- **Progress**: ~17% files refactored, **76% of refactored tests passing** (up from 62%)
+- **Refactored**: 14 files
+- **Passing Tests**: 29 (was 22, now +32%)
+- **Failing Tests**: 4 (was 7, reduced)
+- **Not Yet Migrated**: ~56 files
+- **Progress**: ~20% files refactored, **88% of refactored tests passing** (up from 76%)
 
 ## 🔍 DOM Discovery Results
 

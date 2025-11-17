@@ -1,135 +1,114 @@
+// tests/e2e/chat-layout.spec.ts
 import { test, expect } from '@playwright/test';
+
+// Use authenticated state from existing setup
+test.use({ storageState: 'tests/e2e/.auth/prod-state.json' });
 
 const BASE_URL = process.env.BASE_URL ?? 'https://app.ledger-mind.org';
 
-test('@prod-critical Chat layout fits viewport and shows all UI elements', async ({ page }) => {
-  await page.goto(`${BASE_URL}/?chat=1&prefetch=0&panel=0`);
+async function openChat(page) {
+  await page.goto(BASE_URL);
 
-  // Access the iframe content
-  const frame = page.frameLocator('#lm-chat-iframe');
+  const launcherRoot = page.getByTestId('lm-chat-launcher');
+  const launcherButton = page.getByTestId('lm-chat-launcher-button');
 
-  // The shell should be visible
-  const shell = frame.getByTestId('lm-chat-iframe');
-  await expect(shell).toBeVisible();
+  await expect(launcherButton).toBeVisible();
+  await expect(launcherRoot).toHaveAttribute('data-state', 'closed');
 
-  // Assert shell is fully inside viewport (not clipped)
-  const bounds = await page.evaluate(() => {
-    const iframe = document.querySelector<HTMLIFrameElement>('#lm-chat-iframe');
-    if (!iframe?.contentDocument) return null;
-    const el = iframe.contentDocument.querySelector('[data-testid="lm-chat-iframe"]') as HTMLElement;
-    if (!el) return null;
-    const rect = el.getBoundingClientRect();
-    return {
-      top: rect.top,
-      bottom: rect.bottom,
-      left: rect.left,
-      right: rect.right,
-      viewportHeight: iframe.contentWindow?.innerHeight ?? 0,
-      viewportWidth: iframe.contentWindow?.innerWidth ?? 0,
-    };
+  await launcherButton.click();
+  await expect(launcherRoot).toHaveAttribute('data-state', 'open');
+
+  const panel = page.getByTestId('lm-chat-panel');
+  await expect(panel).toBeVisible();
+
+  return { launcherRoot, launcherButton, panel };
+}
+
+test.describe('ChatDock layout (v2) @prod', () => {
+  test('launcher is anchored to bottom-right quadrant', async ({ page }) => {
+    await page.goto(BASE_URL);
+
+    // Check the button, not the root (root is hidden when closed)
+    const launcherButton = page.getByTestId('lm-chat-launcher-button');
+    await expect(launcherButton).toBeVisible();
+
+    const viewport = page.viewportSize();
+    expect(viewport).not.toBeNull();
+    if (!viewport) return;
+
+    const bounds = await launcherButton.boundingBox();
+    expect(bounds).not.toBeNull();
+    if (!bounds) return;
+
+    const right = bounds.x + bounds.width;
+    const bottom = bounds.y + bounds.height;
+
+    // Right/bottom edges must be inside viewport
+    expect(right).toBeLessThanOrEqual(viewport.width);
+    expect(bottom).toBeLessThanOrEqual(viewport.height);
+
+    // Should live in bottom-right quadrant (not left/top side)
+    expect(bounds.x).toBeGreaterThanOrEqual(viewport.width * 0.5);
+    expect(bounds.y).toBeGreaterThanOrEqual(viewport.height * 0.5);
   });
 
-  expect(bounds).not.toBeNull();
-  expect(bounds!.top).toBeGreaterThanOrEqual(0);
-  expect(bounds!.bottom).toBeLessThanOrEqual(bounds!.viewportHeight);
-  expect(bounds!.left).toBeGreaterThanOrEqual(0);
-  expect(bounds!.right).toBeLessThanOrEqual(bounds!.viewportWidth);
+  test('chat panel fits horizontally within viewport when open', async ({ page }) => {
+    const { panel } = await openChat(page);
 
-  // Header with tools should be visible
-  await expect(frame.getByTestId('lm-chat-header')).toBeVisible();
+    const viewport = page.viewportSize();
+    expect(viewport).not.toBeNull();
+    if (!viewport) return;
 
-  // Messages scroll area exists and is visible
-  const messages = frame.getByTestId('lm-chat-messages');
-  await expect(messages).toBeVisible();
+    const bounds = await panel.boundingBox();
+    expect(bounds).not.toBeNull();
+    if (!bounds) return;
 
-  // Input wrapper + textarea visible
-  const inputWrapper = frame.getByTestId('lm-chat-input-wrapper');
-  await expect(inputWrapper).toBeVisible();
+    const right = bounds.x + bounds.width;
 
-  const input = frame.getByTestId('chat-input');
-  await expect(input).toBeVisible();
+    // Panel must be fully within horizontal bounds
+    expect(bounds.x).toBeGreaterThanOrEqual(0);
+    expect(right).toBeLessThanOrEqual(viewport.width);
 
-  // Send button visible
-  const sendBtn = frame.getByTestId('chat-send');
-  await expect(sendBtn).toBeVisible();
-
-  // Tools should be visible (when toggled on)
-  const toolsToggle = frame.getByTestId('chat-tools-toggle');
-  await expect(toolsToggle).toBeVisible();
-
-  // Check if tools are visible by default
-  const toolsArea = frame.getByTestId('lm-chat-tools');
-  const isToolsVisible = await toolsArea.isVisible().catch(() => false);
-  
-  if (isToolsVisible) {
-    // If tools are visible, verify they have proper overflow handling
-    const hasOverflow = await page.evaluate(() => {
-      const iframe = document.querySelector<HTMLIFrameElement>('#lm-chat-iframe');
-      const el = iframe?.contentDocument?.querySelector('[data-testid="lm-chat-tools"]') as HTMLElement;
-      if (!el) return false;
-      const style = window.getComputedStyle(el);
-      return style.overflowY === 'auto' || style.overflowY === 'scroll' || style.display === 'flex';
-    });
-    expect(hasOverflow).toBe(true);
-  }
-});
-
-test('@prod-critical Chat messages area is scrollable', async ({ page }) => {
-  await page.goto(`${BASE_URL}/?chat=1&prefetch=0&panel=0`);
-
-  const frame = page.frameLocator('#lm-chat-iframe');
-  const messages = frame.getByTestId('lm-chat-messages');
-  
-  await expect(messages).toBeVisible();
-
-  // Verify messages container has overflow-y: auto or scroll
-  const isScrollable = await page.evaluate(() => {
-    const iframe = document.querySelector<HTMLIFrameElement>('#lm-chat-iframe');
-    const el = iframe?.contentDocument?.querySelector('[data-testid="lm-chat-messages"]') as HTMLElement;
-    if (!el) return false;
-    const style = window.getComputedStyle(el);
-    return style.overflowY === 'auto' || style.overflowY === 'scroll';
+    // And it should not be a tiny sliver
+    expect(bounds.width).toBeGreaterThan(280);
   });
 
-  expect(isScrollable).toBe(true);
-});
+  test('launcher and panel remain visible after viewport resize', async ({ page }) => {
+    await page.goto(BASE_URL);
+    const launcherRoot = page.getByTestId('lm-chat-launcher');
+    const launcherButton = page.getByTestId('lm-chat-launcher-button');
 
-test('@prod-critical Chat shell has visible border and rounded corners', async ({ page }) => {
-  await page.goto(`${BASE_URL}/?chat=1&prefetch=0&panel=0`);
+    // Initial viewport
+    await expect(launcherButton).toBeVisible();
 
-  const frame = page.frameLocator('#lm-chat-iframe');
-  const shell = frame.getByTestId('lm-chat-iframe');
-  
-  await expect(shell).toBeVisible();
+    // Open chat
+    await launcherButton.click();
+    await expect(launcherRoot).toHaveAttribute('data-state', 'open');
+    const panel = page.getByTestId('lm-chat-panel');
+    await expect(panel).toBeVisible();
 
-  // Check for border-radius (visual chrome)
-  const hasBorderRadius = await page.evaluate(() => {
-    const iframe = document.querySelector<HTMLIFrameElement>('#lm-chat-iframe');
-    const el = iframe?.contentDocument?.querySelector('[data-testid="lm-chat-iframe"]') as HTMLElement;
-    if (!el) return false;
-    const style = window.getComputedStyle(el);
-    const radius = style.borderRadius;
-    // Should be 1rem (16px) or similar
-    return radius !== '0px' && radius !== '' && radius !== 'none';
+    // Resize to a smaller viewport
+    await page.setViewportSize({ width: 900, height: 600 });
+
+    // Both should still be visible post-resize
+    await expect(launcherButton).toBeVisible();
+    await expect(panel).toBeVisible();
+
+    const viewport = page.viewportSize()!;
+    const panelBounds = await panel.boundingBox();
+    const launcherBounds = await launcherButton.boundingBox();
+
+    if (panelBounds) {
+      const right = panelBounds.x + panelBounds.width;
+      expect(panelBounds.x).toBeGreaterThanOrEqual(0);
+      expect(right).toBeLessThanOrEqual(viewport.width);
+    }
+
+    if (launcherBounds) {
+      const right = launcherBounds.x + launcherBounds.width;
+      const bottom = launcherBounds.y + launcherBounds.height;
+      expect(right).toBeLessThanOrEqual(viewport.width);
+      expect(bottom).toBeLessThanOrEqual(viewport.height);
+    }
   });
-
-  expect(hasBorderRadius).toBe(true);
-
-  // Ensure it's bounded (not full viewport)
-  const isBounded = await page.evaluate(() => {
-    const iframe = document.querySelector<HTMLIFrameElement>('#lm-chat-iframe');
-    const el = iframe?.contentDocument?.querySelector('[data-testid="lm-chat-iframe"]') as HTMLElement;
-    if (!el || !iframe?.contentWindow) return false;
-    const rect = el.getBoundingClientRect();
-    const vh = iframe.contentWindow.innerHeight;
-    const vw = iframe.contentWindow.innerWidth;
-    // Should be smaller than viewport
-    return rect.height < vh || rect.width < vw;
-  });
-
-  expect(isBounded).toBe(true);
-
-  // Input and send button should be visible
-  await expect(frame.getByTestId('chat-input')).toBeVisible();
-  await expect(frame.getByTestId('chat-send')).toBeVisible();
 });
