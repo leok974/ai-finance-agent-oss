@@ -1194,6 +1194,34 @@ textarea.lm-input,
   /* visuals (we keep existing gradient etc. from other rules) */
 }
 
+/* Floating bubble button (from CHATDOCK_V2_FRONTEND.md spec) */
+.lm-chat-launcher-bubble {
+  pointer-events: auto;
+  width: 44px;
+  height: 44px;
+  border-radius: 9999px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: radial-gradient(circle at 30% 0%, #22d3ee 0, #0f172a 40%, #020617 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow:
+    0 14px 45px rgba(15, 23, 42, 0.75),
+    0 8px 20px rgba(15, 23, 42, 0.9);
+  cursor: pointer;
+  transition:
+    transform 120ms ease-out,
+    box-shadow 120ms ease-out,
+    background 180ms ease-out;
+}
+
+.lm-chat-launcher-bubble:hover {
+  transform: translateY(-2px) scale(1.02);
+  box-shadow:
+    0 18px 60px rgba(15, 23, 42, 0.85),
+    0 10px 24px rgba(15, 23, 42, 0.95);
+}
+
 [data-testid="lm-chat-overlay"] {
   position: fixed !important;
   inset: 0 !important;
