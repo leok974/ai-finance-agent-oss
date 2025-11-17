@@ -205,6 +205,10 @@ services:
         VITE_ENABLE_LOCAL_AUTH: "0"
         VITE_ENABLE_GOOGLE_OAUTH: "1"
         VITE_ENABLE_GITHUB_OAUTH: "0"
+        # Standardized build metadata for buildStamp.ts
+        VITE_BUILD_BRANCH: ${VITE_BUILD_BRANCH:-local}
+        VITE_BUILD_COMMIT: ${VITE_BUILD_COMMIT:-dev}
+        VITE_BUILD_TIME: ${VITE_BUILD_TIME:-unknown}
     image: ai-finance-agent-oss-clean-nginx:latest
     depends_on:
       backend:

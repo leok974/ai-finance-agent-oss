@@ -6,16 +6,22 @@ import path from "path";
 // Build metadata with git fallback
 function git(cmd: string, fb = "unknown") {
   try {
-    return execSync(cmd).toString().trim();
-  } catch {
+    const result = execSync(cmd, {
+      encoding: 'utf-8',
+      stdio: ['ignore', 'pipe', 'ignore']
+    }).toString().trim();
+    return result || fb;
+  } catch (err) {
+    console.warn(`[vite-config] git command failed: ${cmd}`, err);
     return fb;
   }
 }
 
-const GIT_COMMIT = process.env.GITHUB_SHA || git("git rev-parse --short=12 HEAD");
-const GIT_BRANCH = process.env.GITHUB_REF_NAME || git("git rev-parse --abbrev-ref HEAD");
-const BUILD_TIME = new Date().toISOString();
-const BUILD_ID = process.env.WEB_BUILD_ID || "unknown";
+// Prioritize VITE_BUILD_* (Docker build args), then CI vars, then git fallback
+const GIT_COMMIT = process.env.VITE_BUILD_COMMIT || process.env.GITHUB_SHA || git("git rev-parse --short=12 HEAD", "dev");
+const GIT_BRANCH = process.env.VITE_BUILD_BRANCH || process.env.GITHUB_REF_NAME || git("git rev-parse --abbrev-ref HEAD", "local");
+const BUILD_TIME = process.env.VITE_BUILD_TIME || new Date().toISOString();
+const BUILD_ID = process.env.WEB_BUILD_ID || "dev";
 
 // During local E2E we sometimes run backend on 8001 with encryption disabled.
 // Prefer 8001 if BACKEND_PORT is set; else default to 8000.
@@ -161,6 +167,7 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
   const isChat = env.BUILD_CHAT === "1";
   console.log("[vite-config] BUILD_CHAT =", env.BUILD_CHAT, "isChat =", isChat);
+  console.log("[vite-config] GIT_BRANCH =", GIT_BRANCH, "GIT_COMMIT =", GIT_COMMIT);
 
   const runtimeBuildId = Date.now().toString();
 
