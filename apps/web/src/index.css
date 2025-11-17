@@ -1,3 +1,12 @@
+/*
+ * IMPORTANT: ChatDock / assistant styles
+ * Do NOT remove this import.
+ * The chat layout (ChatDock v2) lives in apps/web/src/chat/index.css.
+ * Removing this will cause the chat CSS to compile into an orphaned chunk
+ * and the assistant will render unstyled in production.
+ */
+@import "./chat/index.css";
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -28,14 +37,23 @@
 
 :root { color-scheme: dark; }
 
-/* Ensure body can always scroll */
+/* Ensure body can always scroll - force override anything setting it to hidden */
 html,
 body {
   height: 100%;
 }
 
+/* === LedgerMind global scroll safety ===
+ * We explicitly allow body scrolling here to override any legacy
+ * `body { overflow: hidden; }` rules that may come from old chat
+ * or iframe-era styles.
+ *
+ * CRITICAL: Must use shorthand 'overflow' property (not overflow-x/overflow-y separately)
+ * because minifier may split them into separate rules, causing overflow:hidden to win.
+ */
+html,
 body {
-  overflow-y: auto;
+  overflow: hidden auto !important; /* hidden horizontally, auto vertically */
 }
 
 /* Chat host safety: hidden until ready (prevents black box on error) */

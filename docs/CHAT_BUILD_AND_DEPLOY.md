@@ -19,6 +19,36 @@ LedgerMind ChatDock v2 is built as a **single-page application** served by Nginx
 
 ---
 
+## ChatDock CSS Wiring Guardrails
+
+**Critical:** All assistant/chat styling lives in `apps/web/src/chat/index.css`. This file is **intentionally imported twice**:
+
+1. **Globally** from `apps/web/src/index.css` via `@import "./chat/index.css";`
+2. **Locally** from `apps/web/src/components/ChatDock.tsx` via `import '../chat/index.css';`
+
+**Do NOT remove or rename these imports** without also updating the build guard script.
+
+### Why Two Imports?
+
+- The global import ensures chat CSS is bundled into the main CSS chunk that `index.html` loads
+- The local import provides a fallback and makes the dependency explicit in the component
+- Without the global import, Vite creates an **orphaned CSS chunk** that never gets loaded, causing the assistant to render unstyled in production
+
+### Verification
+
+After changing chat CSS, always verify the build:
+
+```bash
+cd apps/web
+pnpm build && pnpm verify:chat-css
+```
+
+The build will fail if the compiled CSS referenced by `index.html` does not contain the `.lm-chat-…` rules.
+
+**Known failure mode:** If you remove `@import "./chat/index.css";` from `index.css`, the chat CSS compiles into a separate chunk file (e.g., `chat-abc123.css`) that is never referenced by `index.html`. The app loads successfully but the assistant renders completely unstyled.
+
+---
+
 ## Frontend Build Pipeline
 
 ### 1. Multi-Stage Dockerfile (`deploy/Dockerfile.nginx`)

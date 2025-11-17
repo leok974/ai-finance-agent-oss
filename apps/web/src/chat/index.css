@@ -7,25 +7,16 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ===== IFRAME VIEWPORT FILL ===== */
-html, body, #root {
-  height: 100%;
-  width: 100%;
-  margin: 0;
-  box-sizing: border-box;
-  overflow: hidden; /* Prevent double scrollbars */
-}
+/* NOTE: html/body overflow rules removed - they were blocking main page scroll!
+   Those rules are only needed inside the chat IFRAME, not in the main app.
+   The iframe document has its own html/body that we can't style from here. */
 
 /* Universal box-sizing: prevents padding from blowing past 100% widths */
 :where(#lm-chat-root, #lm-chat-root *) {
   box-sizing: border-box;
 }
 
-body {
-  overflow: hidden; /* Host clips, not body */
-}
-
-/* Ensure iframe root fills but never exceeds */
+/* Ensure iframe root fills but never exceeds (only applies to iframe container element) */
 #__LM_IFRAME_ROOT__ {
   height: 100%;
   width: 100%;
@@ -82,7 +73,7 @@ body {
   --radius: 14px;
 }
 
-/* ===== SHELL – WIDER, SOFTER, MORE "CARD-LIKE" ===== */
+/* ===== SHELL ΓÇô WIDER, SOFTER, MORE "CARD-LIKE" ===== */
 [data-testid="lm-chat-iframe"] {
   position: relative;
   display: flex;
@@ -480,7 +471,7 @@ textarea.lm-input,
   overflow: hidden;
 }
 
-/* ===== HEADER – TALLER WITH CLEARER HIERARCHY ===== */
+/* ===== HEADER ΓÇô TALLER WITH CLEARER HIERARCHY ===== */
 [data-testid="lm-chat-header"] {
   display: flex;
   flex-direction: column;
@@ -531,7 +522,7 @@ textarea.lm-input,
   color: #bbf7d0;
 }
 
-/* Primary actions – more "buttony" */
+/* Primary actions ΓÇô more "buttony" */
 .lm-chat-header-actions {
   display: flex;
   flex-wrap: wrap;
@@ -556,7 +547,7 @@ textarea.lm-input,
   transform: translateY(-0.5px);
 }
 
-/* ===== TOOL GROUPS – CLEANER, MORE "SECTIONED" ===== */
+/* ===== TOOL GROUPS ΓÇô CLEANER, MORE "SECTIONED" ===== */
 .lm-chat-header-tools {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -706,7 +697,7 @@ textarea.lm-input,
   padding-bottom: 0.25rem;
 }
 
-/* ===== INPUT / FOOTER – REFINED WITH GRADIENT SEND BUTTON ===== */
+/* ===== INPUT / FOOTER ΓÇô REFINED WITH GRADIENT SEND BUTTON ===== */
 [data-testid="lm-chat-input-wrapper"] {
   border-top: 1px solid rgba(30, 64, 175, 0.55);
   background: rgba(15, 23, 42, 0.97);
@@ -909,7 +900,7 @@ textarea.lm-input,
   display: flex;
   flex-direction: column;
 
-  /* ❌ no max-height here — let the gradient control it */
+  /* Γ¥î no max-height here ΓÇö let the gradient control it */
   min-height: 0;
 }
 
@@ -1178,7 +1169,7 @@ textarea.lm-input,
 }
 
 /* ========================================================================
- * ChatDock v2 – forced floating card layout (wins over all older styles)
+ * ChatDock v2 ΓÇô forced floating card layout (wins over all older styles)
  * ===================================================================== */
 
 [data-testid="lm-chat-launcher"] {
@@ -1279,3 +1270,10 @@ textarea.lm-input,
   margin-right: -4px !important;
   scrollbar-width: thin !important;
 }
+
+/* NOTE: The global html,body overflow rule was REMOVED from here because:
+ * - This CSS is @import'ed into src/index.css (for the main app)
+ * - The main app has its own html,body overflow rule in index.css
+ * - Having it here caused cascade conflicts where this would override the main app's rule
+ * - The chat iframe loads chat.css separately and doesn't need this global rule
+ */
