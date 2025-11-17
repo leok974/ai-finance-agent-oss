@@ -216,6 +216,37 @@ export default function ChatDock() {
     }, 220); // 200ms transform + 20ms buffer
   }, [open, isClosing]);
 
+  // --- open / close helpers ------------------------------------
+  const reallyClose = useCallback(() => {
+    setOpen(false);
+    setIsClosing(false);
+  }, []);
+
+  const handleOpen = useCallback(() => {
+    setIsClosing(false);
+    setOpen(true);
+  }, []);
+
+  const handleToggle = useCallback(() => {
+    if (open) {
+      handleClose();
+    } else {
+      handleOpen();
+    }
+  }, [open, handleClose, handleOpen]);
+
+  // ESC to close
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (ev: KeyboardEvent) => {
+      if (ev.key === "Escape") {
+        handleClose();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, handleClose]);
+
   // one shared right/bottom position for bubble and panel (no persistence)
   const [rb, setRb] = React.useState<{ right: number; bottom: number }>(() => ({ right: MARGIN, bottom: MARGIN }));
   const panelRef = useRef<HTMLDivElement | null>(null);
@@ -2138,64 +2169,64 @@ export default function ChatDock() {
   // just return the content directly instead of creating another root
   if (!portalReady || !isPrimary) return null;
 
-  return (
-    <ErrorBoundary fallback={(e) => (
-      <div className="fixed bottom-4 right-4 p-4 bg-red-500/10 border border-red-500 rounded text-sm text-red-500 max-w-md z-[9999]">
-        Chat panel error: {String(e?.message || e)}
-      </div>
-    )}>
+  // --- Shell (backdrop + card) ---------------------------------
+  const shell = (
+    <div
+      data-testid="lm-chat-shell"
+      className={cn(
+        "lm-chat-shell",
+        open && !isClosing && "lm-chat-shell--open",
+        isClosing && "lm-chat-shell--closing"
+      )}
+      // clicking outside the card but inside the shell closes
+      onClick={handleClose}
+    >
       <div
-        className={cn(
-          'lm-chat-launcher',
-          open && !isClosing ? 'lm-chat-launcher--open' : 'lm-chat-launcher--closed'
-        )}
-        data-state={open && !isClosing ? 'open' : 'closed'}
-        data-testid="lm-chat-launcher"
+        data-testid="lm-chat-backdrop"
+        className="lm-chat-backdrop"
+      />
+      <div
+        className="lm-chat-shell-inner"
+        onClick={(e) => e.stopPropagation()} // keep card clicks from closing
       >
-        {/* 💬 Bubble (always present) */}
-        <button
-          type="button"
-          ref={triggerRef}
-          data-testid="lm-chat-launcher-button"
-          onClick={() => setOpen((prev) => !prev)}
-          aria-label={open ? "Close LedgerMind Assistant" : "Open LedgerMind Assistant"}
-          className="lm-chat-launcher-bubble fixed z-[80] rounded-full shadow-lg bg-black text-white w-12 h-12 flex items-center justify-center hover:opacity-90 select-none"
-          style={{ right: rb.right, bottom: rb.bottom, cursor: "grab", position: 'fixed' as const }}
-          data-chatdock-root
-          data-chatdock-bubble
-          onPointerDown={(e) => startDragRB(e, BUBBLE, BUBBLE)}
-          title={open ? "Close Agent Tools" : "Open Agent Tools (Ctrl+Shift+K)"}
-        >
-          {bubbleIcon}
-        </button>
-
-        {/* 🌌 Overlay + shell via portal */}
-        {portalReady && createPortal(
-          <div
-            className="lm-chat-overlay"
-            data-testid="lm-chat-overlay"
-          >
-            {/* Backdrop: purely visual darkened layer, no events */}
-            <div
-              className="lm-chat-backdrop"
-              data-testid="lm-chat-backdrop"
-              aria-hidden="true"
-            />
-
-            {/* Shell: the only interactive part */}
-            <div
-              className="lm-chat-shell"
-              ref={shellRef}
-              data-testid="lm-chat-shell"
-            >
-              {panel}
-            </div>
-          </div>,
-          document.body
-        )}
+        {panel}
       </div>
-    </ErrorBoundary>
+    </div>
   );
+
+  // --- Launcher + overlay (portal to <body>) --------------------
+  const node = (
+    <div
+      data-testid="lm-chat-launcher"
+      className={cn(
+        "lm-chat-launcher",
+        open ? "lm-chat-launcher--open" : "lm-chat-launcher--closed"
+      )}
+      data-state={open ? "open" : "closed"}
+    >
+      <button
+        type="button"
+        ref={triggerRef}
+        data-testid="lm-chat-launcher-button"
+        className="lm-chat-launcher-bubble"
+        onClick={handleToggle}
+      >
+        {bubbleIcon}
+      </button>
+
+      {open && (
+        <div
+          data-testid="lm-chat-overlay"
+          className="lm-chat-overlay"
+        >
+          {shell}
+        </div>
+      )}
+    </div>
+  );
+
+  const root = document.body;
+  return root ? createPortal(node, root) : null;
 }
 
 // Helper: format NL transaction query result for chat rendering

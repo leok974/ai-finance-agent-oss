@@ -762,24 +762,139 @@ textarea.lm-input,
 }
 
 /* ============================================
-   CHAT PANEL STYLES
+   LAUNCHER + BUBBLE (FIXED BOTTOM-RIGHT)
    ============================================ */
 
-/* Positioning */
+/* Root launcher container (fixed bottom-right, but non-draggable) */
+.lm-chat-launcher {
+  position: fixed;
+  right: 1.5rem;
+  bottom: 1.5rem;
+  z-index: 60;
+  pointer-events: none; /* children opt-in */
+}
+
+/* When the panel is open we add a slight lift for the bubble */
+.lm-chat-launcher--open .lm-chat-launcher-bubble {
+  transform: translateY(-4px) scale(0.96);
+}
+
+/* Floating bubble button */
+.lm-chat-launcher-bubble {
+  pointer-events: auto;
+  width: 44px;
+  height: 44px;
+  border-radius: 9999px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: radial-gradient(circle at 30% 0%, #22d3ee 0, #0f172a 40%, #020617 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow:
+    0 14px 45px rgba(15, 23, 42, 0.75),
+    0 8px 20px rgba(15, 23, 42, 0.9);
+  cursor: pointer;
+  transition:
+    transform 120ms ease-out,
+    box-shadow 120ms ease-out,
+    background 180ms ease-out;
+}
+
+.lm-chat-launcher-bubble:hover {
+  transform: translateY(-2px) scale(1.02);
+  box-shadow:
+    0 18px 60px rgba(15, 23, 42, 0.85),
+    0 10px 24px rgba(15, 23, 42, 0.95);
+}
+
+/* ============================================
+   OVERLAY + SHELL (CENTERED CARD, ANIMATIONS)
+   ============================================ */
+
+/* Full-screen overlay used only for positioning; does NOT block page scroll */
+.lm-chat-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  pointer-events: none; /* page still scrolls outside the card */
+  z-index: 61;
+}
+
+/* Shell wraps backdrop + card and IS clickable */
 .lm-chat-shell {
-  /* Positioning handled by overlay section below */
+  position: relative;
+  pointer-events: auto;
+  margin-bottom: 1.75rem;
+  max-width: 640px;
+  width: min(640px, 100% - 2rem);
+}
 
-  /* Wider but still safe on small screens */
-  width: min(520px, 100vw - 3rem);
-  max-width: 520px;
+/* Inner container so backdrop can sit behind card */
+.lm-chat-shell-inner {
+  position: relative;
+  border-radius: 1.5rem;
+  overflow: hidden;
+}
 
+/* Subtle glossy backdrop behind the card */
+.lm-chat-backdrop {
+  position: absolute;
+  inset: -16px;
+  border-radius: 1.75rem;
+  background:
+    radial-gradient(circle at 0 0, rgba(56, 189, 248, 0.24), transparent 55%),
+    radial-gradient(circle at 100% 0, rgba(129, 140, 248, 0.26), transparent 60%),
+    radial-gradient(circle at 50% 120%, rgba(15, 23, 42, 0.98), rgba(2, 6, 23, 0.98));
+  filter: blur(8px);
+  opacity: 0.95;
+}
+
+/* Card itself */
+.lm-chat-card {
+  position: relative;
+  border-radius: 1.25rem;
+  padding: 1.25rem 1.25rem 0.75rem;
+  background: radial-gradient(circle at 0 0, #1d2437, #020617 65%);
+  box-shadow:
+    0 24px 80px rgba(15, 23, 42, 0.95),
+    0 0 0 1px rgba(148, 163, 184, 0.25);
+  color: #e5e7eb;
   display: flex;
   flex-direction: column;
-  align-items: flex-end;
-  gap: 0.75rem;
+}
 
-  /* Transform origin for animations */
-  transform-origin: bottom right;
+/* Animations */
+@keyframes lm-chat-fade-up-in {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 10px, 0) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes lm-chat-fade-down-out {
+  from {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translate3d(0, 10px, 0) scale(0.96);
+  }
+}
+
+.lm-chat-shell--open {
+  animation: lm-chat-fade-up-in 180ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.lm-chat-shell--closing {
+  animation: lm-chat-fade-down-out 140ms cubic-bezier(0.16, 1, 0.3, 1);
+  pointer-events: none;
 }
 
 
@@ -798,61 +913,43 @@ textarea.lm-input,
   min-height: 0;
 }
 
-/* Top gradient becomes the scrollable area */
+/* ============================================
+   SCROLLABLE GRADIENT AREA (KEEP YOUR "NICE" VERSION)
+   ============================================ */
+
+/* Gradient scroll region inside the card */
 .lm-chat-gradient {
   flex: 1 1 auto;
-
-  /* 🔑 needed inside flex containers so overflow works properly */
   min-height: 0;
-
-  /* 🔑 this is what actually creates overflow */
   max-height: min(340px, 100vh - 260px);
-
+  margin-top: 0.75rem;
+  padding: 0.75rem 0.5rem 0.75rem 0;
+  border-radius: 0.85rem;
+  background: radial-gradient(circle at 0 0, rgba(148, 163, 184, 0.22), transparent 45%);
   overflow-y: auto;
-  overscroll-behavior: contain; /* avoid propagating scroll to page */
-
-  padding: 1.2rem 1.3rem 1.1rem;
-  background: radial-gradient(circle at top left, #1d4ed8, #020617);
-  color: #e5f0ff;
-
-  display: flex;
-  flex-direction: column;
-  gap: 0.95rem;
-
-  /* 🔹 Shadcn-style scrollbar (Firefox) */
+  overscroll-behavior: contain;
   scrollbar-width: thin;
-  scrollbar-color: rgba(148, 163, 184, 0.55) transparent; /* softer base color to feel more "idle" */
+  scrollbar-color: rgba(148, 163, 184, 0.8) transparent;
 }
 
-/* 🔹 Shadcn-style scrollbar (Chromium / Safari / Edge) */
+/* Chromium/Safari scrollbar */
 .lm-chat-gradient::-webkit-scrollbar {
   width: 8px;
 }
-
 .lm-chat-gradient::-webkit-scrollbar-track {
   background: transparent;
 }
-
-/* show subtle track only on hover */
-.lm-chat-gradient:hover::-webkit-scrollbar-track {
-  background: rgba(15, 23, 42, 0.35); /* faint slate behind thumb */
-}
-
-/* base thumb: subtle, pill, with smooth transitions */
 .lm-chat-gradient::-webkit-scrollbar-thumb {
-  background: rgba(148, 163, 184, 0.55);         /* softer slate */
+  background: rgba(148, 163, 184, 0.55);
   border-radius: 9999px;
-  border: 1px solid rgba(15, 23, 42, 0.85);
+  border: 1px solid rgba(15, 23, 42, 0.9);
   transition:
     background-color 120ms ease-out,
     border-color 120ms ease-out,
     box-shadow 120ms ease-out;
 }
-
-/* hover: brighter + a faint ring, shadcn-style */
 .lm-chat-gradient::-webkit-scrollbar-thumb:hover {
-  background: rgba(248, 250, 252, 0.96);         /* near-white */
-  border-color: rgba(15, 23, 42, 1);
+  background: rgba(248, 250, 252, 0.96);
   box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.85);
 }
 
@@ -1078,80 +1175,4 @@ textarea.lm-input,
 .lm-chat-send-button:disabled {
   opacity: 0.4;
   cursor: not-allowed;
-}
-
-/* ============================================
-   OVERLAY LAYER & STACKING
-   ============================================ */
-
-/* Root launcher – positioned bottom-right, doesn't own events itself */
-.lm-chat-launcher {
-  position: fixed;
-  right: 1.5rem;
-  bottom: 1.5rem;
-  z-index: 60;
-  pointer-events: none; /* children opt-in */
-}
-
-/* The bubble (launcher button) – must re-enable pointer events */
-.lm-chat-launcher-bubble,
-.lm-chat-launcher button[data-testid="lm-chat-launcher-button"] {
-  pointer-events: auto;
-}
-
-/* Full-screen overlay container rendered via portal */
-.lm-chat-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 59;
-  pointer-events: none;     /* 🔑 NEVER grabs input/scroll */
-}
-
-/* Backdrop is JUST a visual tint; no events */
-.lm-chat-backdrop {
-  position: absolute;
-  inset: 0;
-  opacity: 0;
-  background: radial-gradient(
-    circle at bottom right,
-    rgba(15, 23, 42, 0.85),
-    rgba(15, 23, 42, 0.96)
-  );
-  transition: opacity 160ms ease-out;
-  pointer-events: none;     /* 🔑 stays non-interactive */
-}
-
-/* Chat shell: the only interactive element inside overlay */
-.lm-chat-shell {
-  position: absolute;
-  right: 1.5rem;
-  bottom: 1.5rem;
-  opacity: 0;
-  transform: translateY(10px) scale(0.96);
-  transition:
-    opacity 180ms ease-out,
-    transform 200ms ease-out;
-  pointer-events: none;     /* closed by default */
-}
-
-/* When open, shell becomes visible and clickable */
-.lm-chat-launcher--open .lm-chat-shell {
-  opacity: 1;
-  transform: translateY(0) scale(1);
-  pointer-events: auto;     /* 🔑 now it can receive clicks/scroll */
-}
-
-/* When open, show backdrop visually */
-.lm-chat-launcher--open .lm-chat-backdrop {
-  opacity: 1;
-}
-
-/* When closed, shell is invisible and non-interactive */
-.lm-chat-launcher--closed .lm-chat-shell {
-  opacity: 0;
-  pointer-events: none;
-}
-
-.lm-chat-launcher--closed .lm-chat-backdrop {
-  opacity: 0;
 }
