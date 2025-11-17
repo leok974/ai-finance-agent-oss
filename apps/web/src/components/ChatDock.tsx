@@ -483,17 +483,6 @@ export default function ChatDock() {
     return () => { if (syncTimerRef.current) window.clearTimeout(syncTimerRef.current); };
   }, [isPrimary]);
 
-  // ChatDock v2 layout activation log
-  React.useEffect(() => {
-    if (!isPrimary) return;
-    // eslint-disable-next-line no-console
-    console.info(
-      "%c💬 ChatDock v2%c overlay-card layout active",
-      "color:#a855f7;font-weight:bold;",
-      "color:#9ca3af;"
-    );
-  }, [isPrimary]);
-
   // 🔐 Click-away handler: closes when clicking outside bubble + shell
   useEffect(() => {
     if (!open) return;
@@ -1948,18 +1937,7 @@ export default function ChatDock() {
   );
 
   const panel = (
-    <section
-      data-testid="lm-chat-panel"
-      className={cn(
-        "lm-chat-panel",
-        "relative flex w-full flex-col gap-4",
-        "bg-slate-950/95 text-slate-50",
-        "border border-slate-800/80",
-        "shadow-[0_24px_80px_rgba(15,23,42,0.95)]",
-        "rounded-3xl p-4 sm:p-6"
-      )}
-    >
-    <Card className="lm-chat-card bg-transparent border-0 shadow-none">
+    <Card className="lm-chat-card bg-transparent border-0 shadow-none" data-testid="lm-chat-panel">
       {/* Gradient top: header + sections */}
       <div
         className="lm-chat-gradient"
@@ -2185,24 +2163,22 @@ export default function ChatDock() {
         </div>
       </CardFooter>
       </Card>
-    </section>
   );
 
   // Since we're already mounted in Shadow DOM via chatMount.tsx,
   // just return the content directly instead of creating another root
   if (!portalReady || !isPrimary) return null;
 
-  const shellClasses = cn(
-    "lm-chat-shell",
-    open && !isClosing && "lm-chat-shell--open",
-    isClosing && "lm-chat-shell--closing"
-  );
-
+  // --- Shell (backdrop + card) ---------------------------------
   const shell = (
     <div
-      ref={shellRef}
       data-testid="lm-chat-shell"
-      className={shellClasses}
+      className={cn(
+        "lm-chat-shell",
+        open && !isClosing && "lm-chat-shell--open",
+        isClosing && "lm-chat-shell--closing"
+      )}
+      // clicking outside the card but inside the shell closes
       onClick={handleClose}
     >
       <div
@@ -2211,14 +2187,15 @@ export default function ChatDock() {
       />
       <div
         className="lm-chat-shell-inner"
-        onClick={(e) => e.stopPropagation()}
+        onClick={(e) => e.stopPropagation()} // keep card clicks from closing
       >
         {panel}
       </div>
     </div>
   );
 
-  const launcherNode = (
+  // --- Launcher + overlay (portal to <body>) --------------------
+  const node = (
     <div
       data-testid="lm-chat-launcher"
       className={cn(
@@ -2248,7 +2225,8 @@ export default function ChatDock() {
     </div>
   );
 
-  return createPortal(launcherNode, document.body);
+  const root = document.body;
+  return root ? createPortal(node, root) : null;
 }
 
 // Helper: format NL transaction query result for chat rendering
