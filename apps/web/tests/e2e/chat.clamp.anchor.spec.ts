@@ -31,7 +31,7 @@ test.describe("@ui @chat clamp & anchor", () => {
     }
 
     // Wait for launcher bubble to be visible
-    const bubble = page.locator('[data-testid="lm-chat-bubble"]');
+    const bubble = page.locator('[data-testid="lm-chat-launcher-button"]');
     await expect(bubble).toBeVisible({ timeout: 15000 });
 
     // Remember bubble corner
@@ -43,23 +43,23 @@ test.describe("@ui @chat clamp & anchor", () => {
     // Click to open chat
     await bubble.click();
 
-    // Wait for panel host (the fixed container that wraps iframe)
-    const host = page.locator('#lm-chat-host');
-    await expect(host).toBeVisible({ timeout: 5000 });
+    // Wait for shell (ChatDock v2 uses direct React component, not iframe)
+    const shell = page.locator('[data-testid="lm-chat-shell"]');
+    await expect(shell).toBeVisible({ timeout: 5000 });
 
-    // Wait for animation to complete (160ms + buffer)
+    // Wait for animation to complete
     await page.waitForTimeout(200);
 
     // 1) Verify fully inside viewport (tight tolerance)
     const vp = await page.evaluate(() => ({ w: innerWidth, h: innerHeight }));
-    const h = await host.boundingBox();
+    const h = await shell.boundingBox();
     expect(h).toBeTruthy();
 
     const pad = 6;
-    expect(h!.x, 'host left edge inside viewport').toBeGreaterThanOrEqual(pad);
-    expect(h!.y, 'host top edge inside viewport').toBeGreaterThanOrEqual(pad);
-    expect(h!.x + h!.width, 'host right edge inside viewport').toBeLessThanOrEqual(vp.w - pad);
-    expect(h!.y + h!.height, 'host bottom edge inside viewport').toBeLessThanOrEqual(vp.h - pad);
+    expect(h!.x, 'shell left edge inside viewport').toBeGreaterThanOrEqual(pad);
+    expect(h!.y, 'shell top edge inside viewport').toBeGreaterThanOrEqual(pad);
+    expect(h!.x + h!.width, 'shell right edge inside viewport').toBeLessThanOrEqual(vp.w - pad);
+    expect(h!.y + h!.height, 'shell bottom edge inside viewport').toBeLessThanOrEqual(vp.h - pad);
 
     // 2) Verify anchored near bubble on X-axis (right edges ~aligned)
     const dx = Math.abs((h!.x + h!.width) - (b.x + b.width));
@@ -73,12 +73,12 @@ test.describe("@ui @chat clamp & anchor", () => {
     ).toBeTruthy();
 
     // 4) Verify no horizontal scroll in thread (good wrapping)
-    const chatFrame = page.frameLocator('#lm-chat-host iframe');
-    const thread = chatFrame.locator('.lm-thread');
-    await expect(thread).toBeVisible({ timeout: 5000 });
+    // ChatDock v2 renders directly, no iframe - check scroll container
+    const scrollContainer = page.locator('[data-testid="lm-chat-scroll"]');
+    await expect(scrollContainer).toBeVisible({ timeout: 5000 });
 
-    const hasHScroll = await thread.evaluate(el => el.scrollWidth > el.clientWidth + 2);
-    expect(hasHScroll, 'thread should not have horizontal scroll').toBeFalsy();
+    const hasHScroll = await scrollContainer.evaluate(el => el.scrollWidth > el.clientWidth + 2);
+    expect(hasHScroll, 'scroll container should not have horizontal scroll').toBeFalsy();
   }
 
   test("anchors and stays inside viewport (desktop)", async ({ page }) => {

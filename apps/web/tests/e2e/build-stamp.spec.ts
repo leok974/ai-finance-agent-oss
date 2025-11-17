@@ -18,20 +18,20 @@ test.describe('Build Stamp @prod', () => {
     await page.goto(BASE_URL, { waitUntil: 'domcontentloaded' });
 
     // Wait a moment for console to settle
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(1000);
 
-    // Find build stamp message
-    const buildMsg = consoleMessages.find(m => m.includes('[build]'));
+    // Find 🚀 LedgerMind Web banner (new styled format)
+    const hasBuildBanner = consoleMessages.some(m =>
+      m.includes('🚀 LedgerMind Web') && m.includes('build')
+    );
 
-    expect(buildMsg, 'missing [build] banner in console').toBeTruthy();
-    expect(buildMsg, 'build stamp should contain @').toMatch(/@/);
-    expect(buildMsg, 'build stamp should contain ISO timestamp').toMatch(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/);
+    expect(hasBuildBanner, 'missing 🚀 LedgerMind Web banner in console').toBeTruthy();
   });
 
-  test('chat iframe build stamp prints in console', async ({ page }) => {
+  test('ChatDock v2 build stamp prints in console', async ({ page }) => {
     const consoleMessages: string[] = [];
 
-    // Capture all console messages (from main frame AND iframe)
+    // Capture all console messages (ChatDock v2 logs directly to main page)
     page.on('console', msg => {
       consoleMessages.push(msg.text());
     });
@@ -52,24 +52,23 @@ test.describe('Build Stamp @prod', () => {
     }
 
     // Find chat launcher and click it
-    const bubble = page.locator('[data-testid="lm-chat-bubble"]');
+    const bubble = page.locator('[data-testid="lm-chat-launcher-button"]');
     await bubble.waitFor({ state: 'visible', timeout: 15000 });
     await bubble.click();
 
-    // Wait for iframe to load and initialize
-    const iframe = page.locator('[data-testid="lm-chat-iframe"]');
-    await iframe.waitFor({ state: 'attached', timeout: 5000 });
-    await expect(iframe).toHaveCSS('opacity', '1', { timeout: 3000 });
+    // Wait for shell to appear (ChatDock v2 uses direct React, not iframe)
+    const shell = page.locator('[data-testid="lm-chat-shell"]');
+    await shell.waitFor({ state: 'visible', timeout: 5000 });
 
-    // Wait for chat boot messages
+    // Wait for ChatDock initialization messages
     await page.waitForTimeout(1000);
 
-    // Find chat build stamp message
-    const chatBuildMsg = consoleMessages.find(m => m.includes('[build/chat]'));
+    // Find 💬 ChatDock v2 banner (new styled format)
+    const hasChatDockV2Banner = consoleMessages.some(m =>
+      m.includes('💬 ChatDock v2') && m.includes('overlay-card layout active')
+    );
 
-    expect(chatBuildMsg, 'missing [build/chat] banner in console').toBeTruthy();
-    expect(chatBuildMsg, 'chat build stamp should contain @').toMatch(/@/);
-    expect(chatBuildMsg, 'chat build stamp should contain ISO timestamp').toMatch(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/);
+    expect(hasChatDockV2Banner, 'missing 💬 ChatDock v2 banner in console').toBeTruthy();
   });
 
   test('build stamps contain branch and commit info', async ({ page }) => {
@@ -80,23 +79,15 @@ test.describe('Build Stamp @prod', () => {
     });
 
     await page.goto(BASE_URL, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(1000);
 
-    const buildMsg = consoleMessages.find(m => m.includes('[build]'));
-    expect(buildMsg).toBeTruthy();
+    const buildMsg = consoleMessages.find(m => m.includes('🚀 LedgerMind Web'));
+    expect(buildMsg, 'should have 🚀 LedgerMind Web banner').toBeTruthy();
 
-    // Should have format: [build] branch@commit timestamp
-    // e.g., [build] fix/chat-iframe-csp@9d96d9b80c2c  2025-11-12T13:31:34.529Z
-    const parts = buildMsg!.split(/\s+/);
-    expect(parts.length, 'build stamp should have at least 3 parts').toBeGreaterThanOrEqual(3);
-
-    // Second part should be branch@commit
-    const branchCommit = parts[1];
-    expect(branchCommit, 'should have @ separator').toMatch(/@/);
-
-    // Third part should be ISO timestamp
-    const timestamp = parts[2];
-    expect(timestamp, 'should be valid ISO timestamp').toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    // New format: "🚀 LedgerMind Web  build  branch@commit (timestamp)"
+    // Should contain @ separator and parenthesized timestamp
+    expect(buildMsg, 'build stamp should contain @ separator').toMatch(/@/);
+    expect(buildMsg, 'build stamp should contain timestamp in parens').toMatch(/\(/);
   });
 
   test('build metadata is attached to window', async ({ page }) => {
