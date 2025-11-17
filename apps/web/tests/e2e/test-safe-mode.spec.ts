@@ -21,11 +21,12 @@ test('chat safe mode renders minimal boot', async ({ page }) => {
     timeout: 15000
   });
 
-  // Wait for iframe
-  const iframe = page.frameLocator('iframe#lm-chat-iframe');
+  // Wait for ChatDock v2 shell to be visible
+  const shell = page.locator('[data-testid="lm-chat-shell"]');
+  await expect(shell).toBeVisible({ timeout: 5000 });
 
-  // Check for safe mode indicator
-  const safeDiv = iframe.locator('[data-chat-safe="1"]');
+  // Check for safe mode indicator (now in direct DOM, no iframe)
+  const safeDiv = page.locator('[data-chat-safe="1"]');
   await expect(safeDiv).toBeVisible({ timeout: 5000 });
 
   const text = await safeDiv.textContent();
@@ -40,5 +41,5 @@ test('chat safe mode renders minimal boot', async ({ page }) => {
   }
   expect(errors.length).toBe(0);
 
-  console.log('\n✅ Safe mode test PASSED - iframe boots with minimal React');
+  console.log('\n✅ Safe mode test PASSED - ChatDock v2 boots with minimal React');
 });

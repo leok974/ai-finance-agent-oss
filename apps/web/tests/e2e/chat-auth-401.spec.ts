@@ -16,9 +16,8 @@ test.describe('Chat Auth Handling (dev only)', () => {
     const banner = page.getByTestId('chat-auth-banner');
     await expect(banner).toBeVisible({ timeout: 10000 });
 
-    // If the iframe mounts in dev, assert send disabled
-    const frame = page.frameLocator('[data-testid="lm-chat-iframe"] iframe');
-    const send = frame.getByTestId('chat-send');
+    // ChatDock v2: send button is in direct DOM, not iframe
+    const send = page.getByTestId('chat-send');
     await expect(send).toBeDisabled();
   });
 });

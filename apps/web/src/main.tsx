@@ -13,6 +13,7 @@ import { ensurePortalRoot } from '@/lib/portal';
 import buildStamp from './build-stamp.json';
 import { version as reactVersion } from 'react';
 import { version as reactDomVersion } from 'react-dom';
+import { BUILD_STAMP } from "./buildStamp";
 
 // ✅ Global error handlers to catch initialization failures
 window.addEventListener('error', e =>
@@ -27,6 +28,17 @@ if (window.__APP_MOUNTED__) {
   throw new Error('Abort duplicate mount');
 }
 window.__APP_MOUNTED__ = true;
+
+// 🚀 Styled console banner showing build stamp
+const banner = [
+  "%c🚀 LedgerMind Web%c  build %c" + BUILD_STAMP,
+  "background:#0f172a;color:#38bdf8;font-weight:bold;padding:2px 6px;border-radius:4px 0 0 4px;",
+  "background:#0f172a;color:#e5e7eb;padding:2px 4px;",
+  "background:#0f172a;color:#a5b4fc;font-family:monospace;padding:2px 6px;border-radius:0 4px 4px 0;",
+] as const;
+
+// eslint-disable-next-line no-console
+console.info(...banner);
 
 // eslint-disable-next-line no-console
 console.log("[build]", `${__WEB_BRANCH__}@${__WEB_COMMIT__}`, __WEB_BUILD_TIME__);
