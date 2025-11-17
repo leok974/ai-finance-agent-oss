@@ -1146,3 +1146,75 @@ textarea.lm-input,
   opacity: 0.4;
   cursor: not-allowed;
 }
+
+/* === ChatDock v2 layout overrides === */
+
+.lm-chat-launcher {
+  position: fixed !important;
+  inset: auto 1.75rem 1.75rem auto !important;
+  z-index: 70 !important;
+  pointer-events: none;
+}
+
+.lm-chat-launcher-button {
+  pointer-events: auto;
+}
+
+/* Slight lift when open */
+.lm-chat-launcher[data-state="open"] .lm-chat-launcher-button {
+  transform: translateY(-4px);
+}
+
+/* Full-screen overlay used only for positioning */
+.lm-chat-overlay {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 69 !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+/* Shell wraps backdrop + card */
+.lm-chat-shell {
+  position: relative;
+  width: min(480px, calc(100vw - 2.5rem));
+  max-height: min(480px, calc(100vh - 4rem));
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  pointer-events: auto;
+}
+
+/* Backdrop: blur behind the card, click to close */
+.lm-chat-backdrop {
+  position: fixed;
+  inset: 0;
+  background: radial-gradient(circle at 10% 0%, rgba(15,23,42,0.85), rgba(15,23,42,0.35) 45%, transparent);
+  backdrop-filter: blur(14px);
+  opacity: 1;
+}
+
+/* Centered floating card */
+.lm-chat-shell-inner {
+  position: relative;
+  margin: 0 auto;
+  border-radius: 1.5rem;
+  overflow: hidden;
+  box-shadow:
+    0 24px 80px rgba(15,23,42,0.95),
+    0 0 0 1px rgba(15,23,42,1);
+  background: radial-gradient(circle at 0% 0%, #1d4ed8 0%, #020617 60%);
+}
+
+/* Scroll area inside card should never stretch page */
+.lm-chat-panel {
+  max-height: min(420px, calc(100vh - 6rem));
+  display: flex;
+  flex-direction: column;
+}
+
+.lm-chat-scroll {
+  overflow-y: auto;
+}
