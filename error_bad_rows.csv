@@ -1,0 +1,4 @@
+date,merchant,description,amount
+not-a-date,Coffee Shop,Invalid date,-4.50
+2025-11-02,Rent,Bad amount,not-a-number
+2025-11-03,Gym,Both invalid,not-an-amount

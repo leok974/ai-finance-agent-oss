@@ -421,14 +421,27 @@ async def ingest_csv(
                 "error_type": type(exc).__name__,
             },
         )
-        # Return 500 with detailed error for debugging
+        
+        # Build user-friendly error message
+        error_str = str(exc)
+        if "could not convert string to float" in error_str:
+            friendly_message = "Some rows have invalid amounts. Please ensure all amounts are valid numbers (e.g., -123.45 or $123.45)."
+        elif "time data" in error_str or "does not match format" in error_str:
+            friendly_message = "Some rows have invalid dates. Please use MM/DD/YYYY or YYYY-MM-DD format."
+        elif "invalid literal" in error_str:
+            friendly_message = "Some rows have invalid data. Please check that dates and amounts are correctly formatted."
+        else:
+            # Keep technical error for unexpected issues
+            friendly_message = f"CSV upload failed: {error_str}"
+        
+        # Return 500 with user-friendly error message
         return JSONResponse(
             status_code=500,
             content={
                 "ok": False,
                 "error": "ingest_failed",
                 "error_type": type(exc).__name__,
-                "message": f"CSV ingest failed: {str(exc)}",
+                "message": friendly_message,
             },
         )
 
@@ -740,6 +753,23 @@ async def _ingest_csv_impl(
 
         # Build helpful error message showing actual vs expected headers
 
+        # Build user-friendly error message
+        if csv_format == CsvFormat.UNKNOWN:
+            # Headers not recognized
+            headers_str = ", ".join(original_headers) if original_headers else "none"
+            message = (
+                f"Could not recognize CSV format. Your file has columns: {headers_str}. "
+                f"Please use a CSV with at least 'date' and 'amount' columns. "
+                f"Supported formats include standard bank exports or simple date/amount files."
+            )
+        else:
+            # Headers recognized but all rows failed parsing
+            message = (
+                f"File format recognized, but all {len(rows)} rows had invalid data. "
+                f"Please check that dates are in a valid format (MM/DD/YYYY or YYYY-MM-DD) "
+                f"and amounts are numbers (e.g., -123.45 or $123.45)."
+            )
+        
         return {
             "ok": False,
             "added": 0,
@@ -748,11 +778,7 @@ async def _ingest_csv_impl(
             "detected_month": None,
             "date_range": None,
             "error": "no_rows_parsed",
-            "message": f"File contained {len(rows)} rows but no valid transactions could be parsed. "
-            f"Headers found: {original_headers}. "
-            f"Required columns: date, amount. "
-            f"Optional columns: description, merchant, memo, account, category. "
-            f"Note: Column names are case-insensitive.",
+            "message": message,
         }
     elif added == 0 and len(rows) == 0:
         # Empty file or only headers
