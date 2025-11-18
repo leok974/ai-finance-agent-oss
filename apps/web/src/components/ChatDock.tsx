@@ -203,27 +203,19 @@ export default function ChatDock() {
   const { month } = useMonth();
   const chat = useChatDock();
   const [open, setOpen] = React.useState<boolean>(false);
-  const [isClosing, setIsClosing] = React.useState<boolean>(false);
   const launcherState = open ? 'open' : 'closed';
 
   const handleClose = React.useCallback(() => {
-    if (!open || isClosing) return;
-
-    setIsClosing(true);
-    setTimeout(() => {
-      setOpen(false);
-      setIsClosing(false);
-    }, 220); // 200ms transform + 20ms buffer
-  }, [open, isClosing]);
+    if (!open) return;
+    setOpen(false);
+  }, [open]);
 
   // --- open / close helpers ------------------------------------
   const reallyClose = useCallback(() => {
     setOpen(false);
-    setIsClosing(false);
   }, []);
 
   const handleOpen = useCallback(() => {
-    setIsClosing(false);
     setOpen(true);
   }, []);
 
