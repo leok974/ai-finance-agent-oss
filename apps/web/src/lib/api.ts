@@ -1213,6 +1213,7 @@ export async function listTxns(params: {
   category?: string;
   merchant?: string;
   include_deleted?: boolean;
+  status?: "all" | "posted" | "pending";
   limit?: number;
   offset?: number;
   sort?: string;
