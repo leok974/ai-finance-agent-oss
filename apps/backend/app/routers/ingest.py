@@ -130,11 +130,19 @@ async def _ingest_csv_impl(
     reader = csv.DictReader(
         (line for line in wrapper if line.strip()), skipinitialspace=True
     )
+    
+    # Normalize headers to lowercase for case-insensitive matching
+    if reader.fieldnames:
+        original_headers = reader.fieldnames.copy()
+        reader.fieldnames = [h.lower().strip() if h else h for h in reader.fieldnames]
+    else:
+        original_headers = None
+    
     rows = list(reader)
 
-    # DEBUG: Log CSV headers to diagnose column mismatch issues (ALWAYS log, even if None)
+    # DEBUG: Log CSV headers to diagnose column mismatch issues
     logger.info(
-        f"CSV headers detected: {reader.fieldnames} | rows_count={len(rows)} | (user_id={user_id}, filename={file.filename})"
+        f"CSV headers detected: {original_headers} (normalized to: {reader.fieldnames}) | rows_count={len(rows)} | (user_id={user_id}, filename={file.filename})"
     )
 
     # Try to infer if not provided
@@ -298,8 +306,15 @@ async def _ingest_csv_impl(
     if added == 0 and len(rows) > 0:
         # File had rows but none were parsed successfully
         logger.warning(
-            f"CSV ingest: {len(rows)} rows in file but 0 transactions added (user_id={user_id})"
+            f"CSV ingest: {len(rows)} rows in file, but no valid transactions could be parsed (user_id={user_id}, headers={original_headers})"
         )
+        
+        # Build helpful error message showing actual vs expected headers
+        supported_formats = [
+            "date, amount, description, merchant (generic)",
+            "date, description, amount (minimal)"
+        ]
+        
         return {
             "ok": False,
             "added": 0,
@@ -308,7 +323,11 @@ async def _ingest_csv_impl(
             "detected_month": None,
             "date_range": None,
             "error": "no_rows_parsed",
-            "message": f"File contained {len(rows)} rows but no valid transactions could be parsed. Check CSV format (expected columns: date, amount, description, merchant).",
+            "message": f"File contained {len(rows)} rows but no valid transactions could be parsed. "
+                      f"Headers found: {original_headers}. "
+                      f"Required columns: date, amount. "
+                      f"Optional columns: description, merchant, memo, account, category. "
+                      f"Note: Column names are case-insensitive.",
         }
     elif added == 0 and len(rows) == 0:
         # Empty file or only headers
