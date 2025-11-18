@@ -16,12 +16,228 @@ from io import TextIOWrapper
 import csv
 import datetime as dt
 import logging
+import re
+from decimal import Decimal, InvalidOperation
+from enum import Enum
+from typing import Iterator
 from ..db import get_db
 from app.transactions import Transaction
 from app.services.ingest_utils import detect_positive_expense_format
 from app.services.metrics import INGEST_REQUESTS, INGEST_ERRORS
 
 logger = logging.getLogger(__name__)
+
+
+class CsvFormat(str, Enum):
+    """Supported CSV formats for transaction import."""
+    GENERIC = "generic"
+    BANK_EXPORT = "bank_export"
+    UNKNOWN = "unknown"
+
+
+def detect_csv_format(fieldnames: list[str] | None) -> CsvFormat:
+    """Detect CSV format based on headers."""
+    if not fieldnames:
+        return CsvFormat.UNKNOWN
+    
+    headers = [h.strip().lower() for h in fieldnames]
+    header_set = set(headers)
+    
+    # Bank export format: Date,Description,Comments,Check Number,Amount,Balance
+    bank_export_headers = {"date", "description", "comments", "check number", "amount", "balance"}
+    if bank_export_headers.issubset(header_set):
+        return CsvFormat.BANK_EXPORT
+    
+    # Generic LedgerMind format: date, amount, description (merchant optional)
+    generic_required = {"date", "amount"}
+    if generic_required.issubset(header_set):
+        return CsvFormat.GENERIC
+    
+    return CsvFormat.UNKNOWN
+
+
+def _parse_bank_amount(raw: str | None) -> Decimal | None:
+    """Parse bank-style currency amounts: -$2.99, $850.00, ($12.34), $3,628.37"""
+    s = (raw or "").strip()
+    if not s:
+        return None
+    
+    sign = 1
+    # Handle parentheses negatives: ($12.34)
+    if s.startswith("(") and s.endswith(")"):
+        sign = -1
+        s = s[1:-1].strip()
+    
+    # Leading +/-
+    if s.startswith("+"):
+        s = s[1:].strip()
+    elif s.startswith("-"):
+        sign = -1
+        s = s[1:].strip()
+    
+    # Drop currency symbols and thousands separators
+    s = s.replace("$", "").replace(",", "").strip()
+    if not s:
+        return None
+    
+    try:
+        return Decimal(s) * sign
+    except (InvalidOperation, ValueError):
+        return None
+
+
+def _parse_bank_date(raw: str | None) -> dt.date | None:
+    """Parse bank date: mm/dd/yyyy or yyyy-mm-dd"""
+    s = (raw or "").strip()
+    if not s:
+        return None
+    
+    # Try US format first (11/12/2025), then ISO
+    for fmt in ("%m/%d/%Y", "%Y-%m-%d", "%m/%d/%y"):
+        try:
+            return dt.datetime.strptime(s, fmt).date()
+        except ValueError:
+            continue
+    return None
+
+
+def _extract_bank_merchant(desc_raw: str | None) -> str:
+    """Extract merchant from bank description, removing noise."""
+    s = (desc_raw or "").replace("\r\n", " ").replace("\n", " ")
+    
+    # Strip "Processing..." and "(Pending)"
+    s = re.sub(r"^Processing\.*\s*", "", s, flags=re.IGNORECASE)
+    s = re.sub(r"\s*\(Pending\)\s*$", "", s, flags=re.IGNORECASE)
+    
+    # Remove common bank prefixes
+    for prefix in (
+        "Point Of Sale Withdrawal",
+        "Point Of Sale Purchase", 
+        "Wire Transfer Deposit",
+        "Wire Transfer Withdrawal",
+        "ACH Withdrawal",
+        "ACH Deposit",
+        "POS Debit",
+        "POS Credit",
+    ):
+        if s.lower().startswith(prefix.lower()):
+            s = s[len(prefix):].strip()
+            break
+    
+    # Use double-space gap to trim trailing city/state when present
+    main = re.split(r"\s{2,}", s)[0]
+    main = re.sub(r"\s+", " ", main).strip()
+    return main or "Unknown"
+
+
+def _clean_bank_description(desc_raw: str | None) -> str:
+    """Clean bank description, preserving context but removing noise."""
+    s = (desc_raw or "").replace("\r\n", " ").replace("\n", " ")
+    s = re.sub(r"\s+", " ", s).strip()
+    # Drop pending markers
+    s = re.sub(r"^Processing\.*\s*", "", s, flags=re.IGNORECASE)
+    s = re.sub(r"\s*\(Pending\)\s*$", "", s, flags=re.IGNORECASE)
+    return s
+
+def _parse_bank_export_rows(rows: list[dict]) -> Iterator[dict]:
+    """Parse bank export format rows into transaction data."""
+    for row in rows:
+        # Parse date and amount - skip if either is invalid
+        tx_date = _parse_bank_date(row.get("date"))
+        amount = _parse_bank_amount(row.get("amount"))
+        
+        if not tx_date or amount is None:
+            # Skip header/empty/malformed rows
+            continue
+        
+        desc_raw = row.get("description") or ""
+        description = _clean_bank_description(desc_raw)
+        merchant = _extract_bank_merchant(desc_raw)
+        month = tx_date.strftime("%Y-%m")
+        
+        # Convert Decimal to float for consistency with existing code
+        yield {
+            "date": tx_date,
+            "amount": float(amount),
+            "description": description,
+            "merchant": merchant,
+            "account": None,  # Bank export doesn't have account column
+            "category": None,  # Will be filled by ML
+            "month": month,
+        }
+
+
+def _parse_generic_rows(rows: list[dict], flip: bool) -> Iterator[dict]:
+    """Parse generic LedgerMind CSV format rows."""
+    for row in rows:
+        # Parse date
+        try:
+            date_str = (row.get("date") or "").strip()
+            if not date_str:
+                continue
+            try:
+                date = dt.date.fromisoformat(date_str[:10])
+            except Exception:
+                # Try common alt formats
+                for fmt in ("%Y-%m-%d", "%m/%d/%Y", "%Y/%m/%d"):
+                    try:
+                        date = dt.datetime.strptime(date_str, fmt).date()
+                        break
+                    except Exception:
+                        date = None
+                if not date:
+                    continue
+        except (ValueError, KeyError):
+            continue
+
+        amt_str = (row.get("amount") or "").strip()
+        raw_amt = float(amt_str) if amt_str else 0.0
+        
+        # Normalize: expenses negative, income positive. If flip==True, only flip likely expenses.
+        # Heuristic: treat employer/paycheck/refund/reimbursement as income-like; don't flip those.
+        desc_l = (row.get("description") or row.get("memo") or "").lower()
+        merch_l = (row.get("merchant") or "").lower()
+        income_hint = (
+            any(
+                k in desc_l or k in merch_l
+                for k in (
+                    "employer",
+                    "payroll",
+                    "salary",
+                    "paycheck",
+                    "payout",
+                    "reimbursement",
+                    "refund",
+                    "rebate",
+                    "deposit",
+                    "interest",
+                    "dividend",
+                )
+            )
+            or raw_amt >= 500.0
+        )  # large positives: likely income
+        
+        if flip and not income_hint:
+            amount = -raw_amt
+        else:
+            amount = raw_amt
+        
+        desc = row.get("description") or row.get("memo") or ""
+        merch = row.get("merchant") or None
+        acct = row.get("account") or None
+        raw_cat = row.get("category") or None
+        month = date.strftime("%Y-%m")
+
+        yield {
+            "date": date,
+            "amount": amount,
+            "description": desc,
+            "merchant": merch,
+            "account": acct,
+            "category": raw_cat,
+            "month": month,
+        }
+
 
 MAX_UPLOAD_MB = 5  # adjust to your spec; 12MB test should 413
 
@@ -140,28 +356,33 @@ async def _ingest_csv_impl(
     
     rows = list(reader)
 
+    # Detect CSV format based on headers
+    csv_format = detect_csv_format(reader.fieldnames)
+    
     # DEBUG: Log CSV headers to diagnose column mismatch issues
     logger.info(
-        f"CSV headers detected: {original_headers} (normalized to: {reader.fieldnames}) | rows_count={len(rows)} | (user_id={user_id}, filename={file.filename})"
+        f"CSV format={csv_format.value} | headers: {original_headers} (normalized to: {reader.fieldnames}) | rows_count={len(rows)} | (user_id={user_id}, filename={file.filename})"
     )
 
-    # Try to infer if not provided
-    flip = False
-    if expenses_are_positive is None:
-        sample = []
-        for r in rows[:200]:
-            amt_str = (r.get("amount") or "").strip()
-            if not amt_str:
-                continue
-            try:
-                amt = float(amt_str)
-            except ValueError:
-                continue
-            desc = (r.get("description") or r.get("memo") or "").strip()
-            sample.append((amt, desc))
-        flip = detect_positive_expense_format(sample)
-    else:
-        flip = bool(expenses_are_positive)
+    # Check for unknown format
+    if csv_format == CsvFormat.UNKNOWN:
+        logger.warning(
+            f"CSV ingest: unrecognized format (user_id={user_id}, headers={original_headers})"
+        )
+        
+        return {
+            "ok": False,
+            "added": 0,
+            "count": 0,
+            "flip_auto": False,
+            "detected_month": None,
+            "date_range": None,
+            "error": "unknown_format",
+            "message": f"CSV format not recognized. Headers found: {original_headers}. "
+                      f"Supported formats:\n"
+                      f"- Generic: date, amount, description (optional: merchant, memo, account, category)\n"
+                      f"- Bank export: Date, Description, Comments, Check Number, Amount, Balance",
+        }
 
     added = 0
     # prepare legacy in-memory list for compatibility
@@ -177,62 +398,39 @@ async def _ingest_csv_impl(
     earliest_date = None
     latest_date = None
 
-    for row in rows:
-        # map/parse your CSV columns here
-        # robust parse and ensure month string
-        try:
-            date_str = (row.get("date") or "").strip()
-            if not date_str:
-                continue
-            try:
-                date = dt.date.fromisoformat(date_str[:10])
-            except Exception:
-                # Try common alt formats
-                for fmt in ("%Y-%m-%d", "%m/%d/%Y", "%Y/%m/%d"):
-                    try:
-                        date = dt.datetime.strptime(date_str, fmt).date()
-                        break
-                    except Exception:
-                        date = None
-                if not date:
+    # Parse rows based on detected format
+    if csv_format == CsvFormat.BANK_EXPORT:
+        parsed_rows = _parse_bank_export_rows(rows)
+        flip = False  # Bank format doesn't need flipping
+    else:  # GENERIC
+        # Try to infer expense sign flip if not provided
+        flip = False
+        if expenses_are_positive is None:
+            sample = []
+            for r in rows[:200]:
+                amt_str = (r.get("amount") or "").strip()
+                if not amt_str:
                     continue
-        except (ValueError, KeyError):
-            continue
-
-        amt_str = (row.get("amount") or "").strip()
-        raw_amt = float(amt_str) if amt_str else 0.0
-        # Normalize: expenses negative, income positive. If flip==True, only flip likely expenses.
-        # Heuristic: treat employer/paycheck/refund/reimbursement as income-like; don't flip those.
-        desc_l = (row.get("description") or row.get("memo") or "").lower()
-        merch_l = (row.get("merchant") or "").lower()
-        income_hint = (
-            any(
-                k in desc_l or k in merch_l
-                for k in (
-                    "employer",
-                    "payroll",
-                    "salary",
-                    "paycheck",
-                    "payout",
-                    "reimbursement",
-                    "refund",
-                    "rebate",
-                    "deposit",
-                    "interest",
-                    "dividend",
-                )
-            )
-            or raw_amt >= 500.0
-        )  # large positives: likely income
-        if flip and not income_hint:
-            amount = -raw_amt
+                try:
+                    amt = float(amt_str)
+                except ValueError:
+                    continue
+                desc = (r.get("description") or r.get("memo") or "").strip()
+                sample.append((amt, desc))
+            flip = detect_positive_expense_format(sample)
         else:
-            amount = raw_amt
-        desc = row.get("description") or row.get("memo") or ""
-        merch = row.get("merchant") or None
-        acct = row.get("account") or None
-        raw_cat = row.get("category") or None
-        month = date.strftime("%Y-%m")
+            flip = bool(expenses_are_positive)
+        
+        parsed_rows = _parse_generic_rows(rows, flip)
+
+    for row_data in parsed_rows:
+        date = row_data["date"]
+        amount = row_data["amount"]
+        desc = row_data["description"]
+        merch = row_data["merchant"]
+        acct = row_data["account"]
+        raw_cat = row_data["category"]
+        month = row_data["month"]
 
         # Track date range for detected_month
         if earliest_date is None or date < earliest_date:
