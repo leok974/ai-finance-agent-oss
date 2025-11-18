@@ -256,6 +256,58 @@ const UploadCsv: React.FC<UploadCsvProps> = ({ onUploaded, defaultReplace = true
           </Button>
         </div>
 
+        {/* Supported CSV Formats Documentation */}
+        <div className="mt-4 text-xs text-slate-300 border border-slate-700/60 rounded-lg p-3 bg-slate-900/40">
+          <div className="font-medium text-slate-100 mb-2">Supported CSV formats</div>
+          <ul className="list-disc list-inside space-y-2">
+            <li>
+              <span className="font-semibold">LedgerMind CSV</span>
+              <div className="ml-5 mt-1 text-slate-400">
+                Columns: <code className="text-xs bg-slate-800 px-1 py-0.5 rounded">date</code>,{" "}
+                <code className="text-xs bg-slate-800 px-1 py-0.5 rounded">merchant</code>,{" "}
+                <code className="text-xs bg-slate-800 px-1 py-0.5 rounded">description</code>,{" "}
+                <code className="text-xs bg-slate-800 px-1 py-0.5 rounded">amount</code>,{" "}
+                <code className="text-xs bg-slate-800 px-1 py-0.5 rounded">category</code>
+              </div>
+            </li>
+            <li>
+              <span className="font-semibold">Bank Export v1</span>
+              <div className="ml-5 mt-1 text-slate-400">
+                Columns: <code className="text-xs bg-slate-800 px-1 py-0.5 rounded">Date</code>,{" "}
+                <code className="text-xs bg-slate-800 px-1 py-0.5 rounded">Description</code>,{" "}
+                <code className="text-xs bg-slate-800 px-1 py-0.5 rounded">Comments</code>,{" "}
+                <code className="text-xs bg-slate-800 px-1 py-0.5 rounded">Check Number</code>,{" "}
+                <code className="text-xs bg-slate-800 px-1 py-0.5 rounded">Amount</code>,{" "}
+                <code className="text-xs bg-slate-800 px-1 py-0.5 rounded">Balance</code>
+              </div>
+            </li>
+            <li>
+              <span className="font-semibold">Bank Debit/Credit</span>
+              <div className="ml-5 mt-1 text-slate-400">
+                Columns: <code className="text-xs bg-slate-800 px-1 py-0.5 rounded">Date</code>,{" "}
+                <code className="text-xs bg-slate-800 px-1 py-0.5 rounded">Description</code>,{" "}
+                <code className="text-xs bg-slate-800 px-1 py-0.5 rounded">Debit</code>,{" "}
+                <code className="text-xs bg-slate-800 px-1 py-0.5 rounded">Credit</code>,{" "}
+                <code className="text-xs bg-slate-800 px-1 py-0.5 rounded">Balance</code>
+              </div>
+            </li>
+            <li>
+              <span className="font-semibold">Bank Posted/Effective</span>
+              <div className="ml-5 mt-1 text-slate-400">
+                Columns: <code className="text-xs bg-slate-800 px-1 py-0.5 rounded">Posted Date</code>,{" "}
+                <code className="text-xs bg-slate-800 px-1 py-0.5 rounded">Effective Date</code>,{" "}
+                <code className="text-xs bg-slate-800 px-1 py-0.5 rounded">Description</code>,{" "}
+                <code className="text-xs bg-slate-800 px-1 py-0.5 rounded">Amount</code>,{" "}
+                <code className="text-xs bg-slate-800 px-1 py-0.5 rounded">Type</code>,{" "}
+                <code className="text-xs bg-slate-800 px-1 py-0.5 rounded">Balance</code>
+              </div>
+            </li>
+          </ul>
+          <div className="mt-2 text-slate-400 italic">
+            CSV headers are case-insensitive. Format is auto-detected from column names.
+          </div>
+        </div>
+
         {/* Progress / Result */}
         {busy && (
           <div className="mt-4">
