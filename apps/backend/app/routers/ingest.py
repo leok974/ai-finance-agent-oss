@@ -149,6 +149,12 @@ def _clean_bank_description(desc_raw: str | None) -> str:
     s = re.sub(r"\s*\(Pending\)\s*$", "", s, flags=re.IGNORECASE)
     return s
 
+
+def _is_pending(desc_raw: str | None) -> bool:
+    """Detect if transaction is pending based on description markers."""
+    s = (desc_raw or "").lower()
+    return s.startswith("processing") or "(pending)" in s
+
 def _parse_bank_export_rows(rows: list[dict]) -> Iterator[dict]:
     """Parse bank export v1 format rows into transaction data.
     
@@ -168,6 +174,7 @@ def _parse_bank_export_rows(rows: list[dict]) -> Iterator[dict]:
         description = _clean_bank_description(desc_raw)
         merchant = _extract_bank_merchant(desc_raw)
         month = tx_date.strftime("%Y-%m")
+        pending = _is_pending(desc_raw)
         
         # Convert Decimal to float for consistency with existing code
         yield {
@@ -178,19 +185,21 @@ def _parse_bank_export_rows(rows: list[dict]) -> Iterator[dict]:
             "account": None,  # Bank export doesn't have account column
             "category": None,  # Will be filled by ML
             "month": month,
+            "pending": pending,
         }
 
 
 def _parse_bank_debit_credit_rows(rows: list[dict]) -> Iterator[dict]:
     """Parse bank debit/credit format rows.
     
-    Format: Date,Description,Debit,Credit,Balance
+    Format: Date,Description,Debit,Credit,Balance[,Status]
     Example: 11/01/2025,STARBUCKS #1234,4.75,,1200.25
     
     Rules:
     - If Debit has value → negative amount
     - If Credit has value → positive amount  
     - amount = credit - debit
+    - If Status column exists and == "Pending" → pending=True
     """
     for row in rows:
         tx_date = _parse_bank_date(row.get("date"))
@@ -210,6 +219,10 @@ def _parse_bank_debit_credit_rows(rows: list[dict]) -> Iterator[dict]:
         merchant = _extract_bank_merchant(desc_raw)
         month = tx_date.strftime("%Y-%m")
         
+        # Check for pending status (via Status column or description markers)
+        status = (row.get("status") or "").lower()
+        pending = status == "pending" or _is_pending(desc_raw)
+        
         yield {
             "date": tx_date,
             "amount": float(amount),
@@ -218,6 +231,7 @@ def _parse_bank_debit_credit_rows(rows: list[dict]) -> Iterator[dict]:
             "account": None,
             "category": None,
             "month": month,
+            "pending": pending,
         }
 
 
@@ -228,10 +242,13 @@ def _parse_bank_posted_effective_rows(rows: list[dict]) -> Iterator[dict]:
     Example: 11/03/2025,11/02/2025,VENMO PAYMENT,-25.00,DEBIT,3675.25
     
     Uses Posted Date as primary date, falls back to Effective Date.
+    If Posted Date is empty but Effective Date exists → mark as pending.
     """
     for row in rows:
         # Try Posted Date first, then Effective Date
-        tx_date = _parse_bank_date(row.get("posted date")) or _parse_bank_date(row.get("effective date"))
+        posted_date = _parse_bank_date(row.get("posted date"))
+        effective_date = _parse_bank_date(row.get("effective date"))
+        tx_date = posted_date or effective_date
         amount = _parse_bank_amount(row.get("amount"))
         
         if not tx_date or amount is None:
@@ -242,6 +259,10 @@ def _parse_bank_posted_effective_rows(rows: list[dict]) -> Iterator[dict]:
         merchant = _extract_bank_merchant(desc_raw)
         month = tx_date.strftime("%Y-%m")
         
+        # If no posted date but has effective date, likely pending
+        # Also check description markers
+        pending = (posted_date is None and effective_date is not None) or _is_pending(desc_raw)
+        
         yield {
             "date": tx_date,
             "amount": float(amount),
@@ -250,6 +271,7 @@ def _parse_bank_posted_effective_rows(rows: list[dict]) -> Iterator[dict]:
             "account": None,
             "category": None,
             "month": month,
+            "pending": pending,
         }
 
 
@@ -322,6 +344,7 @@ def _parse_generic_rows(rows: list[dict], flip: bool) -> Iterator[dict]:
             "account": acct,
             "category": raw_cat,
             "month": month,
+            "pending": False,  # Generic format doesn't have pending markers
         }
 
 
@@ -525,6 +548,7 @@ async def _ingest_csv_impl(
         acct = row_data["account"]
         raw_cat = row_data["category"]
         month = row_data["month"]
+        pending = row_data.get("pending", False)
 
         # Track date range for detected_month
         if earliest_date is None or date < earliest_date:
@@ -555,6 +579,7 @@ async def _ingest_csv_impl(
                 raw_category=raw_cat,
                 month=month,  # ensure month is set on insert
                 category=None,
+                pending=pending,
             )
         )
         added += 1
