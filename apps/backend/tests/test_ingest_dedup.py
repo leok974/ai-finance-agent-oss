@@ -271,3 +271,19 @@ def test_ingest_replace_with_full_bank_export(client, user_override, db_session)
     # Old transactions from covered months should be deleted
     assert "Old October data" not in descriptions, "Old Oct data should be replaced"
     assert "Old November data" not in descriptions, "Old Nov data should be replaced"
+
+
+def test_unknown_format_includes_headers_found(client, user_override, tmp_path):
+    """When CSV has unrecognized headers, response should include headers_found list."""
+    user_override.use(user_id=1, is_admin=False)
+
+    csv_path = tmp_path / "weird.csv"
+    csv_path.write_text("Foo,Bar,Baz\n1,2,3\n", encoding="utf-8")
+
+    with csv_path.open("rb") as f:
+        resp = client.post("/ingest", files={"file": ("weird.csv", f, "text/csv")})
+
+    body = resp.json()
+    assert body["error"] == "unknown_format", f"Expected unknown_format error, got {body}"
+    assert body["headers_found"] == ["foo", "bar", "baz"], f"Expected normalized headers, got {body.get('headers_found')}"
+    assert body["message"] == "CSV format not recognized.", f"Expected short message, got {body.get('message')}"

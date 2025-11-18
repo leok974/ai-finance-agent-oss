@@ -13,6 +13,8 @@ import { emitToastSuccess, emitToastError } from "@/lib/toast-helpers";
 import { t } from '@/lib/i18n';
 import { useMonth } from "../context/MonthContext";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
 import { Upload } from "lucide-react";
 
 type UploadResult = {
@@ -31,43 +33,118 @@ type IngestResult = {
   date_range?: {
     earliest?: string | null;
     latest?: string | null;
-  };
+  } | null;
   error?: string | null;
   message?: string | null;
+  headers_found?: string[]; // from backend for unknown_format
 };
 
-function buildIngestSummary(result: IngestResult): string {
-  if (!result.ok) {
-    // Fallback to backend message for errors
-    return result.message || 'CSV ingest failed. Please check the file format and try again.';
+function buildFriendlyMessage(result: IngestResult): string {
+  // Success branch
+  if (result.ok) {
+    const { added, count, duplicates = 0, detected_month, date_range } = result;
+    const monthLabel = detected_month ?? 'this period';
+
+    if (count === 0) {
+      return 'CSV uploaded, but no data rows were found.';
+    }
+
+    if (added === 0 && duplicates > 0) {
+      return `No new transactions were added. All ${count} row${count === 1 ? '' : 's'} in this file already exist in your ledger for ${monthLabel}.`;
+    }
+
+    let msg = `CSV ingested successfully. ${added} new transaction${added === 1 ? '' : 's'} added for ${monthLabel}.`;
+
+    if (duplicates > 0) {
+      msg += ` ${duplicates} duplicate entr${duplicates === 1 ? 'y was' : 'ies were'} skipped.`;
+    }
+
+    if (date_range?.earliest && date_range?.latest) {
+      msg += ` Date range: ${date_range.earliest} → ${date_range.latest}.`;
+    }
+
+    return msg;
   }
 
-  const { added, count, duplicates = 0, detected_month, date_range } = result;
+  // Error branch
+  switch (result.error) {
+    case 'unknown_format': {
+      const headers = result.headers_found ?? [];
+      const headerList =
+        headers.length > 0 ? headers.join(', ') : 'no headers were detected';
 
-  const monthLabel = detected_month ?? 'this period';
+      return `We couldn't recognize this CSV format. We detected these column headers: ${headerList}. Please export a statement using one of the supported formats listed above or adjust your CSV headers to match.`;
+    }
 
-  // No rows at all
-  if (count === 0) {
-    return 'CSV uploaded, but no data rows were found.';
+    case 'no_rows_parsed': {
+      return result.message
+        ?? 'We read this CSV but none of the rows could be converted into valid transactions. Check that dates and amounts are in a supported format.';
+    }
+
+    case 'all_rows_duplicate':
+    case 'duplicate_constraint': {
+      return result.message
+        ?? 'No new transactions were added because all rows in this file already exist in your ledger. Try "Replace existing data" if you want this file to become the source of truth for that period.';
+    }
+
+    default:
+      // Fallback: keep backend message but shorter context
+      return result.message
+        ?? 'Something went wrong while processing this CSV. Please try again or adjust the file format.';
   }
+}
 
-  // All rows were duplicates
-  if (added === 0 && duplicates > 0) {
-    return `No new transactions to add. All ${count} row${count === 1 ? '' : 's'} in this file already exist in your ledger for ${monthLabel}.`;
-  }
+function IngestResultCard({ result }: { result: IngestResult }) {
+  const [showJson, setShowJson] = useState(false);
 
-  // Normal success case
-  let msg = `CSV ingested successfully. ${added} new transaction${added === 1 ? '' : 's'} added for ${monthLabel}.`;
+  const variant = result.ok ? 'success' : 'error';
+  const title = result.ok ? 'Success' : 'Error';
+  const message = buildFriendlyMessage(result);
 
-  if (duplicates > 0) {
-    msg += ` ${duplicates} duplicate entr${duplicates === 1 ? 'y was' : 'ies were'} skipped.`;
-  }
+  const baseClasses = 'mt-4 rounded-xl border p-4 text-sm';
+  const variantClasses =
+    variant === 'success'
+      ? 'border-emerald-700/70 bg-emerald-950/40 text-emerald-50'
+      : 'border-rose-700/70 bg-rose-950/40 text-rose-50';
 
-  if (date_range?.earliest && date_range?.latest) {
-    msg += ` Date range: ${date_range.earliest} → ${date_range.latest}.`;
-  }
+  return (
+    <div className={`${baseClasses} ${variantClasses}`}>
+      <div className="flex items-center gap-2 mb-1">
+        <span className="inline-flex h-5 w-5 items-center justify-center rounded-full text-[11px] font-semibold">
+          {variant === 'success' ? '✓' : '!'}
+        </span>
+        <span className="font-semibold">{title}</span>
+      </div>
 
-  return msg;
+      <p
+        data-testid="csv-ingest-message"
+        className="text-[13px] leading-relaxed"
+      >
+        {message}
+      </p>
+
+      <div className="mt-3 flex items-center gap-2 text-[11px] text-slate-200/80">
+        <Checkbox
+          id="csv-show-json"
+          checked={showJson}
+          onCheckedChange={(v) => setShowJson(!!v)}
+          data-testid="csv-ingest-toggle-json"
+        />
+        <Label htmlFor="csv-show-json" className="cursor-pointer select-none">
+          Show raw JSON response
+        </Label>
+      </div>
+
+      {showJson && (
+        <pre
+          className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-all rounded-md bg-black/40 p-2 text-[11px]"
+          data-testid="csv-ingest-json"
+        >
+          {JSON.stringify(result, null, 2)}
+        </pre>
+      )}
+    </div>
+  );
 }
 
 interface UploadCsvProps {
@@ -366,57 +443,7 @@ const UploadCsv: React.FC<UploadCsvProps> = ({ onUploaded, defaultReplace = true
           </div>
         )}
 
-        {result && result.ok && (
-          <div className="mt-4 rounded-xl border border-emerald-700/70 bg-emerald-950/40 p-4 text-emerald-50 text-sm">
-            <div className="flex items-center gap-2 mb-1">
-              <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500/20 text-[11px] font-semibold">
-                ✓
-              </span>
-              <span className="font-semibold">Success</span>
-            </div>
-
-            <p data-testid="csv-ingest-summary" className="text-emerald-100/90">
-              {buildIngestSummary(result.data as IngestResult)}
-            </p>
-
-            <details className="mt-2 text-xs text-emerald-100/70">
-              <summary className="cursor-pointer select-none underline underline-offset-2">
-                View technical details
-              </summary>
-              <pre className="mt-2 whitespace-pre-wrap break-all rounded-md bg-emerald-950/60 p-2">
-                {JSON.stringify(result.data, null, 2)}
-              </pre>
-            </details>
-          </div>
-        )}
-
-        {result && !result.ok && (
-          <div className="mt-4 rounded-xl border border-rose-700 bg-rose-900/30 p-4 text-rose-200 text-sm">
-            <div className="flex items-center gap-2 mb-1">
-              <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-rose-500/20 text-[11px] font-semibold">
-                ✕
-              </span>
-              <span className="font-semibold">
-                Error{result.status ? ` (${result.status})` : ""}
-              </span>
-            </div>
-
-            <p data-testid="csv-ingest-error" className="text-rose-100/90">
-              {result.message || "Upload failed. Please check the file and try again."}
-            </p>
-
-            {result.data && (
-              <details className="mt-2 text-xs text-rose-100/70">
-                <summary className="cursor-pointer select-none underline underline-offset-2">
-                  View technical details
-                </summary>
-                <pre className="mt-2 whitespace-pre-wrap break-all rounded-md bg-rose-950/60 p-2">
-                  {JSON.stringify(result.data, null, 2)}
-                </pre>
-              </details>
-            )}
-          </div>
-        )}
+        {result && <IngestResultCard result={result.data as IngestResult} />}
   {/* hint removed per request */}
     </div>
   );
