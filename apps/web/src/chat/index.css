@@ -798,6 +798,13 @@ textarea.lm-input,
     0 10px 24px rgba(15, 23, 42, 0.95);
 }
 
+.lm-chat-launcher-glyph {
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: rgba(255, 255, 255, 0.95);
+}
+
 /* ============================================
    OVERLAY + SHELL (CENTERED CARD, ANIMATIONS)
    ============================================ */
