@@ -30,8 +30,10 @@ logger = logging.getLogger(__name__)
 
 class CsvFormat(str, Enum):
     """Supported CSV formats for transaction import."""
-    GENERIC = "generic"
-    BANK_EXPORT = "bank_export"
+    GENERIC = "generic"                    # LedgerMind sample format
+    BANK_EXPORT_V1 = "bank_v1"            # Date,Description,Comments,Check Number,Amount,Balance
+    BANK_DEBIT_CREDIT = "bank_dc"         # Date,Description,Debit,Credit,Balance
+    BANK_POSTED_EFFECTIVE = "bank_pe"     # Posted Date,Effective Date,Description,Amount,Type,Balance
     UNKNOWN = "unknown"
 
 
@@ -43,10 +45,18 @@ def detect_csv_format(fieldnames: list[str] | None) -> CsvFormat:
     headers = [h.strip().lower() for h in fieldnames]
     header_set = set(headers)
     
-    # Bank export format: Date,Description,Comments,Check Number,Amount,Balance
-    bank_export_headers = {"date", "description", "comments", "check number", "amount", "balance"}
-    if bank_export_headers.issubset(header_set):
-        return CsvFormat.BANK_EXPORT
+    # Bank export v1: Date,Description,Comments,Check Number,Amount,Balance
+    bank_v1_headers = {"date", "description", "comments", "check number", "amount", "balance"}
+    if bank_v1_headers.issubset(header_set):
+        return CsvFormat.BANK_EXPORT_V1
+    
+    # Bank debit/credit: Date,Description,Debit,Credit,Balance
+    if {"date", "description", "debit", "credit"}.issubset(header_set):
+        return CsvFormat.BANK_DEBIT_CREDIT
+    
+    # Bank posted/effective: Posted Date,Description,Amount (Effective Date optional)
+    if {"posted date", "description", "amount"}.issubset(header_set):
+        return CsvFormat.BANK_POSTED_EFFECTIVE
     
     # Generic LedgerMind format: date, amount, description (merchant optional)
     generic_required = {"date", "amount"}
@@ -140,7 +150,11 @@ def _clean_bank_description(desc_raw: str | None) -> str:
     return s
 
 def _parse_bank_export_rows(rows: list[dict]) -> Iterator[dict]:
-    """Parse bank export format rows into transaction data."""
+    """Parse bank export v1 format rows into transaction data.
+    
+    Format: Date,Description,Comments,Check Number,Amount,Balance
+    Example: 11/12/2025,"APPLE.COM/BILL",,"","-$2.99",""
+    """
     for row in rows:
         # Parse date and amount - skip if either is invalid
         tx_date = _parse_bank_date(row.get("date"))
@@ -163,6 +177,78 @@ def _parse_bank_export_rows(rows: list[dict]) -> Iterator[dict]:
             "merchant": merchant,
             "account": None,  # Bank export doesn't have account column
             "category": None,  # Will be filled by ML
+            "month": month,
+        }
+
+
+def _parse_bank_debit_credit_rows(rows: list[dict]) -> Iterator[dict]:
+    """Parse bank debit/credit format rows.
+    
+    Format: Date,Description,Debit,Credit,Balance
+    Example: 11/01/2025,STARBUCKS #1234,4.75,,1200.25
+    
+    Rules:
+    - If Debit has value → negative amount
+    - If Credit has value → positive amount  
+    - amount = credit - debit
+    """
+    for row in rows:
+        tx_date = _parse_bank_date(row.get("date"))
+        debit = _parse_bank_amount(row.get("debit"))
+        credit = _parse_bank_amount(row.get("credit"))
+        
+        if not tx_date:
+            continue
+        if debit is None and credit is None:
+            continue
+        
+        # Calculate net amount: credit - debit
+        amount = (credit or Decimal("0")) - (debit or Decimal("0"))
+        
+        desc_raw = row.get("description") or ""
+        description = _clean_bank_description(desc_raw)
+        merchant = _extract_bank_merchant(desc_raw)
+        month = tx_date.strftime("%Y-%m")
+        
+        yield {
+            "date": tx_date,
+            "amount": float(amount),
+            "description": description,
+            "merchant": merchant,
+            "account": None,
+            "category": None,
+            "month": month,
+        }
+
+
+def _parse_bank_posted_effective_rows(rows: list[dict]) -> Iterator[dict]:
+    """Parse bank posted/effective date format rows.
+    
+    Format: Posted Date,Effective Date,Description,Amount,Type,Balance
+    Example: 11/03/2025,11/02/2025,VENMO PAYMENT,-25.00,DEBIT,3675.25
+    
+    Uses Posted Date as primary date, falls back to Effective Date.
+    """
+    for row in rows:
+        # Try Posted Date first, then Effective Date
+        tx_date = _parse_bank_date(row.get("posted date")) or _parse_bank_date(row.get("effective date"))
+        amount = _parse_bank_amount(row.get("amount"))
+        
+        if not tx_date or amount is None:
+            continue
+        
+        desc_raw = row.get("description") or ""
+        description = _clean_bank_description(desc_raw)
+        merchant = _extract_bank_merchant(desc_raw)
+        month = tx_date.strftime("%Y-%m")
+        
+        yield {
+            "date": tx_date,
+            "amount": float(amount),
+            "description": description,
+            "merchant": merchant,
+            "account": None,
+            "category": None,
             "month": month,
         }
 
@@ -380,8 +466,10 @@ async def _ingest_csv_impl(
             "error": "unknown_format",
             "message": f"CSV format not recognized. Headers found: {original_headers}. "
                       f"Supported formats:\n"
-                      f"- Generic: date, amount, description (optional: merchant, memo, account, category)\n"
-                      f"- Bank export: Date, Description, Comments, Check Number, Amount, Balance",
+                      f"1. Generic LedgerMind: date, amount, description (optional: merchant, memo, account, category)\n"
+                      f"2. Bank Export v1: Date, Description, Comments, Check Number, Amount, Balance\n"
+                      f"3. Bank Debit/Credit: Date, Description, Debit, Credit, Balance\n"
+                      f"4. Bank Posted/Effective: Posted Date, Effective Date, Description, Amount, Type, Balance",
         }
 
     added = 0
@@ -399,9 +487,15 @@ async def _ingest_csv_impl(
     latest_date = None
 
     # Parse rows based on detected format
-    if csv_format == CsvFormat.BANK_EXPORT:
+    if csv_format == CsvFormat.BANK_EXPORT_V1:
         parsed_rows = _parse_bank_export_rows(rows)
         flip = False  # Bank format doesn't need flipping
+    elif csv_format == CsvFormat.BANK_DEBIT_CREDIT:
+        parsed_rows = _parse_bank_debit_credit_rows(rows)
+        flip = False  # Debit/credit already determines sign
+    elif csv_format == CsvFormat.BANK_POSTED_EFFECTIVE:
+        parsed_rows = _parse_bank_posted_effective_rows(rows)
+        flip = False  # Posted/effective format handles sign
     else:  # GENERIC
         # Try to infer expense sign flip if not provided
         flip = False
