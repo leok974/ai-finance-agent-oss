@@ -753,11 +753,11 @@ textarea.lm-input,
 }
 
 /* ============================================
-   LAUNCHER + BUBBLE (FIXED BOTTOM-RIGHT)
+   LAUNCHER ROOT + BUBBLE (FIXED BOTTOM-RIGHT)
    ============================================ */
 
 /* Root launcher container (fixed bottom-right) */
-.lm-chat-launcher {
+.lm-chat-launcher-root {
   position: fixed;
   right: 1.75rem;
   bottom: 1.75rem;
@@ -765,17 +765,8 @@ textarea.lm-input,
   pointer-events: none; /* children opt in */
 }
 
-/* Stack: shell above, bubble below */
-.lm-chat-launcher-stack {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 0.75rem;
-  pointer-events: auto;
-}
-
 /* Floating bubble button */
-.lm-chat-launcher-bubble {
+.lm-chat-bubble {
   pointer-events: auto;
   width: 44px;
   height: 44px;
@@ -796,14 +787,14 @@ textarea.lm-input,
     opacity 160ms ease-out;
 }
 
-.lm-chat-launcher-bubble:hover {
+.lm-chat-bubble:hover {
   transform: translateY(-2px) scale(1.02);
   box-shadow:
     0 18px 60px rgba(15, 23, 42, 0.85),
     0 10px 24px rgba(15, 23, 42, 0.95);
 }
 
-.lm-chat-launcher-glyph {
+.lm-chat-bubble-label {
   font-size: 14px;
   font-weight: 600;
   letter-spacing: 0.08em;
@@ -811,61 +802,55 @@ textarea.lm-input,
 }
 
 /* When open, hide the bubble */
-.lm-chat-launcher--open .lm-chat-launcher-bubble {
+.lm-chat-bubble--hidden {
   opacity: 0;
   transform: translateY(4px) scale(0.9);
   pointer-events: none;
 }
 
 /* ============================================
-   SHELL (ANCHORED ABOVE LAUNCHER)
+   OVERLAY (FULL-SCREEN DIMMER)
    ============================================ */
 
-/* Shell anchored above bubble */
-.lm-chat-shell {
-  position: relative;
-  max-width: 640px;
-  width: min(640px, calc(100vw - 2rem));
-  border-radius: 1.5rem;
-  overflow: hidden;
-  opacity: 0;
-  transform: translateY(12px) scale(0.96);
-  transform-origin: bottom right;
-  pointer-events: none;
-  transition:
-    opacity 160ms cubic-bezier(0.16, 1, 0.3, 1),
-    transform 160ms cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-/* Opened state */
-.lm-chat-shell--open {
-  opacity: 1;
-  transform: translateY(0) scale(1);
+.lm-chat-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 71;
+  display: flex;
+  justify-content: flex-end;
+  align-items: flex-end;
+  padding: 1.75rem;
+  background: radial-gradient(
+    circle at 80% 110%,
+    rgba(15, 23, 42, 0.8),
+    rgba(15, 23, 42, 0.95)
+  );
+  backdrop-filter: blur(4px);
   pointer-events: auto;
-}
-
-/* Inner container - contains the actual panel */
-.lm-chat-shell-inner {
-  position: relative;
-  border-radius: 1.5rem;
-  overflow: hidden;
 }
 
 /* ============================================
-   FULL-SCREEN BACKDROP
+   SHELL (THE GLOWING BLUE CARD)
    ============================================ */
 
-/* Full-screen backdrop for closing panel */
-.lm-chat-backdrop {
-  position: fixed;
-  inset: 0;
-  border: 0;
-  padding: 0;
-  margin: 0;
-  background: transparent;
-  cursor: default;
-  z-index: 60; /* below launcher root (70) but above page content */
-  pointer-events: auto;
+.lm-chat-shell {
+  position: relative;
+  z-index: 72;
+  max-width: 640px;
+  width: min(640px, calc(100% - 2rem));
+  max-height: min(640px, calc(100vh - 6rem));
+  border-radius: 1.5rem;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  background:
+    radial-gradient(circle at 20% 0%, #3b82f6 0, #1d4ed8 38%, transparent 70%),
+    radial-gradient(circle at 80% 110%, #22d3ee 0, transparent 60%),
+    linear-gradient(135deg, #020617, #020617 20%, #020817 100%);
+  box-shadow:
+    0 24px 60px rgba(15, 23, 42, 0.85),
+    0 0 0 1px rgba(148, 163, 184, 0.12);
+  color: #e5e7eb;
 }
 
 /* Card itself */

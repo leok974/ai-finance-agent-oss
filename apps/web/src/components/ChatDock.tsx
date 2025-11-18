@@ -205,27 +205,14 @@ export default function ChatDock() {
   const [open, setOpen] = React.useState<boolean>(false);
   const launcherState = open ? 'open' : 'closed';
 
-  const handleClose = React.useCallback(() => {
-    if (!open) return;
-    setOpen(false);
-  }, [open]);
-
   // --- open / close helpers ------------------------------------
-  const reallyClose = useCallback(() => {
-    setOpen(false);
-  }, []);
-
   const handleOpen = useCallback(() => {
     setOpen(true);
   }, []);
 
-  const handleToggle = useCallback(() => {
-    if (open) {
-      handleClose();
-    } else {
-      handleOpen();
-    }
-  }, [open, handleClose, handleOpen]);
+  const handleClose = useCallback(() => {
+    setOpen(false);
+  }, []);
 
   // ESC to close
   useEffect(() => {
@@ -2158,56 +2145,43 @@ export default function ChatDock() {
   // just return the content directly instead of creating another root
   if (!portalReady || !isPrimary) return null;
 
-  // --- Shell (backdrop + card) ---------------------------------
   // --- Launcher + overlay (portal to <body>) --------------------
   const node = (
     <div
+      className="lm-chat-launcher-root"
       data-testid="lm-chat-launcher"
-      className={cn(
-        "lm-chat-launcher",
-        open && "lm-chat-launcher--open"
-      )}
       data-state={open ? "open" : "closed"}
     >
-      {/* Stack: shell above, bubble below */}
-      <div className="lm-chat-launcher-stack">
+      {/* BUBBLE */}
+      <button
+        type="button"
+        ref={triggerRef}
+        className={cn(
+          "lm-chat-bubble",
+          open && "lm-chat-bubble--hidden"
+        )}
+        data-testid="lm-chat-bubble"
+        aria-label="Open LedgerMind assistant"
+        onClick={handleOpen}
+      >
+        <span className="lm-chat-bubble-label">LM</span>
+      </button>
+
+      {/* PANEL – only when open */}
+      {open && (
         <div
-          data-testid="lm-chat-shell"
-          data-state={open ? "open" : "closed"}
-          className={cn(
-            "lm-chat-shell",
-            open && "lm-chat-shell--open"
-          )}
+          className="lm-chat-overlay"
+          data-testid="lm-chat-backdrop"
+          onClick={handleClose}
         >
-          <div
-            className="lm-chat-shell-inner"
-            onClick={(e) => e.stopPropagation()}
+          <section
+            className="lm-chat-shell"
+            data-testid="lm-chat-shell"
+            onClick={(event) => event.stopPropagation()}
           >
             {panel}
-          </div>
+          </section>
         </div>
-
-        <button
-          type="button"
-          ref={triggerRef}
-          data-testid="lm-chat-launcher-button"
-          aria-label={open ? 'Close LedgerMind Assistant' : 'Open LedgerMind Assistant'}
-          onClick={handleToggle}
-          className="lm-chat-launcher-bubble"
-        >
-          {bubbleIcon}
-        </button>
-      </div>
-
-      {/* Full-screen backdrop when open */}
-      {open && (
-        <button
-          type="button"
-          data-testid="lm-chat-backdrop"
-          className="lm-chat-backdrop"
-          aria-label="Close LedgerMind Assistant"
-          onClick={handleClose}
-        />
       )}
     </div>
   );
