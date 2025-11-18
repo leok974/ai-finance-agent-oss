@@ -249,8 +249,8 @@
             - button "Card help" [ref=e233] [cursor=pointer]: "?"
           - generic [ref=e234]:
             - button "Show ignores" [ref=e235] [cursor=pointer]
-            - button "Refresh" [ref=e236] [cursor=pointer]
-        - generic [ref=e237]: No suggestions right now.
+            - button "Refreshing…" [disabled] [ref=e236]
+        - generic [ref=e237]: Loading…
       - generic [ref=e241]:
         - generic [ref=e242]:
           - generic [ref=e243]:
@@ -289,58 +289,58 @@
     - region "Notifications (F8)":
       - list
   - generic:
-    - button "Close LedgerMind Assistant" [active] [ref=e274] [cursor=pointer]:
-      - generic [ref=e275]: LM
-    - button "Close LedgerMind Assistant" [ref=e276] [cursor=pointer]
-    - generic [ref=e279]:
-      - generic [ref=e280]:
-        - generic [ref=e281]:
-          - generic [ref=e282]:
-            - generic [ref=e283]: LEDGERMIND ASSISTANT
-            - generic [ref=e284]: "LLM: OK"
-          - generic [ref=e286]:
-            - button "Export JSON" [disabled] [ref=e287] [cursor=pointer]
-            - button "Export Markdown" [ref=e288] [cursor=pointer]
-            - button "Hide tools" [ref=e289] [cursor=pointer]
-        - generic [ref=e290]:
-          - generic [ref=e291]:
-            - generic [ref=e293]: INSIGHTS
-            - generic [ref=e294]:
-              - button "Month summary" [ref=e295] [cursor=pointer]:
-                - img [ref=e296]
-                - generic [ref=e299]: Month summary
-              - button "Trends" [ref=e300] [cursor=pointer]:
-                - img [ref=e301]
-                - generic [ref=e304]: Trends
-              - button "Alerts" [ref=e305] [cursor=pointer]:
-                - img [ref=e306]
-                - generic [ref=e309]: Alerts
-          - generic [ref=e310]:
-            - generic [ref=e312]: SUBSCRIPTIONS
-            - generic [ref=e313]:
-              - button "Recurring" [ref=e314] [cursor=pointer]:
-                - img [ref=e315]
-                - generic [ref=e320]: Recurring
-              - button "Find subscriptions" [ref=e321] [cursor=pointer]:
-                - img [ref=e322]
-                - generic [ref=e325]: Find subscriptions
-          - generic [ref=e326]:
-            - generic [ref=e328]: SEARCH & PLANNING
-            - generic [ref=e329]:
-              - button "Insights (Q)" [ref=e330] [cursor=pointer]:
-                - img [ref=e331]
-                - generic [ref=e333]: Insights (Q)
-              - button "Budget suggest" [ref=e334] [cursor=pointer]:
-                - img [ref=e335]
-                - generic [ref=e338]: Budget suggest
-              - button "Search transactions (NL)" [ref=e339] [cursor=pointer]:
-                - img [ref=e340]
-                - generic [ref=e343]: Search transactions (NL)
-      - generic [ref=e345]:
-        - generic [ref=e346]:
-          - paragraph [ref=e347]: Hey! 👋
-          - paragraph [ref=e348]: Start a conversation or pick a tool from the header to explore your spending.
-        - generic [ref=e349]:
-          - textbox "Ask or type a command..." [ref=e350]
-          - button "Send" [disabled] [ref=e351]
+    - button "Close LedgerMind Assistant" [active] [ref=e275] [cursor=pointer]:
+      - generic [ref=e276]: LM
+    - button "Close LedgerMind Assistant" [ref=e277] [cursor=pointer]
+    - generic [ref=e280]:
+      - generic [ref=e281]:
+        - generic [ref=e282]:
+          - generic [ref=e283]:
+            - generic [ref=e284]: LEDGERMIND ASSISTANT
+            - generic [ref=e285]: "LLM: OK"
+          - generic [ref=e287]:
+            - button "Export JSON" [disabled] [ref=e288] [cursor=pointer]
+            - button "Export Markdown" [ref=e289] [cursor=pointer]
+            - button "Hide tools" [ref=e290] [cursor=pointer]
+        - generic [ref=e291]:
+          - generic [ref=e292]:
+            - generic [ref=e294]: INSIGHTS
+            - generic [ref=e295]:
+              - button "Month summary" [ref=e296] [cursor=pointer]:
+                - img [ref=e297]
+                - generic [ref=e300]: Month summary
+              - button "Trends" [ref=e301] [cursor=pointer]:
+                - img [ref=e302]
+                - generic [ref=e305]: Trends
+              - button "Alerts" [ref=e306] [cursor=pointer]:
+                - img [ref=e307]
+                - generic [ref=e310]: Alerts
+          - generic [ref=e311]:
+            - generic [ref=e313]: SUBSCRIPTIONS
+            - generic [ref=e314]:
+              - button "Recurring" [ref=e315] [cursor=pointer]:
+                - img [ref=e316]
+                - generic [ref=e321]: Recurring
+              - button "Find subscriptions" [ref=e322] [cursor=pointer]:
+                - img [ref=e323]
+                - generic [ref=e326]: Find subscriptions
+          - generic [ref=e327]:
+            - generic [ref=e329]: SEARCH & PLANNING
+            - generic [ref=e330]:
+              - button "Insights (Q)" [ref=e331] [cursor=pointer]:
+                - img [ref=e332]
+                - generic [ref=e334]: Insights (Q)
+              - button "Budget suggest" [ref=e335] [cursor=pointer]:
+                - img [ref=e336]
+                - generic [ref=e339]: Budget suggest
+              - button "Search transactions (NL)" [ref=e340] [cursor=pointer]:
+                - img [ref=e341]
+                - generic [ref=e344]: Search transactions (NL)
+      - generic [ref=e346]:
+        - generic [ref=e347]:
+          - paragraph [ref=e348]: Hey! 👋
+          - paragraph [ref=e349]: Start a conversation or pick a tool from the header to explore your spending.
+        - generic [ref=e350]:
+          - textbox "Ask or type a command..." [ref=e351]
+          - button "Send" [disabled] [ref=e352]
 ```
