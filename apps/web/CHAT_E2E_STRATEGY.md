@@ -141,11 +141,50 @@ pnpm playwright test --project=chromium-prod --ui
 - Use `page.request` instead of `request` fixture
 - Check `tests/e2e/.auth/prod-state.json` contains valid cookies
 
+## Important Specs
+
+### Chat Panel Scroll Test
+
+**File:** `tests/e2e/chat-panel-scroll-open.spec.ts`
+
+**Purpose:** Ensure page scroll still works when chat is open and backdrop is present.
+
+**Tags:** `@prod`, `@chat`
+
+**High-Level Steps:**
+
+1. Navigate to `/`
+2. Inject a tall filler element (`<div style="height: 2000px">`) to make the page scrollable
+3. Open chat via `data-testid="lm-chat-launcher-button"`
+4. Assert `lm-chat-shell` is visible
+5. Call `window.scrollTo(0, 800)` to scroll down
+6. Assert `window.scrollY >= 800` even with chat + backdrop open
+
+**Why This Matters:**
+
+This test guards against regressions where the backdrop blocks scrolling. It validates that the JavaScript-based scroll forwarding (`handleBackdropWheel` + `handleBackdropTouchMove`) is working correctly.
+
+**Known Issues & Scroll Behavior:**
+
+- **Older versions** relied on `pointer-events: none` overlay to allow scroll passthrough
+  - Problem: Required careful z-index management and had edge cases with clickable elements
+  - Solution worked but was fragile
+
+- **Current implementation** uses a full-screen backdrop with explicit wheel/touchmove forwarding
+  - The backdrop intercepts all events (needed for click-to-close and visual dimming)
+  - JavaScript handlers forward scroll events to `window.scrollBy()`
+  - More explicit and reliable than pointer-events tricks
+
+**This E2E spec guards against regressions where backdrop blocks scrolling.**
+
+See `CHATDOCK_V2_FRONTEND.md` for detailed documentation on the backdrop scroll handling implementation.
+
 ## Test Coverage
 
 Current prod E2E tests:
 
 - ✅ CSV ingest (realistic data, empty file, malformed data)
+- ✅ Chat panel scroll (backdrop scroll forwarding)
 - ✅ (Add more as implemented)
 
 ## Best Practices
