@@ -227,6 +227,28 @@ export default function ChatDock() {
     [],
   );
 
+  // Backdrop touch handler: allow page scrolling on touch devices
+  const handleBackdropTouchMove = useCallback(
+    (event: React.TouchEvent<HTMLButtonElement>) => {
+      if (typeof window === 'undefined') return;
+
+      const touch = event.touches[0];
+      const prev = (event as any)._lmPrevY as number | undefined;
+
+      // Store last Y on the event target between moves
+      (event as any)._lmPrevY = touch.clientY;
+
+      if (prev == null) return;
+
+      const deltaY = prev - touch.clientY;
+      if (deltaY !== 0) {
+        window.scrollBy({ top: deltaY, behavior: 'auto' });
+      }
+      // Don't preventDefault → allow browser to still do its thing if it can
+    },
+    [],
+  );
+
   // --- open / close helpers ------------------------------------
   const reallyClose = useCallback(() => {
     setOpen(false);
@@ -2205,6 +2227,7 @@ export default function ChatDock() {
           aria-label="Close LedgerMind Assistant"
           onClick={handleClose}
           onWheel={handleBackdropWheel}
+          onTouchMove={handleBackdropTouchMove}
         />
       )}
 
