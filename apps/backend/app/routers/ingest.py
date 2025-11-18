@@ -245,6 +245,36 @@ async def ingest_csv(
     # Return detected month (use latest date's month, which is typically most relevant)
     detected_month = latest_date.strftime("%Y-%m") if latest_date else None
 
+    # Handle zero-row ingest as a warning/error case
+    if added == 0 and len(rows) > 0:
+        # File had rows but none were parsed successfully
+        logger.warning(
+            f"CSV ingest: {len(rows)} rows in file but 0 transactions added (user_id={user_id})"
+        )
+        return {
+            "ok": False,
+            "added": 0,
+            "count": 0,
+            "flip_auto": flip and (expenses_are_positive is None),
+            "detected_month": None,
+            "date_range": None,
+            "error": "no_rows_parsed",
+            "message": f"File contained {len(rows)} rows but no valid transactions could be parsed. Check CSV format (expected columns: date, amount, description, merchant).",
+        }
+    elif added == 0 and len(rows) == 0:
+        # Empty file or only headers
+        logger.warning(f"CSV ingest: empty file or headers only (user_id={user_id})")
+        return {
+            "ok": False,
+            "added": 0,
+            "count": 0,
+            "flip_auto": False,
+            "detected_month": None,
+            "date_range": None,
+            "error": "empty_file",
+            "message": "CSV file is empty or contains only headers.",
+        }
+
     # include both keys for compatibility
     return {
         "ok": True,

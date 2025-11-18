@@ -133,7 +133,34 @@ const UploadCsv: React.FC<UploadCsvProps> = ({ onUploaded, defaultReplace = true
     try {
       // Uses your existing API helper; falls back to direct fetch if needed.
       const data = await uploadCsv(file, replace); // Auto-inference enabled
-      const r: UploadResult = { ok: true, data, message: "CSV ingested successfully." };
+
+      // Check if backend indicated failure (ok: false or added === 0)
+      const responseOk = (data as { ok?: boolean; added?: number; message?: string; error?: string }).ok;
+      const added = (data as { added?: number }).added ?? 0;
+      const backendMessage = (data as { message?: string }).message;
+      const errorType = (data as { error?: string }).error;
+
+      if (responseOk === false || added === 0) {
+        // Backend reported an error (empty file, no rows parsed, etc.)
+        let errorMsg = "No transactions were imported.";
+        if (backendMessage) {
+          errorMsg = backendMessage;
+        } else if (errorType === "empty_file") {
+          errorMsg = "CSV file is empty or contains only headers.";
+        } else if (errorType === "no_rows_parsed") {
+          errorMsg = "File contained rows but no valid transactions could be parsed. Check CSV format.";
+        }
+
+        const r: UploadResult = { ok: false, data, message: errorMsg };
+        setResult(r);
+        onUploaded?.(r);
+        // Show error toast instead of success
+        emitToastError("Import Failed", { description: errorMsg });
+        return;
+      }
+
+      // Success case: at least one row was added
+      const r: UploadResult = { ok: true, data, message: `CSV ingested successfully. ${added} transaction${added !== 1 ? 's' : ''} added.` };
       setResult(r);
       onUploaded?.(r);
       // snap month + refetch dashboards (non-blocking), pass the upload data
@@ -149,6 +176,7 @@ const UploadCsv: React.FC<UploadCsvProps> = ({ onUploaded, defaultReplace = true
       const status = (err as { status?: number })?.status ?? undefined;
       const r: UploadResult = { ok: false, status, message };
       setResult(r);
+      emitToastError("Upload Failed", { description: message });
     } finally {
       setBusy(false);
     }
