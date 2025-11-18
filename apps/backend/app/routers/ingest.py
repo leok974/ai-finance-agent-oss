@@ -11,7 +11,7 @@ from fastapi import (
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 from app.deps.auth_guard import get_current_user_id
-from sqlalchemy import select, update
+from sqlalchemy import select, update, delete
 from io import TextIOWrapper
 import csv
 import datetime as dt
@@ -19,7 +19,8 @@ import logging
 import re
 from decimal import Decimal, InvalidOperation
 from enum import Enum
-from typing import Iterator
+from typing import Iterator, Tuple
+from datetime import date as datetime_date
 from ..db import get_db
 from app.transactions import Transaction
 from app.services.ingest_utils import detect_positive_expense_format
@@ -30,10 +31,13 @@ logger = logging.getLogger(__name__)
 
 class CsvFormat(str, Enum):
     """Supported CSV formats for transaction import."""
-    GENERIC = "generic"                    # LedgerMind sample format
-    BANK_EXPORT_V1 = "bank_v1"            # Date,Description,Comments,Check Number,Amount,Balance
-    BANK_DEBIT_CREDIT = "bank_dc"         # Date,Description,Debit,Credit,Balance
-    BANK_POSTED_EFFECTIVE = "bank_pe"     # Posted Date,Effective Date,Description,Amount,Type,Balance
+
+    GENERIC = "generic"  # LedgerMind sample format
+    BANK_EXPORT_V1 = "bank_v1"  # Date,Description,Comments,Check Number,Amount,Balance
+    BANK_DEBIT_CREDIT = "bank_dc"  # Date,Description,Debit,Credit,Balance
+    BANK_POSTED_EFFECTIVE = (
+        "bank_pe"  # Posted Date,Effective Date,Description,Amount,Type,Balance
+    )
     UNKNOWN = "unknown"
 
 
@@ -41,28 +45,35 @@ def detect_csv_format(fieldnames: list[str] | None) -> CsvFormat:
     """Detect CSV format based on headers."""
     if not fieldnames:
         return CsvFormat.UNKNOWN
-    
+
     headers = [h.strip().lower() for h in fieldnames]
     header_set = set(headers)
-    
+
     # Bank export v1: Date,Description,Comments,Check Number,Amount,Balance
-    bank_v1_headers = {"date", "description", "comments", "check number", "amount", "balance"}
+    bank_v1_headers = {
+        "date",
+        "description",
+        "comments",
+        "check number",
+        "amount",
+        "balance",
+    }
     if bank_v1_headers.issubset(header_set):
         return CsvFormat.BANK_EXPORT_V1
-    
+
     # Bank debit/credit: Date,Description,Debit,Credit,Balance
     if {"date", "description", "debit", "credit"}.issubset(header_set):
         return CsvFormat.BANK_DEBIT_CREDIT
-    
+
     # Bank posted/effective: Posted Date,Description,Amount (Effective Date optional)
     if {"posted date", "description", "amount"}.issubset(header_set):
         return CsvFormat.BANK_POSTED_EFFECTIVE
-    
+
     # Generic LedgerMind format: date, amount, description (merchant optional)
     generic_required = {"date", "amount"}
     if generic_required.issubset(header_set):
         return CsvFormat.GENERIC
-    
+
     return CsvFormat.UNKNOWN
 
 
@@ -71,25 +82,25 @@ def _parse_bank_amount(raw: str | None) -> Decimal | None:
     s = (raw or "").strip()
     if not s:
         return None
-    
+
     sign = 1
     # Handle parentheses negatives: ($12.34)
     if s.startswith("(") and s.endswith(")"):
         sign = -1
         s = s[1:-1].strip()
-    
+
     # Leading +/-
     if s.startswith("+"):
         s = s[1:].strip()
     elif s.startswith("-"):
         sign = -1
         s = s[1:].strip()
-    
+
     # Drop currency symbols and thousands separators
     s = s.replace("$", "").replace(",", "").strip()
     if not s:
         return None
-    
+
     try:
         return Decimal(s) * sign
     except (InvalidOperation, ValueError):
@@ -101,7 +112,7 @@ def _parse_bank_date(raw: str | None) -> dt.date | None:
     s = (raw or "").strip()
     if not s:
         return None
-    
+
     # Try US format first (11/12/2025), then ISO
     for fmt in ("%m/%d/%Y", "%Y-%m-%d", "%m/%d/%y"):
         try:
@@ -114,15 +125,15 @@ def _parse_bank_date(raw: str | None) -> dt.date | None:
 def _extract_bank_merchant(desc_raw: str | None) -> str:
     """Extract merchant from bank description, removing noise."""
     s = (desc_raw or "").replace("\r\n", " ").replace("\n", " ")
-    
+
     # Strip "Processing..." and "(Pending)"
     s = re.sub(r"^Processing\.*\s*", "", s, flags=re.IGNORECASE)
     s = re.sub(r"\s*\(Pending\)\s*$", "", s, flags=re.IGNORECASE)
-    
+
     # Remove common bank prefixes
     for prefix in (
         "Point Of Sale Withdrawal",
-        "Point Of Sale Purchase", 
+        "Point Of Sale Purchase",
         "Wire Transfer Deposit",
         "Wire Transfer Withdrawal",
         "ACH Withdrawal",
@@ -131,9 +142,9 @@ def _extract_bank_merchant(desc_raw: str | None) -> str:
         "POS Credit",
     ):
         if s.lower().startswith(prefix.lower()):
-            s = s[len(prefix):].strip()
+            s = s[len(prefix) :].strip()
             break
-    
+
     # Use double-space gap to trim trailing city/state when present
     main = re.split(r"\s{2,}", s)[0]
     main = re.sub(r"\s+", " ", main).strip()
@@ -155,9 +166,10 @@ def _is_pending(desc_raw: str | None) -> bool:
     s = (desc_raw or "").lower()
     return s.startswith("processing") or "(pending)" in s
 
+
 def _parse_bank_export_rows(rows: list[dict]) -> Iterator[dict]:
     """Parse bank export v1 format rows into transaction data.
-    
+
     Format: Date,Description,Comments,Check Number,Amount,Balance
     Example: 11/12/2025,"APPLE.COM/BILL",,"","-$2.99",""
     """
@@ -165,17 +177,17 @@ def _parse_bank_export_rows(rows: list[dict]) -> Iterator[dict]:
         # Parse date and amount - skip if either is invalid
         tx_date = _parse_bank_date(row.get("date"))
         amount = _parse_bank_amount(row.get("amount"))
-        
+
         if not tx_date or amount is None:
             # Skip header/empty/malformed rows
             continue
-        
+
         desc_raw = row.get("description") or ""
         description = _clean_bank_description(desc_raw)
         merchant = _extract_bank_merchant(desc_raw)
         month = tx_date.strftime("%Y-%m")
         pending = _is_pending(desc_raw)
-        
+
         # Convert Decimal to float for consistency with existing code
         yield {
             "date": tx_date,
@@ -191,13 +203,13 @@ def _parse_bank_export_rows(rows: list[dict]) -> Iterator[dict]:
 
 def _parse_bank_debit_credit_rows(rows: list[dict]) -> Iterator[dict]:
     """Parse bank debit/credit format rows.
-    
+
     Format: Date,Description,Debit,Credit,Balance[,Status]
     Example: 11/01/2025,STARBUCKS #1234,4.75,,1200.25
-    
+
     Rules:
     - If Debit has value → negative amount
-    - If Credit has value → positive amount  
+    - If Credit has value → positive amount
     - amount = credit - debit
     - If Status column exists and == "Pending" → pending=True
     """
@@ -205,24 +217,24 @@ def _parse_bank_debit_credit_rows(rows: list[dict]) -> Iterator[dict]:
         tx_date = _parse_bank_date(row.get("date"))
         debit = _parse_bank_amount(row.get("debit"))
         credit = _parse_bank_amount(row.get("credit"))
-        
+
         if not tx_date:
             continue
         if debit is None and credit is None:
             continue
-        
+
         # Calculate net amount: credit - debit
         amount = (credit or Decimal("0")) - (debit or Decimal("0"))
-        
+
         desc_raw = row.get("description") or ""
         description = _clean_bank_description(desc_raw)
         merchant = _extract_bank_merchant(desc_raw)
         month = tx_date.strftime("%Y-%m")
-        
+
         # Check for pending status (via Status column or description markers)
         status = (row.get("status") or "").lower()
         pending = status == "pending" or _is_pending(desc_raw)
-        
+
         yield {
             "date": tx_date,
             "amount": float(amount),
@@ -237,10 +249,10 @@ def _parse_bank_debit_credit_rows(rows: list[dict]) -> Iterator[dict]:
 
 def _parse_bank_posted_effective_rows(rows: list[dict]) -> Iterator[dict]:
     """Parse bank posted/effective date format rows.
-    
+
     Format: Posted Date,Effective Date,Description,Amount,Type,Balance
     Example: 11/03/2025,11/02/2025,VENMO PAYMENT,-25.00,DEBIT,3675.25
-    
+
     Uses Posted Date as primary date, falls back to Effective Date.
     If Posted Date is empty but Effective Date exists → mark as pending.
     """
@@ -250,19 +262,21 @@ def _parse_bank_posted_effective_rows(rows: list[dict]) -> Iterator[dict]:
         effective_date = _parse_bank_date(row.get("effective date"))
         tx_date = posted_date or effective_date
         amount = _parse_bank_amount(row.get("amount"))
-        
+
         if not tx_date or amount is None:
             continue
-        
+
         desc_raw = row.get("description") or ""
         description = _clean_bank_description(desc_raw)
         merchant = _extract_bank_merchant(desc_raw)
         month = tx_date.strftime("%Y-%m")
-        
+
         # If no posted date but has effective date, likely pending
         # Also check description markers
-        pending = (posted_date is None and effective_date is not None) or _is_pending(desc_raw)
-        
+        pending = (posted_date is None and effective_date is not None) or _is_pending(
+            desc_raw
+        )
+
         yield {
             "date": tx_date,
             "amount": float(amount),
@@ -300,7 +314,7 @@ def _parse_generic_rows(rows: list[dict], flip: bool) -> Iterator[dict]:
 
         amt_str = (row.get("amount") or "").strip()
         raw_amt = float(amt_str) if amt_str else 0.0
-        
+
         # Normalize: expenses negative, income positive. If flip==True, only flip likely expenses.
         # Heuristic: treat employer/paycheck/refund/reimbursement as income-like; don't flip those.
         desc_l = (row.get("description") or row.get("memo") or "").lower()
@@ -324,12 +338,12 @@ def _parse_generic_rows(rows: list[dict], flip: bool) -> Iterator[dict]:
             )
             or raw_amt >= 500.0
         )  # large positives: likely income
-        
+
         if flip and not income_hint:
             amount = -raw_amt
         else:
             amount = raw_amt
-        
+
         desc = row.get("description") or row.get("memo") or ""
         merch = row.get("merchant") or None
         acct = row.get("account") or None
@@ -402,7 +416,7 @@ async def ingest_csv(
             "CSV ingest failed",
             extra={
                 "user_id": user_id,
-                "filename": file.filename,
+                "csv_filename": file.filename,  # Changed from 'filename' to avoid LogRecord conflict
                 "replace": replace,
                 "error_type": type(exc).__name__,
             },
@@ -455,19 +469,19 @@ async def _ingest_csv_impl(
     reader = csv.DictReader(
         (line for line in wrapper if line.strip()), skipinitialspace=True
     )
-    
+
     # Normalize headers to lowercase for case-insensitive matching
     if reader.fieldnames:
         original_headers = reader.fieldnames.copy()
         reader.fieldnames = [h.lower().strip() if h else h for h in reader.fieldnames]
     else:
         original_headers = None
-    
+
     rows = list(reader)
 
     # Detect CSV format based on headers
     csv_format = detect_csv_format(reader.fieldnames)
-    
+
     # DEBUG: Log CSV headers to diagnose column mismatch issues
     logger.info(
         f"CSV format={csv_format.value} | headers: {original_headers} (normalized to: {reader.fieldnames}) | rows_count={len(rows)} | (user_id={user_id}, filename={file.filename})"
@@ -478,7 +492,7 @@ async def _ingest_csv_impl(
         logger.warning(
             f"CSV ingest: unrecognized format (user_id={user_id}, headers={original_headers})"
         )
-        
+
         return {
             "ok": False,
             "added": 0,
@@ -488,11 +502,11 @@ async def _ingest_csv_impl(
             "date_range": None,
             "error": "unknown_format",
             "message": f"CSV format not recognized. Headers found: {original_headers}. "
-                      f"Supported formats:\n"
-                      f"1. Generic LedgerMind: date, amount, description (optional: merchant, memo, account, category)\n"
-                      f"2. Bank Export v1: Date, Description, Comments, Check Number, Amount, Balance\n"
-                      f"3. Bank Debit/Credit: Date, Description, Debit, Credit, Balance\n"
-                      f"4. Bank Posted/Effective: Posted Date, Effective Date, Description, Amount, Type, Balance",
+            f"Supported formats:\n"
+            f"1. Generic LedgerMind: date, amount, description (optional: merchant, memo, account, category)\n"
+            f"2. Bank Export v1: Date, Description, Comments, Check Number, Amount, Balance\n"
+            f"3. Bank Debit/Credit: Date, Description, Debit, Credit, Balance\n"
+            f"4. Bank Posted/Effective: Posted Date, Effective Date, Description, Amount, Type, Balance",
         }
 
     added = 0
@@ -537,10 +551,68 @@ async def _ingest_csv_impl(
             flip = detect_positive_expense_format(sample)
         else:
             flip = bool(expenses_are_positive)
-        
+
         parsed_rows = _parse_generic_rows(rows, flip)
 
-    for row_data in parsed_rows:
+    # Build dedup key set from existing DB transactions in the date range
+    # This prevents hitting the unique constraint by detecting duplicates up front
+
+    # Find min/max dates from parsed rows for efficient DB query
+    parsed_list = list(parsed_rows)  # Materialize generator
+    if not parsed_list:
+        # No valid rows parsed
+        logger.warning(f"CSV ingest: no valid rows after parsing (user_id={user_id})")
+        return {
+            "ok": False,
+            "added": 0,
+            "count": 0,
+            "duplicates": 0,
+            "flip_auto": False,
+            "detected_month": None,
+            "date_range": None,
+            "error": "no_rows_parsed",
+            "message": "No valid transactions could be parsed from the file.",
+        }
+
+    min_date = min(r["date"] for r in parsed_list)
+    max_date = max(r["date"] for r in parsed_list)
+
+    # Get months covered by CSV for replace mode
+    months_in_csv = {r["month"] for r in parsed_list if r.get("month")}
+
+    # If replace mode, delete all existing transactions for these months
+    if replace and months_in_csv:
+        deleted_count = db.execute(
+            delete(Transaction).where(
+                Transaction.user_id == user_id,
+                Transaction.month.in_(months_in_csv),
+            )
+        ).rowcount
+        db.commit()
+        logger.info(
+            f"Replace mode: deleted {deleted_count} existing transactions for months {months_in_csv} (user_id={user_id})"
+        )
+
+    # Query existing transactions in date range to build dedup set
+    existing_txns = db.execute(
+        select(Transaction.date, Transaction.amount, Transaction.description).where(
+            Transaction.user_id == user_id,
+            Transaction.date >= min_date,
+            Transaction.date <= max_date,
+        )
+    ).all()
+
+    existing_keys = set()
+    for txn_date, txn_amount, txn_desc in existing_txns:
+        norm_desc = (txn_desc or "").strip().lower()
+        existing_keys.add((txn_date, txn_amount, norm_desc))
+
+    # Track duplicates and new transactions
+    seen_keys = set(existing_keys)
+    duplicates = 0
+    new_transactions = []
+
+    for row_data in parsed_list:
         date = row_data["date"]
         amount = row_data["amount"]
         desc = row_data["description"]
@@ -556,19 +628,16 @@ async def _ingest_csv_impl(
         if latest_date is None or date > latest_date:
             latest_date = date
 
-        # check dupes (date, amount, description)
-        exists = db.execute(
-            select(Transaction.id).where(
-                Transaction.user_id == user_id,
-                Transaction.date == date,
-                Transaction.amount == amount,
-                Transaction.description == desc,
-            )
-        ).first()
-        if exists:
+        # Check for duplicates using dedup key
+        norm_desc = (desc or "").strip().lower()
+        dedup_key = (date, amount, norm_desc)
+
+        if dedup_key in seen_keys:
+            duplicates += 1
             continue
 
-        db.add(
+        seen_keys.add(dedup_key)
+        new_transactions.append(
             Transaction(
                 user_id=user_id,
                 date=date,
@@ -577,12 +646,11 @@ async def _ingest_csv_impl(
                 merchant=merch,
                 account=acct,
                 raw_category=raw_cat,
-                month=month,  # ensure month is set on insert
+                month=month,
                 category=None,
                 pending=pending,
             )
         )
-        added += 1
 
         # mirror into in-memory list for existing endpoints
         if isinstance(mem_list, list):
@@ -600,7 +668,51 @@ async def _ingest_csv_impl(
             except Exception:
                 pass
 
-    db.commit()
+    # Check if all rows were duplicates
+    if not new_transactions and duplicates > 0:
+        logger.info(
+            f"CSV ingest: all {duplicates} rows were duplicates (user_id={user_id})"
+        )
+        return {
+            "ok": False,
+            "added": 0,
+            "count": len(parsed_list),
+            "duplicates": duplicates,
+            "flip_auto": flip and (expenses_are_positive is None),
+            "detected_month": None,
+            "date_range": None,
+            "error": "all_rows_duplicate",
+            "message": f"File contained {len(parsed_list)} transactions but all of them already exist in your ledger. No new transactions were added. Try enabling 'Replace existing data' to re-import.",
+        }
+
+    # Bulk insert new transactions with IntegrityError safety net
+    if new_transactions:
+        try:
+            db.add_all(new_transactions)
+            db.commit()
+            added = len(new_transactions)
+        except Exception as exc:
+            from sqlalchemy.exc import IntegrityError
+
+            db.rollback()
+            if isinstance(exc, IntegrityError) and "uq_txn_dedup" in str(exc.orig):
+                # Defensive guard: some duplicates slipped through
+                logger.error(
+                    f"Duplicate constraint hit despite dedup logic (user_id={user_id})",
+                    exc_info=True,
+                )
+                return {
+                    "ok": False,
+                    "added": 0,
+                    "count": len(parsed_list),
+                    "duplicates": duplicates,
+                    "error": "duplicate_constraint",
+                    "message": "Some transactions in this file conflict with existing data (duplicate transactions). Try enabling 'Replace existing data' or upload a file without already-imported entries.",
+                }
+            # Re-raise for truly unexpected DB errors
+            raise
+    else:
+        added = 0
 
     # Optional: backfill month for any existing rows with NULL month (one-time maintenance)
     if not replace:
@@ -625,13 +737,9 @@ async def _ingest_csv_impl(
         logger.warning(
             f"CSV ingest: {len(rows)} rows in file, but no valid transactions could be parsed (user_id={user_id}, headers={original_headers})"
         )
-        
+
         # Build helpful error message showing actual vs expected headers
-        supported_formats = [
-            "date, amount, description, merchant (generic)",
-            "date, description, amount (minimal)"
-        ]
-        
+
         return {
             "ok": False,
             "added": 0,
@@ -641,10 +749,10 @@ async def _ingest_csv_impl(
             "date_range": None,
             "error": "no_rows_parsed",
             "message": f"File contained {len(rows)} rows but no valid transactions could be parsed. "
-                      f"Headers found: {original_headers}. "
-                      f"Required columns: date, amount. "
-                      f"Optional columns: description, merchant, memo, account, category. "
-                      f"Note: Column names are case-insensitive.",
+            f"Headers found: {original_headers}. "
+            f"Required columns: date, amount. "
+            f"Optional columns: description, merchant, memo, account, category. "
+            f"Note: Column names are case-insensitive.",
         }
     elif added == 0 and len(rows) == 0:
         # Empty file or only headers
@@ -664,7 +772,8 @@ async def _ingest_csv_impl(
     result = {
         "ok": True,
         "added": added,
-        "count": added,
+        "count": len(parsed_list),
+        "duplicates": duplicates,
         "flip_auto": flip and (expenses_are_positive is None),
         "detected_month": detected_month,
         "date_range": (
@@ -679,7 +788,7 @@ async def _ingest_csv_impl(
 
     # Success logging for production debugging
     logger.info(
-        f"CSV ingest SUCCESS: user_id={user_id}, added={added}, "
+        f"CSV ingest SUCCESS: user_id={user_id}, added={added}, duplicates={duplicates}, "
         f"detected_month={detected_month}, "
         f"date_range={earliest_date.isoformat() if earliest_date else None} to "
         f"{latest_date.isoformat() if latest_date else None}, "
