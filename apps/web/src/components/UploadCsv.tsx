@@ -276,7 +276,16 @@ const UploadCsv: React.FC<UploadCsvProps> = ({ onUploaded, defaultReplace = true
           errorMsg = "File contained rows but no valid transactions could be parsed. Check CSV format.";
         }
 
-        const r: UploadResult = { ok: false, data, message: errorMsg };
+        // Ensure data has all required IngestResult fields
+        const errorData: IngestResult = {
+          ...(data as Partial<IngestResult>),
+          ok: false,
+          added: 0,
+          count: 0,
+          message: errorMsg,
+        };
+
+        const r: UploadResult = { ok: false, data: errorData, message: errorMsg };
         setResult(r);
         onUploaded?.(r);
         // Show error toast instead of success
@@ -299,7 +308,17 @@ const UploadCsv: React.FC<UploadCsvProps> = ({ onUploaded, defaultReplace = true
         (err as Error)?.message ??
         (typeof err === "string" ? err : "Upload failed. Check server logs for details.");
       const status = (err as { status?: number })?.status ?? undefined;
-      const r: UploadResult = { ok: false, status, message };
+      
+      // Create a proper IngestResult structure for the error
+      const errorData: IngestResult = {
+        ok: false,
+        added: 0,
+        count: 0,
+        error: "upload_failed",
+        message: message,
+      };
+      
+      const r: UploadResult = { ok: false, status, message, data: errorData };
       setResult(r);
       emitToastError("Upload Failed", { description: message });
     } finally {
