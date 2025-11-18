@@ -151,6 +151,7 @@ def get_month_summary(db: Session, user_id: int, month: str) -> Dict[str, Any]:
             Transaction.user_id == user_id,  # ✅ Scope by user
             Transaction.date >= start,
             Transaction.date < end,
+            Transaction.pending == False,  # Exclude pending transactions
         )
     ).one()
     total_spend = float(totals[0] or 0.0)
@@ -163,6 +164,7 @@ def get_month_summary(db: Session, user_id: int, month: str) -> Dict[str, Any]:
             Transaction.user_id == user_id,  # ✅ Scope by user
             Transaction.date >= start,
             Transaction.date < end,
+            Transaction.pending == False,  # Exclude pending transactions
         )
         .group_by(cat_expr)
         .order_by(func.sum(spend_expr).desc())
@@ -200,6 +202,7 @@ def get_month_merchants(
             Transaction.date >= start,
             Transaction.date < end,
             Transaction.amount < 0,
+            Transaction.pending == False,  # Exclude pending transactions
         )
         .group_by(Transaction.merchant_canonical)
         .order_by(spend_abs.desc())
@@ -236,6 +239,7 @@ def get_month_categories(
             Transaction.amount < 0,
             Transaction.category.is_not(None),
             Transaction.category != "",
+            Transaction.pending == False,  # Exclude pending transactions
         )
         .group_by(Transaction.category)
         .order_by(spend_abs.desc())
@@ -252,6 +256,7 @@ def get_month_flows(db: Session, user_id: int, month: str) -> Dict[str, Any]:
             Transaction.user_id == user_id,  # ✅ Scope by user
             Transaction.date >= start,
             Transaction.date < end,
+            Transaction.pending == False,  # Exclude pending transactions
         )
         .order_by(Transaction.date)
     ).all()
