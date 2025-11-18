@@ -8,6 +8,7 @@ from fastapi import (
     Request,
     HTTPException,
 )
+from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 from app.deps.auth_guard import get_current_user_id
 from sqlalchemy import select, update
@@ -60,6 +61,49 @@ async def ingest_csv(
     phase = "replace" if replace else "append"
     INGEST_REQUESTS.labels(phase=phase).inc()
 
+    # Wrap main handler in try-catch for comprehensive error logging
+    try:
+        return await _ingest_csv_impl(
+            user_id=user_id,
+            file=file,
+            replace=replace,
+            expenses_are_positive=expenses_are_positive,
+            db=db,
+            phase=phase,
+        )
+    except Exception as exc:
+        INGEST_ERRORS.labels(phase=phase).inc()
+        logger.exception(
+            "CSV ingest failed",
+            extra={
+                "user_id": user_id,
+                "filename": file.filename,
+                "replace": replace,
+                "error_type": type(exc).__name__,
+            },
+        )
+        # Return 500 with detailed error for debugging
+        return JSONResponse(
+            status_code=500,
+            content={
+                "ok": False,
+                "error": "ingest_failed",
+                "error_type": type(exc).__name__,
+                "message": f"CSV ingest failed: {str(exc)}",
+            },
+        )
+
+
+async def _ingest_csv_impl(
+    user_id: int,
+    file: UploadFile,
+    replace: bool,
+    expenses_are_positive: bool | None,
+    db: Session,
+    phase: str,
+):
+    """Internal implementation of CSV ingest logic."""
+
     if replace:
         # Delete transactions; DB cascades handle cleanup:
         # - suggestion_events deleted via FK CASCADE
@@ -87,6 +131,12 @@ async def ingest_csv(
         (line for line in wrapper if line.strip()), skipinitialspace=True
     )
     rows = list(reader)
+
+    # DEBUG: Log CSV headers to diagnose column mismatch issues
+    if reader.fieldnames:
+        logger.info(
+            f"CSV headers detected: {reader.fieldnames} (user_id={user_id}, filename={file.filename})"
+        )
 
     # Try to infer if not provided
     flip = False
@@ -276,7 +326,7 @@ async def ingest_csv(
         }
 
     # include both keys for compatibility
-    return {
+    result = {
         "ok": True,
         "added": added,
         "count": added,
@@ -291,6 +341,19 @@ async def ingest_csv(
             else None
         ),
     }
+
+    # Success logging for production debugging
+    logger.info(
+        f"CSV ingest SUCCESS: user_id={user_id}, added={added}, "
+        f"detected_month={detected_month}, "
+        f"date_range={earliest_date.isoformat() if earliest_date else None} to "
+        f"{latest_date.isoformat() if latest_date else None}, "
+        f"replace={replace}, flip_auto={flip}, "
+        f"total_rows_in_file={len(rows)}, "
+        f"filename={file.filename}"
+    )
+
+    return result
 
 
 @router.put("")
