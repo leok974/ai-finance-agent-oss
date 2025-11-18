@@ -37,19 +37,13 @@
 
 :root { color-scheme: dark; }
 
-/* Ensure body can always scroll - force override anything setting it to hidden */
-html,
-body {
-  height: 100%;
-}
-
 /* LedgerMind: root scroll behavior
    - Prevent horizontal scroll from wide charts
    - Always allow vertical scroll, even when chat panel is open
+   - Use min-height (not height) so body can grow beyond viewport
 */
 html,
 body {
-  height: 100%;
   min-height: 100%;
   overflow-x: hidden !important;
   overflow-y: auto !important;
