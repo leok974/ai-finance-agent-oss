@@ -1,7 +1,7 @@
 # Page snapshot
 
 ```yaml
-- generic [ref=e1]:
+- generic [active] [ref=e1]:
   - generic [ref=e2]:
     - generic [ref=e5]:
       - banner [ref=e6]:
@@ -224,7 +224,7 @@
     - region "Notifications (F8)":
       - list
   - generic:
-    - button "Close LedgerMind Assistant" [active] [ref=e235] [cursor=pointer]:
+    - button "Close LedgerMind Assistant" [ref=e235] [cursor=pointer]:
       - generic [ref=e236]: LM
     - button "Close LedgerMind Assistant" [ref=e237] [cursor=pointer]
     - generic [ref=e240]:
