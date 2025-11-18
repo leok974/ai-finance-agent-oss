@@ -34,7 +34,7 @@ test.beforeEach(async ({ page }) => {
   });
 
   // open the panel once for all tests
-  await page.getByTestId('lm-chat-launcher-button').click();
+  await page.getByTestId('lm-chat-bubble').click();
   await page.getByTestId('lm-chat-shell').waitFor({ state: 'visible' });
 });
 

@@ -37,7 +37,7 @@ test.beforeEach(async ({ page }) => {
 
 test('bubble hides and panel shows from same corner', async ({ page }) => {
   const launcherRoot = page.getByTestId('lm-chat-launcher');
-  const bubble = page.getByTestId('lm-chat-launcher-button');
+  const bubble = page.getByTestId('lm-chat-bubble');
   const shell = page.getByTestId('lm-chat-shell');
 
   // sanity: root attached, bubble visible, launcher closed
@@ -64,7 +64,7 @@ test('bubble hides and panel shows from same corner', async ({ page }) => {
 
 test('multiple open/close cycles work correctly', async ({ page }) => {
   const launcherRoot = page.getByTestId('lm-chat-launcher');
-  const bubble = page.getByTestId('lm-chat-launcher-button');
+  const bubble = page.getByTestId('lm-chat-bubble');
   const backdrop = page.getByTestId('lm-chat-backdrop');
 
   for (let i = 0; i < 3; i++) {
@@ -80,7 +80,7 @@ test('multiple open/close cycles work correctly', async ({ page }) => {
 
 test('launcher root is attached and positioned', async ({ page }) => {
   const root = page.getByTestId('lm-chat-launcher');
-  const bubble = page.getByTestId('lm-chat-launcher-button');
+  const bubble = page.getByTestId('lm-chat-bubble');
 
   await expect(root).toBeAttached();
   await expect(bubble).toBeVisible();

@@ -223,7 +223,6 @@
         - paragraph [ref=e233]: No rules yet. Create your first rule above.
     - region "Notifications (F8)":
       - list
-  - button "Open agent chat" [ref=e235] [cursor=pointer]:
-    - generic [ref=e236]: 💬
-    - generic [ref=e237]: Open agent chat
+  - button "Open LedgerMind assistant" [ref=e235] [cursor=pointer]:
+    - generic [ref=e236]: LM
 ```
