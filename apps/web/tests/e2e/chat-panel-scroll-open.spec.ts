@@ -27,6 +27,31 @@ test('@prod @chat page can scroll when chat panel is open', async ({ page }) => 
 
   // Now try to scroll the main document while chat is open
   await page.evaluate(() => window.scrollTo(0, 800));
+  
+  // Debug: check actual computed styles and scroll state
+  const debugInfo = await page.evaluate(() => {
+    const html = document.documentElement;
+    const body = document.body;
+    const htmlStyle = window.getComputedStyle(html);
+    const bodyStyle = window.getComputedStyle(body);
+    
+    return {
+      scrollY: window.scrollY,
+      scrollHeight: html.scrollHeight,
+      clientHeight: html.clientHeight,
+      htmlOverflow: htmlStyle.overflow,
+      htmlOverflowX: htmlStyle.overflowX,
+      htmlOverflowY: htmlStyle.overflowY,
+      bodyOverflow: bodyStyle.overflow,
+      bodyOverflowX: bodyStyle.overflowX,
+      bodyOverflowY: bodyStyle.overflowY,
+      htmlHeight: htmlStyle.height,
+      bodyHeight: bodyStyle.height,
+    };
+  });
+  
+  console.log('Debug info after scroll attempt:', JSON.stringify(debugInfo, null, 2));
+  
   const scrollY = await page.evaluate(() => window.scrollY);
 
   expect(scrollY).toBeGreaterThanOrEqual(800);
