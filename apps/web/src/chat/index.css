@@ -699,6 +699,7 @@ textarea.lm-input,
 
 /* ===== INPUT / FOOTER ΓÇô REFINED WITH GRADIENT SEND BUTTON ===== */
 [data-testid="lm-chat-input-wrapper"] {
+  flex-shrink: 0;
   border-top: 1px solid rgba(30, 64, 175, 0.55);
   background: rgba(15, 23, 42, 0.97);
   padding: 0.55rem 0.9rem 0.6rem 0.9rem;
@@ -824,31 +825,25 @@ textarea.lm-input,
 /* Shell anchored above bubble */
 .lm-chat-shell {
   position: relative;
+  z-index: 72;
   max-width: 640px;
   width: min(640px, calc(100vw - 2rem));
+  max-height: min(640px, calc(100vh - 6rem));
   border-radius: 1.5rem;
   overflow: hidden;
-  opacity: 0;
-  transform: translateY(12px) scale(0.96);
-  transform-origin: bottom right;
-  pointer-events: none;
-  transition:
-    opacity 160ms cubic-bezier(0.16, 1, 0.3, 1),
-    transform 160ms cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-/* Opened state */
-.lm-chat-shell--open {
+  display: flex;
+  flex-direction: column;
   opacity: 1;
   transform: translateY(0) scale(1);
   pointer-events: auto;
-}
-
-/* Inner container - contains the actual panel */
-.lm-chat-shell-inner {
-  position: relative;
-  border-radius: 1.5rem;
-  overflow: hidden;
+  background:
+    radial-gradient(circle at 20% 0%, #3b82f6 0, #1d4ed8 38%, transparent 70%),
+    radial-gradient(circle at 80% 110%, #22d3ee 0, transparent 60%),
+    linear-gradient(135deg, #020617, #020617 20%, #020817 100%);
+  box-shadow:
+    0 24px 60px rgba(15, 23, 42, 0.85),
+    0 0 0 1px rgba(148, 163, 184, 0.12);
+  color: #e5e7eb;
 }
 
 /* ============================================
@@ -859,13 +854,15 @@ textarea.lm-input,
 .lm-chat-backdrop {
   position: fixed;
   inset: 0;
-  border: 0;
-  padding: 0;
-  margin: 0;
-  background: transparent;
-  cursor: default;
-  z-index: 60; /* below launcher root (70) but above page content */
+  z-index: 71;
+  display: flex;
+  justify-content: flex-end;
+  align-items: flex-end;
+  padding: 1.75rem;
+  background: radial-gradient(circle at 80% 110%, rgba(15, 23, 42, 0.65), rgba(15, 23, 42, 0.85));
+  backdrop-filter: blur(4px);
   pointer-events: auto;
+  cursor: default;
 }
 
 /* Card itself */
