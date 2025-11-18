@@ -756,18 +756,22 @@ textarea.lm-input,
    LAUNCHER + BUBBLE (FIXED BOTTOM-RIGHT)
    ============================================ */
 
-/* Root launcher container (fixed bottom-right, but non-draggable) */
+/* Root launcher container (fixed bottom-right) */
 .lm-chat-launcher {
   position: fixed;
-  right: 1.5rem;
-  bottom: 1.5rem;
-  z-index: 60;
-  pointer-events: none; /* children opt-in */
+  right: 1.75rem;
+  bottom: 1.75rem;
+  z-index: 70;
+  pointer-events: none; /* children opt in */
 }
 
-/* When the panel is open we add a slight lift for the bubble */
-.lm-chat-launcher--open .lm-chat-launcher-bubble {
-  transform: translateY(-4px) scale(0.96);
+/* Stack: shell above, bubble below */
+.lm-chat-launcher-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.75rem;
+  pointer-events: auto;
 }
 
 /* Floating bubble button */
@@ -788,7 +792,8 @@ textarea.lm-input,
   transition:
     transform 120ms ease-out,
     box-shadow 120ms ease-out,
-    background 180ms ease-out;
+    background 180ms ease-out,
+    opacity 160ms ease-out;
 }
 
 .lm-chat-launcher-bubble:hover {
@@ -805,48 +810,62 @@ textarea.lm-input,
   color: rgba(255, 255, 255, 0.95);
 }
 
+/* When open, hide the bubble */
+.lm-chat-launcher--open .lm-chat-launcher-bubble {
+  opacity: 0;
+  transform: translateY(4px) scale(0.9);
+  pointer-events: none;
+}
+
 /* ============================================
-   OVERLAY + SHELL (CENTERED CARD, ANIMATIONS)
+   SHELL (ANCHORED ABOVE LAUNCHER)
    ============================================ */
 
-/* Full-screen overlay used only for positioning; does NOT block page scroll */
-.lm-chat-overlay {
-  position: fixed;
-  inset: 0;
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
-  pointer-events: none; /* page still scrolls outside the card */
-  z-index: 61;
-}
-
-/* Shell wraps backdrop + card and IS clickable */
+/* Shell anchored above bubble */
 .lm-chat-shell {
   position: relative;
-  pointer-events: auto;
-  margin-bottom: 1.75rem;
   max-width: 640px;
-  width: min(640px, 100% - 2rem);
+  width: min(640px, calc(100vw - 2rem));
+  border-radius: 1.5rem;
+  overflow: hidden;
+  opacity: 0;
+  transform: translateY(12px) scale(0.96);
+  transform-origin: bottom right;
+  pointer-events: none;
+  transition:
+    opacity 160ms cubic-bezier(0.16, 1, 0.3, 1),
+    transform 160ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-/* Inner container so backdrop can sit behind card */
+/* Opened state */
+.lm-chat-shell--open {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  pointer-events: auto;
+}
+
+/* Inner container - contains the actual panel */
 .lm-chat-shell-inner {
   position: relative;
   border-radius: 1.5rem;
   overflow: hidden;
 }
 
-/* Subtle glossy backdrop behind the card */
+/* ============================================
+   FULL-SCREEN BACKDROP
+   ============================================ */
+
+/* Full-screen backdrop for closing panel */
 .lm-chat-backdrop {
-  position: absolute;
-  inset: -16px;
-  border-radius: 1.75rem;
-  background:
-    radial-gradient(circle at 0 0, rgba(56, 189, 248, 0.24), transparent 55%),
-    radial-gradient(circle at 100% 0, rgba(129, 140, 248, 0.26), transparent 60%),
-    radial-gradient(circle at 50% 120%, rgba(15, 23, 42, 0.98), rgba(2, 6, 23, 0.98));
-  filter: blur(8px);
-  opacity: 0.95;
+  position: fixed;
+  inset: 0;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  background: transparent;
+  cursor: default;
+  z-index: 60; /* below launcher root (70) but above page content */
+  pointer-events: auto;
 }
 
 /* Card itself */
