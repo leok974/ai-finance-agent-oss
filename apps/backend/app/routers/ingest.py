@@ -506,6 +506,9 @@ async def _ingest_csv_impl(
             f"CSV ingest: unrecognized format (user_id={user_id}, headers={original_headers})"
         )
 
+        # Normalize headers for frontend display (same logic as above)
+        headers_norm = [h.lower().strip() if h else h for h in original_headers] if original_headers else []
+
         return {
             "ok": False,
             "added": 0,
@@ -514,12 +517,8 @@ async def _ingest_csv_impl(
             "detected_month": None,
             "date_range": None,
             "error": "unknown_format",
-            "message": f"CSV format not recognized. Headers found: {original_headers}. "
-            f"Supported formats:\n"
-            f"1. Generic LedgerMind: date, amount, description (optional: merchant, memo, account, category)\n"
-            f"2. Bank Export v1: Date, Description, Comments, Check Number, Amount, Balance\n"
-            f"3. Bank Debit/Credit: Date, Description, Debit, Credit, Balance\n"
-            f"4. Bank Posted/Effective: Posted Date, Effective Date, Description, Amount, Type, Balance",
+            "headers_found": headers_norm,  # Structured list for UI
+            "message": "CSV format not recognized.",  # Short message; UI will elaborate
         }
 
     added = 0

@@ -173,11 +173,85 @@ test.describe('@prod CSV ingest', () => {
     await uploadButton.click();
 
     // Wait for the success message to appear
-    const summary = page.getByTestId('csv-ingest-summary');
+    const summary = page.getByTestId('csv-ingest-message');
     await expect(summary).toBeVisible({ timeout: 10000 });
     
     // Verify the friendly message contains expected text
     await expect(summary).toContainText('CSV ingested successfully');
     await expect(summary).toContainText('transaction');
+  });
+
+  test('@frontend csv unknown headers shows friendly error', async ({ page }) => {
+    // Navigate to the app
+    await page.goto('/');
+    await page.waitForLoadState('networkidle');
+
+    // Create a CSV with unknown headers
+    const csvContent = 'Foo,Bar,Baz\n1,2,3\n';
+
+    // Find the file input and upload
+    const fileInput = page.getByTestId('uploadcsv-input');
+    
+    await fileInput.setInputFiles({
+      name: 'error_unknown_headers.csv',
+      mimeType: 'text/csv',
+      buffer: Buffer.from(csvContent, 'utf-8'),
+    });
+
+    // Click the upload button
+    const uploadButton = page.getByTestId('uploadcsv-submit');
+    await uploadButton.click();
+
+    // Wait for the error message to appear
+    const msg = page.getByTestId('csv-ingest-message');
+    await expect(msg).toBeVisible({ timeout: 10000 });
+    
+    // Verify the friendly error message
+    await expect(msg).toContainText('We couldn\'t recognize this CSV format');
+    await expect(msg).toContainText('foo, bar, baz');
+  });
+
+  test('@frontend csv ingest JSON details toggle', async ({ page }) => {
+    // Navigate to the app
+    await page.goto('/');
+    await page.waitForLoadState('networkidle');
+
+    // Create a test CSV with a few transactions
+    const csvContent = [
+      'date,amount,description,merchant',
+      '2025-11-10,-35.50,Coffee Shop,STARBUCKS',
+      '2025-11-11,-120.00,Groceries,WHOLE FOODS',
+    ].join('\n');
+
+    // Find the file input and upload
+    const fileInput = page.getByTestId('uploadcsv-input');
+    
+    await fileInput.setInputFiles({
+      name: 'test_toggle.csv',
+      mimeType: 'text/csv',
+      buffer: Buffer.from(csvContent, 'utf-8'),
+    });
+
+    // Click the upload button
+    const uploadButton = page.getByTestId('uploadcsv-submit');
+    await uploadButton.click();
+
+    // Wait for result to appear
+    await page.waitForTimeout(2000);
+
+    const toggle = page.getByTestId('csv-ingest-toggle-json');
+    const json = page.getByTestId('csv-ingest-json');
+
+    // JSON hidden by default
+    await expect(json).toHaveCount(0);
+
+    // Turn on
+    await toggle.click();
+    await expect(json).toBeVisible();
+    await expect(json).toContainText('"ok"');
+
+    // Turn off
+    await toggle.click();
+    await expect(json).toHaveCount(0);
   });
 });
