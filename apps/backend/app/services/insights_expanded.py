@@ -1,6 +1,6 @@
 # app/services/insights_expanded.py
 from __future__ import annotations
-from typing import Dict, Any, List, Optional, Tuple
+from typing import Dict, Any, List, Optional, Tuple, Literal
 from collections import defaultdict
 from dataclasses import dataclass
 import datetime as dt
@@ -11,6 +11,9 @@ from sqlalchemy import func
 from app.transactions import Transaction
 
 UNLABELED = {"", "Unknown", None}
+
+# Status filter type for pending transactions
+TransactionStatus = Literal["all", "posted", "pending"]
 
 
 def latest_month_from_data(db: Session) -> Optional[str]:
@@ -59,11 +62,23 @@ def _sum_dict(items: List[Tuple[str, float]]) -> Dict[str, float]:
     return dict(out)
 
 
-def load_month(db: Session, month: str, large_limit: int = 10) -> MonthAgg:
-    # Pull all txns for month
-    txns: List[Transaction] = (
-        db.query(Transaction).filter(Transaction.month == month).all()
-    )
+def load_month(
+    db: Session,
+    month: str,
+    status: TransactionStatus = "posted",
+    large_limit: int = 10,
+) -> MonthAgg:
+    # Pull all txns for month (filtering by pending status)
+    query = db.query(Transaction).filter(Transaction.month == month)
+
+    # Filter by pending status
+    if status == "posted":
+        query = query.filter(Transaction.pending.is_(False))
+    elif status == "pending":
+        query = query.filter(Transaction.pending.is_(True))
+    # status == "all" → no filter
+
+    txns: List[Transaction] = query.all()
 
     income = 0.0
     spend = 0.0
@@ -173,6 +188,7 @@ def detect_anomalies(
 def build_expanded_insights(
     db: Session,
     month: Optional[str],
+    status: TransactionStatus = "posted",
     large_limit: int = 10,
 ) -> Dict[str, Any]:
     # Resolve month
@@ -190,7 +206,7 @@ def build_expanded_insights(
             "anomalies": {"categories": [], "merchants": []},
         }
 
-    curr = load_month(db, resolved, large_limit=large_limit)
+    curr = load_month(db, resolved, status=status, large_limit=large_limit)
     prev = None
     try:
         pm = prev_month(resolved)
@@ -201,7 +217,11 @@ def build_expanded_insights(
             .scalar()
             or 0
         )
-        prev = load_month(db, pm, large_limit=large_limit) if prev_has else None
+        prev = (
+            load_month(db, pm, status=status, large_limit=large_limit)
+            if prev_has
+            else None
+        )
     except Exception:
         prev = None
 
