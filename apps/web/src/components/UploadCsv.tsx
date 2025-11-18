@@ -22,6 +22,54 @@ type UploadResult = {
   data?: any;
 };
 
+type IngestResult = {
+  ok: boolean;
+  added: number;
+  count: number;
+  duplicates?: number;
+  detected_month?: string | null;
+  date_range?: {
+    earliest?: string | null;
+    latest?: string | null;
+  };
+  error?: string | null;
+  message?: string | null;
+};
+
+function buildIngestSummary(result: IngestResult): string {
+  if (!result.ok) {
+    // Fallback to backend message for errors
+    return result.message || 'CSV ingest failed. Please check the file format and try again.';
+  }
+
+  const { added, count, duplicates = 0, detected_month, date_range } = result;
+
+  const monthLabel = detected_month ?? 'this period';
+
+  // No rows at all
+  if (count === 0) {
+    return 'CSV uploaded, but no data rows were found.';
+  }
+
+  // All rows were duplicates
+  if (added === 0 && duplicates > 0) {
+    return `No new transactions to add. All ${count} row${count === 1 ? '' : 's'} in this file already exist in your ledger for ${monthLabel}.`;
+  }
+
+  // Normal success case
+  let msg = `CSV ingested successfully. ${added} new transaction${added === 1 ? '' : 's'} added for ${monthLabel}.`;
+
+  if (duplicates > 0) {
+    msg += ` ${duplicates} duplicate entr${duplicates === 1 ? 'y was' : 'ies were'} skipped.`;
+  }
+
+  if (date_range?.earliest && date_range?.latest) {
+    msg += ` Date range: ${date_range.earliest} → ${date_range.latest}.`;
+  }
+
+  return msg;
+}
+
 interface UploadCsvProps {
   /** Called after a successful upload. Useful to refresh Unknowns/Suggestions. */
   onUploaded?: (result?: UploadResult) => void;
@@ -318,22 +366,54 @@ const UploadCsv: React.FC<UploadCsvProps> = ({ onUploaded, defaultReplace = true
           </div>
         )}
 
-        {result && (
-          <div
-            className={`mt-4 rounded-xl border p-3 text-sm ${
-              result.ok
-                ? "border-emerald-700 bg-emerald-900/30 text-emerald-200"
-                : "border-rose-700 bg-rose-900/30 text-rose-200"
-            }`}
-          >
-            <div className="font-medium">
-              {result.ok ? "Success" : `Error${result.status ? ` (${result.status})` : ""}`}
+        {result && result.ok && (
+          <div className="mt-4 rounded-xl border border-emerald-700/70 bg-emerald-950/40 p-4 text-emerald-50 text-sm">
+            <div className="flex items-center gap-2 mb-1">
+              <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500/20 text-[11px] font-semibold">
+                ✓
+              </span>
+              <span className="font-semibold">Success</span>
             </div>
-            {result.message && <div className="mt-1 opacity-90">{result.message}</div>}
-            {result.data && (
-              <pre className="mt-2 max-h-48 overflow-auto rounded-lg bg-black/30 p-2 text-xs">
+
+            <p data-testid="csv-ingest-summary" className="text-emerald-100/90">
+              {buildIngestSummary(result.data as IngestResult)}
+            </p>
+
+            <details className="mt-2 text-xs text-emerald-100/70">
+              <summary className="cursor-pointer select-none underline underline-offset-2">
+                View technical details
+              </summary>
+              <pre className="mt-2 whitespace-pre-wrap break-all rounded-md bg-emerald-950/60 p-2">
                 {JSON.stringify(result.data, null, 2)}
               </pre>
+            </details>
+          </div>
+        )}
+
+        {result && !result.ok && (
+          <div className="mt-4 rounded-xl border border-rose-700 bg-rose-900/30 p-4 text-rose-200 text-sm">
+            <div className="flex items-center gap-2 mb-1">
+              <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-rose-500/20 text-[11px] font-semibold">
+                ✕
+              </span>
+              <span className="font-semibold">
+                Error{result.status ? ` (${result.status})` : ""}
+              </span>
+            </div>
+
+            <p data-testid="csv-ingest-error" className="text-rose-100/90">
+              {result.message || "Upload failed. Please check the file and try again."}
+            </p>
+
+            {result.data && (
+              <details className="mt-2 text-xs text-rose-100/70">
+                <summary className="cursor-pointer select-none underline underline-offset-2">
+                  View technical details
+                </summary>
+                <pre className="mt-2 whitespace-pre-wrap break-all rounded-md bg-rose-950/60 p-2">
+                  {JSON.stringify(result.data, null, 2)}
+                </pre>
+              </details>
             )}
           </div>
         )}

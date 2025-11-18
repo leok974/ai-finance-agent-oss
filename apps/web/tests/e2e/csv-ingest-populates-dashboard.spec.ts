@@ -144,4 +144,40 @@ test.describe('@prod CSV ingest', () => {
       }
     }
   });
+
+  test('@prod csv ingest shows friendly success message in UI', async ({ page }) => {
+    // Navigate to the app
+    await page.goto('/');
+    await page.waitForLoadState('networkidle');
+
+    // Create a test CSV with a few transactions
+    const csvContent = [
+      'date,amount,description,merchant',
+      '2025-11-10,-35.50,Coffee Shop,STARBUCKS',
+      '2025-11-11,-120.00,Groceries,WHOLE FOODS',
+      '2025-11-12,-15.99,Streaming,NETFLIX',
+    ].join('\n');
+
+    // Find the file input and upload
+    const fileInput = page.getByTestId('uploadcsv-input');
+    
+    // Create a file-like buffer for the upload
+    await fileInput.setInputFiles({
+      name: 'test_transactions.csv',
+      mimeType: 'text/csv',
+      buffer: Buffer.from(csvContent, 'utf-8'),
+    });
+
+    // Click the upload button
+    const uploadButton = page.getByTestId('uploadcsv-submit');
+    await uploadButton.click();
+
+    // Wait for the success message to appear
+    const summary = page.getByTestId('csv-ingest-summary');
+    await expect(summary).toBeVisible({ timeout: 10000 });
+    
+    // Verify the friendly message contains expected text
+    await expect(summary).toContainText('CSV ingested successfully');
+    await expect(summary).toContainText('transaction');
+  });
 });
