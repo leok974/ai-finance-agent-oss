@@ -5,7 +5,7 @@
 
 import { test, expect } from "@playwright/test";
 
-test.describe("@frontend Pending Transactions Filter", () => {
+test.describe("@prod @frontend Pending Transactions Filter", () => {
   test.beforeEach(async ({ page }) => {
     // Navigate to transactions page
     await page.goto("/transactions");
