@@ -2187,6 +2187,14 @@ export default function ChatDock() {
           className="lm-chat-backdrop"
           aria-label="Close LedgerMind Assistant"
           onClick={handleClose}
+          onWheel={(e) => {
+            // CRITICAL: Don't stopPropagation on wheel events.
+            // Let scroll events pass through to the document so page can scroll.
+            // We only want to capture clicks, not scrolling.
+          }}
+          onTouchMove={(e) => {
+            // Same for touch events - allow them to propagate for scrolling
+          }}
         />
       )}
 

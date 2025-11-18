@@ -880,6 +880,14 @@ textarea.lm-input,
   background: transparent;
   pointer-events: auto;
   cursor: pointer;
+  
+  /* CRITICAL: Allow page scrolling to work through the backdrop.
+   * Without this, the backdrop intercepts scroll wheel events and blocks page scroll.
+   * Setting overflow to visible/auto isn't enough because the backdrop has no content.
+   * We need to ensure scroll events are not captured by this element. */
+  touch-action: auto;
+  /* Prevent the backdrop from becoming a scroll container */
+  overflow: visible;
 }
 
 /* Card itself */
