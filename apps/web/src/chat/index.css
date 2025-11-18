@@ -759,15 +759,34 @@ textarea.lm-input,
 /* Root launcher container (fixed bottom-right) */
 .lm-chat-launcher {
   position: fixed;
+  /* Anchor point at bottom-right corner of viewport */
   right: 1.75rem;
   bottom: 1.75rem;
-  z-index: 70;
-  pointer-events: none; /* children opt in */
+
+  /* No z-index - let children establish their own stacking */
+  pointer-events: none;
+
+  /* Auto-size to children */
+  width: auto;
+  height: auto;
+}
+
+/* Children opt-in to pointer-events */
+.lm-chat-launcher-bubble,
+.lm-chat-shell,
+.lm-chat-backdrop {
+  pointer-events: auto;
 }
 
 /* Floating bubble button */
 .lm-chat-launcher-bubble {
   pointer-events: auto;
+
+  /* Position bubble at the anchor point (bottom-right corner) */
+  position: fixed;
+  right: 1.75rem;
+  bottom: 1.75rem;
+
   width: 44px;
   height: 44px;
   border-radius: 9999px;
@@ -812,11 +831,12 @@ textarea.lm-input,
    SHELL (ANCHORED ABOVE LAUNCHER)
    ============================================ */
 
-/* Shell anchored above bubble */
+/* Shell positioned absolutely inside launcher, sits above bubble */
 .lm-chat-shell {
-  position: fixed;
-  right: 1.75rem;
-  bottom: 1.75rem;
+  position: absolute;
+  right: 0;
+  /* 44px = bubble height, 16px = gap above bubble */
+  bottom: calc(44px + 16px);
   max-width: 640px;
   width: min(640px, calc(100vw - 2rem));
   border-radius: 1.5rem;
@@ -859,6 +879,7 @@ textarea.lm-input,
   border: 0;
   background: transparent;
   pointer-events: auto;
+  cursor: pointer;
 }
 
 /* Card itself */
@@ -1195,7 +1216,7 @@ textarea.lm-input,
   position: fixed !important;
   right: 1.75rem !important;
   bottom: 1.75rem !important;
-  z-index: 70 !important;
+  z-index: 80 !important;
   pointer-events: none !important;
 }
 
@@ -1242,20 +1263,7 @@ textarea.lm-input,
   z-index: 69 !important;
 }
 
-[data-testid="lm-chat-shell"] {
-  pointer-events: auto !important;
-  width: min(480px, 100vw - 32px) !important;
-  max-height: min(420px, 100vh - 260px) !important;
-  margin-bottom: 24px !important;
-  position: relative !important;
-  border-radius: 24px !important;
-  overflow: hidden !important;
-  box-shadow: 0 18px 45px rgba(15, 23, 42, 0.96),
-              0 0 0 1px rgba(15, 23, 42, 0.95) !important;
-  transform-origin: bottom center !important;
-}
-
-/* [data-testid="lm-chat-backdrop"] styles removed - using .lm-chat-backdrop class instead */
+/* Legacy data-testid overrides removed - using class-based styles instead */
 
 .lm-chat-shell-inner {
   position: relative !important;
