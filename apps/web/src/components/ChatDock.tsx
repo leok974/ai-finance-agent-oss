@@ -210,6 +210,23 @@ export default function ChatDock() {
     setOpen(false);
   }, [open]);
 
+  // Backdrop wheel handler: allow page scrolling even when backdrop is on top
+  const handleBackdropWheel = useCallback(
+    (event: React.WheelEvent<HTMLButtonElement>) => {
+      // Don't block the default; just mirror the scroll onto the page.
+      // This makes sure the main document scrolls even though the backdrop
+      // is on top of it.
+      if (typeof window === 'undefined') return;
+
+      const deltaY = event.deltaY ?? 0;
+      if (deltaY !== 0) {
+        window.scrollBy({ top: deltaY, behavior: 'auto' });
+      }
+      // IMPORTANT: do NOT call event.preventDefault() here.
+    },
+    [],
+  );
+
   // --- open / close helpers ------------------------------------
   const reallyClose = useCallback(() => {
     setOpen(false);
@@ -2187,14 +2204,7 @@ export default function ChatDock() {
           className="lm-chat-backdrop"
           aria-label="Close LedgerMind Assistant"
           onClick={handleClose}
-          onWheel={(e) => {
-            // CRITICAL: Don't stopPropagation on wheel events.
-            // Let scroll events pass through to the document so page can scroll.
-            // We only want to capture clicks, not scrolling.
-          }}
-          onTouchMove={(e) => {
-            // Same for touch events - allow them to propagate for scrolling
-          }}
+          onWheel={handleBackdropWheel}
         />
       )}
 

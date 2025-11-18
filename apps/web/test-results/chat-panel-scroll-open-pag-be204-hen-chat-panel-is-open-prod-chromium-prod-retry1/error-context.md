@@ -299,7 +299,7 @@
             - generic [ref=e283]: LEDGERMIND ASSISTANT
             - generic [ref=e284]: "LLM: OK"
           - generic [ref=e286]:
-            - button "Export JSON" [ref=e287] [cursor=pointer]
+            - button "Export JSON" [disabled] [ref=e287] [cursor=pointer]
             - button "Export Markdown" [ref=e288] [cursor=pointer]
             - button "Hide tools" [ref=e289] [cursor=pointer]
         - generic [ref=e290]:
