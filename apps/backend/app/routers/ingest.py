@@ -132,11 +132,10 @@ async def _ingest_csv_impl(
     )
     rows = list(reader)
 
-    # DEBUG: Log CSV headers to diagnose column mismatch issues
-    if reader.fieldnames:
-        logger.info(
-            f"CSV headers detected: {reader.fieldnames} (user_id={user_id}, filename={file.filename})"
-        )
+    # DEBUG: Log CSV headers to diagnose column mismatch issues (ALWAYS log, even if None)
+    logger.info(
+        f"CSV headers detected: {reader.fieldnames} | rows_count={len(rows)} | (user_id={user_id}, filename={file.filename})"
+    )
 
     # Try to infer if not provided
     flip = False
