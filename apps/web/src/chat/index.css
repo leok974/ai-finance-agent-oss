@@ -765,15 +765,6 @@ textarea.lm-input,
   pointer-events: none; /* children opt in */
 }
 
-/* Stack: shell above, bubble below */
-.lm-chat-launcher-stack {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 0.75rem;
-  pointer-events: auto;
-}
-
 /* Floating bubble button */
 .lm-chat-launcher-bubble {
   pointer-events: auto;
@@ -823,7 +814,9 @@ textarea.lm-input,
 
 /* Shell anchored above bubble */
 .lm-chat-shell {
-  position: relative;
+  position: fixed;
+  right: 1.75rem;
+  bottom: 1.75rem;
   max-width: 640px;
   width: min(640px, calc(100vw - 2rem));
   border-radius: 1.5rem;
@@ -832,6 +825,7 @@ textarea.lm-input,
   transform: translateY(12px) scale(0.96);
   transform-origin: bottom right;
   pointer-events: none;
+  z-index: 72;
   transition:
     opacity 160ms cubic-bezier(0.16, 1, 0.3, 1),
     transform 160ms cubic-bezier(0.16, 1, 0.3, 1);
@@ -855,16 +849,15 @@ textarea.lm-input,
    FULL-SCREEN BACKDROP
    ============================================ */
 
-/* Full-screen backdrop for closing panel */
+/* Invisible full-screen backdrop for closing panel */
 .lm-chat-backdrop {
   position: fixed;
   inset: 0;
-  border: 0;
-  padding: 0;
+  z-index: 71;
   margin: 0;
+  padding: 0;
+  border: 0;
   background: transparent;
-  cursor: default;
-  z-index: 60; /* below launcher root (70) but above page content */
   pointer-events: auto;
 }
 
@@ -1262,16 +1255,7 @@ textarea.lm-input,
   transform-origin: bottom center !important;
 }
 
-[data-testid="lm-chat-backdrop"] {
-  position: absolute !important;
-  inset: -40px !important;
-  background:
-    radial-gradient(circle at 10% 0%,
-                    rgba(56, 189, 248, 0.25),
-                    rgba(15, 23, 42, 0.98) 55%) !important;
-  filter: blur(22px) !important;
-  opacity: 0.9 !important;
-}
+/* [data-testid="lm-chat-backdrop"] styles removed - using .lm-chat-backdrop class instead */
 
 .lm-chat-shell-inner {
   position: relative !important;
