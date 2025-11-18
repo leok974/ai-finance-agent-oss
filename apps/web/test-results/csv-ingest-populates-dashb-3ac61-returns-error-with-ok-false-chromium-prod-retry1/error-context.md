@@ -224,58 +224,63 @@
     - region "Notifications (F8)":
       - list
   - generic:
-    - button "Close LedgerMind Assistant" [ref=e235] [cursor=pointer]:
+    - button "Open LedgerMind Assistant" [ref=e235] [cursor=pointer]:
       - generic [ref=e236]: LM
-    - button "Close LedgerMind Assistant" [ref=e237] [cursor=pointer]
-    - generic [ref=e240]:
-      - generic [ref=e241]:
-        - generic [ref=e242]:
-          - generic [ref=e243]:
-            - generic [ref=e244]: LEDGERMIND ASSISTANT
-            - generic [ref=e245]: "LLM: OK"
-          - generic [ref=e247]:
-            - button "Export JSON" [ref=e248] [cursor=pointer]
-            - button "Export Markdown" [ref=e249] [cursor=pointer]
-            - button "Hide tools" [ref=e250] [cursor=pointer]
-        - generic [ref=e251]:
-          - generic [ref=e252]:
-            - generic [ref=e254]: INSIGHTS
-            - generic [ref=e255]:
-              - button "Month summary" [ref=e256] [cursor=pointer]:
-                - img [ref=e257]
-                - generic [ref=e260]: Month summary
-              - button "Trends" [ref=e261] [cursor=pointer]:
-                - img [ref=e262]
-                - generic [ref=e265]: Trends
-              - button "Alerts" [ref=e266] [cursor=pointer]:
-                - img [ref=e267]
-                - generic [ref=e270]: Alerts
-          - generic [ref=e271]:
-            - generic [ref=e273]: SUBSCRIPTIONS
-            - generic [ref=e274]:
-              - button "Recurring" [ref=e275] [cursor=pointer]:
-                - img [ref=e276]
-                - generic [ref=e281]: Recurring
-              - button "Find subscriptions" [ref=e282] [cursor=pointer]:
-                - img [ref=e283]
-                - generic [ref=e286]: Find subscriptions
-          - generic [ref=e287]:
-            - generic [ref=e289]: SEARCH & PLANNING
-            - generic [ref=e290]:
-              - button "Insights (Q)" [ref=e291] [cursor=pointer]:
-                - img [ref=e292]
-                - generic [ref=e294]: Insights (Q)
-              - button "Budget suggest" [ref=e295] [cursor=pointer]:
-                - img [ref=e296]
-                - generic [ref=e299]: Budget suggest
-              - button "Search transactions (NL)" [ref=e300] [cursor=pointer]:
-                - img [ref=e301]
-                - generic [ref=e304]: Search transactions (NL)
-      - generic [ref=e306]:
-        - generic [ref=e307]:
-          - paragraph [ref=e308]: Hey! ≡ƒæï
-          - paragraph [ref=e309]: Start a conversation or pick a tool from the header to explore your spending.
-        - generic [ref=e310]:
-          - textbox "Ask or type a command..." [ref=e311]
-          - button "Send" [disabled] [ref=e312]
+    - generic:
+      - generic:
+        - generic:
+          - generic:
+            - generic:
+              - generic:
+                - generic: LEDGERMIND ASSISTANT
+                - generic: "LLM: OK"
+              - generic:
+                - button "Export JSON" [disabled]
+                - button "Export Markdown"
+                - button "Hide tools"
+            - generic:
+              - generic:
+                - generic:
+                  - generic: INSIGHTS
+                - generic:
+                  - button "Month summary":
+                    - img
+                    - generic: Month summary
+                  - button "Trends":
+                    - img
+                    - generic: Trends
+                  - button "Alerts":
+                    - img
+                    - generic: Alerts
+              - generic:
+                - generic:
+                  - generic: SUBSCRIPTIONS
+                - generic:
+                  - button "Recurring":
+                    - img
+                    - generic: Recurring
+                  - button "Find subscriptions":
+                    - img
+                    - generic: Find subscriptions
+              - generic:
+                - generic:
+                  - generic: SEARCH & PLANNING
+                - generic:
+                  - button "Insights (Q)":
+                    - img
+                    - generic: Insights (Q)
+                  - button "Budget suggest":
+                    - img
+                    - generic: Budget suggest
+                  - button "Search transactions (NL)":
+                    - img
+                    - generic: Search transactions (NL)
+          - generic:
+            - generic:
+              - generic:
+                - paragraph: Hey! 👋
+                - paragraph: Start a conversation or pick a tool from the header to explore your spending.
+              - generic:
+                - textbox "Ask or type a command..."
+                - button "Send" [disabled]
 ```

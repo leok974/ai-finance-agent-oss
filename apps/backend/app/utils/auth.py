@@ -302,6 +302,25 @@ def get_current_user(
     creds: Optional[HTTPAuthorizationCredentials] = Depends(bearer_scheme),
     db: Session = Depends(get_db),
 ) -> User:
+    # TEST_FAKE_AUTH: Complete auth bypass for E2E/integration tests
+    # Returns a stable fake user without requiring any cookies or auth headers
+    if os.getenv("TEST_FAKE_AUTH") == "1":
+        fake_email = "e2e-test-user@example.com"
+        u = db.query(User).filter(User.email == fake_email).first()
+        if not u:
+            u = User(
+                email=fake_email,
+                password_hash=hash_password("fake-password-for-testing")
+            )
+            db.add(u)
+            db.commit()
+            db.refresh(u)
+            _ensure_roles(db, u, ["user", "admin"])  # Grant all roles for testing
+        else:
+            # Ensure roles are present even if user already exists
+            _ensure_roles(db, u, ["user", "admin"])
+        return u
+    
     # Optional local dev bypass for fast e2e when explicitly enabled
     if is_dev() and os.getenv("E2E_FAST_AUTH") == "1":
         # Minimal user shape: ensure a user exists matching the token/email below if queried later
