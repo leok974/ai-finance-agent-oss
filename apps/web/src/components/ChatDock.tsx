@@ -1930,10 +1930,7 @@ export default function ChatDock() {
   }, [rb]);
 
   const bubbleIcon = (
-    <>
-      <span className="text-base" aria-hidden>≡ƒÆ¼</span>
-      <span className="sr-only">{open ? "Close agent chat" : "Open agent chat"}</span>
-    </>
+    <span className="lm-chat-launcher-glyph">LM</span>
   );
 
   const panel = (
@@ -2208,8 +2205,9 @@ export default function ChatDock() {
         type="button"
         ref={triggerRef}
         data-testid="lm-chat-launcher-button"
-        className="lm-chat-launcher-bubble"
+        aria-label={open ? 'Close LedgerMind Assistant' : 'Open LedgerMind Assistant'}
         onClick={handleToggle}
+        className="lm-chat-launcher-bubble"
       >
         {bubbleIcon}
       </button>
