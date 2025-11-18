@@ -964,7 +964,7 @@ export default function ChatDock() {
       } catch (_err) {
         // If greeting fails, fall back to simple message
         queueMicrotask(() => {
-          appendAssistant("Hey! ≡ƒæï How can I help you with your finances today?", { kind: "greeting" });
+          appendAssistant("Hey! 👋 How can I help you with your finances today?", { kind: "greeting" });
         });
       }
     };
@@ -2129,15 +2129,13 @@ export default function ChatDock() {
 
       {/* Dark footer */}
       <CardFooter className="lm-chat-footer">
-        <div className="lm-chat-footer-inner">
-          <div className="lm-chat-greeting">
-            <p className="lm-chat-greeting-title">Hey! ≡ƒæï</p>
-            <p className="lm-chat-greeting-body">
-              Start a conversation or pick a tool from the header to explore your spending.
-            </p>
-          </div>
-
-          <form className="lm-chat-input-row" onSubmit={(e) => { e.preventDefault(); handleSend(); }}>
+          <div className="lm-chat-footer-inner">
+            <div className="lm-chat-greeting">
+              <p className="lm-chat-greeting-title">Hey! 👋</p>
+              <p className="lm-chat-greeting-body">
+                Start a conversation or pick a tool from the header to explore your spending.
+              </p>
+            </div>          <form className="lm-chat-input-row" onSubmit={(e) => { e.preventDefault(); handleSend(); }}>
             <input
               className="lm-chat-input"
               placeholder="Ask or type a command..."
