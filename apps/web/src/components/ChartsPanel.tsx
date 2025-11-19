@@ -127,29 +127,64 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
 
   const categoriesData = useMemo(() => categories, [categories]);
   const merchantsData = useMemo(() => {
-    // Clean up merchant data for chart display
-    // Keep valid merchants with positive spend
-    const validMerchants = merchants.filter((m) => Number.isFinite(m.total) && m.total > 0);
+    // Resilient merchant filtering - treat API data defensively
+    const MIN_SPEND = 0.01;
 
-    // Separate unknown merchants
-    const unknownMerchants = validMerchants.filter((m) => m.label.toLowerCase() === 'unknown');
-    const knownMerchants = validMerchants.filter((m) => m.label.toLowerCase() !== 'unknown');
+    // 1) Separate known vs unknown merchants
+    const known = merchants.filter((m) => {
+      const label = (m.label || '').toLowerCase();
+      const spend = Math.abs(m.total);
+      return label && label !== 'unknown' && spend >= MIN_SPEND;
+    });
 
-    // If we only have unknown merchants, keep one aggregated bucket
-    if (knownMerchants.length === 0 && unknownMerchants.length > 0) {
-      const totalUnknown = unknownMerchants.reduce((sum, m) => sum + m.total, 0);
-      const countUnknown = unknownMerchants.reduce((sum, m) => sum + m.count, 0);
-      return [{
+    const unknownRows = merchants.filter((m) => {
+      const label = (m.label || '').toLowerCase();
+      const spend = Math.abs(m.total);
+      return (!label || label === 'unknown') && spend >= MIN_SPEND;
+    });
+
+    // 2) Aggregate unknown into a single bucket if needed
+    let unknownBucket: UIMerchant | null = null;
+    if (unknownRows.length) {
+      const total = unknownRows.reduce((sum, m) => sum + Math.abs(m.total), 0);
+      const count = unknownRows.reduce((sum, m) => sum + (m.count ?? 0), 0);
+      unknownBucket = {
         merchant_key: 'unknown',
         label: 'Unknown',
-        total: totalUnknown,
-        count: countUnknown,
-        statement_examples: []
-      }];
+        total,
+        count,
+        statement_examples: unknownRows
+          .flatMap((m) => m.statement_examples ?? [])
+          .slice(0, 3),
+      };
     }
 
-    // Otherwise return only known merchants
-    return knownMerchants;
+    // 3) Build chart data
+    let chartMerchants: UIMerchant[] = [];
+    if (known.length) {
+      chartMerchants = known;
+    } else if (unknownBucket) {
+      // Only unknown merchants in the month → show the single Unknown bar
+      chartMerchants = [unknownBucket];
+    }
+
+    // 4) Final safety: if we still have nothing but the API had spend,
+    //    fall back to whatever the backend gave us
+    if (
+      !chartMerchants.length &&
+      merchants.some((m) => Math.abs(m.total) >= MIN_SPEND)
+    ) {
+      chartMerchants = merchants.map((m) => ({
+        ...m,
+        total: Math.abs(m.total),
+      }));
+    }
+
+    // Debug logging (can remove after verification)
+    console.log('[charts] merchants raw', merchants);
+    console.log('[charts] merchants chart', chartMerchants);
+
+    return chartMerchants;
   }, [merchants]);
   const flowsData = useMemo(() => daily, [daily]);
   const trendsData = useMemo(
