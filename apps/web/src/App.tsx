@@ -52,6 +52,7 @@ import logoPng from "@/assets/ledgermind-lockup-1024.png";
 import { useLlmStore } from '@/state/llmStore';
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
+import LandingHero from "@/components/LandingHero";
 
 // Lazy-load admin panels (only load when accessed)
 const AdminRulesPanel = React.lazy(() => import("@/components/admin/AdminRulesPanel"));
@@ -297,22 +298,7 @@ const App: React.FC = () => {
 
   // Always call hooks above; render gates below
   if (!ready || !authReady) return <div className="p-6 text-[color:var(--text-muted)]">Loading…</div>;
-  if (!authOk) return (
-    <div className="min-h-dvh w-full bg-black text-white flex items-center justify-center">
-      <div className="flex flex-col items-center gap-10">
-        {/* Large LedgerMind logo (no card/box) */}
-        <img
-          src={logoPng}
-          alt="LedgerMind"
-          className="w-[240px] sm:w-[320px] md:w-[420px] lg:w-[520px] select-none pointer-events-none"
-          draggable={false}
-        />
-
-        {/* Centered Google button */}
-        <AuthMenu />
-      </div>
-    </div>
-  );
+  if (!authOk) return <LandingHero />;
 
   return (
   <MonthContext.Provider value={{ month, setMonth }}>
