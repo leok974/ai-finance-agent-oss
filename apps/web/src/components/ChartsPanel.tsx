@@ -21,6 +21,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   formatCurrency,
+  formatCurrencyShort,
   formatDateLabel,
   formatLegendLabel,
   truncateMerchantLabel,
@@ -168,6 +169,7 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
   const hasMerchantData = topMerchantsData.some(
     (m) => Number.isFinite(m.spend) && m.spend >= MIN_SPEND
   );
+
   const flowsData = useMemo(() => daily, [daily]);
   const trendsData = useMemo(
     () => (trends?.trends ?? []).map((t: any) => ({ month: t.month, spent: t.spent ?? t.spending ?? 0 })),
@@ -347,15 +349,25 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
           </div>
         )}
         {!loading && hasMerchantData && (
-          <div className="h-64">
+          <div className="h-64" data-testid="top-merchants-chart">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart
                 data={topMerchantsData}
                 margin={{ top: 16, right: 16, left: 0, bottom: 0 }}
                 barCategoryGap={24}
-                data-testid="top-merchants-chart"
               >
-                {/* No axes - clean look with tooltips only */}
+                {/* Keep X axis hidden - merchant names come from tooltip */}
+                <XAxis dataKey="label" hide />
+
+                {/* Show Y axis with compact currency formatting */}
+                <YAxis
+                  width={60}
+                  tickLine={false}
+                  axisLine={false}
+                  tick={{ fontSize: 11, fill: 'var(--lm-chart-axis)' }}
+                  tickFormatter={(value: number) => formatCurrencyShort(value)}
+                />
+
                 <Tooltip
                   contentStyle={tooltipStyle}
                   itemStyle={tooltipItemStyle}
