@@ -26,6 +26,7 @@ import {
   formatLegendLabel,
   truncateMerchantLabel,
 } from "@/lib/charts/formatters";
+import { MONEY_Y_AXIS_PROPS, formatMoneyTick } from "@/components/charts/utils";
 
 // Cast so TS treats them as FCs (safe for now)
 const ResponsiveContainer = RC.ResponsiveContainer as unknown as React.FC<any>;
@@ -295,18 +296,19 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={categoriesData}>
                 <CartesianGrid stroke="var(--grid-line)" />
-                <XAxis dataKey="name" tick={{ fill: "var(--text-muted)" }} stroke="var(--border-subtle)" />
-                <YAxis
-                  tick={{ fill: "var(--text-muted)" }}
-                  stroke="var(--border-subtle)"
-                  tickFormatter={formatCurrency}
-                  label={{ value: t('ui.charts.axis_spend'), angle: -90, position: "insideLeft", fill: "var(--text-muted)" }}
+                <XAxis
+                  dataKey="name"
+                  tickLine={false}
+                  axisLine={false}
+                  tick={{ fontSize: 11, fill: 'var(--lm-chart-axis)' }}
                 />
+                {/* Shared money Y axis */}
+                <YAxis {...MONEY_Y_AXIS_PROPS} />
                 <Tooltip
                   contentStyle={tooltipStyle}
                   itemStyle={tooltipItemStyle}
                   labelStyle={tooltipLabelStyle}
-                  formatter={(value: any) => formatCurrency(Number(value))}
+                  formatter={(value: any) => [formatMoneyTick(Number(value)), 'Spend']}
                 />
                 <Legend content={<BarPaletteLegend label={t('ui.charts.legend_spend')} />} />
                 <Bar dataKey="amount" name={t('ui.charts.legend_spend')} activeBar={{ fillOpacity: 1, stroke: "#fff", strokeWidth: 1 }} fillOpacity={0.9}>
@@ -359,14 +361,8 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
                 {/* Keep X axis hidden - merchant names come from tooltip */}
                 <XAxis dataKey="label" hide />
 
-                {/* Show Y axis with compact currency formatting */}
-                <YAxis
-                  width={60}
-                  tickLine={false}
-                  axisLine={false}
-                  tick={{ fontSize: 11, fill: 'var(--lm-chart-axis)' }}
-                  tickFormatter={(value: number) => formatCurrencyShort(value)}
-                />
+                {/* Shared money Y axis */}
+                <YAxis {...MONEY_Y_AXIS_PROPS} />
 
                 <Tooltip
                   contentStyle={tooltipStyle}
@@ -377,11 +373,7 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
                     const amount = value as number;
                     const suffix = d.count && d.count > 1 ? ` (${d.count} txns)` : '';
                     return [
-                      amount.toLocaleString('en-US', {
-                        style: 'currency',
-                        currency: 'USD',
-                        maximumFractionDigits: 0,
-                      }) + suffix,
+                      formatMoneyTick(amount) + suffix,
                       'Spend',
                     ];
                   }}
@@ -433,21 +425,21 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
                 <CartesianGrid stroke="var(--grid-line)" />
                 <XAxis
                   dataKey="date"
-                  tick={{ fill: "var(--text-muted)" }}
-                  stroke="var(--border-subtle)"
+                  tickLine={false}
+                  axisLine={false}
+                  tick={{ fontSize: 11, fill: 'var(--lm-chart-axis)' }}
                   tickFormatter={formatDateLabel}
                 />
-                <YAxis
-                  tick={{ fill: "var(--text-muted)" }}
-                  stroke="var(--border-subtle)"
-                  tickFormatter={formatCurrency}
-                  label={{ value: t('ui.charts.axis_amount'), angle: -90, position: "insideLeft", fill: "var(--text-muted)" }}
-                />
+                {/* Shared money Y axis */}
+                <YAxis {...MONEY_Y_AXIS_PROPS} />
                 <Tooltip
                   contentStyle={tooltipStyle}
                   itemStyle={tooltipItemStyle}
                   labelStyle={tooltipLabelStyle}
-                  formatter={(value: any) => formatCurrency(Number(value))}
+                  formatter={(value: any, key: string) => [
+                    formatMoneyTick(Number(value)),
+                    key === 'in' ? 'Income' : key === 'out' ? 'Spend' : 'Net',
+                  ]}
                   labelFormatter={formatDateLabel}
                 />
                 <Legend
@@ -487,13 +479,20 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={trendsData}>
                 <CartesianGrid stroke="var(--grid-line)" />
-                <XAxis dataKey="month" tick={{ fill: "var(--text-muted)" }} stroke="var(--border-subtle)" />
-                <YAxis
-                  tick={{ fill: "var(--text-muted)" }}
-                  stroke="var(--border-subtle)"
-                  label={{ value: t('ui.charts.axis_spend'), angle: -90, position: "insideLeft", fill: "var(--text-muted)" }}
+                <XAxis
+                  dataKey="month"
+                  tickLine={false}
+                  axisLine={false}
+                  tick={{ fontSize: 11, fill: 'var(--lm-chart-axis)' }}
                 />
-                <Tooltip contentStyle={tooltipStyle} itemStyle={tooltipItemStyle} labelStyle={tooltipLabelStyle} />
+                {/* Shared money Y axis */}
+                <YAxis {...MONEY_Y_AXIS_PROPS} />
+                <Tooltip
+                  contentStyle={tooltipStyle}
+                  itemStyle={tooltipItemStyle}
+                  labelStyle={tooltipLabelStyle}
+                  formatter={(value: any) => [formatMoneyTick(Number(value)), 'Spend']}
+                />
                 <Legend wrapperStyle={legendTextStyle} />
                 <Line type="monotone" dataKey="spent" name="Spent" stroke="#f59e0b" strokeWidth={2} dot={false} />
               </LineChart>
