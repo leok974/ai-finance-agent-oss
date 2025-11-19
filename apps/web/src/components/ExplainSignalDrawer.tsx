@@ -19,15 +19,24 @@ function GroundedBadge() {
 }
 
 
-export default function ExplainSignalDrawer({ txnId, open, onOpenChange, txn }: {
+type SuggestionItem = {
+  category_slug: string
+  label?: string
+  score: number
+  why?: string[]
+}
+
+export default function ExplainSignalDrawer({ txnId, open, onOpenChange, txn, suggestions }: {
   txnId: number | null
   open: boolean
   onOpenChange: (v: boolean) => void
   txn?: any
+  suggestions?: SuggestionItem[]
 }) {
   const portalReady = useSafePortalReady();
   const [loading, setLoading] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
+  const [llmUnavailable, setLlmUnavailable] = React.useState(false)
   const [data, setData] = React.useState<ExplainResponse | null>(null)
 
   React.useEffect(() => {
@@ -35,12 +44,21 @@ export default function ExplainSignalDrawer({ txnId, open, onOpenChange, txn }: 
     let ignore = false
     setLoading(true)
     setError(null)
+    setLlmUnavailable(false)
     ;(async () => {
       try {
         const res = await getExplain(txnId)
         if (!ignore) setData(res)
       } catch (e: any) {
-        if (!ignore) setError(e?.message ?? String(e))
+        if (!ignore) {
+          // Treat 404 as "LLM explanation unavailable" - not an error
+          const is404 = e?.status === 404 || e?.response?.status === 404 || String(e).includes('404')
+          if (is404) {
+            setLlmUnavailable(true)
+          } else {
+            setError(e?.message ?? String(e))
+          }
+        }
       } finally {
         if (!ignore) setLoading(false)
       }
@@ -92,9 +110,43 @@ export default function ExplainSignalDrawer({ txnId, open, onOpenChange, txn }: 
           )}
           {error && (
             <div className="text-sm text-amber-300/90 bg-amber-500/10 border border-amber-500/30 rounded-xl p-3">
-              Failed to load: <code>{error}</code>
+              Failed to load explanation: <code>{error}</code>
             </div>
           )}
+
+          {/* Display deterministic suggestions from local data */}
+          {suggestions && suggestions.length > 0 && (
+            <section className="space-y-3">
+              <div className="text-xs uppercase tracking-wide opacity-70 mb-2">Suggestions for this transaction</div>
+              {suggestions.map((sug) => (
+                <div key={sug.category_slug} className="rounded-lg bg-slate-900/70 p-3 border border-white/5">
+                  <div className="flex items-center justify-between text-sm mb-2">
+                    <span className="font-medium">
+                      {sug.label || sug.category_slug}
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-slate-400">
+                        {Math.round(sug.score * 100)}%
+                      </span>
+                      <span className="text-[10px] px-2 py-0.5 rounded-full border border-current bg-accent/10 text-slate-400 uppercase tracking-wide">
+                        Model
+                      </span>
+                    </div>
+                  </div>
+                  {sug.why && sug.why.length > 0 ? (
+                    <ul className="text-xs text-slate-300 list-disc ml-4 space-y-1">
+                      {sug.why.map((reason, idx) => (
+                        <li key={idx}>{reason}</li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="text-xs text-slate-400">No additional explanation provided.</p>
+                  )}
+                </div>
+              ))}
+            </section>
+          )}
+
           {data && !fallbackHtml && (
             <div className="text-sm leading-6 whitespace-pre-wrap">{rationale}</div>
           )}
