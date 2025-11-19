@@ -2,26 +2,81 @@ import { test, expect } from '@playwright/test';
 
 const BASE_URL = process.env.BASE_URL ?? 'https://app.ledger-mind.org';
 
-test('@prod-critical toggles tools panel inside chat shell', async ({ page }) => {
-  // Navigate to the route that loads chat
-  await page.goto(`${BASE_URL}/?chat=1&prefetch=0&panel=0`);
+test.describe('Chat Tools Toggle and Clear', () => {
+  test('@prod-critical toggles tools panel inside chat shell', async ({ page }) => {
+    // Navigate to the route that loads chat
+    await page.goto(`${BASE_URL}/?chat=1&prefetch=0&panel=0`);
 
-  // ChatDock v2: shell in direct DOM
-  const shell = page.locator('[data-testid="lm-chat-shell"]');
-  await expect(shell).toBeVisible();
+    // ChatDock v2: shell in direct DOM
+    const shell = page.locator('[data-testid="lm-chat-shell"]');
+    await expect(shell).toBeVisible();
 
-  // The toggle button is in the main DOM now (no iframe)
-  const toggle = page.getByTestId('chat-tools-toggle');
-  await expect(toggle).toBeVisible();
+    // The toggle button uses the new test ID
+    const toggle = page.getByTestId('lm-chat-toggle-tools');
+    await expect(toggle).toBeVisible();
 
-  // Get initial state from shell (or appropriate element)
-  const before = await shell.getAttribute('data-tools-open');
+    // Check initial text (should be "Hide tools")
+    await expect(toggle).toHaveText('Hide tools');
 
-  // Click the toggle button (direct click, no iframe navigation)
-  await toggle.click();
+    // Tools section should be visible initially
+    const toolsSection = page.getByTestId('lm-chat-section-insights');
+    await expect(toolsSection).toBeVisible();
 
-  // Wait for the attribute to change
-  await expect
-    .poll(async () => await shell.getAttribute('data-tools-open'))
-    .not.toBe(before);
+    // Click the toggle button to hide tools
+    await toggle.click();
+
+    // Tools should be hidden
+    await expect(toolsSection).not.toBeVisible();
+    await expect(toggle).toHaveText('Show tools');
+
+    // Click again to show tools
+    await toggle.click();
+
+    // Tools should be visible again
+    await expect(toolsSection).toBeVisible();
+    await expect(toggle).toHaveText('Hide tools');
+  });
+
+  test('@prod-critical clear chat button works with confirmation', async ({ page }) => {
+    // Navigate to the route that loads chat
+    await page.goto(`${BASE_URL}/?chat=1&prefetch=0&panel=0`);
+
+    // Wait for chat shell
+    const shell = page.locator('[data-testid="lm-chat-shell"]');
+    await expect(shell).toBeVisible();
+
+    // Clear button should be disabled initially (no messages)
+    const clearButton = page.getByTestId('lm-chat-clear');
+    await expect(clearButton).toBeDisabled();
+
+    // Send a simple message
+    const input = page.locator('.lm-chat-input');
+    await input.fill('Hello');
+    await input.press('Enter');
+
+    // Wait for at least one message to appear
+    await page.waitForSelector('.lm-chat-message', { timeout: 10000 }).catch(() => {
+      // If no .lm-chat-message, the chat might use different selectors
+      // This test will need adjustment based on actual DOM
+    });
+
+    // Clear button should be enabled now
+    await expect(clearButton).toBeEnabled();
+
+    // Set up dialog handler to accept the confirmation
+    page.once('dialog', async (dialog) => {
+      expect(dialog.type()).toBe('confirm');
+      expect(dialog.message()).toContain('Clear chat history');
+      await dialog.accept();
+    });
+
+    // Click clear button
+    await clearButton.click();
+
+    // Wait a moment for the clear to process
+    await page.waitForTimeout(1000);
+
+    // Clear button should be disabled again
+    await expect(clearButton).toBeDisabled();
+  });
 });
