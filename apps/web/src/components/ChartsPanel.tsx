@@ -19,6 +19,12 @@ import {
   type MonthSummaryResp
 } from "../lib/api";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  formatCurrency,
+  formatDateLabel,
+  formatLegendLabel,
+  truncateMerchantLabel,
+} from "@/lib/charts/formatters";
 
 // Cast so TS treats them as FCs (safe for now)
 const ResponsiveContainer = RC.ResponsiveContainer as unknown as React.FC<any>;
@@ -248,9 +254,15 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
                 <YAxis
                   tick={{ fill: "var(--text-muted)" }}
                   stroke="var(--border-subtle)"
+                  tickFormatter={formatCurrency}
                   label={{ value: t('ui.charts.axis_spend'), angle: -90, position: "insideLeft", fill: "var(--text-muted)" }}
                 />
-                <Tooltip contentStyle={tooltipStyle} itemStyle={tooltipItemStyle} labelStyle={tooltipLabelStyle} />
+                <Tooltip
+                  contentStyle={tooltipStyle}
+                  itemStyle={tooltipItemStyle}
+                  labelStyle={tooltipLabelStyle}
+                  formatter={(value: any) => formatCurrency(Number(value))}
+                />
                 <Legend content={<BarPaletteLegend label={t('ui.charts.legend_spend')} />} />
                 <Bar dataKey="amount" name={t('ui.charts.legend_spend')} activeBar={{ fillOpacity: 1, stroke: "#fff", strokeWidth: 1 }} fillOpacity={0.9}>
                   {categoriesData.map((d: any, i: number) => (
@@ -291,13 +303,44 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={merchantsData}>
                 <CartesianGrid stroke="var(--grid-line)" />
-                <XAxis dataKey="merchant" tick={{ fill: "var(--text-muted)" }} stroke="var(--border-subtle)" />
+                <XAxis
+                  dataKey="display_name"
+                  tick={{ fill: "var(--text-muted)", fontSize: 12 }}
+                  stroke="var(--border-subtle)"
+                  angle={-30}
+                  textAnchor="end"
+                  height={80}
+                  tickFormatter={(value: any) => truncateMerchantLabel(value, 18)}
+                />
                 <YAxis
                   tick={{ fill: "var(--text-muted)" }}
                   stroke="var(--border-subtle)"
+                  tickFormatter={formatCurrency}
                   label={{ value: t('ui.charts.axis_spend'), angle: -90, position: "insideLeft", fill: "var(--text-muted)" }}
                 />
-                <Tooltip contentStyle={tooltipStyle} itemStyle={tooltipItemStyle} labelStyle={tooltipLabelStyle} />
+                <Tooltip
+                  contentStyle={tooltipStyle}
+                  itemStyle={tooltipItemStyle}
+                  labelStyle={tooltipLabelStyle}
+                  formatter={(value: any, name: any, props: any) => {
+                    const examples = props.payload.statement_examples || [];
+                    const label = formatCurrency(Number(value));
+                    if (examples.length > 0) {
+                      return [
+                        <div key="tooltip-content">
+                          <div>{label}</div>
+                          <div style={{ fontSize: '0.75rem', opacity: 0.8, marginTop: '4px' }}>
+                            {examples.slice(0, 2).map((ex: string, i: number) => (
+                              <div key={i}>{ex}</div>
+                            ))}
+                          </div>
+                        </div>,
+                        name
+                      ];
+                    }
+                    return [label, name];
+                  }}
+                />
                 <Legend content={<BarPaletteLegend label={t('ui.charts.legend_spend')} />} />
                 <Bar dataKey="spend" name={t('ui.charts.legend_spend')} activeBar={{ fillOpacity: 1, stroke: "#fff", strokeWidth: 1 }} fillOpacity={0.9}>
                   {merchantsData.map((d: any, i: number) => (
@@ -335,17 +378,32 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={flowsData}>
                 <CartesianGrid stroke="var(--grid-line)" />
-                <XAxis dataKey="date" tick={{ fill: "var(--text-muted)" }} stroke="var(--border-subtle)" />
+                <XAxis
+                  dataKey="date"
+                  tick={{ fill: "var(--text-muted)" }}
+                  stroke="var(--border-subtle)"
+                  tickFormatter={formatDateLabel}
+                />
                 <YAxis
                   tick={{ fill: "var(--text-muted)" }}
                   stroke="var(--border-subtle)"
+                  tickFormatter={formatCurrency}
                   label={{ value: t('ui.charts.axis_amount'), angle: -90, position: "insideLeft", fill: "var(--text-muted)" }}
                 />
-                <Tooltip contentStyle={tooltipStyle} itemStyle={tooltipItemStyle} labelStyle={tooltipLabelStyle} />
-                <Legend wrapperStyle={legendTextStyle} />
-                <Line type="monotone" dataKey="in"  name={t('ui.charts.line_in')}  stroke="#22c55e" strokeWidth={2} dot={false} />
-                <Line type="monotone" dataKey="out" name={t('ui.charts.line_out')} stroke="#ef4444" strokeWidth={2} dot={false} />
-                <Line type="monotone" dataKey="net" name={t('ui.charts.line_net')} stroke="#60a5fa" strokeWidth={2} dot={false} />
+                <Tooltip
+                  contentStyle={tooltipStyle}
+                  itemStyle={tooltipItemStyle}
+                  labelStyle={tooltipLabelStyle}
+                  formatter={(value: any) => formatCurrency(Number(value))}
+                  labelFormatter={formatDateLabel}
+                />
+                <Legend
+                  wrapperStyle={legendTextStyle}
+                  formatter={formatLegendLabel}
+                />
+                <Line type="monotone" dataKey="in"  name="in"  stroke="#22c55e" strokeWidth={2} dot={false} />
+                <Line type="monotone" dataKey="out" name="out" stroke="#ef4444" strokeWidth={2} dot={false} />
+                <Line type="monotone" dataKey="net" name="net" stroke="#60a5fa" strokeWidth={2} dot={false} />
               </LineChart>
             </ResponsiveContainer>
           </div>
