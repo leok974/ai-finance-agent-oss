@@ -5,6 +5,7 @@ from decimal import Decimal, ROUND_HALF_UP
 from datetime import datetime, date
 from app.utils.time import utc_now
 from typing import Optional
+from enum import Enum
 
 from app.db import get_db
 from app.orm_models import Transaction
@@ -25,6 +26,12 @@ def _round2(x: Decimal) -> Decimal:
     return x.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
 
+class TransactionStatusFilter(str, Enum):
+    all = "all"
+    posted = "posted"
+    pending = "pending"
+
+
 @router.get("", response_model=dict)
 def list_txns(
     q: Optional[str] = None,
@@ -32,6 +39,7 @@ def list_txns(
     category: Optional[str] = None,
     merchant: Optional[str] = None,
     include_deleted: bool = False,
+    status: TransactionStatusFilter = TransactionStatusFilter.all,
     limit: int = 50,
     offset: int = 0,
     sort: str = "-date",
@@ -52,6 +60,12 @@ def list_txns(
             Transaction.description.ilike(like)
             | Transaction.merchant_canonical.ilike(like)
         )
+    
+    # Apply status filter
+    if status == TransactionStatusFilter.posted:
+        qry = qry.filter(Transaction.pending.is_(False))
+    elif status == TransactionStatusFilter.pending:
+        qry = qry.filter(Transaction.pending.is_(True))
 
     desc = sort.startswith("-")
     field = sort[1:] if desc else sort
@@ -74,6 +88,7 @@ def list_txns(
                 "split_parent_id": r.split_parent_id,
                 "transfer_group": r.transfer_group,
                 "deleted_at": r.deleted_at.isoformat() if r.deleted_at else None,
+                "pending": r.pending,
             }
             for r in rows
         ],
@@ -101,6 +116,7 @@ def get_txn(id: int, db: Session = Depends(get_db)):
         "split_parent_id": t.split_parent_id,
         "transfer_group": t.transfer_group,
         "deleted_at": t.deleted_at.isoformat() if t.deleted_at else None,
+        "pending": t.pending,
     }
 
 

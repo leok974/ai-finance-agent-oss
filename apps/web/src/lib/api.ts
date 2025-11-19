@@ -377,7 +377,14 @@ export const downloadReportCsv = (month: string) => window.open(`${apiUrl('/repo
 
 // ---------- Charts ----------
 // Normalized UI types (isolate backend drift to mappers below)
-export type UIMerchant = { merchant: string; spend: number; txns: number };
+export type UIMerchant = {
+  merchant_key: string;
+  label: string;  // Normalized display name
+  total: number;  // Total spend amount
+  count: number;  // Transaction count
+  statement_examples?: string[];
+  category?: string;  // Learned category from merchant cache
+};
 export type UIDaily = { date: string; in: number; out: number; net: number };
 export type UICategory = { name: string; amount: number };
 
@@ -426,9 +433,12 @@ export async function getMonthMerchants(month?: string): Promise<UIMerchant[]> {
       body: JSON.stringify({ month })
     });
     return arr<Record<string, unknown>>(r?.items).map((m) => ({
-      merchant: String(m.merchant ?? 'Unknown'),
-      spend: num(m.spend),
-      txns: num(m.txns)
+      merchant_key: String(m.merchant_key ?? m.merchant ?? 'unknown'),
+      label: String(m.label ?? m.merchant ?? 'Unknown'),
+      total: num(m.total ?? m.spend),
+      count: num(m.count ?? m.txns),
+      statement_examples: arr<string>(m.statement_examples),
+      category: m.category ? String(m.category) : undefined,
     }));
   } catch (e) {
     console.warn('[api] getMonthMerchants failed:', e);
@@ -1213,6 +1223,7 @@ export async function listTxns(params: {
   category?: string;
   merchant?: string;
   include_deleted?: boolean;
+  status?: "all" | "posted" | "pending";
   limit?: number;
   offset?: number;
   sort?: string;
@@ -1585,11 +1596,14 @@ export async function explainTxnForChat(txnId: number | string) {
 // Rephrase (fallback implementation uses /agent/chat with a system prompt if dedicated endpoint absent)
 export async function agentRephrase(text: string, _opts?: Record<string, unknown>): Promise<{ reply: string; model?: string }> {
   try {
-    // Try a hypothetical fast endpoint first (ignore failure)
-    const r = await fetch(apiUrl('/agent/rephrase'), withCreds({
+    // Try the dedicated /agent/rephrase endpoint with correct AgentChatRequest format
+    const r = await fetch(apiUrl('agent/rephrase'), withCreds({
       method: 'POST',
       headers: withAuthHeaders({ 'Content-Type': 'application/json' }),
-      body: JSON.stringify({ text })
+      body: JSON.stringify({
+        messages: [{ role: 'user', content: text }],
+        intent: 'general'
+      })
     }));
     if (r.ok) {
       const d = await r.json() as { reply?: string; text?: string; model?: string };

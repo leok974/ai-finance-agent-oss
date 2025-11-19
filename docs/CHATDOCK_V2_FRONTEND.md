@@ -13,6 +13,26 @@ ChatDock v2 is the finance assistant chat interface for LedgerMind. It renders a
 
 ---
 
+## CSS Structure
+
+ChatDock v2 styling is split across two files with **intentional redundancy** to prevent build issues:
+
+- **Base Tailwind + app styles**: `apps/web/src/index.css`
+- **ChatDock v2 styles**: `apps/web/src/chat/index.css`
+
+### Guardrails
+
+**Critical:** The chat CSS file is imported in TWO places:
+
+1. `index.css` must always include: `@import "./chat/index.css";`
+2. `ChatDock.tsx` must always include: `import '../chat/index.css'`
+
+**Why?** Vite's code-splitting can create **orphaned CSS chunks** if the chat CSS is only imported from the component. The global import in `index.css` ensures chat styles are bundled into the main CSS chunk that `index.html` loads. Without it, the assistant renders completely unstyled in production.
+
+**Verification:** After modifying chat CSS, run `pnpm build && pnpm verify:chat-css` to ensure `.lm-chat-*` rules are present in the compiled bundle.
+
+---
+
 ## Component Tree & Responsibilities
 
 ```

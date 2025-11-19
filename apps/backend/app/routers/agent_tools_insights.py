@@ -78,6 +78,7 @@ Frontends must call /agent/tools/insights/expanded instead.
 class ExpandedIn(BaseModel):
     month: Optional[str] = None
     large_limit: Optional[int] = 10
+    status: Literal["all", "posted", "pending"] = "posted"
 
 
 @router.post("/expanded")
@@ -88,7 +89,10 @@ def insights_expanded(
 ) -> Dict[str, Any]:
     try:
         result = build_expanded_insights(
-            db=db, month=body.month, large_limit=body.large_limit or 10
+            db=db,
+            month=body.month,
+            status=body.status,
+            large_limit=body.large_limit or 10,
         )
         # If service returns None/empty, provide safe fallback
         if not result:

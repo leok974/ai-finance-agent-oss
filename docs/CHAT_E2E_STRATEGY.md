@@ -630,6 +630,75 @@ test.describe.configure({
 
 ---
 
+---
+
+## Backend Testing: Ingest Tests and TEST_FAKE_AUTH
+
+**Context:** Backend ingest tests (CSV parsing, duplicate detection, replace mode) use `TEST_FAKE_AUTH=1` to bypass session/cookie authentication mechanics. This allows tests to focus purely on CSV parsing correctness and database write logic without dealing with TestClient cookie preservation issues.
+
+**How It Works:**
+- Ingest tests (e.g. `test_ingest_nov2025_export`) use the `fake_auth_env` pytest fixture
+- This fixture sets `TEST_FAKE_AUTH=1` via `monkeypatch.setenv()` for the test duration
+- The `_auth_override_for_tests` session fixture in `conftest.py` detects this env var and provides a stable fake user (`e2e-test-user@example.com`)
+- FastAPI dependency injection is overridden: `get_current_user_id()` returns the fake user's ID
+- Tests can then POST multipart file uploads to `/ingest` without manual auth setup
+
+**Example (from `apps/backend/tests/test_ingest_nov2025.py`):**
+```python
+# Apply fake_auth_env fixture to all tests in this file
+pytestmark = pytest.mark.usefixtures("fake_auth_env")
+
+def test_ingest_nov2025_export(client: TestClient, test_db: Session, nov2025_csv: Path):
+    # No manual auth setup needed - fake_auth_env handles it
+    with open(nov2025_csv, "rb") as f:
+        response = client.post(
+            "/ingest?replace=true",
+            files={"file": ("export_nov2025.csv", f, "text/csv")},
+        )
+    
+    assert response.status_code == 200
+    data = response.json()
+    assert data["ok"] is True
+    assert data["added"] > 0
+    assert data["detected_month"] == "2025-11"
+```
+
+**Why Not Use Real Auth in Ingest Tests?**
+- TestClient doesn't preserve cookies across requests for multipart file uploads
+- Pattern observed: `POST /auth/login` returns 200 OK, but subsequent `POST /ingest` gets 401
+- Root cause: Starlette TestClient cookie handling limitation with multipart forms
+- Workaround: Use `TEST_FAKE_AUTH=1` to bypass cookie mechanics entirely
+
+**Auth Testing Coverage:**
+- Auth flows (login, logout, Google OAuth, cookie flags, session expiry) are tested separately in `test_auth_contract.py`, `test_user_isolation.py`, etc.
+- Those tests use real session cookies and verify auth behavior end-to-end
+- Ingest tests focus on CSV parsing correctness, not auth (separation of concerns)
+
+**Safety:**
+- `TEST_FAKE_AUTH` is **NEVER** set in production environments (CI, Docker Compose, deployment scripts)
+- Fixture uses `monkeypatch` for clean teardown (env var removed after test)
+- Skipped automatically when `AUTH_E2E=1` to preserve dedicated auth flow tests
+- Documented in `fake_auth_env` fixture docstring with explicit warnings
+
+**Location:**
+- Fixture definition: `apps/backend/tests/conftest.py` (after `_baseline_test_env` fixture)
+- Usage example: `apps/backend/tests/test_ingest_nov2025.py`
+- Auth guard: `apps/backend/app/deps/auth_guard.py` (no changes needed - override happens at dependency injection level)
+
+**Migration Notes:**
+If adding new ingest-like tests (file uploads, bulk operations, background jobs), consider using `fake_auth_env` if:
+1. Test focuses on business logic, not auth mechanics
+2. TestClient cookie preservation causes 401 errors
+3. Test doesn't need to verify cookie security settings
+
+**References:**
+- Fixture implementation: `apps/backend/tests/conftest.py::fake_auth_env`
+- Auth override logic: `apps/backend/tests/conftest.py::_auth_override_for_tests`
+- Ingest test suite: `apps/backend/tests/test_ingest_nov2025.py`
+- Auth contract tests: `apps/backend/tests/test_auth_contract.py`
+
+---
+
 ## References
 
 - **Playwright config**: `apps/web/playwright.config.ts`
@@ -639,3 +708,5 @@ test.describe.configure({
 - **ChatDock component**: `apps/web/src/components/ChatDock.tsx`
 - **State management**: `apps/web/src/state/chatSession.ts`
 - **HMAC utils**: `apps/web/tests/e2e/utils/hmac.ts`
+- **Backend ingest tests**: `apps/backend/tests/test_ingest_nov2025.py`
+- **Backend test config**: `apps/backend/tests/conftest.py`

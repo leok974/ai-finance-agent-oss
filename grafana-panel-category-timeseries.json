@@ -1,0 +1,105 @@
+{
+  "id": 38,
+  "type": "timeseries",
+  "title": "Transaction Categorizations by Category",
+  "description": "Breakdown of transaction categorizations over time, showing trends for each category including Transfers / P2P",
+  "gridPos": {
+    "h": 9,
+    "w": 12,
+    "x": 0,
+    "y": 20
+  },
+  "targets": [
+    {
+      "refId": "A",
+      "expr": "sum by (category) (increase(ledgermind_transactions_categorized_total[$__range]))",
+      "legendFormat": "{{category}}",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      }
+    }
+  ],
+  "options": {
+    "legend": {
+      "displayMode": "table",
+      "placement": "bottom",
+      "showLegend": true,
+      "calcs": ["lastNotNull", "sum"]
+    },
+    "tooltip": {
+      "mode": "multi",
+      "sort": "desc"
+    }
+  },
+  "fieldConfig": {
+    "defaults": {
+      "color": {
+        "mode": "palette-classic"
+      },
+      "custom": {
+        "drawStyle": "line",
+        "lineInterpolation": "smooth",
+        "barAlignment": 0,
+        "lineWidth": 2,
+        "fillOpacity": 10,
+        "gradientMode": "none",
+        "spanNulls": false,
+        "showPoints": "auto",
+        "pointSize": 5,
+        "stacking": {
+          "mode": "none",
+          "group": "A"
+        },
+        "axisPlacement": "auto",
+        "axisLabel": "",
+        "axisColorMode": "text",
+        "scaleDistribution": {
+          "type": "linear"
+        },
+        "axisCenteredZero": false,
+        "hideFrom": {
+          "tooltip": false,
+          "viz": false,
+          "legend": false
+        },
+        "thresholdsStyle": {
+          "mode": "off"
+        }
+      },
+      "mappings": [],
+      "thresholds": {
+        "mode": "absolute",
+        "steps": [
+          {
+            "value": null,
+            "color": "green"
+          }
+        ]
+      },
+      "unit": "short",
+      "min": 0
+    },
+    "overrides": [
+      {
+        "matcher": {
+          "id": "byName",
+          "options": "Transfers / P2P"
+        },
+        "properties": [
+          {
+            "id": "color",
+            "value": {
+              "mode": "fixed",
+              "fixedColor": "light-blue"
+            }
+          },
+          {
+            "id": "custom.lineWidth",
+            "value": 3
+          }
+        ]
+      }
+    ]
+  }
+}

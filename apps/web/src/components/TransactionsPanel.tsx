@@ -23,6 +23,7 @@ type Row = {
   deleted_at?: string | null;
   split_parent_id?: number | null;
   transfer_group?: string | null;
+  pending?: boolean;
 };
 
 export default function TransactionsPanel() {
@@ -31,6 +32,7 @@ export default function TransactionsPanel() {
   const [sel, setSel] = React.useState<number[]>([]);
   const [q, setQ] = React.useState("");
   const [month, setMonth] = React.useState<string | undefined>(undefined);
+  const [status, setStatus] = React.useState<"all" | "posted" | "pending">("all");
   const [sort, setSort] = React.useState("-date");
   const [page, setPage] = React.useState(0);
   const [loading, setLoading] = React.useState(false);
@@ -50,7 +52,7 @@ export default function TransactionsPanel() {
     setLoading(true);
     setError(null);
     try {
-      const res = await listTxns({ q, month, limit, offset: page * limit, sort });
+      const res = await listTxns({ q, month, status, limit, offset: page * limit, sort });
       const items: Row[] = (res as any)?.items || [];
       setRows(items);
       setTotal(Number((res as any)?.total || items.length || 0));
@@ -60,7 +62,7 @@ export default function TransactionsPanel() {
     } finally {
       setLoading(false);
     }
-  }, [q, month, sort, page]);
+  }, [q, month, status, sort, page]);
 
   // Fetch all category names for the picker
   React.useEffect(() => {
@@ -167,6 +169,11 @@ export default function TransactionsPanel() {
     <Card className="p-3" title={undefined as any}>
       <div className="flex items-center gap-2 mb-2">
         <input className="bg-neutral-900 border border-neutral-800 rounded px-2 py-1 text-sm" placeholder="Search…" value={q} onChange={(e) => setQ(e.target.value)} />
+        <select className="bg-neutral-900 border border-neutral-800 rounded px-2 py-1 text-sm" value={status} onChange={(e) => setStatus(e.target.value as "all" | "posted" | "pending")} data-testid="transactions-status-filter">
+          <option value="all">All</option>
+          <option value="posted">Posted only</option>
+          <option value="pending">Pending only</option>
+        </select>
         <select className="bg-neutral-900 border border-neutral-800 rounded px-2 py-1 text-sm" value={sort} onChange={(e) => setSort(e.target.value)}>
           <option value="-date">Newest</option>
           <option value="date">Oldest</option>

@@ -19,6 +19,25 @@ import {
   type MonthSummaryResp
 } from "../lib/api";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  formatCurrency,
+  formatCurrencyShort,
+  formatDateLabel,
+  formatLegendLabel,
+  truncateMerchantLabel,
+} from "@/lib/charts/formatters";
+import {
+  MONEY_Y_AXIS_PROPS,
+  formatMoneyTick,
+  AXIS_TICK_COLOR,
+  GRID_LINE_COLOR,
+} from "@/components/charts/utils";
+import {
+  normalizeAndGroupMerchantsForChart,
+  type MerchantChartRow,
+  type MerchantChartRowGrouped,
+} from "@/lib/merchant-normalizer";
+import { getCategoryColor } from "@/lib/categories";
 
 // Cast so TS treats them as FCs (safe for now)
 const ResponsiveContainer = RC.ResponsiveContainer as unknown as React.FC<any>;
@@ -120,12 +139,50 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
   }, []);
 
   const categoriesData = useMemo(() => categories, [categories]);
-  const merchantsData = useMemo(() => merchants, [merchants]);
+
+  const MIN_SPEND = 0.01;
+
+  const topMerchantsData: MerchantChartRowGrouped[] = useMemo(() => {
+    // Map backend API response to MerchantChartRow format
+    const rawRows: MerchantChartRow[] = merchants.map((row: any) => {
+      // Try multiple field names for total spend
+      const rawValue =
+        typeof row.total === 'number' ? row.total :
+        typeof row.spend === 'number' ? row.spend :
+        typeof row.amount === 'number' ? row.amount :
+        0;
+
+      // Get raw merchant name from multiple sources
+      const merchantRaw =
+        (row.merchant && String(row.merchant).trim()) ||
+        (row.label && String(row.label).trim()) ||
+        (row.name && String(row.name).trim()) ||
+        'Unknown';
+
+      return {
+        merchantRaw,
+        spend: Math.abs(rawValue),
+        txns: Number(row.count ?? row.txn_count ?? row.transactions ?? 0),
+      };
+    });
+
+    // Normalize and group (P2P merchants → "Transfers / P2P")
+    return normalizeAndGroupMerchantsForChart(rawRows, MIN_SPEND);
+  }, [merchants]);
+
+  // Decide if we actually have merchant spend
+  const hasMerchantData = topMerchantsData.some(
+    (m) => Number.isFinite(m.spend) && m.spend >= MIN_SPEND
+  );
+
   const flowsData = useMemo(() => daily, [daily]);
   const trendsData = useMemo(
     () => (trends?.trends ?? []).map((t: any) => ({ month: t.month, spent: t.spent ?? t.spending ?? 0 })),
     [trends]
   );
+
+  // Max merchant spend for color coding
+  const maxMerchant = useMemo(() => Math.max(1, ...topMerchantsData.map((d) => d.spend)), [topMerchantsData]);
 
   // Color helpers for bars
   function pickColor(v: number, max: number) {
@@ -136,7 +193,6 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
     return "#ef4444";                    // red-500
   }
   const maxCategory = useMemo(() => Math.max(1, ...categoriesData.map((d: any) => Math.abs(Number(d?.amount ?? 0)))), [categoriesData]);
-  const maxMerchant = useMemo(() => Math.max(1, ...merchantsData.map((d: any) => Math.abs(Number(d?.spend ?? 0)))), [merchantsData]);
 
   // Dark tooltip style
   const tooltipStyle = useMemo(() => ({
@@ -164,7 +220,7 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
   );
 
   return (
-    <div id="charts-panel" className="grid gap-6 md:gap-7 grid-cols-1 lg:grid-cols-2">
+    <div id="charts-panel" data-testid="charts-panel-root" className="grid gap-6 md:gap-7 grid-cols-1 lg:grid-cols-2">
       {empty && !error && (
         <div className="lg:col-span-2">
           <EmptyState title={t('ui.empty.no_transactions_title')} note={t('ui.empty.charts_note')} />
@@ -220,7 +276,7 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
   </div>
 
   <div className="chart-card" data-explain-key="charts.top_categories" data-month={resolvedMonth}>
-  <Card className="border-0 bg-transparent shadow-none p-0">
+  <Card className="border-0 bg-transparent shadow-none p-0" data-testid="top-categories-card">
         <div className="flex items-center justify-between mb-2">
           <h3 className="chart-title flex items-center">
             {t('ui.charts.top_categories_title', { month: resolvedMonth })}
@@ -240,17 +296,24 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
           <p className="text-sm text-gray-400">{t('ui.charts.empty_categories')}</p>
         )}
         {!loading && categoriesData.length > 0 && (
-          <div className="h-64">
+          <div className="h-64" data-testid="top-categories-chart">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={categoriesData}>
                 <CartesianGrid stroke="var(--grid-line)" />
-                <XAxis dataKey="name" tick={{ fill: "var(--text-muted)" }} stroke="var(--border-subtle)" />
-                <YAxis
-                  tick={{ fill: "var(--text-muted)" }}
-                  stroke="var(--border-subtle)"
-                  label={{ value: t('ui.charts.axis_spend'), angle: -90, position: "insideLeft", fill: "var(--text-muted)" }}
+                <XAxis
+                  dataKey="name"
+                  tickLine={false}
+                  axisLine={false}
+                  tick={{ fontSize: 11, fill: AXIS_TICK_COLOR }}
                 />
-                <Tooltip contentStyle={tooltipStyle} itemStyle={tooltipItemStyle} labelStyle={tooltipLabelStyle} />
+                {/* Shared money Y axis */}
+                <YAxis {...MONEY_Y_AXIS_PROPS} />
+                <Tooltip
+                  contentStyle={tooltipStyle}
+                  itemStyle={tooltipItemStyle}
+                  labelStyle={tooltipLabelStyle}
+                  formatter={(value: any) => [formatMoneyTick(Number(value)), 'Spend']}
+                />
                 <Legend content={<BarPaletteLegend label={t('ui.charts.legend_spend')} />} />
                 <Bar dataKey="amount" name={t('ui.charts.legend_spend')} activeBar={{ fillOpacity: 1, stroke: "#fff", strokeWidth: 1 }} fillOpacity={0.9}>
                   {categoriesData.map((d: any, i: number) => (
@@ -270,7 +333,7 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
           title={t('ui.charts.merchants_title', { month: resolvedMonth })}
           helpKey="charts.month_merchants"
           month={resolvedMonth}
-          helpCtx={{ data: merchantsData }}
+          helpCtx={{ data: topMerchantsData }}
           helpBaseText={getHelpBaseText('charts.month_merchants', { month: resolvedMonth })}
           className="mb-2"
         />
@@ -283,30 +346,70 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
             </div>
           </div>
         )}
-        {!loading && merchantsData.length === 0 && (
-          <p className="text-sm text-gray-400">{t('ui.charts.empty_merchants')}</p>
+        {!loading && !hasMerchantData && (
+          <div
+            className="text-sm text-muted-foreground px-4 py-6"
+            data-testid="top-merchants-empty"
+          >
+            No merchant data.
+          </div>
         )}
-        {!loading && merchantsData.length > 0 && (
-          <div className="h-64">
+        {!loading && hasMerchantData && (
+          <div className="h-64" data-testid="top-merchants-chart">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={merchantsData}>
-                <CartesianGrid stroke="var(--grid-line)" />
-                <XAxis dataKey="merchant" tick={{ fill: "var(--text-muted)" }} stroke="var(--border-subtle)" />
-                <YAxis
-                  tick={{ fill: "var(--text-muted)" }}
-                  stroke="var(--border-subtle)"
-                  label={{ value: t('ui.charts.axis_spend'), angle: -90, position: "insideLeft", fill: "var(--text-muted)" }}
+              <BarChart
+                data={topMerchantsData}
+                margin={{ top: 16, right: 16, left: 0, bottom: 0 }}
+                barCategoryGap={24}
+              >
+                {/* Subtle horizontal grid, like other cards */}
+                <CartesianGrid
+                  vertical={false}
+                  stroke={GRID_LINE_COLOR}
+                  strokeDasharray="3 3"
                 />
-                <Tooltip contentStyle={tooltipStyle} itemStyle={tooltipItemStyle} labelStyle={tooltipLabelStyle} />
-                <Legend content={<BarPaletteLegend label={t('ui.charts.legend_spend')} />} />
-                <Bar dataKey="spend" name={t('ui.charts.legend_spend')} activeBar={{ fillOpacity: 1, stroke: "#fff", strokeWidth: 1 }} fillOpacity={0.9}>
-                  {merchantsData.map((d: any, i: number) => (
-                    <Cell key={i} fill={pickColor(Number(d?.spend ?? 0), maxMerchant)} />
+
+                {/* Keep X axis hidden - merchant names come from tooltip */}
+                <XAxis
+                  dataKey="merchant"
+                  hide
+                  tickLine={false}
+                  axisLine={false}
+                  tick={{ fontSize: 11, fill: AXIS_TICK_COLOR }}
+                />
+
+                {/* Shared money Y axis */}
+                <YAxis {...MONEY_Y_AXIS_PROPS} />
+
+                <Tooltip
+                  contentStyle={tooltipStyle}
+                  itemStyle={tooltipItemStyle}
+                  labelStyle={tooltipLabelStyle}
+                  cursor={{ fill: 'rgba(255,255,255,0.04)' }}
+                  formatter={(value: any, _name: any, props: any) => {
+                    const payload = props?.payload ?? {};
+                    // Use merchant field from normalized data
+                    const merchantName = payload.merchant ?? 'Merchant';
+                    const amount = value as number;
+                    const suffix = payload.txns && payload.txns > 1 ? ` (${payload.txns} txns)` : '';
+
+                    return [formatMoneyTick(amount) + suffix, merchantName];
+                  }}
+                  labelFormatter={() => ''}
+                />
+                <Bar
+                  dataKey="spend"
+                  radius={[8, 8, 0, 0]}
+                  barSize={28}
+                  activeBar={{ fillOpacity: 1, stroke: "#fff", strokeWidth: 1 }}
+                  fillOpacity={0.9}
+                >
+                  {topMerchantsData.map((d, i: number) => (
+                    <Cell key={i} fill={pickColor(d.spend, maxMerchant)} />
                   ))}
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
-            {/* Tip removed per request */}
           </div>
         )}
   </Card>
@@ -335,17 +438,32 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={flowsData}>
                 <CartesianGrid stroke="var(--grid-line)" />
-                <XAxis dataKey="date" tick={{ fill: "var(--text-muted)" }} stroke="var(--border-subtle)" />
-                <YAxis
-                  tick={{ fill: "var(--text-muted)" }}
-                  stroke="var(--border-subtle)"
-                  label={{ value: t('ui.charts.axis_amount'), angle: -90, position: "insideLeft", fill: "var(--text-muted)" }}
+                <XAxis
+                  dataKey="date"
+                  tickLine={false}
+                  axisLine={false}
+                  tick={{ fontSize: 11, fill: AXIS_TICK_COLOR }}
+                  tickFormatter={formatDateLabel}
                 />
-                <Tooltip contentStyle={tooltipStyle} itemStyle={tooltipItemStyle} labelStyle={tooltipLabelStyle} />
-                <Legend wrapperStyle={legendTextStyle} />
-                <Line type="monotone" dataKey="in"  name={t('ui.charts.line_in')}  stroke="#22c55e" strokeWidth={2} dot={false} />
-                <Line type="monotone" dataKey="out" name={t('ui.charts.line_out')} stroke="#ef4444" strokeWidth={2} dot={false} />
-                <Line type="monotone" dataKey="net" name={t('ui.charts.line_net')} stroke="#60a5fa" strokeWidth={2} dot={false} />
+                {/* Shared money Y axis */}
+                <YAxis {...MONEY_Y_AXIS_PROPS} />
+                <Tooltip
+                  contentStyle={tooltipStyle}
+                  itemStyle={tooltipItemStyle}
+                  labelStyle={tooltipLabelStyle}
+                  formatter={(value: any, key: string) => [
+                    formatMoneyTick(Number(value)),
+                    key === 'in' ? 'Income' : key === 'out' ? 'Spend' : 'Net',
+                  ]}
+                  labelFormatter={formatDateLabel}
+                />
+                <Legend
+                  wrapperStyle={legendTextStyle}
+                  formatter={formatLegendLabel}
+                />
+                <Line type="monotone" dataKey="in"  name="in"  stroke="#22c55e" strokeWidth={2} dot={false} />
+                <Line type="monotone" dataKey="out" name="out" stroke="#ef4444" strokeWidth={2} dot={false} />
+                <Line type="monotone" dataKey="net" name="net" stroke="#60a5fa" strokeWidth={2} dot={false} />
               </LineChart>
             </ResponsiveContainer>
           </div>
@@ -376,13 +494,20 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={trendsData}>
                 <CartesianGrid stroke="var(--grid-line)" />
-                <XAxis dataKey="month" tick={{ fill: "var(--text-muted)" }} stroke="var(--border-subtle)" />
-                <YAxis
-                  tick={{ fill: "var(--text-muted)" }}
-                  stroke="var(--border-subtle)"
-                  label={{ value: t('ui.charts.axis_spend'), angle: -90, position: "insideLeft", fill: "var(--text-muted)" }}
+                <XAxis
+                  dataKey="month"
+                  tickLine={false}
+                  axisLine={false}
+                  tick={{ fontSize: 11, fill: AXIS_TICK_COLOR }}
                 />
-                <Tooltip contentStyle={tooltipStyle} itemStyle={tooltipItemStyle} labelStyle={tooltipLabelStyle} />
+                {/* Shared money Y axis */}
+                <YAxis {...MONEY_Y_AXIS_PROPS} />
+                <Tooltip
+                  contentStyle={tooltipStyle}
+                  itemStyle={tooltipItemStyle}
+                  labelStyle={tooltipLabelStyle}
+                  formatter={(value: any) => [formatMoneyTick(Number(value)), 'Spend']}
+                />
                 <Legend wrapperStyle={legendTextStyle} />
                 <Line type="monotone" dataKey="spent" name="Spent" stroke="#f59e0b" strokeWidth={2} dot={false} />
               </LineChart>

@@ -59,19 +59,21 @@ def verify_hmac_auth(
     x_test_mode: Annotated[str | None, Header()] = None,
 ) -> dict:
     """
-    Verify HMAC authentication for /agent/* endpoints.
+    Unified auth dependency for /agent/* endpoints.
 
-    Test modes (stub, echo) bypass auth.
-    Real modes require valid HMAC-SHA256 signature.
+    Priority:
+      1) Test modes via X-Test-Mode (stub/echo etc.) - bypass for E2E testing
+      2) HMAC headers (X-Client-Id / X-Timestamp / X-Signature) - for E2E/programmatic access
+      3) Cookie-based access_token - for user-facing frontend requests
 
     Returns:
-        dict: {"client_id": str, "auth_mode": "bypass"|"hmac", "test_mode": str|None}
+        dict: {"client_id": str, "auth_mode": "bypass"|"hmac"|"cookie", "test_mode": str|None}
 
     Raises:
         HTTPException: 401/403/409 on auth failure
     """
 
-    # Test modes bypass authentication (for E2E testing)
+    # 1) Test modes bypass authentication (for E2E testing)
     if x_test_mode in ("stub", "echo"):
         logger.info(
             "[hmac] test mode bypass",
@@ -84,130 +86,154 @@ def verify_hmac_auth(
             "test_mode": x_test_mode,
         }
 
-    # Real modes require HMAC authentication
-    if not x_client_id or not x_timestamp or not x_signature:
-        logger.warning(
-            "[hmac] missing required headers",
-            extra={
-                "has_client_id": bool(x_client_id),
-                "has_timestamp": bool(x_timestamp),
-                "has_signature": bool(x_signature),
-            },
-        )
-        agent_requests_total.labels(auth="fail", mode="unknown").inc()
-        raise HTTPException(
-            status_code=401,
-            detail="Missing authentication headers (X-Client-Id, X-Timestamp, X-Signature required)",
-        )
+    # 2) HMAC authentication (for E2E tests and programmatic access)
+    if x_client_id and x_timestamp and x_signature:
+        # Verify timestamp within ±5 minute window
+        try:
+            ts_ms = int(x_timestamp)
+        except ValueError:
+            logger.warning(f"[hmac] invalid timestamp format: {x_timestamp}")
+            agent_requests_total.labels(auth="fail", mode="invalid_timestamp").inc()
+            # Don't raise immediately - allow cookie fallback below
+            ts_ms = None
 
-    # Verify timestamp within ±5 minute window
-    try:
-        ts_ms = int(x_timestamp)
-    except ValueError:
-        logger.warning(f"[hmac] invalid timestamp format: {x_timestamp}")
-        agent_requests_total.labels(auth="fail", mode="invalid_timestamp").inc()
-        raise HTTPException(status_code=401, detail="Invalid timestamp format")
+        if ts_ms is not None:
+            now_ms = int(time.time() * 1000)
+            skew_ms = abs(now_ms - ts_ms)
+            max_skew_ms = 5 * 60 * 1000  # ±5 minutes
 
-    now_ms = int(time.time() * 1000)
-    skew_ms = abs(now_ms - ts_ms)
-    max_skew_ms = 5 * 60 * 1000  # ±5 minutes
+            # Record skew metric
+            agent_auth_skew_ms.observe(skew_ms)
 
-    # Record skew metric
-    agent_auth_skew_ms.observe(skew_ms)
+            if skew_ms > max_skew_ms:
+                logger.warning(
+                    "[hmac] timestamp outside window",
+                    extra={
+                        "client_id": x_client_id,
+                        "skew_ms": skew_ms,
+                        "max_skew_ms": max_skew_ms,
+                    },
+                )
+                agent_requests_total.labels(auth="fail", mode="clock_skew").inc()
+                # Don't raise immediately - allow cookie fallback below
+            else:
+                # Replay protection: reject duplicate timestamps from same client
+                cache = _get_replay_cache()
+                replay_key = f"{x_client_id}:{x_timestamp}"
 
-    if skew_ms > max_skew_ms:
-        logger.warning(
-            "[hmac] timestamp outside window",
-            extra={
-                "client_id": x_client_id,
-                "skew_ms": skew_ms,
-                "max_skew_ms": max_skew_ms,
-            },
-        )
-        agent_requests_total.labels(auth="fail", mode="clock_skew").inc()
-        raise HTTPException(
-            status_code=408,
-            detail=f"Timestamp outside ±5 minute window (skew: {skew_ms}ms)",
-        )
+                if not cache.check_and_set(replay_key, settings.REDIS_REPLAY_TTL):
+                    logger.warning(
+                        "[hmac] replay attempt detected",
+                        extra={"client_id": x_client_id, "timestamp": x_timestamp},
+                    )
+                    agent_replay_attempts_total.inc()
+                    agent_requests_total.labels(auth="fail", mode="replay").inc()
+                    raise HTTPException(
+                        status_code=409, detail="Duplicate request (replay protection)"
+                    )
 
-    # Replay protection: reject duplicate timestamps from same client
-    cache = _get_replay_cache()
-    replay_key = f"{x_client_id}:{x_timestamp}"
+                # Get shared secret from config
+                if not settings.E2E_SESSION_HMAC_SECRET:
+                    logger.error("[hmac] E2E_SESSION_HMAC_SECRET not configured")
+                    agent_requests_total.labels(auth="fail", mode="config_error").inc()
+                    raise HTTPException(status_code=500, detail="Server misconfigured")
 
-    if not cache.check_and_set(replay_key, settings.REDIS_REPLAY_TTL):
-        logger.warning(
-            "[hmac] replay attempt detected",
-            extra={"client_id": x_client_id, "timestamp": x_timestamp},
-        )
-        agent_replay_attempts_total.inc()
-        agent_requests_total.labels(auth="fail", mode="replay").inc()
-        raise HTTPException(
-            status_code=409, detail="Duplicate request (replay protection)"
-        )
+                # Read and hash request body
+                try:
+                    body_bytes = request._body  # type: ignore
+                except AttributeError:
+                    # Fallback: re-serialize from JSON
+                    import json
 
-    # Get shared secret from config
-    if not settings.E2E_SESSION_HMAC_SECRET:
-        logger.error("[hmac] E2E_SESSION_HMAC_SECRET not configured")
-        agent_requests_total.labels(auth="fail", mode="config_error").inc()
-        raise HTTPException(status_code=500, detail="Server misconfigured")
+                    body_bytes = (
+                        json.dumps(
+                            request.state.json_body, separators=(",", ":")
+                        ).encode()
+                        if hasattr(request.state, "json_body")
+                        else b""
+                    )
 
-    # Read and hash request body
-    # Note: FastAPI has already consumed the body for JSON parsing,
-    # so we need to reconstruct it from the parsed request
-    try:
-        body_bytes = request._body  # type: ignore
-    except AttributeError:
-        # Fallback: re-serialize from JSON (may have formatting differences)
-        import json
+                body_hash = hashlib.sha256(body_bytes).hexdigest()
 
-        body_bytes = (
-            json.dumps(request.state.json_body, separators=(",", ":")).encode()
-            if hasattr(request.state, "json_body")
-            else b""
-        )
+                # Build canonical string
+                method = request.method.upper()
+                path = request.url.path
+                canonical = f"{method}\n{path}\n{x_timestamp}\n{body_hash}"
 
-    body_hash = hashlib.sha256(body_bytes).hexdigest()
+                # Compute expected signature
+                expected_sig = hmac.new(
+                    settings.E2E_SESSION_HMAC_SECRET.encode(),
+                    canonical.encode(),
+                    hashlib.sha256,
+                ).hexdigest()
 
-    # Build canonical string
-    method = request.method.upper()
-    path = request.url.path
-    canonical = f"{method}\n{path}\n{x_timestamp}\n{body_hash}"
+                # Constant-time comparison
+                if hmac.compare_digest(x_signature, expected_sig):
+                    logger.info(
+                        "[hmac] auth success",
+                        extra={
+                            "client_id": x_client_id,
+                            "path": path,
+                            "skew_ms": skew_ms,
+                            "auth_mode": "hmac",
+                        },
+                    )
+                    agent_requests_total.labels(auth="ok", mode="real").inc()
+                    return {
+                        "client_id": x_client_id,
+                        "auth_mode": "hmac",
+                        "test_mode": None,
+                        "skew_ms": skew_ms,
+                    }
+                else:
+                    logger.warning(
+                        "[hmac] signature mismatch, trying cookie fallback",
+                        extra={
+                            "client_id": x_client_id,
+                            "path": path,
+                            "skew_ms": skew_ms,
+                        },
+                    )
+                    # Don't raise - allow cookie fallback below
 
-    # Compute expected signature
-    expected_sig = hmac.new(
-        settings.E2E_SESSION_HMAC_SECRET.encode(), canonical.encode(), hashlib.sha256
-    ).hexdigest()
+    # 3) Cookie-based authentication (for user-facing frontend requests)
+    access_token = request.cookies.get("access_token")
+    if access_token:
+        try:
+            from app.utils.auth import decode_token
 
-    # Constant-time comparison
-    if not hmac.compare_digest(x_signature, expected_sig):
-        # Redact signature in logs
-        logger.warning(
-            "[hmac] signature mismatch",
-            extra={
-                "client_id": x_client_id,
-                "path": path,
-                "skew_ms": skew_ms,
-                "signature": "<redacted>",
-            },
-        )
-        agent_requests_total.labels(auth="fail", mode="bad_signature").inc()
-        raise HTTPException(status_code=403, detail="Invalid signature")
+            payload = decode_token(access_token)
+            user_id = payload.get("sub") or payload.get("user_id")
+            if not user_id:
+                raise ValueError("No user identifier in token payload")
 
-    logger.info(
-        "[hmac] auth success",
+            logger.info(
+                "[hmac] cookie auth success",
+                extra={
+                    "client_id": str(user_id),
+                    "auth_mode": "cookie",
+                },
+            )
+            agent_requests_total.labels(auth="ok", mode="cookie").inc()
+            return {
+                "client_id": str(user_id),
+                "auth_mode": "cookie",
+                "test_mode": None,
+            }
+        except Exception as exc:
+            logger.debug("[hmac] cookie auth failed", exc_info=exc)
+            # Fall through to 401 below
+
+    # 4) No valid authentication found
+    logger.warning(
+        "[hmac] no valid authentication",
         extra={
-            "client_id": x_client_id,
-            "path": path,
-            "skew_ms": skew_ms,
-            "auth_mode": "hmac",
+            "has_hmac_headers": bool(x_client_id and x_timestamp and x_signature),
+            "has_cookie": bool(access_token),
         },
     )
-
-    agent_requests_total.labels(auth="ok", mode="real").inc()
-
-    return {
-        "client_id": x_client_id,
-        "auth_mode": "hmac",
-        "test_mode": None,
-        "skew_ms": skew_ms,
-    }
+    agent_requests_total.labels(auth="fail", mode="no_auth").inc()
+    raise HTTPException(
+        status_code=401,
+        detail="Authentication required (HMAC headers or access_token cookie)",
+    )

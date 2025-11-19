@@ -40,9 +40,12 @@ class MerchantsBody(MonthParam):
 
 
 class MerchantItem(BaseModel):
-    merchant: str
-    spend: float
-    txns: int
+    merchant_key: str
+    label: str  # Normalized display name
+    total: float  # Total spend amount
+    count: int  # Transaction count
+    statement_examples: List[str] = Field(default_factory=list)
+    category: Optional[str] = None  # Learned category from merchant cache
 
 
 class MerchantsResp(BaseModel):
@@ -162,29 +165,79 @@ def charts_summary(body: SummaryBody, db: Session = Depends(get_db)) -> SummaryR
 def charts_merchants(
     body: MerchantsBody, db: Session = Depends(get_db)
 ) -> MerchantsResp:
-    q = (
-        db.query(
-            func.coalesce(func.nullif(Transaction.merchant, ""), "Unknown").label(
-                "merchant"
-            ),
-            _abs_outflow_sum().label("spend"),
-            func.sum(case((Transaction.amount != 0, 1), else_=0)).label("txns"),
+    """
+    Get top merchants with brand-aware normalization and learned categories.
+    Uses merchant cache (Redis) to remember merchant categorization.
+    """
+    from collections import defaultdict
+    from typing import Any, Dict
+    from app.services.charts_data import canonical_and_label
+    from app.redis_client import redis
+    from app.services.merchant_cache import learn_merchant
+
+    redis_client = redis()
+
+    # Fetch all expense transactions for the month (with description for learning)
+    txns = (
+        db.query(Transaction.merchant, Transaction.amount, Transaction.description)
+        .filter(
+            Transaction.month == body.month,
+            Transaction.amount < 0,
+            ~Transaction.pending,
         )
-        .filter(Transaction.month == body.month)
-        .group_by("merchant")
-        .order_by(desc("spend"))
-        .limit(body.top_n)
+        .all()
     )
-    items = [
-        MerchantItem(
-            merchant=row.merchant,
-            spend=float(row.spend or 0.0),
-            txns=int(row.txns or 0),
+
+    # Aggregate using merchant cache (learns categories)
+    buckets: Dict[str, Dict[str, Any]] = defaultdict(
+        lambda: {
+            "label": "",
+            "total": 0.0,
+            "count": 0,
+            "statement_examples": set(),
+            "category": None,
+        }
+    )
+
+    for raw_merchant, amount, description in txns:
+        raw = raw_merchant or "unknown"
+
+        # Use merchant cache if available, fallback to canonical_and_label
+        if redis_client:
+            hint = learn_merchant(redis_client, db, raw, description or raw, amount)
+            key = hint.normalized_name
+            label = hint.display_name
+            category = hint.category
+        else:
+            key, label = canonical_and_label(raw)
+            category = None
+
+        b = buckets[key]
+        b["label"] = label
+        b["total"] = float(b["total"]) + abs(float(amount or 0.0))
+        b["count"] = int(b["count"]) + 1
+        b["statement_examples"].add(raw)  # type: ignore
+        if category and not b["category"]:
+            b["category"] = category
+
+    # Convert to list and sort by total spend
+    items_list = []
+    for key, b in buckets.items():
+        items_list.append(
+            MerchantItem(
+                merchant_key=key,
+                label=b["label"],
+                total=b["total"],
+                count=b["count"],
+                statement_examples=sorted(b["statement_examples"])[:3],
+                category=b["category"],
+            )
         )
-        for row in q.all()
-        if (row.spend or 0.0) > 0
-    ]
-    return MerchantsResp(month=body.month, items=items)
+
+    items_list.sort(key=lambda r: r.total, reverse=True)
+    top_items = items_list[: body.top_n]
+
+    return MerchantsResp(month=body.month, items=top_items)
 
 
 @router.post("/flows", response_model=FlowsResp)

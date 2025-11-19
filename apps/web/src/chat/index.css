@@ -7,25 +7,16 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ===== IFRAME VIEWPORT FILL ===== */
-html, body, #root {
-  height: 100%;
-  width: 100%;
-  margin: 0;
-  box-sizing: border-box;
-  overflow: hidden; /* Prevent double scrollbars */
-}
+/* NOTE: html/body overflow rules removed - they were blocking main page scroll!
+   Those rules are only needed inside the chat IFRAME, not in the main app.
+   The iframe document has its own html/body that we can't style from here. */
 
 /* Universal box-sizing: prevents padding from blowing past 100% widths */
 :where(#lm-chat-root, #lm-chat-root *) {
   box-sizing: border-box;
 }
 
-body {
-  overflow: hidden; /* Host clips, not body */
-}
-
-/* Ensure iframe root fills but never exceeds */
+/* Ensure iframe root fills but never exceeds (only applies to iframe container element) */
 #__LM_IFRAME_ROOT__ {
   height: 100%;
   width: 100%;
@@ -82,7 +73,7 @@ body {
   --radius: 14px;
 }
 
-/* ===== SHELL – WIDER, SOFTER, MORE "CARD-LIKE" ===== */
+/* ===== SHELL ΓÇô WIDER, SOFTER, MORE "CARD-LIKE" ===== */
 [data-testid="lm-chat-iframe"] {
   position: relative;
   display: flex;
@@ -480,7 +471,7 @@ textarea.lm-input,
   overflow: hidden;
 }
 
-/* ===== HEADER – TALLER WITH CLEARER HIERARCHY ===== */
+/* ===== HEADER ΓÇô TALLER WITH CLEARER HIERARCHY ===== */
 [data-testid="lm-chat-header"] {
   display: flex;
   flex-direction: column;
@@ -531,7 +522,7 @@ textarea.lm-input,
   color: #bbf7d0;
 }
 
-/* Primary actions – more "buttony" */
+/* Primary actions ΓÇô more "buttony" */
 .lm-chat-header-actions {
   display: flex;
   flex-wrap: wrap;
@@ -556,7 +547,7 @@ textarea.lm-input,
   transform: translateY(-0.5px);
 }
 
-/* ===== TOOL GROUPS – CLEANER, MORE "SECTIONED" ===== */
+/* ===== TOOL GROUPS ΓÇô CLEANER, MORE "SECTIONED" ===== */
 .lm-chat-header-tools {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -706,7 +697,7 @@ textarea.lm-input,
   padding-bottom: 0.25rem;
 }
 
-/* ===== INPUT / FOOTER – REFINED WITH GRADIENT SEND BUTTON ===== */
+/* ===== INPUT / FOOTER ΓÇô REFINED WITH GRADIENT SEND BUTTON ===== */
 [data-testid="lm-chat-input-wrapper"] {
   border-top: 1px solid rgba(30, 64, 175, 0.55);
   background: rgba(15, 23, 42, 0.97);
@@ -765,23 +756,37 @@ textarea.lm-input,
    LAUNCHER + BUBBLE (FIXED BOTTOM-RIGHT)
    ============================================ */
 
-/* Root launcher container (fixed bottom-right, but non-draggable) */
+/* Root launcher container (fixed bottom-right) */
 .lm-chat-launcher {
   position: fixed;
-  right: 1.5rem;
-  bottom: 1.5rem;
-  z-index: 60;
-  pointer-events: none; /* children opt-in */
+  /* Anchor point at bottom-right corner of viewport */
+  right: 1.75rem;
+  bottom: 1.75rem;
+
+  /* No z-index - let children establish their own stacking */
+  pointer-events: none;
+
+  /* Auto-size to children */
+  width: auto;
+  height: auto;
 }
 
-/* When the panel is open we add a slight lift for the bubble */
-.lm-chat-launcher--open .lm-chat-launcher-bubble {
-  transform: translateY(-4px) scale(0.96);
+/* Children opt-in to pointer-events */
+.lm-chat-launcher-bubble,
+.lm-chat-shell,
+.lm-chat-backdrop {
+  pointer-events: auto;
 }
 
 /* Floating bubble button */
 .lm-chat-launcher-bubble {
   pointer-events: auto;
+
+  /* Position bubble at the anchor point (bottom-right corner) */
+  position: fixed;
+  right: 1.75rem;
+  bottom: 1.75rem;
+
   width: 44px;
   height: 44px;
   border-radius: 9999px;
@@ -797,7 +802,8 @@ textarea.lm-input,
   transition:
     transform 120ms ease-out,
     box-shadow 120ms ease-out,
-    background 180ms ease-out;
+    background 180ms ease-out,
+    opacity 160ms ease-out;
 }
 
 .lm-chat-launcher-bubble:hover {
@@ -807,48 +813,81 @@ textarea.lm-input,
     0 10px 24px rgba(15, 23, 42, 0.95);
 }
 
+.lm-chat-launcher-glyph {
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: rgba(255, 255, 255, 0.95);
+}
+
+/* When open, hide the bubble */
+.lm-chat-launcher--open .lm-chat-launcher-bubble {
+  opacity: 0;
+  transform: translateY(4px) scale(0.9);
+  pointer-events: none;
+}
+
 /* ============================================
-   OVERLAY + SHELL (CENTERED CARD, ANIMATIONS)
+   SHELL (ANCHORED ABOVE LAUNCHER)
    ============================================ */
 
-/* Full-screen overlay used only for positioning; does NOT block page scroll */
-.lm-chat-overlay {
-  position: fixed;
-  inset: 0;
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
-  pointer-events: none; /* page still scrolls outside the card */
-  z-index: 61;
-}
-
-/* Shell wraps backdrop + card and IS clickable */
+/* Shell positioned absolutely inside launcher, sits above bubble */
 .lm-chat-shell {
-  position: relative;
-  pointer-events: auto;
-  margin-bottom: 1.75rem;
+  position: absolute;
+  right: 0;
+  /* 44px = bubble height, 16px = gap above bubble */
+  bottom: calc(44px + 16px);
   max-width: 640px;
-  width: min(640px, 100% - 2rem);
+  width: min(640px, calc(100vw - 2rem));
+  border-radius: 1.5rem;
+  overflow: hidden;
+  opacity: 0;
+  transform: translateY(12px) scale(0.96);
+  transform-origin: bottom right;
+  pointer-events: none;
+  z-index: 72;
+  transition:
+    opacity 160ms cubic-bezier(0.16, 1, 0.3, 1),
+    transform 160ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-/* Inner container so backdrop can sit behind card */
+/* Opened state */
+.lm-chat-shell--open {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  pointer-events: auto;
+}
+
+/* Inner container - contains the actual panel */
 .lm-chat-shell-inner {
   position: relative;
   border-radius: 1.5rem;
   overflow: hidden;
 }
 
-/* Subtle glossy backdrop behind the card */
+/* ============================================
+   FULL-SCREEN BACKDROP
+   ============================================ */
+
+/* Invisible full-screen backdrop for closing panel */
 .lm-chat-backdrop {
-  position: absolute;
-  inset: -16px;
-  border-radius: 1.75rem;
-  background:
-    radial-gradient(circle at 0 0, rgba(56, 189, 248, 0.24), transparent 55%),
-    radial-gradient(circle at 100% 0, rgba(129, 140, 248, 0.26), transparent 60%),
-    radial-gradient(circle at 50% 120%, rgba(15, 23, 42, 0.98), rgba(2, 6, 23, 0.98));
-  filter: blur(8px);
-  opacity: 0.95;
+  position: fixed;
+  inset: 0;
+  z-index: 71;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  pointer-events: auto;
+  cursor: pointer;
+  
+  /* CRITICAL: Allow page scrolling to work through the backdrop.
+   * Without this, the backdrop intercepts scroll wheel events and blocks page scroll.
+   * Setting overflow to visible/auto isn't enough because the backdrop has no content.
+   * We need to ensure scroll events are not captured by this element. */
+  touch-action: auto;
+  /* Prevent the backdrop from becoming a scroll container */
+  overflow: visible;
 }
 
 /* Card itself */
@@ -909,7 +948,7 @@ textarea.lm-input,
   display: flex;
   flex-direction: column;
 
-  /* ❌ no max-height here — let the gradient control it */
+  /* Γ¥î no max-height here ΓÇö let the gradient control it */
   min-height: 0;
 }
 
@@ -1178,14 +1217,14 @@ textarea.lm-input,
 }
 
 /* ========================================================================
- * ChatDock v2 – forced floating card layout (wins over all older styles)
+ * ChatDock v2 ΓÇô forced floating card layout (wins over all older styles)
  * ===================================================================== */
 
 [data-testid="lm-chat-launcher"] {
   position: fixed !important;
   right: 1.75rem !important;
   bottom: 1.75rem !important;
-  z-index: 70 !important;
+  z-index: 80 !important;
   pointer-events: none !important;
 }
 
@@ -1232,29 +1271,7 @@ textarea.lm-input,
   z-index: 69 !important;
 }
 
-[data-testid="lm-chat-shell"] {
-  pointer-events: auto !important;
-  width: min(480px, 100vw - 32px) !important;
-  max-height: min(420px, 100vh - 260px) !important;
-  margin-bottom: 24px !important;
-  position: relative !important;
-  border-radius: 24px !important;
-  overflow: hidden !important;
-  box-shadow: 0 18px 45px rgba(15, 23, 42, 0.96),
-              0 0 0 1px rgba(15, 23, 42, 0.95) !important;
-  transform-origin: bottom center !important;
-}
-
-[data-testid="lm-chat-backdrop"] {
-  position: absolute !important;
-  inset: -40px !important;
-  background:
-    radial-gradient(circle at 10% 0%,
-                    rgba(56, 189, 248, 0.25),
-                    rgba(15, 23, 42, 0.98) 55%) !important;
-  filter: blur(22px) !important;
-  opacity: 0.9 !important;
-}
+/* Legacy data-testid overrides removed - using class-based styles instead */
 
 .lm-chat-shell-inner {
   position: relative !important;
@@ -1279,3 +1296,10 @@ textarea.lm-input,
   margin-right: -4px !important;
   scrollbar-width: thin !important;
 }
+
+/* NOTE: The global html,body overflow rule was REMOVED from here because:
+ * - This CSS is @import'ed into src/index.css (for the main app)
+ * - The main app has its own html,body overflow rule in index.css
+ * - Having it here caused cascade conflicts where this would override the main app's rule
+ * - The chat iframe loads chat.css separately and doesn't need this global rule
+ */

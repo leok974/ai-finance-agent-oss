@@ -56,6 +56,30 @@ def _baseline_test_env(monkeypatch):
     yield
 
 
+@pytest.fixture
+def fake_auth_env(monkeypatch):
+    """Force TEST_FAKE_AUTH=1 for tests that need to bypass cookie/session auth.
+    
+    This fixture allows ingest tests (and similar) to focus purely on CSV parsing
+    and DB writes without dealing with cookie mechanics. The _auth_override_for_tests
+    session fixture respects this env var and provides a stable test user.
+    
+    Usage:
+        @pytest.mark.usefixtures("fake_auth_env")
+        def test_ingest_something(...):
+            # This test runs with fake auth enabled
+    
+    Or for entire test files:
+        pytestmark = pytest.mark.usefixtures("fake_auth_env")
+    
+    Never set TEST_FAKE_AUTH in production environments.
+    """
+    monkeypatch.setenv("TEST_FAKE_AUTH", "1")
+    yield
+    # Cleanup after test to avoid cross-test leakage
+    monkeypatch.delenv("TEST_FAKE_AUTH", raising=False)
+
+
 @pytest.fixture(autouse=True)
 def _clear_prom_registry_between_tests():
     """
