@@ -663,7 +663,10 @@ export default function ChatDock() {
               </AvatarFallback>
             </Avatar>
           )}
-          <div className={`max-w-[72%] rounded-2xl px-3 py-2 text-sm leading-relaxed ${isUser ? 'bg-blue-600 text-white rounded-br-sm' : 'bg-slate-800 text-slate-100 rounded-bl-sm'}`}>
+          <div
+            data-testid={isUser ? 'lm-chat-message-user' : 'lm-chat-message-assistant'}
+            className={`max-w-[72%] rounded-2xl px-3 py-2 text-sm leading-relaxed ${isUser ? 'bg-blue-600 text-white rounded-br-sm' : 'bg-slate-800 text-slate-100 rounded-bl-sm'}`}
+          >
             {isThinking ? (
               <div className="py-1"><span className="sr-only">Thinking.</span><RobotThinking size={32} /></div>
             ) : (
@@ -2048,6 +2051,13 @@ export default function ChatDock() {
         </CardHeader>
 
         <CardContent className="lm-chat-body">
+          {/* MESSAGE HISTORY */}
+          {uiMessages.length > 0 && (
+            <div className="lm-chat-messages-container mb-4">
+              {renderedMessages}
+            </div>
+          )}
+
           {/* INSIGHTS */}
           <section className="lm-chat-section" data-testid="lm-chat-section-insights">
             <div className="lm-chat-section-header">
