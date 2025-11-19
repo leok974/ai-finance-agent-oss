@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Upload } from "lucide-react";
+import { isExcelFile, normalizeExcelToCsvFile } from "../lib/excel";
 
 type UploadResult = {
   ok: boolean;
@@ -256,8 +257,46 @@ const UploadCsv: React.FC<UploadCsvProps> = ({ onUploaded, defaultReplace = true
     setBusy(true);
     setResult(null);
     try {
+      let uploadFile = file;
+
+      // Convert Excel to CSV if needed
+      if (isExcelFile(file)) {
+        try {
+          uploadFile = await normalizeExcelToCsvFile(file);
+        } catch (err: unknown) {
+          const message = err instanceof Error ? err.message : "Failed to parse Excel file";
+          const errorMessage = `Excel conversion failed: ${message}. Try exporting as CSV or share a sample with support.`;
+          const errorData: IngestResult = {
+            ok: false,
+            added: 0,
+            count: 0,
+            error: "excel_parse_failed",
+            message: errorMessage,
+          };
+          const r: UploadResult = { ok: false, message: errorMessage, data: errorData };
+          setResult(r);
+          emitToastError("Excel Parse Failed", { description: errorMessage });
+          setBusy(false);
+          return;
+        }
+      } else if (!file.name.toLowerCase().endsWith(".csv")) {
+        const errorMessage = "Unsupported file type. Please upload CSV or Excel (.xls/.xlsx).";
+        const errorData: IngestResult = {
+          ok: false,
+          added: 0,
+          count: 0,
+          error: "unsupported_file_type",
+          message: errorMessage,
+        };
+        const r: UploadResult = { ok: false, message: errorMessage, data: errorData };
+        setResult(r);
+        emitToastError("Unsupported File Type", { description: errorMessage });
+        setBusy(false);
+        return;
+      }
+
       // Uses your existing API helper; falls back to direct fetch if needed.
-      const data = await uploadCsv(file, replace); // Auto-inference enabled
+      const data = await uploadCsv(uploadFile, replace); // Auto-inference enabled
 
       // Check if backend indicated failure (ok: false or added === 0)
       const responseOk = (data as { ok?: boolean; added?: number; message?: string; error?: string }).ok;
@@ -308,7 +347,7 @@ const UploadCsv: React.FC<UploadCsvProps> = ({ onUploaded, defaultReplace = true
         (err as Error)?.message ??
         (typeof err === "string" ? err : "Upload failed. Check server logs for details.");
       const status = (err as { status?: number })?.status ?? undefined;
-      
+
       // Create a proper IngestResult structure for the error
       const errorData: IngestResult = {
         ok: false,
@@ -317,7 +356,7 @@ const UploadCsv: React.FC<UploadCsvProps> = ({ onUploaded, defaultReplace = true
         error: "upload_failed",
         message: message,
       };
-      
+
       const r: UploadResult = { ok: false, status, message, data: errorData };
       setResult(r);
       emitToastError("Upload Failed", { description: message });
@@ -362,7 +401,7 @@ const UploadCsv: React.FC<UploadCsvProps> = ({ onUploaded, defaultReplace = true
             data-testid="uploadcsv-input"
             ref={inputRef}
             type="file"
-            accept=".csv,text/csv"
+            accept=".csv,.xls,.xlsx,text/csv"
             className="hidden"
             onChange={onPick}
           />
@@ -381,7 +420,7 @@ const UploadCsv: React.FC<UploadCsvProps> = ({ onUploaded, defaultReplace = true
             </div>
             {!file && (
               <p className="text-xs opacity-70">
-                Accepts <code>.csv</code> • Example: <code>transactions_sample.csv</code>
+                Supported formats: <span className="font-medium">CSV, Excel (.xls, .xlsx)</span>
               </p>
             )}
           </div>
