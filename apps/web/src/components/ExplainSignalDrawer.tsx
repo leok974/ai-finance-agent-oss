@@ -28,6 +28,42 @@ type SuggestionItem = {
   why?: string[]
 }
 
+/**
+ * Convert raw backend reason strings into human-readable explanations
+ */
+function formatSuggestionReason(reasons?: string[]): string {
+  if (!reasons || reasons.length === 0) {
+    return "Suggested as a possible fit based on available data.";
+  }
+
+  // Check for specific known patterns
+  const raw = reasons[0].toLowerCase();
+
+  if (raw.includes('prior') && raw.includes('fallback')) {
+    return "Low-confidence fallback suggestion based on previous patterns for this merchant.";
+  }
+
+  if (raw.includes('merchant') && raw.includes('rule')) {
+    return "Deterministic rule: this merchant is usually treated as this category.";
+  }
+
+  if (raw.includes('p2p') || raw.includes('transfer')) {
+    return "Looks like a person-to-person transfer based on the description and amount.";
+  }
+
+  if (raw.includes('model') || raw.includes('ml') || raw.includes('score')) {
+    return "Suggested by our model based on the transaction description and amount.";
+  }
+
+  // If the backend already sent human-readable text (not a slug), use it
+  if (reasons[0].length > 30 || reasons[0].includes(' ')) {
+    return reasons.join(' ');
+  }
+
+  // Generic fallback
+  return "Suggested as a possible fit. Treat this as a hint, not a final answer.";
+}
+
 export default function ExplainSignalDrawer({ txnId, open, onOpenChange, txn, suggestions }: {
   txnId: number | null
   open: boolean
@@ -166,6 +202,7 @@ export default function ExplainSignalDrawer({ txnId, open, onOpenChange, txn, su
 
                 return (
                   <div key={sug.category_slug} className="rounded-lg bg-slate-900/70 p-3 border border-white/5 space-y-2">
+                    {/* Header: category + confidence + MODEL pill */}
                     <div className="flex items-center justify-between text-sm">
                       <span className="font-medium">
                         {sug.label || sug.category_slug}
@@ -179,28 +216,30 @@ export default function ExplainSignalDrawer({ txnId, open, onOpenChange, txn, su
                         </span>
                       </div>
                     </div>
-                    {sug.why && sug.why.length > 0 ? (
-                      <ul className="text-xs text-slate-300 list-disc ml-4 space-y-1">
-                        {sug.why.map((reason, idx) => (
-                          <li key={idx}>{reason}</li>
-                        ))}
-                      </ul>
-                    ) : (
-                      <p className="text-xs text-slate-400">No additional explanation provided.</p>
-                    )}
-                    <div className="pt-1">
+
+                    {/* Human-readable explanation */}
+                    <p className="text-xs text-slate-300 leading-relaxed">
+                      {formatSuggestionReason(sug.why)}
+                    </p>
+
+                    {/* Footer: confidence + feedback action */}
+                    <div className="flex items-center justify-between pt-1 text-[11px] border-t border-white/5">
+                      <span className="text-slate-500">
+                        Suggestion confidence: {Math.round(sug.score * 100)}%
+                      </span>
+
                       {!isRejected ? (
                         <button
                           type="button"
-                          className="text-[11px] text-slate-400 hover:text-rose-300 underline-offset-2 hover:underline disabled:opacity-60 transition-colors"
+                          className="ml-3 text-slate-400 hover:text-rose-300 underline-offset-2 hover:underline disabled:opacity-60 transition-colors"
                           onClick={() => handleDontSuggest(sug)}
                           disabled={isLoading}
                         >
-                          {isLoading ? 'Saving...' : "Don't suggest this"}
+                          {isLoading ? 'Saving…' : "Don't suggest this"}
                         </button>
                       ) : (
-                        <span className="text-[11px] text-emerald-400">
-                          ✓ We'll stop suggesting this category for this merchant
+                        <span className="ml-3 text-emerald-400">
+                          ✓ We'll stop suggesting this
                         </span>
                       )}
                     </div>
