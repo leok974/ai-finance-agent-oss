@@ -32,14 +32,10 @@ window.__APP_MOUNTED__ = true;
 // 🚀 Build banner with clear MODE, BRANCH, COMMIT, BUILD_AT display
 const MODE = import.meta.env.PROD ? "prod" : "dev";
 
-// These are typically injected by Vite plugins / env vars.
-const BRANCH =
-  (import.meta.env.VITE_GIT_BRANCH as string | undefined) ?? "unknown";
-const COMMIT =
-  (import.meta.env.VITE_GIT_COMMIT as string | undefined) ?? "unknown";
-const BUILD_AT =
-  (import.meta.env.VITE_BUILD_AT as string | undefined) ??
-  new Date().toISOString();
+// Use build-stamp.json (generated during Docker build) for accurate metadata
+const BRANCH = buildStamp?.branch ?? "local";
+const COMMIT = buildStamp?.commit ?? "dev";
+const BUILD_AT = buildStamp?.ts ?? new Date().toISOString();
 
 const BUILD_TAG = `${BRANCH}@${COMMIT}`;
 const ICON = MODE === "prod" ? "🚀" : "🧪";
