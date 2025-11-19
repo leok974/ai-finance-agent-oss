@@ -12,12 +12,12 @@ test.use({ storageState: 'tests/e2e/.auth/prod-state.json' });
 
 const BASE_URL = process.env.BASE_URL || 'https://app.ledger-mind.org';
 
-test.describe('Top Merchants Chart @prod @charts', () => {
-  test('Top Merchants chart renders bars when backend has spend', async ({ page }) => {
+test.describe('@prod @charts top merchants', () => {
+  test('shows merchant bars when backend returns spend data', async ({ page }) => {
     // Navigate to dashboard
     await page.goto(BASE_URL, { waitUntil: 'domcontentloaded' });
 
-    // Wait a moment for auth to settle
+    // Wait for auth to settle
     await page.waitForTimeout(1000);
 
     // Check if authenticated (skip if redirected to login)
@@ -27,49 +27,68 @@ test.describe('Top Merchants Chart @prod @charts', () => {
       return;
     }
 
-    // Wait for the charts panel to be visible
+    // Wait for charts panel to render
     const chartsPanel = page.getByTestId('charts-panel-root');
     await chartsPanel.waitFor({ state: 'visible', timeout: 10000 });
 
-    // Wait for data to load (charts load async)
+    // Wait for data to load
     await page.waitForTimeout(2000);
 
-    // Check if there's any spend in the overview card (if present)
-    // This helps determine if we should expect merchant data
-    const hasOverviewData = await page.locator('text=/total outflows|spent|spending/i').count() > 0;
+    // Intercept the merchants API call to see what backend returned
+    let merchantsApiData: any = null;
+    page.on('response', async (response) => {
+      if (response.url().includes('/agent/tools/charts/merchants') || response.url().includes('/charts/merchants')) {
+        try {
+          merchantsApiData = await response.json();
+        } catch (e) {
+          // Ignore parse errors
+        }
+      }
+    });
 
-    if (!hasOverviewData) {
-      console.log('No overview data found - may be empty month, test is inconclusive');
-      // Don't fail if there's genuinely no data
-      return;
-    }
+    // Force a reload to capture the API call
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await page.waitForTimeout(3000);
 
-    // Now check Top Merchants specifically
+    // Check what the API actually returned
+    const backendHasMerchants = merchantsApiData?.items?.length > 0 || false;
+    const backendSpend = backendHasMerchants
+      ? merchantsApiData.items.reduce((sum: number, m: any) => {
+          const v = m.total ?? m.spend ?? m.amount ?? 0;
+          return sum + Math.abs(v);
+        }, 0)
+      : 0;
+
+    console.log('[test] Backend merchants:', merchantsApiData?.items?.length ?? 0);
+    console.log('[test] Backend total spend:', backendSpend);
+
+    // Now check what the UI shows
     const emptyState = page.getByTestId('top-merchants-empty');
     const chart = page.getByTestId('top-merchants-chart');
 
-    // Should either have chart OR empty state, not both
     const emptyCount = await emptyState.count();
     const chartCount = await chart.count();
 
-    if (emptyCount > 0) {
-      // If showing empty state, chart should not be present
-      expect(chartCount).toBe(0);
-      console.log('Top Merchants showing empty state (no merchant data for this month)');
-    } else {
-      // If not showing empty state, chart should be present with bars
-      expect(chartCount).toBe(1);
+    if (backendSpend >= 0.01) {
+      // Backend has real spend → UI MUST show the chart, not empty state
+      expect(emptyCount, 'should NOT show empty state when backend has spend').toBe(0);
+      expect(chartCount, 'should show chart when backend has spend').toBe(1);
 
-      // Verify at least one bar exists in the chart
-      const bars = chart.locator('svg rect[fill]');
+      // Assert at least one bar rect exists in the chart
+      const bars = chart.locator('svg rect');
       const barCount = await bars.count();
+      expect(barCount, 'chart should have at least one bar rect when backend has spend').toBeGreaterThan(0);
 
-      expect(barCount, 'Top Merchants chart should have at least one bar').toBeGreaterThan(0);
-      console.log(`Top Merchants chart has ${barCount} bars`);
+      console.log(`✓ Backend has spend (${backendSpend.toFixed(2)}), chart shows ${barCount} bars`);
+    } else {
+      // Backend has no spend → empty state is OK
+      console.log('Backend has no spend, empty state is expected');
+      expect(emptyCount).toBe(1);
+      expect(chartCount).toBe(0);
     }
   });
 
-  test('Top Merchants chart tooltip shows merchant name and amount', async ({ page }) => {
+  test('tooltip shows merchant name and amount on hover', async ({ page }) => {
     await page.goto(BASE_URL, { waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(1000);
 
@@ -90,16 +109,18 @@ test.describe('Top Merchants Chart @prod @charts', () => {
     const chartCount = await chart.count();
 
     if (chartCount === 0) {
-      console.log('No Top Merchants chart found - skipping tooltip test');
+      console.log('No Top Merchants chart found (empty state) - skipping tooltip test');
+      test.skip(true, 'No chart to test tooltips on');
       return;
     }
 
     // Find first bar
-    const firstBar = chart.locator('svg rect[fill]').first();
+    const firstBar = chart.locator('svg rect').first();
     const barExists = await firstBar.count() > 0;
 
     if (!barExists) {
       console.log('No bars in chart - skipping tooltip test');
+      test.skip(true, 'No bars to hover');
       return;
     }
 
@@ -108,17 +129,18 @@ test.describe('Top Merchants Chart @prod @charts', () => {
     await page.waitForTimeout(500);
 
     // Check if tooltip appeared (Recharts creates tooltip div)
-    const tooltip = page.locator('.recharts-tooltip-wrapper');
+    const tooltip = page.locator('.recharts-tooltip-wrapper, .recharts-default-tooltip');
     const tooltipVisible = await tooltip.isVisible().catch(() => false);
+
+    expect(tooltipVisible, 'tooltip should be visible on hover').toBeTruthy();
 
     if (tooltipVisible) {
       const tooltipText = await tooltip.textContent();
       console.log('Tooltip content:', tooltipText);
 
-      // Tooltip should contain currency formatting ($ sign)
+      // Tooltip should contain currency formatting ($ sign) and "Spend" label
       expect(tooltipText).toMatch(/\$/);
-    } else {
-      console.log('Tooltip not visible - may need adjustment to hover logic');
+      expect(tooltipText).toMatch(/spend/i);
     }
   });
 });
