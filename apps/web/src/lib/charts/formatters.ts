@@ -17,6 +17,25 @@ export function formatCurrency(value: number): string {
 }
 
 /**
+ * Format a number as compact currency for chart axes.
+ * @param value - The numeric value to format
+ * @returns Compact currency string (e.g., "$1.2k", "$850")
+ */
+export function formatCurrencyShort(value: number): string {
+  if (value === 0) return '$0';
+  const absValue = Math.abs(value);
+  const sign = value < 0 ? '-' : '';
+
+  if (absValue >= 1000000) {
+    return `${sign}$${(absValue / 1000000).toFixed(1)}M`;
+  } else if (absValue >= 1000) {
+    return `${sign}$${(absValue / 1000).toFixed(1)}k`;
+  } else {
+    return `${sign}$${Math.round(absValue)}`;
+  }
+}
+
+/**
  * Format an ISO date string as a short date label for chart axes.
  * @param iso - ISO date string (e.g., "2025-11-02")
  * @returns Formatted date label (e.g., "Nov 2")

@@ -433,10 +433,10 @@ export async function getMonthMerchants(month?: string): Promise<UIMerchant[]> {
       body: JSON.stringify({ month })
     });
     return arr<Record<string, unknown>>(r?.items).map((m) => ({
-      merchant_key: String(m.merchant_key ?? 'unknown'),
-      label: String(m.label ?? 'Unknown'),
-      total: num(m.total),
-      count: num(m.count),
+      merchant_key: String(m.merchant_key ?? m.merchant ?? 'unknown'),
+      label: String(m.label ?? m.merchant ?? 'Unknown'),
+      total: num(m.total ?? m.spend),
+      count: num(m.count ?? m.txns),
       statement_examples: arr<string>(m.statement_examples),
       category: m.category ? String(m.category) : undefined,
     }));
