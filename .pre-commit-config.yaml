@@ -26,6 +26,11 @@ repos:
         entry: bash -c 'if git diff --cached --name-only | grep -Ei "(service[-_ ]?account|gcp).*\.json"; then echo "Blocked service account JSON path"; exit 1; fi'
         language: system
         pass_filenames: false
+      - id: block-test-artifacts
+        name: Block test results and artifacts from commits
+        entry: bash -c 'FILES=$(git diff --cached --name-only | grep -E "(test-results/|playwright-report/|\.last-run\.json)"); if [ -n "$FILES" ]; then echo "❌ Blocked test artifacts. Run git reset apps/web/test-results/ apps/web/playwright-report/"; exit 1; fi'
+        language: system
+        pass_filenames: false
       - id: grafana-dashboard-validate
         name: Validate Grafana ML dashboard ($prom + required queries)
         language: python
@@ -74,6 +79,10 @@ exclude: >
     \.pnpm-store/.*|
     apps/web/test-results/.*|
     apps/web/playwright-report/.*|
+    apps/web/\.last-run\.json$|
+    test-results/.*|
+    playwright-report/.*|
+    \.last-run\.json$|
     \.cache/.*|
     __pycache__/.*|
     .*\.pyc$|
@@ -81,6 +90,5 @@ exclude: >
     \.pytest_cache/.*|
     \.mypy_cache/.*|
     \.ruff_cache/.*|
-    playwright-report/.*|
     .*edge-new-noauth\.json$
   )$
