@@ -128,9 +128,28 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
   const categoriesData = useMemo(() => categories, [categories]);
   const merchantsData = useMemo(() => {
     // Clean up merchant data for chart display
-    return merchants
-      .filter((m) => Number.isFinite(m.total) && m.total > 0)
-      .filter((m) => m.label.toLowerCase() !== 'unknown');
+    // Keep valid merchants with positive spend
+    const validMerchants = merchants.filter((m) => Number.isFinite(m.total) && m.total > 0);
+
+    // Separate unknown merchants
+    const unknownMerchants = validMerchants.filter((m) => m.label.toLowerCase() === 'unknown');
+    const knownMerchants = validMerchants.filter((m) => m.label.toLowerCase() !== 'unknown');
+
+    // If we only have unknown merchants, keep one aggregated bucket
+    if (knownMerchants.length === 0 && unknownMerchants.length > 0) {
+      const totalUnknown = unknownMerchants.reduce((sum, m) => sum + m.total, 0);
+      const countUnknown = unknownMerchants.reduce((sum, m) => sum + m.count, 0);
+      return [{
+        merchant_key: 'unknown',
+        label: 'Unknown',
+        total: totalUnknown,
+        count: countUnknown,
+        statement_examples: []
+      }];
+    }
+
+    // Otherwise return only known merchants
+    return knownMerchants;
   }, [merchants]);
   const flowsData = useMemo(() => daily, [daily]);
   const trendsData = useMemo(
