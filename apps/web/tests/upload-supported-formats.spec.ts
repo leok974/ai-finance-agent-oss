@@ -1,22 +1,22 @@
 import { test, expect } from '@playwright/test';
 
 /**
- * E2E test verifying the "Supported CSV formats" documentation is visible
+ * E2E test verifying the "Supported CSV column layouts" documentation is visible
  * in the UploadCsv component.
  *
- * This test ensures users can see what CSV formats are accepted before upload,
+ * This test ensures users can see what CSV column layouts are accepted before upload,
  * helping them understand why a file might fail and what shapes are supported.
  */
 
-test('@frontend shows supported CSV formats documentation', async ({ page }) => {
+test('@frontend shows supported CSV column layouts documentation', async ({ page }) => {
   // Navigate to the main page (adjust URL if needed)
   await page.goto('/');
 
   // Wait for page to fully load
   await page.waitForLoadState('networkidle');
 
-  // Verify the "Supported CSV formats" header is visible
-  const formatHeader = page.getByText('Supported CSV formats');
+  // Verify the "Supported CSV column layouts" header is visible
+  const formatHeader = page.getByText('Supported CSV column layouts');
   await expect(formatHeader).toBeVisible();
 
   // Verify all 4 format types are listed
@@ -58,7 +58,7 @@ test('@frontend formats documentation appears before upload results', async ({ p
   await page.waitForLoadState('networkidle');
 
   // Get the formats box and upload button
-  const formatsBox = page.getByText('Supported CSV formats');
+  const formatsBox = page.getByText('Supported CSV column layouts');
   const uploadButton = page.getByTestId('uploadcsv-submit');
 
   // Both should be visible

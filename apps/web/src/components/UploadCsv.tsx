@@ -398,7 +398,7 @@ const UploadCsv: React.FC<UploadCsvProps> = ({ onUploaded, defaultReplace = true
   return (
     <div className={`w-full ${className ?? ""}`}>
         <header className="flex items-center justify-between border-b border-border pb-1">
-          <h2 className="text-lg font-semibold">Upload Transactions CSV</h2>
+          <h2 className="text-lg font-semibold">Upload Transactions (CSV / Excel)</h2>
           <div className="flex items-center gap-3">
             <label className="inline-flex items-center gap-2 text-sm text-gray-300">
               <input
@@ -443,14 +443,14 @@ const UploadCsv: React.FC<UploadCsvProps> = ({ onUploaded, defaultReplace = true
                   <span className="opacity-70">({prettyBytes(file.size)})</span>
                 </>
               ) : dragOver ? (
-                "Drop your CSV to upload"
+                "Drop your file to upload"
               ) : (
-                "Click to choose a CSV or drag & drop here"
+                "Click to choose a file (CSV or Excel) or drag & drop here"
               )}
             </div>
             {!file && (
               <p className="text-xs opacity-70">
-                Supported formats: <span className="font-medium">CSV, Excel (.xls, .xlsx)</span>
+                Supported file formats: <span className="font-medium">CSV and Excel (.xls, .xlsx)</span>
               </p>
             )}
           </div>
@@ -471,7 +471,7 @@ const UploadCsv: React.FC<UploadCsvProps> = ({ onUploaded, defaultReplace = true
 
         {/* Supported CSV Formats Documentation */}
         <div className="mt-4 text-xs text-slate-300 border border-slate-700/60 rounded-lg p-3 bg-slate-900/40">
-          <div className="font-medium text-slate-100 mb-2">Supported CSV formats</div>
+          <div className="font-medium text-slate-100 mb-2">Supported CSV column layouts</div>
           <ul className="list-disc list-inside space-y-2">
             <li>
               <span className="font-semibold">LedgerMind CSV</span>
