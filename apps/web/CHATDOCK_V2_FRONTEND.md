@@ -108,14 +108,14 @@ const handleBackdropTouchMove = (event: TouchEvent) => {
 
 All major elements have `data-testid` attributes for E2E testing:
 
-| Element | Test ID | Description |
-|---------|---------|-------------|
-| Launcher Button | `lm-chat-launcher-button` | 44px circular LM bubble, opens/closes chat |
-| Launcher Root | `lm-chat-launcher` | Container for launcher + shell + backdrop |
-| Chat Shell | `lm-chat-shell` | Absolutely positioned card above bubble |
-| Chat Panel | `lm-chat-panel` | Card inside shell with actual chat content |
-| Chat Scroll Area | `lm-chat-scroll` | Scrollable content area for messages |
-| Backdrop | `lm-chat-backdrop` | Full viewport button for dim + click-to-close |
+| Element          | Test ID                   | Description                                   |
+| ---------------- | ------------------------- | --------------------------------------------- |
+| Launcher Button  | `lm-chat-launcher-button` | 44px circular LM bubble, opens/closes chat    |
+| Launcher Root    | `lm-chat-launcher`        | Container for launcher + shell + backdrop     |
+| Chat Shell       | `lm-chat-shell`           | Absolutely positioned card above bubble       |
+| Chat Panel       | `lm-chat-panel`           | Card inside shell with actual chat content    |
+| Chat Scroll Area | `lm-chat-scroll`          | Scrollable content area for messages          |
+| Backdrop         | `lm-chat-backdrop`        | Full viewport button for dim + click-to-close |
 
 **Deprecated Test IDs (v1 iframe-based):**
 
@@ -182,7 +182,9 @@ test("@prod @chat page scrolls with chat open", async ({ page }) => {
 
   // Open chat
   await page.locator('[data-testid="lm-chat-launcher-button"]').click();
-  await page.locator('[data-testid="lm-chat-shell"]').waitFor({ state: "visible" });
+  await page
+    .locator('[data-testid="lm-chat-shell"]')
+    .waitFor({ state: "visible" });
 
   // Test scroll
   await page.evaluate(() => window.scrollTo(0, 800));
@@ -221,11 +223,11 @@ const shell = page.locator('[data-testid="lm-chat-shell"]');
 
 ```typescript
 // Before (v1)
-const frame = page.frameLocator('#lm-chat-iframe');
-const element = frame.locator('.some-class');
+const frame = page.frameLocator("#lm-chat-iframe");
+const element = frame.locator(".some-class");
 
 // After (v2)
-const element = page.locator('.some-class'); // Direct access, no iframe
+const element = page.locator(".some-class"); // Direct access, no iframe
 ```
 
 ### 3. Update Size/Position Checks
@@ -264,6 +266,7 @@ expect(box!.height).toBeLessThan(viewport.height);
 **Historical Context:**
 
 - **v1 approach:** Used `pointer-events: none` on the overlay to allow scroll passthrough
+
   - Problem: Required careful z-index management and had edge cases with clickable elements
   - Solution worked but was fragile
 

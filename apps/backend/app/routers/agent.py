@@ -1413,6 +1413,7 @@ def agent_chat(
         response_payload = tag_if_analytics(last_user_msg, resp)
         r = JSONResponse(response_payload)
         r.headers["X-LLM-Path"] = path_hdr
+        r.headers["X-Auth-Mode"] = auth.get("auth_mode", "unknown")
         return r
     except Exception as e:
         print(f"Agent chat error: {str(e)}")
@@ -1519,7 +1520,10 @@ def agent_rephrase(
     if request is not None:
         request.state.llm_path = "primary"
 
-    return JSONResponse(resp, headers={"X-LLM-Path": "primary"})
+    r = JSONResponse(resp)
+    r.headers["X-LLM-Path"] = "primary"
+    r.headers["X-Auth-Mode"] = auth.get("auth_mode", "unknown")
+    return r
 
 
 def _fmt_usd(v: float) -> str:

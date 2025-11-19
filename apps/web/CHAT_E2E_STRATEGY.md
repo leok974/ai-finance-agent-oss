@@ -167,6 +167,7 @@ This test guards against regressions where the backdrop blocks scrolling. It val
 **Known Issues & Scroll Behavior:**
 
 - **Older versions** relied on `pointer-events: none` overlay to allow scroll passthrough
+
   - Problem: Required careful z-index management and had edge cases with clickable elements
   - Solution worked but was fragile
 
