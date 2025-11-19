@@ -53,6 +53,22 @@ make canary-0               # emergency rollback
 
 ---
 
+## 📂 Supported Bank Statement Formats
+
+LedgerMind accepts multiple file formats for transaction imports with automatic normalization:
+
+- **CSV** (`.csv`) — Native backend support with auto-detection
+- **Excel** (`.xls`, `.xlsx`) — Frontend conversion to CSV (client-side processing)
+- **Planned**: OFX/QFX, QIF, MT940/CAMT.053
+
+**See [`INGEST_FORMATS.md`](INGEST_FORMATS.md)** for complete documentation on:
+- Supported formats and implementation details
+- How to add new file format support
+- Testing strategy and error handling
+- Architecture benefits and design decisions
+
+---
+
 ## Quick Start (Prod Compose Path)
 
 ```bash

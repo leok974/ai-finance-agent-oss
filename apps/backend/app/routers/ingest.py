@@ -19,12 +19,11 @@ import logging
 import re
 from decimal import Decimal, InvalidOperation
 from enum import Enum
-from typing import Iterator, Tuple
-from datetime import date as datetime_date
+from typing import Iterator
 from ..db import get_db
 from app.transactions import Transaction
 from app.services.ingest_utils import detect_positive_expense_format
-from app.services.metrics import INGEST_REQUESTS, INGEST_ERRORS
+from app.services.metrics import INGEST_REQUESTS, INGEST_ERRORS, INGEST_FILES
 
 logger = logging.getLogger(__name__)
 
@@ -387,6 +386,7 @@ async def ingest_csv(
     file: UploadFile = File(...),
     replace: bool = Query(False),
     expenses_are_positive: bool | None = Query(None),  # <-- now optional
+    format: str = Query("csv"),  # format from frontend: csv|xls|xlsx
     db: Session = Depends(get_db),
 ):
     """
@@ -399,6 +399,10 @@ async def ingest_csv(
     # Track all ingest requests for SLO monitoring
     phase = "replace" if replace else "append"
     INGEST_REQUESTS.labels(phase=phase).inc()
+
+    # Track file format for observability (normalize to lowercase)
+    file_format = format.lower() if format in ("csv", "xls", "xlsx") else "csv"
+    INGEST_FILES.labels(format=file_format).inc()
 
     # Wrap main handler in try-catch for comprehensive error logging
     try:
@@ -421,7 +425,7 @@ async def ingest_csv(
                 "error_type": type(exc).__name__,
             },
         )
-        
+
         # Build user-friendly error message
         error_str = str(exc)
         if "could not convert string to float" in error_str:
@@ -433,7 +437,7 @@ async def ingest_csv(
         else:
             # Keep technical error for unexpected issues
             friendly_message = f"CSV upload failed: {error_str}"
-        
+
         # Return 500 with user-friendly error message
         return JSONResponse(
             status_code=500,
@@ -507,7 +511,11 @@ async def _ingest_csv_impl(
         )
 
         # Normalize headers for frontend display (same logic as above)
-        headers_norm = [h.lower().strip() if h else h for h in original_headers] if original_headers else []
+        headers_norm = (
+            [h.lower().strip() if h else h for h in original_headers]
+            if original_headers
+            else []
+        )
 
         return {
             "ok": False,
@@ -768,7 +776,7 @@ async def _ingest_csv_impl(
                 f"Please check that dates are in a valid format (MM/DD/YYYY or YYYY-MM-DD) "
                 f"and amounts are numbers (e.g., -123.45 or $123.45)."
             )
-        
+
         return {
             "ok": False,
             "added": 0,
