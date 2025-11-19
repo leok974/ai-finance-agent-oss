@@ -383,6 +383,7 @@ export type UIMerchant = {
   total: number;  // Total spend amount
   count: number;  // Transaction count
   statement_examples?: string[];
+  category?: string;  // Learned category from merchant cache
 };
 export type UIDaily = { date: string; in: number; out: number; net: number };
 export type UICategory = { name: string; amount: number };
@@ -437,6 +438,7 @@ export async function getMonthMerchants(month?: string): Promise<UIMerchant[]> {
       total: num(m.total),
       count: num(m.count),
       statement_examples: arr<string>(m.statement_examples),
+      category: m.category ? String(m.category) : undefined,
     }));
   } catch (e) {
     console.warn('[api] getMonthMerchants failed:', e);

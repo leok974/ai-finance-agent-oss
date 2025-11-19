@@ -278,17 +278,21 @@ def get_month_merchants(
     db: Session, user_id: int, month: str, limit: int = 8
 ) -> Dict[str, Any]:
     """
-    Aggregate top merchants using brand-aware normalization.
+    Aggregate top merchants using brand-aware normalization with Redis cache.
     Groups transactions by normalized merchant key and returns friendly labels.
 
+    Uses merchant memory cache to learn and remember merchants over time.
     Default limit reduced to 8 for better chart readability.
     """
+    from app.redis_client import redis
+    from app.services.merchant_cache import learn_merchant
 
     start, end = month_bounds(month)
+    redis_client = redis()
 
     # Fetch all expense transactions for the month
     txns = db.execute(
-        select(Transaction.merchant, Transaction.amount).where(
+        select(Transaction.merchant, Transaction.amount, Transaction.description).where(
             Transaction.user_id == user_id,
             Transaction.date >= start,
             Transaction.date < end,
@@ -297,22 +301,36 @@ def get_month_merchants(
         )
     ).all()
 
-    # Aggregate using brand-aware normalization
+    # Aggregate using brand-aware normalization with cache
     buckets: Dict[str, Dict[str, Any]] = defaultdict(
         lambda: {
             "label": "",
             "total": 0.0,
             "count": 0,
             "statement_examples": set(),
+            "category": None,
         }
     )
 
-    for raw_merchant, amount in txns:
+    for raw_merchant, amount, description in txns:
         raw = raw_merchant or "unknown"
-        key, label = canonical_and_label(raw)
+
+        # Try to learn/lookup merchant from cache
+        if redis_client:
+            hint = learn_merchant(
+                redis_client, db, raw, description=description, amount=amount
+            )
+            key = hint.normalized_name
+            label = hint.display_name
+            category = hint.category
+        else:
+            # Fallback to direct normalization if Redis unavailable
+            key, label = canonical_and_label(raw)
+            category = None
 
         b = buckets[key]
         b["label"] = label
+        b["category"] = category
         b["total"] = float(b["total"]) + abs(float(amount or 0.0))
         b["count"] = int(b["count"]) + 1
         b["statement_examples"].add(raw)  # type: ignore
@@ -327,6 +345,7 @@ def get_month_merchants(
                 "total": b["total"],
                 "count": b["count"],
                 "statement_examples": sorted(b["statement_examples"])[:3],
+                "category": b["category"],  # Include learned category
             }
         )
 
