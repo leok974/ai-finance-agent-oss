@@ -50,7 +50,7 @@ export function createPortal(children: any, container: any, ...rest: any[]) {
 }
 
 // Re-export everything else from the REAL module
-export * from "react-dom-real";
+export * from "react-dom/client";
 
 // Vis marker
 // eslint-disable-next-line no-console

@@ -1,0 +1,62 @@
+{
+  "id": 37,
+  "type": "stat",
+  "title": "Transfers / P2P Volume",
+  "description": "Number of P2P / Transfers transactions categorized in the current time range",
+  "gridPos": {
+    "h": 4,
+    "w": 6,
+    "x": 0,
+    "y": 16
+  },
+  "targets": [
+    {
+      "refId": "A",
+      "expr": "sum(increase(ledgermind_transactions_categorized_total{category=\"Transfers / P2P\"}[$__range]))",
+      "legendFormat": "Transfers / P2P",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      }
+    }
+  ],
+  "options": {
+    "reduceOptions": {
+      "calcs": ["lastNotNull"],
+      "fields": "",
+      "values": false
+    },
+    "orientation": "horizontal",
+    "colorMode": "value",
+    "graphMode": "none",
+    "justifyMode": "auto",
+    "textMode": "auto"
+  },
+  "fieldConfig": {
+    "defaults": {
+      "color": {
+        "mode": "thresholds"
+      },
+      "thresholds": {
+        "mode": "absolute",
+        "steps": [
+          {
+            "value": null,
+            "color": "green"
+          },
+          {
+            "value": 50,
+            "color": "yellow"
+          },
+          {
+            "value": 100,
+            "color": "red"
+          }
+        ]
+      },
+      "unit": "short",
+      "decimals": 0
+    },
+    "overrides": []
+  }
+}

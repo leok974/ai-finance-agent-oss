@@ -3,10 +3,20 @@
  * Matches backend brand rules from apps/backend/app/services/charts_data.py
  */
 
-type MerchantBrandRule = {
+export type MerchantKind = 'p2p' | 'subscription' | 'retail' | 'atm' | 'cash';
+
+export type MerchantBrandRule = {
   key: string;
   label: string;
   patterns: string[];
+  kind?: MerchantKind;
+  categoryHint?: string; // category slug from CATEGORY_DEFS
+};
+
+export type MerchantNormalized = {
+  display: string;
+  kind?: MerchantKind;
+  categoryHint?: string;
 };
 
 /**
@@ -14,105 +24,184 @@ type MerchantBrandRule = {
  * Add new rules here as you discover noisy merchant patterns.
  */
 const MERCHANT_BRAND_RULES: MerchantBrandRule[] = [
+  // === P2P / Transfers ===
+  {
+    key: 'zelle',
+    label: 'Zelle transfer',
+    patterns: ['now withdrawal', 'zelle payment', 'zelle transfer', 'zelle'],
+    kind: 'p2p',
+    categoryHint: 'transfers',
+  },
+  {
+    key: 'venmo',
+    label: 'Venmo',
+    patterns: ['venmo'],
+    kind: 'p2p',
+    categoryHint: 'transfers',
+  },
+  {
+    key: 'cash_app',
+    label: 'Cash App',
+    patterns: ['sqc*', 'cash app', 'square cash'],
+    kind: 'p2p',
+    categoryHint: 'transfers',
+  },
+  {
+    key: 'paypal_p2p',
+    label: 'PayPal',
+    patterns: ['paypal'],
+    kind: 'p2p',
+    categoryHint: 'transfers',
+  },
+  {
+    key: 'apple_cash',
+    label: 'Apple Cash',
+    patterns: ['apple cash'],
+    kind: 'p2p',
+    categoryHint: 'transfers',
+  },
+
+  // === Subscriptions ===
   {
     key: 'playstation',
     label: 'PlayStation',
     patterns: ['playstatio', 'playstation'],
-  },
-  {
-    key: 'harris_teeter',
-    label: 'Harris Teeter',
-    patterns: ['harris teeter'],
-  },
-  {
-    key: 'now_withdrawal',
-    label: 'NOW Withdrawal',
-    patterns: ['now withdrawal'],
-  },
-  {
-    key: 'amazon',
-    label: 'Amazon',
-    patterns: ['amazon'],
-  },
-  {
-    key: 'starbucks',
-    label: 'Starbucks',
-    patterns: ['starbucks'],
-  },
-  {
-    key: 'target',
-    label: 'Target',
-    patterns: ['target'],
-  },
-  {
-    key: 'walmart',
-    label: 'Walmart',
-    patterns: ['walmart'],
-  },
-  {
-    key: 'cvs',
-    label: 'CVS Pharmacy',
-    patterns: ['cvs'],
-  },
-  {
-    key: 'walgreens',
-    label: 'Walgreens',
-    patterns: ['walgreens'],
+    kind: 'subscription',
+    categoryHint: 'subscriptions.gaming',
   },
   {
     key: 'netflix',
     label: 'Netflix',
     patterns: ['netflix'],
+    kind: 'subscription',
+    categoryHint: 'subscriptions.streaming',
   },
   {
     key: 'spotify',
     label: 'Spotify',
     patterns: ['spotify'],
-  },
-  {
-    key: 'uber',
-    label: 'Uber',
-    patterns: ['uber'],
-  },
-  {
-    key: 'lyft',
-    label: 'Lyft',
-    patterns: ['lyft'],
-  },
-  {
-    key: 'doordash',
-    label: 'DoorDash',
-    patterns: ['doordash'],
+    kind: 'subscription',
+    categoryHint: 'subscriptions.streaming',
   },
   {
     key: 'github',
     label: 'GitHub',
     patterns: ['github'],
+    kind: 'subscription',
+    categoryHint: 'subscriptions.software',
   },
   {
     key: 'apple',
     label: 'Apple',
     patterns: ['apple.com', 'apple '],
+    kind: 'subscription',
   },
   {
     key: 'google',
     label: 'Google',
     patterns: ['google'],
+    kind: 'subscription',
   },
   {
     key: 'microsoft',
     label: 'Microsoft',
     patterns: ['microsoft'],
+    kind: 'subscription',
+    categoryHint: 'subscriptions.software',
   },
   {
     key: 'adobe',
     label: 'Adobe',
     patterns: ['adobe'],
+    kind: 'subscription',
+    categoryHint: 'subscriptions.software',
   },
   {
     key: 'linkedin',
     label: 'LinkedIn',
     patterns: ['linkedin'],
+    kind: 'subscription',
+  },
+
+  // === Retail / Groceries ===
+  {
+    key: 'harris_teeter',
+    label: 'Harris Teeter',
+    patterns: ['harris teeter'],
+    kind: 'retail',
+    categoryHint: 'groceries',
+  },
+  {
+    key: 'target',
+    label: 'Target',
+    patterns: ['target'],
+    kind: 'retail',
+    categoryHint: 'shopping',
+  },
+  {
+    key: 'walmart',
+    label: 'Walmart',
+    patterns: ['walmart'],
+    kind: 'retail',
+    categoryHint: 'shopping',
+  },
+  {
+    key: 'cvs',
+    label: 'CVS Pharmacy',
+    patterns: ['cvs'],
+    kind: 'retail',
+    categoryHint: 'health.pharmacy',
+  },
+  {
+    key: 'walgreens',
+    label: 'Walgreens',
+    patterns: ['walgreens'],
+    kind: 'retail',
+    categoryHint: 'health.pharmacy',
+  },
+  {
+    key: 'amazon',
+    label: 'Amazon',
+    patterns: ['amazon'],
+    kind: 'retail',
+    categoryHint: 'shopping',
+  },
+  {
+    key: 'starbucks',
+    label: 'Starbucks',
+    patterns: ['starbucks'],
+    kind: 'retail',
+    categoryHint: 'coffee',
+  },
+
+  // === Transportation ===
+  {
+    key: 'uber',
+    label: 'Uber',
+    patterns: ['uber'],
+    kind: 'retail',
+    categoryHint: 'transportation.ride_hailing',
+  },
+  {
+    key: 'lyft',
+    label: 'Lyft',
+    patterns: ['lyft'],
+    kind: 'retail',
+    categoryHint: 'transportation.ride_hailing',
+  },
+  {
+    key: 'doordash',
+    label: 'DoorDash',
+    patterns: ['doordash'],
+    kind: 'retail',
+    categoryHint: 'restaurants',
+  },
+
+  // === Misc (no category hint - needs context) ===
+  {
+    key: 'now_withdrawal',
+    label: 'NOW Withdrawal',
+    patterns: ['now withdrawal'],
   },
 ];
 
@@ -135,24 +224,44 @@ function normalizeMerchantBase(raw: string): string {
 
 /**
  * Normalize merchant name for display with brand recognition.
- * Returns a clean, branded display name (e.g., "PlayStation" instead of "PLAYSTATIO PLAYSTATION.COM").
+ * Returns structured data including display name, kind, and category hint.
  *
  * @param raw - Raw merchant string from bank statement
- * @returns Clean display name
+ * @returns Normalized merchant data with display name, kind, and category hint
  */
-export function normalizeMerchantForDisplay(raw: string): string {
+export function normalizeMerchant(raw: string): MerchantNormalized {
   const base = normalizeMerchantBase(raw);
 
   // Try brand rules first
   for (const rule of MERCHANT_BRAND_RULES) {
     if (rule.patterns.some((pattern) => base.includes(pattern))) {
-      return rule.label;
+      return {
+        display: rule.label,
+        kind: rule.kind,
+        categoryHint: rule.categoryHint,
+      };
     }
   }
 
   // Generic fallback for unknown merchants
   const label = base.charAt(0).toUpperCase() + base.slice(1);
-  return label.length > 32 ? label.slice(0, 29) + '...' : label;
+  const display = label.length > 32 ? label.slice(0, 29) + '...' : label;
+
+  return {
+    display,
+    kind: undefined,
+    categoryHint: undefined,
+  };
+}
+
+/**
+ * Legacy function for backward compatibility.
+ * Returns only the display name string.
+ *
+ * @deprecated Use normalizeMerchant() instead for full structured data
+ */
+export function normalizeMerchantForDisplay(raw: string): string {
+  return normalizeMerchant(raw).display;
 }
 
 /**

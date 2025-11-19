@@ -37,10 +37,16 @@ if Counter:
         "Help describe non-rephrased classification",
         labelnames=("panel", "reason"),
     )
+    txn_categorized_total = Counter(
+        "ledgermind_transactions_categorized_total",
+        "Total number of transactions categorized by LedgerMind",
+        labelnames=("category",),
+    )
 else:
     help_describe_requests = None
     help_describe_rephrased = None
     help_describe_fallbacks = None
+    txn_categorized_total = None
 
 if Gauge:
     lm_crypto_mode = Gauge(
@@ -72,6 +78,8 @@ __all__ = [
     "lm_crypto_mode",
     "set_crypto_metrics",
     "prime_metrics",
+    # Categorization metrics
+    "txn_categorized_total",
 ]
 
 

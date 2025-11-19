@@ -90,7 +90,7 @@ export default function CardHelpTooltip({
   // Fetch explanation when switching to "why" tab
   // Debounced to prevent spam
   const debouncedFetch = useMemo(() => {
-    let timer: NodeJS.Timeout;
+    let timer: ReturnType<typeof setTimeout>;
     return (fn: () => void) => {
       clearTimeout(timer);
       timer = setTimeout(fn, 250);
