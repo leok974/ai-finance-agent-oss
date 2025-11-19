@@ -37,7 +37,7 @@ test.describe('Chat Tools Toggle and Clear', () => {
     await expect(toggle).toHaveText('Hide tools');
   });
 
-  test('@prod-critical clear chat button works with confirmation', async ({ page }) => {
+  test('@prod-critical clear chat button works with in-app confirmation', async ({ page }) => {
     // Navigate to the route that loads chat
     await page.goto(`${BASE_URL}/?chat=1&prefetch=0&panel=0`);
 
@@ -63,20 +63,63 @@ test.describe('Chat Tools Toggle and Clear', () => {
     // Clear button should be enabled now
     await expect(clearButton).toBeEnabled();
 
-    // Set up dialog handler to accept the confirmation
-    page.once('dialog', async (dialog) => {
-      expect(dialog.type()).toBe('confirm');
-      expect(dialog.message()).toContain('Clear chat history');
-      await dialog.accept();
-    });
-
-    // Click clear button
+    // Click clear button - should show in-app confirmation (not browser dialog)
     await clearButton.click();
+
+    // In-app confirmation strip should appear
+    const confirmStrip = page.getByTestId('lm-chat-clear-confirm');
+    await expect(confirmStrip).toBeVisible();
+
+    // Verify confirmation text
+    await expect(confirmStrip).toContainText("Clear chat history");
+    await expect(confirmStrip).toContainText("won't affect your transactions");
+
+    // Click the Clear button in the confirmation
+    const confirmYes = page.getByTestId('lm-chat-clear-confirm-yes');
+    await confirmYes.click();
+
+    // Confirmation strip should disappear
+    await expect(confirmStrip).not.toBeVisible();
 
     // Wait a moment for the clear to process
     await page.waitForTimeout(1000);
 
     // Clear button should be disabled again
     await expect(clearButton).toBeDisabled();
+  });
+
+  test('clear chat can be cancelled', async ({ page }) => {
+    // Navigate to the route that loads chat
+    await page.goto(`${BASE_URL}/?chat=1&prefetch=0&panel=0`);
+
+    // Wait for chat shell
+    const shell = page.locator('[data-testid="lm-chat-shell"]');
+    await expect(shell).toBeVisible();
+
+    // Send a simple message
+    const input = page.locator('.lm-chat-input');
+    await input.fill('Test message');
+    await input.press('Enter');
+
+    // Wait for message to appear
+    await page.waitForSelector('.lm-chat-message', { timeout: 10000 }).catch(() => {});
+
+    // Click clear button
+    const clearButton = page.getByTestId('lm-chat-clear');
+    await clearButton.click();
+
+    // Confirmation should appear
+    const confirmStrip = page.getByTestId('lm-chat-clear-confirm');
+    await expect(confirmStrip).toBeVisible();
+
+    // Click Cancel
+    const confirmNo = page.getByTestId('lm-chat-clear-confirm-no');
+    await confirmNo.click();
+
+    // Confirmation strip should disappear
+    await expect(confirmStrip).not.toBeVisible();
+
+    // Clear button should still be enabled (messages weren't cleared)
+    await expect(clearButton).toBeEnabled();
   });
 });

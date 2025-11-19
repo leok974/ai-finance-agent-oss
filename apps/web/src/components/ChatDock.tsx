@@ -359,6 +359,9 @@ export default function ChatDock() {
   const [activePreset, setActivePreset] = useState<ToolPresetKey>('insights_expanded');
   const [toolPayload, setToolPayload] = useState<string>(() => JSON.stringify(TOOL_PRESETS['insights_expanded'].defaultPayload ?? {}, null, 2));
 
+  // Clear chat confirmation UI
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
+
   // Subscribe to toolsPanel store
   useEffect(() => {
     return subscribeTools(setShowTools);
@@ -2055,14 +2058,7 @@ export default function ChatDock() {
               onClick={() => {
                 const hasMessages = storeMessages && storeMessages.length > 0;
                 if (!hasMessages) return;
-
-                const ok = window.confirm(
-                  "Clear chat history for this assistant? This won't affect your transactions or rules."
-                );
-                if (!ok) return;
-
-                useChatSession.getState().clearChat();
-                setUiMessages([]);
+                setShowClearConfirm(true);
               }}
               disabled={!storeMessages || storeMessages.length === 0}
               data-testid="lm-chat-clear"
@@ -2072,6 +2068,42 @@ export default function ChatDock() {
             </Button>
           </div>
         </CardHeader>
+
+        {/* Clear chat confirmation strip */}
+        {showClearConfirm && (
+          <div
+            className="mx-4 mb-2 mt-1 flex items-center justify-between gap-3 rounded-xl border border-amber-400/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-100"
+            data-testid="lm-chat-clear-confirm"
+          >
+            <span className="leading-snug">
+              Clear chat history for this assistant? This won't affect your transactions or rules.
+            </span>
+            <div className="flex shrink-0 gap-2">
+              <Button
+                size="sm"
+                variant="pill-danger"
+                className="border-amber-300/70 bg-amber-400/10 text-amber-50 hover:bg-amber-400/20"
+                onClick={() => {
+                  useChatSession.getState().clearChat();
+                  setUiMessages([]);
+                  setShowClearConfirm(false);
+                }}
+                data-testid="lm-chat-clear-confirm-yes"
+              >
+                Clear
+              </Button>
+              <Button
+                size="sm"
+                variant="pill-ghost"
+                className="text-amber-100 hover:bg-amber-500/20"
+                onClick={() => setShowClearConfirm(false)}
+                data-testid="lm-chat-clear-confirm-no"
+              >
+                Cancel
+              </Button>
+            </div>
+          </div>
+        )}
 
         <CardContent className="lm-chat-body">
           {showTools && (
