@@ -20,7 +20,7 @@ import { agentTools, agentChat, type AgentChatRequest, type AgentChatResponse, t
 import { fmtMonthSummary, fmtTopMerchants, fmtCashflow, fmtTrends } from "../lib/formatters";
 import { renderQuick, renderDeep, type MonthSummary as FinanceMonthSummary } from "../lib/formatters/finance";
 import { adaptChartsSummaryToMonthSummary } from "../lib/formatters/financeAdapters";
-import { runToolWithRephrase } from "../lib/tools-runner";
+import { runToolWithRephrase, formatSubscriptionsReply, type AnalyticsSubscriptionsResponse } from "../lib/tools-runner";
 import { MessageRenderer } from "@/features/chat/MessageRenderer";
 import { normalizeAssistantReply } from "@/features/chat/normalizeReply";
 import { saveAs } from "../utils/save";
@@ -1361,7 +1361,7 @@ export default function ChatDock() {
       await runToolWithRephrase(
         'analytics.subscriptions',
         () => analytics.subscriptions(month),
-        (raw: any) => `Identify likely subscriptions for ${month} and which to cancel, with reasons:\n\n${JSON.stringify(raw)}`,
+        (raw: AnalyticsSubscriptionsResponse) => formatSubscriptionsReply(raw),
         (msg, meta) => appendAssistant(msg, { ...meta, ctxMonth: month }),
         (on) => setBusy(on),
         () => ({ context: getContext() })
