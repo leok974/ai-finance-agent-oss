@@ -72,6 +72,17 @@ export default function LandingHero() {
                 Sign in with Google to get started in under a minute.
               </p>
             </div>
+
+            {/* Security reassurance */}
+            <div className="flex items-start gap-2 text-[11px] text-slate-400 pt-2 max-w-xl">
+              <span className="inline-flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full border border-emerald-500/60 bg-emerald-500/10 mt-0.5">
+                🔒
+              </span>
+              <span>
+                Secure by design: sign in with Google, data encrypted in transit and at rest.
+                LedgerMind never asks for your bank login.
+              </span>
+            </div>
           </div>
 
           {/* Right: Product preview card */}
@@ -137,9 +148,23 @@ export default function LandingHero() {
         </div>
       </main>
 
-      {/* Optional tiny footer */}
-      <footer className="py-6 text-center text-xs text-slate-500">
-        <p>Personal finance tracking with AI-powered insights</p>
+      {/* Footer with legal links */}
+      <footer className="border-t border-slate-800/60 bg-black/60">
+        <div className="mx-auto flex max-w-6xl flex-col gap-3 px-4 py-4 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between">
+          <span>© {new Date().getFullYear()} LedgerMind. All rights reserved.</span>
+
+          <div className="flex flex-wrap gap-4">
+            <a href="/legal/privacy" className="hover:text-slate-300 transition-colors">
+              Privacy
+            </a>
+            <a href="/legal/terms" className="hover:text-slate-300 transition-colors">
+              Terms
+            </a>
+            <a href="/legal/security" className="hover:text-slate-300 transition-colors">
+              Security
+            </a>
+          </div>
+        </div>
       </footer>
     </div>
   );
