@@ -32,6 +32,7 @@ import {
   AXIS_TICK_COLOR,
   GRID_LINE_COLOR,
 } from "@/components/charts/utils";
+import { normalizeMerchantForDisplay } from "@/lib/merchant-normalize";
 
 // Cast so TS treats them as FCs (safe for now)
 const ResponsiveContainer = RC.ResponsiveContainer as unknown as React.FC<any>;
@@ -137,7 +138,9 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
   // Raw data from backend – handle both camelCase and snake_case
   type TopMerchantPoint = {
     id: string;
-    label: string;
+    merchantRaw: string;  // Original bank statement text
+    merchant: string;     // Normalized/branded name
+    label: string;        // Same as merchant (for chart dataKey)
     spend: number;
     count: number;
   };
@@ -155,16 +158,21 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
 
       const spend = Math.abs(rawValue);
 
-      // Try multiple label sources, fall back to "Unknown"
-      const label =
-        (row.label && String(row.label).trim()) ||
+      // Get raw merchant name from multiple sources
+      const merchantRaw =
         (row.merchant && String(row.merchant).trim()) ||
+        (row.label && String(row.label).trim()) ||
         (row.name && String(row.name).trim()) ||
         'Unknown';
 
+      // Normalize for display with brand recognition
+      const normalized = normalizeMerchantForDisplay(merchantRaw);
+
       return {
         id: String(row.merchant_key ?? row.key ?? row.id ?? index),
-        label,
+        merchantRaw,      // Keep original for debugging
+        merchant: normalized,  // Branded name
+        label: normalized,     // Used by chart (same as merchant)
         spend,
         count: Number(row.count ?? row.txn_count ?? row.transactions ?? 0),
       };
@@ -388,18 +396,20 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
                   labelStyle={tooltipLabelStyle}
                   cursor={{ fill: 'rgba(255,255,255,0.04)' }}
                   formatter={(value: any, _name: any, props: any) => {
-                    const d = props?.payload as TopMerchantPoint;
+                    const payload = props?.payload ?? {};
+                    // Prefer normalized name for clean display
+                    const merchantName =
+                      payload.merchant ??        // Normalized from normalizeMerchantForDisplay
+                      payload.label ??           // Same normalized label
+                      payload.merchantRaw ??     // Fallback to raw statement if needed
+                      'Merchant';
+
                     const amount = value as number;
-                    const suffix = d.count && d.count > 1 ? ` (${d.count} txns)` : '';
-                    return [
-                      formatMoneyTick(amount) + suffix,
-                      'Spend',
-                    ];
+                    const suffix = payload.count && payload.count > 1 ? ` (${payload.count} txns)` : '';
+
+                    return [formatMoneyTick(amount) + suffix, merchantName];
                   }}
-                  labelFormatter={(_: any, payload: any) => {
-                    const d = payload?.[0]?.payload as TopMerchantPoint;
-                    return d?.label || 'Unknown merchant';
-                  }}
+                  labelFormatter={() => ''}
                 />
                 <Bar
                   dataKey="spend"
