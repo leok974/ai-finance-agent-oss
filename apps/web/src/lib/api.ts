@@ -379,9 +379,9 @@ export const downloadReportCsv = (month: string) => window.open(`${apiUrl('/repo
 // Normalized UI types (isolate backend drift to mappers below)
 export type UIMerchant = {
   merchant_key: string;
-  display_name: string;
-  spend: number;
-  txns: number;
+  label: string;  // Normalized display name
+  total: number;  // Total spend amount
+  count: number;  // Transaction count
   statement_examples?: string[];
 };
 export type UIDaily = { date: string; in: number; out: number; net: number };
@@ -433,9 +433,9 @@ export async function getMonthMerchants(month?: string): Promise<UIMerchant[]> {
     });
     return arr<Record<string, unknown>>(r?.items).map((m) => ({
       merchant_key: String(m.merchant_key ?? 'unknown'),
-      display_name: String(m.display_name ?? 'Unknown'),
-      spend: num(m.spend),
-      txns: num(m.txns),
+      label: String(m.label ?? 'Unknown'),
+      total: num(m.total),
+      count: num(m.count),
       statement_examples: arr<string>(m.statement_examples),
     }));
   } catch (e) {
