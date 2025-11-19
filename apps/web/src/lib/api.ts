@@ -1050,7 +1050,7 @@ export async function agentChat(
     }
     request = { messages, intent: 'general' };
   }
-  return fetchJSON<AgentChatResponse>('/api/agent/chat', {
+  return fetchJSON<AgentChatResponse>('agent/chat', {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(withModel(request)),
@@ -1587,7 +1587,7 @@ export async function explainTxnForChat(txnId: number | string) {
 export async function agentRephrase(text: string, _opts?: Record<string, unknown>): Promise<{ reply: string; model?: string }> {
   try {
     // Try the dedicated /agent/rephrase endpoint with correct AgentChatRequest format
-    const r = await fetch(apiUrl('/api/agent/rephrase'), withCreds({
+    const r = await fetch(apiUrl('agent/rephrase'), withCreds({
       method: 'POST',
       headers: withAuthHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({
