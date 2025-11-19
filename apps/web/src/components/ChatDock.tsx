@@ -2042,17 +2042,42 @@ export default function ChatDock() {
               variant="pill-ghost"
               size="sm"
               className="lm-chat-chip"
-              onClick={() => setShowTools(false)}
-              title="Hide tools"
+              onClick={() => setShowTools(!showTools)}
+              data-testid="lm-chat-toggle-tools"
+              title={showTools ? "Hide tools" : "Show tools"}
             >
-              Hide tools
+              {showTools ? "Hide tools" : "Show tools"}
+            </Button>
+            <Button
+              variant="pill-ghost"
+              size="sm"
+              className="lm-chat-chip"
+              onClick={() => {
+                const hasMessages = storeMessages && storeMessages.length > 0;
+                if (!hasMessages) return;
+
+                const ok = window.confirm(
+                  "Clear chat history for this assistant? This won't affect your transactions or rules."
+                );
+                if (!ok) return;
+
+                useChatSession.getState().clearChat();
+                setUiMessages([]);
+              }}
+              disabled={!storeMessages || storeMessages.length === 0}
+              data-testid="lm-chat-clear"
+              title="Clear chat history"
+            >
+              Clear chat
             </Button>
           </div>
         </CardHeader>
 
         <CardContent className="lm-chat-body">
-          {/* INSIGHTS */}
-          <section className="lm-chat-section" data-testid="lm-chat-section-insights">
+          {showTools && (
+            <>
+              {/* INSIGHTS */}
+              <section className="lm-chat-section" data-testid="lm-chat-section-insights">
             <div className="lm-chat-section-header">
               <span className="lm-chat-section-label">INSIGHTS</span>
             </div>
@@ -2162,6 +2187,8 @@ export default function ChatDock() {
               </Button>
             </div>
           </section>
+            </>
+          )}
         </CardContent>
       </div>
 
