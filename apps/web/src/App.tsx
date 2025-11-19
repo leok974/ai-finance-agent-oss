@@ -53,6 +53,9 @@ import { useLlmStore } from '@/state/llmStore';
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import LandingHero from "@/components/LandingHero";
+import PrivacyPage from "@/pages/legal/PrivacyPage";
+import TermsPage from "@/pages/legal/TermsPage";
+import SecurityPage from "@/pages/legal/SecurityPage";
 
 // Lazy-load admin panels (only load when accessed)
 const AdminRulesPanel = React.lazy(() => import("@/components/admin/AdminRulesPanel"));
@@ -298,6 +301,13 @@ const App: React.FC = () => {
 
   // Always call hooks above; render gates below
   if (!ready || !authReady) return <div className="p-6 text-[color:var(--text-muted)]">Loading…</div>;
+
+  // Legal pages routing (before auth check so they're publicly accessible)
+  const pathname = window.location.pathname;
+  if (pathname === '/legal/privacy') return <PrivacyPage />;
+  if (pathname === '/legal/terms') return <TermsPage />;
+  if (pathname === '/legal/security') return <SecurityPage />;
+
   if (!authOk) return <LandingHero />;
 
   return (
