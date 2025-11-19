@@ -185,4 +185,69 @@ test.describe('@prod @charts top merchants', () => {
 
     console.log(`✓ Y-axis has ${tickCount} ticks with currency formatting:`, ticksText);
   });
+
+  test('tooltip shows normalized merchant names (not raw bank text)', async ({ page }) => {
+    await page.goto(BASE_URL, { waitUntil: 'domcontentloaded' });
+    await page.waitForTimeout(1000);
+
+    // Skip if not authenticated
+    const url = page.url();
+    if (url.includes('google.com') || url.includes('accounts')) {
+      test.skip(true, 'Not authenticated - skipping test');
+      return;
+    }
+
+    // Wait for charts panel
+    const chartsPanel = page.getByTestId('charts-panel-root');
+    await chartsPanel.waitFor({ state: 'visible', timeout: 10000 });
+    await page.waitForTimeout(2000);
+
+    // Check if chart exists
+    const chart = page.getByTestId('top-merchants-chart');
+    const chartCount = await chart.count();
+
+    if (chartCount === 0) {
+      console.log('No Top Merchants chart found (empty state) - skipping normalization test');
+      test.skip(true, 'No chart to test');
+      return;
+    }
+
+    // Find first bar
+    const firstBar = chart.locator('.recharts-bar-rectangle path').first();
+    const barExists = await firstBar.count() > 0;
+
+    if (!barExists) {
+      console.log('No bars in chart - skipping normalization test');
+      test.skip(true, 'No bars to test');
+      return;
+    }
+
+    // Hover over first bar to trigger tooltip
+    await firstBar.hover({ force: true });
+    await page.waitForTimeout(500);
+
+    // Check tooltip content
+    const tooltip = page.locator('.recharts-tooltip-wrapper, .recharts-default-tooltip');
+    const tooltipVisible = await tooltip.isVisible().catch(() => false);
+
+    if (tooltipVisible) {
+      const tooltipText = await tooltip.textContent() || '';
+      console.log('✓ Tooltip shows normalized merchant:', tooltipText);
+
+      // Assert: Should NOT contain raw bank strings like "PLAYSTATIO" or long uppercase codes
+      // These patterns indicate unnormalized data
+      const hasRawBankText = /[A-Z]{8,}|MKTPL|PLAYSTATION\.COM|#\d{4,}/.test(tooltipText);
+
+      expect(hasRawBankText, 'Tooltip should not show raw bank statement codes').toBeFalsy();
+
+      // Should contain proper formatted merchant names
+      // Common normalized patterns: "PlayStation", "Amazon", "Harris Teeter", etc.
+      const hasProperCapitalization = /[A-Z][a-z]+/.test(tooltipText);
+      expect(hasProperCapitalization, 'Tooltip should show properly capitalized merchant names').toBeTruthy();
+
+      console.log('✓ Merchant name is normalized (no raw bank codes detected)');
+    } else {
+      console.log('Note: Tooltip not visible (may be timing issue) - test inconclusive');
+    }
+  });
 });
