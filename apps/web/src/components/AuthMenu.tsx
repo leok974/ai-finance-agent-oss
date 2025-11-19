@@ -104,7 +104,7 @@ export default function AuthMenu() {
         <TooltipTrigger asChild>
           <DropdownMenuTrigger asChild>
             <Button
-              data-testid="account-button"
+              data-testid="account-menu"
               variant="pill-ghost"
               size="sm"
               className="h-9 w-9 rounded-full p-0 focus:outline-none focus:ring-2 focus:ring-primary/60 hover:ring-2 hover:ring-primary/30"
@@ -129,35 +129,41 @@ export default function AuthMenu() {
         </TooltipTrigger>
         <TooltipContent>Account</TooltipContent>
       </Tooltip>
-      <DropdownMenuContent align="end" className="w-56">
-        <DropdownMenuLabel>
-          <div className="flex flex-col space-y-1">
-            <p className="text-sm font-medium leading-none">Account</p>
-            <p className="text-xs leading-none text-muted-foreground max-w-[220px] truncate opacity-70">
-              {user.email}
-            </p>
+      <DropdownMenuContent
+        align="end"
+        sideOffset={8}
+        className="w-64 rounded-xl border border-slate-700/80 bg-slate-900/95 p-2 shadow-xl shadow-black/40"
+      >
+        <div className="px-1 pb-2">
+          <div className="text-[11px] font-medium uppercase tracking-wide text-slate-400">
+            Account
           </div>
-        </DropdownMenuLabel>
-        <DropdownMenuSeparator />
+          <div className="mt-1 max-w-full break-all text-[13px] font-medium text-slate-50">
+            {user.email}
+          </div>
+        </div>
+
+        <DropdownMenuSeparator className="my-1 bg-slate-700/80" />
+
         <DropdownMenuItem
           onClick={handleCopyEmail}
-          className="cursor-pointer"
-          data-testid="btn-copy-email"
+          className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-[13px] text-slate-100 hover:bg-slate-800/90 focus:bg-slate-800/90"
+          data-testid="account-menu-copy-email"
         >
           {emailCopied ? (
-            <Check className="mr-2 h-4 w-4 text-green-600 dark:text-green-400" />
+            <Check className="h-3.5 w-3.5 text-green-400" />
           ) : (
-            <Copy className="mr-2 h-4 w-4" />
+            <Copy className="h-3.5 w-3.5 opacity-80" />
           )}
           <span>{emailCopied ? "Copied!" : "Copy email"}</span>
         </DropdownMenuItem>
-        <DropdownMenuSeparator />
+
         <DropdownMenuItem
           onClick={() => logout()}
-          className="cursor-pointer text-red-600 dark:text-red-400"
-          data-testid="btn-logout"
+          className="mt-1 flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-[13px] text-rose-200 hover:bg-rose-900/70 focus:bg-rose-900/70"
+          data-testid="account-menu-logout"
         >
-          <LogOut className="mr-2 h-4 w-4" />
+          <LogOut className="h-3.5 w-3.5 opacity-90" />
           <span>Log out</span>
         </DropdownMenuItem>
       </DropdownMenuContent>

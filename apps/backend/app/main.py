@@ -1,5 +1,5 @@
 import app.env_bootstrap  # earliest import: loads DATABASE_URL from file secret if provided
-from fastapi import FastAPI, APIRouter, Response, Request, HTTPException
+from fastapi import FastAPI, APIRouter, Request, HTTPException
 from fastapi.responses import RedirectResponse, JSONResponse
 from .startup_guard import require_db_or_exit
 from contextlib import asynccontextmanager
@@ -39,7 +39,6 @@ from app.routers import llm_echo as llm_echo_router
 from app.routers import status as status_router
 from app.routers import live as live_router
 from app.routers import ready as ready_router
-from app.startup_guard import require_db_or_exit  # fail-fast DB connectivity
 from .routers import meta
 from app.routers import agent_tools_transactions as agent_tools_txn
 from app.routers import agent_tools_budget as agent_tools_budget
@@ -69,6 +68,7 @@ from app.routers.transactions_nl import router as transactions_nl_router
 from .routers import dev as dev_router
 from app.routers import metrics as metrics_router
 from app.routers import admin as admin_router
+from app.routers import admin_maintenance as admin_maintenance_router
 from .routers import health as health_router
 from .routers import agent_plan as agent_plan_router
 from app.routers import rag as rag_router
@@ -993,6 +993,7 @@ app.include_router(llm_echo_router.router)
 app.include_router(config_router)  # /config endpoint
 app.include_router(metrics_router.router)  # /api/metrics endpoint
 app.include_router(admin_router.router)
+app.include_router(admin_maintenance_router.router)  # Admin maintenance endpoints
 
 # Optional auth debug router (diagnostics). Enable with ENABLE_AUTH_DEBUG=1 or DEBUG truthy.
 try:

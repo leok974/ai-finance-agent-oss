@@ -22,6 +22,7 @@ type Transaction = {
   deleted_at?: string | null;
   split_parent_id?: number | null;
   transfer_group?: string | null;
+  pending?: boolean;
 };
 
 type TransactionRowWithSuggestionsProps = {
@@ -187,7 +188,14 @@ export function TransactionRowWithSuggestions({
           />
         </td>
         <td className="px-2 py-1 whitespace-nowrap">
-          {transaction.date || '—'}
+          <div className="flex items-center gap-2">
+            {transaction.date || '—'}
+            {transaction.pending && (
+              <span className="inline-flex items-center rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-300 border border-amber-400/40">
+                Pending
+              </span>
+            )}
+          </div>
         </td>
         <td className="px-2 py-1">
           {transaction.merchant_canonical || transaction.merchant || '—'}

@@ -18,12 +18,32 @@ services:
         aliases:
           - ai-finance-db.int
 
+  redis:
+    image: redis:7-alpine
+    # No external port exposure - only accessible within docker network
+    expose:
+      - "6379"
+    volumes:
+      - redisdata:/data
+    restart: unless-stopped
+    networks:
+      default:
+      infra_net:
+        aliases:
+          - ai-finance-redis.int
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
   backend:
     build: ./apps/backend
     ports:
       - "8000:8000"
     environment:
       DATABASE_URL: "postgresql+psycopg://myuser:${POSTGRES_PASSWORD}@postgres:5432/finance"
+      REDIS_URL: "redis://redis:6379/0"
       OLLAMA_HOST: "http://ollama:11434"
       CORS_ALLOW_ORIGINS: "http://127.0.0.1:5173,https://ledger-mind.org,https://app.ledger-mind.org,https://www.ledger-mind.org,https://assistant.ledger-mind.org,https://siteagents.app,https://www.siteagents.app"
       ENCRYPTION_ENABLED: "1"
@@ -72,6 +92,7 @@ services:
       RAG_DB: "/app/data/rag.sqlite"
     depends_on:
       - postgres
+      - redis
     volumes:
       - ./apps/backend:/app
       - C:/secrets/ledgermind-backend-sa.json:/secrets/gcp-sa.json:ro
@@ -147,4 +168,5 @@ networks:
 
 volumes:
   pgdata:
+  redisdata:
   web_node_modules:

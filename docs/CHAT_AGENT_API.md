@@ -235,6 +235,31 @@ Get expanded insights with month-over-month comparison and anomaly detection.
 
 ## Auth & User Identity
 
+### Agent Auth Modes
+
+Agent endpoints (`/agent/chat`, `/agent/rephrase`, and tool runners) share a common auth dependency `verify_hmac_auth` with the following priority:
+
+1. **Test modes** – `X-Test-Mode: stub|echo` (used in E2E tests + staging environments)
+2. **HMAC** – `X-Client-Id`, `X-Timestamp`, `X-Signature` headers (E2E tests, service-to-service)
+3. **Cookie fallback** – `access_token` session cookie (normal user sessions from frontend)
+4. Otherwise → `401 Authentication required`
+
+**Frontend Behavior:**
+- LedgerMind web app uses cookie auth (`access_token`, `refresh_token`, `csrf_token`)
+- All requests include `credentials: 'include'` to send cookies
+
+**E2E Test Behavior:**
+- Tests use HMAC authentication with signed headers
+- See `E2E_HMAC_AUTH.md` for HMAC signature details
+
+**Priority:**
+- When both HMAC headers and cookies are present, **HMAC wins**
+- This ensures E2E tests continue working even with valid session cookies
+
+**Auth Mode Header:**
+- Backend may return `X-Auth-Mode: hmac|cookie|bypass` header for debugging
+- Use browser Network tab to verify which auth path was used
+
 ### GET `/auth/me`
 
 Returns current authenticated user with roles and dev unlock status.

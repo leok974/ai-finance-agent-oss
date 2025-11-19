@@ -29,19 +29,27 @@ if (window.__APP_MOUNTED__) {
 }
 window.__APP_MOUNTED__ = true;
 
-// 🚀 Styled console banner showing build stamp
-const banner = [
-  "%c🚀 LedgerMind Web%c  build %c" + BUILD_STAMP,
-  "background:#0f172a;color:#38bdf8;font-weight:bold;padding:2px 6px;border-radius:4px 0 0 4px;",
-  "background:#0f172a;color:#e5e7eb;padding:2px 4px;",
-  "background:#0f172a;color:#a5b4fc;font-family:monospace;padding:2px 6px;border-radius:0 4px 4px 0;",
-] as const;
+// 🚀 Build banner with clear MODE, BRANCH, COMMIT, BUILD_AT display
+const MODE = import.meta.env.PROD ? "prod" : "dev";
 
-// eslint-disable-next-line no-console
-console.info(...banner);
+// Use build-stamp.json (generated during Docker build) for accurate metadata
+const BRANCH = buildStamp?.branch ?? "local";
+const COMMIT = buildStamp?.commit ?? "dev";
+const BUILD_AT = buildStamp?.ts ?? new Date().toISOString();
 
+const BUILD_TAG = `${BRANCH}@${COMMIT}`;
+const ICON = MODE === "prod" ? "🚀" : "🧪";
+
+// Big, easy-to-spot banner
+// Example: 🚀 LedgerMind Web  prod  main@7204f00  (2025-11-17T03:25:21Z)
 // eslint-disable-next-line no-console
-console.log("[build]", `${__WEB_BRANCH__}@${__WEB_COMMIT__}`, __WEB_BUILD_TIME__);
+console.log(
+  `%c${ICON} LedgerMind Web`,
+  "font-weight:bold;font-size:13px;color:#4ade80",
+  MODE,
+  BUILD_TAG,
+  `(${BUILD_AT})`,
+);
 
 // DevDiag structured logging helper (for console capture)
 (window as any).__DEVLOG = (tag: string, data: unknown) =>

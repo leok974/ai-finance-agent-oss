@@ -62,7 +62,19 @@ export async function fetchJSON<T>(path: string, opts: FetchOpts = {}): Promise<
     body: opts.body,
     cache: 'no-store',
   });
-  if (!r.ok) throw new Error(`HTTP ${r.status} ${r.statusText} ${url}`);
+  if (!r.ok) {
+    // Try to extract error message from response body
+    let errorMsg = `HTTP ${r.status} ${url}`;
+    try {
+      const errorData = await r.json();
+      if (errorData && typeof errorData === 'object' && 'message' in errorData) {
+        errorMsg = String(errorData.message);
+      }
+    } catch {
+      // If JSON parsing fails, use default error message
+    }
+    throw new Error(errorMsg);
+  }
   return (await r.json()) as T;
 }
 

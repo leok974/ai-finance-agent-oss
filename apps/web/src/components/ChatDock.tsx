@@ -20,7 +20,7 @@ import { agentTools, agentChat, type AgentChatRequest, type AgentChatResponse, t
 import { fmtMonthSummary, fmtTopMerchants, fmtCashflow, fmtTrends } from "../lib/formatters";
 import { renderQuick, renderDeep, type MonthSummary as FinanceMonthSummary } from "../lib/formatters/finance";
 import { adaptChartsSummaryToMonthSummary } from "../lib/formatters/financeAdapters";
-import { runToolWithRephrase } from "../lib/tools-runner";
+import { runToolWithRephrase, formatSubscriptionsReply, type AnalyticsSubscriptionsResponse } from "../lib/tools-runner";
 import { MessageRenderer } from "@/features/chat/MessageRenderer";
 import { normalizeAssistantReply } from "@/features/chat/normalizeReply";
 import { saveAs } from "../utils/save";
@@ -181,7 +181,7 @@ export default function ChatDock() {
 
   useRenderGuard('ChatDock');
 
-  // ⛑️ CRITICAL: Only allow portal creation after complete page load
+  // Γ¢æ∩╕Å CRITICAL: Only allow portal creation after complete page load
   const portalReady = useSafePortalReady();
 
   // Safe singleton: claim primary in effect; always run hooks, render only if primary
@@ -203,27 +203,58 @@ export default function ChatDock() {
   const { month } = useMonth();
   const chat = useChatDock();
   const [open, setOpen] = React.useState<boolean>(false);
-  const [isClosing, setIsClosing] = React.useState<boolean>(false);
   const launcherState = open ? 'open' : 'closed';
 
   const handleClose = React.useCallback(() => {
-    if (!open || isClosing) return;
+    if (!open) return;
+    setOpen(false);
+  }, [open]);
 
-    setIsClosing(true);
-    setTimeout(() => {
-      setOpen(false);
-      setIsClosing(false);
-    }, 220); // 200ms transform + 20ms buffer
-  }, [open, isClosing]);
+  // Backdrop wheel handler: allow page scrolling even when backdrop is on top
+  const handleBackdropWheel = useCallback(
+    (event: React.WheelEvent<HTMLButtonElement>) => {
+      // Don't block the default; just mirror the scroll onto the page.
+      // This makes sure the main document scrolls even though the backdrop
+      // is on top of it.
+      if (typeof window === 'undefined') return;
+
+      const deltaY = event.deltaY ?? 0;
+      if (deltaY !== 0) {
+        window.scrollBy({ top: deltaY, behavior: 'auto' });
+      }
+      // IMPORTANT: do NOT call event.preventDefault() here.
+    },
+    [],
+  );
+
+  // Backdrop touch handler: allow page scrolling on touch devices
+  const handleBackdropTouchMove = useCallback(
+    (event: React.TouchEvent<HTMLButtonElement>) => {
+      if (typeof window === 'undefined') return;
+
+      const touch = event.touches[0];
+      const prev = (event as any)._lmPrevY as number | undefined;
+
+      // Store last Y on the event target between moves
+      (event as any)._lmPrevY = touch.clientY;
+
+      if (prev == null) return;
+
+      const deltaY = prev - touch.clientY;
+      if (deltaY !== 0) {
+        window.scrollBy({ top: deltaY, behavior: 'auto' });
+      }
+      // Don't preventDefault → allow browser to still do its thing if it can
+    },
+    [],
+  );
 
   // --- open / close helpers ------------------------------------
   const reallyClose = useCallback(() => {
     setOpen(false);
-    setIsClosing(false);
   }, []);
 
   const handleOpen = useCallback(() => {
-    setIsClosing(false);
     setOpen(true);
   }, []);
 
@@ -270,7 +301,7 @@ export default function ChatDock() {
   const composerRef = React.useRef<HTMLTextAreaElement | null>(null);
   const [composerPlaceholder, setComposerPlaceholderState] = useState(DEFAULT_PLACEHOLDER);
 
-  // 🔐 Refs for click-away detection
+  // ≡ƒöÉ Refs for click-away detection
   const shellRef = useRef<HTMLDivElement | null>(null);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
 
@@ -389,7 +420,7 @@ export default function ChatDock() {
     try { return String(import.meta.env.VITE_ENABLE_AGUI || '').trim() === '1'; } catch { return false; }
   })();   // experimental AGUI integration
 
-  // 🔥 FIX: Zustand persist middleware was causing infinite render loop in iframe
+  // ≡ƒöÑ FIX: Zustand persist middleware was causing infinite render loop in iframe
   // Use state directly on first render, then subscribe in effect to avoid hydration during render
   const [chatState, setChatState] = React.useState(() => {
     try {
@@ -424,7 +455,7 @@ export default function ChatDock() {
   // Live message stream (render from UI state, persist via chatStore)
   const [uiMessages, setUiMessages] = useState<Msg[]>([]);
 
-  // 🔥 NEW: Sync uiMessages from Zustand store messages
+  // ≡ƒöÑ NEW: Sync uiMessages from Zustand store messages
   React.useEffect(() => {
     if (!storeMessages || !Array.isArray(storeMessages)) return;
 
@@ -483,7 +514,7 @@ export default function ChatDock() {
     return () => { if (syncTimerRef.current) window.clearTimeout(syncTimerRef.current); };
   }, [isPrimary]);
 
-  // 🔐 Click-away handler: closes when clicking outside bubble + shell
+  // ≡ƒöÉ Click-away handler: closes when clicking outside bubble + shell
   useEffect(() => {
     if (!open) return;
 
@@ -496,12 +527,12 @@ export default function ChatDock() {
       const target = event.target as Node | null;
       if (!target) return;
 
-      // If click is inside shell or bubble (if bubble exists) → do nothing
+      // If click is inside shell or bubble (if bubble exists) ΓåÆ do nothing
       if (shell.contains(target) || (trigger && trigger.contains(target))) {
         return;
       }
 
-      // Otherwise: click-away → close
+      // Otherwise: click-away ΓåÆ close
       handleClose();
     }
 
@@ -550,7 +581,7 @@ export default function ChatDock() {
       user
     );
 
-    // 🔥 Write to Zustand store (primary)
+    // ≡ƒöÑ Write to Zustand store (primary)
     const state = useChatSession.getState();
     useChatSession.setState({
       messages: [...state.messages, {
@@ -632,7 +663,10 @@ export default function ChatDock() {
               </AvatarFallback>
             </Avatar>
           )}
-          <div className={`max-w-[72%] rounded-2xl px-3 py-2 text-sm leading-relaxed ${isUser ? 'bg-blue-600 text-white rounded-br-sm' : 'bg-slate-800 text-slate-100 rounded-bl-sm'}`}>
+          <div
+            data-testid={isUser ? 'lm-chat-message-user' : 'lm-chat-message-assistant'}
+            className={`max-w-[72%] rounded-2xl px-3 py-2 text-sm leading-relaxed ${isUser ? 'bg-blue-600 text-white rounded-br-sm' : 'bg-slate-800 text-slate-100 rounded-bl-sm'}`}
+          >
             {isThinking ? (
               <div className="py-1"><span className="sr-only">Thinking.</span><RobotThinking size={32} /></div>
             ) : (
@@ -782,11 +816,11 @@ export default function ChatDock() {
                 {canSaveRule && (
                   <button
                     type="button"
-                    aria-label="Save Rule…"
+                    aria-label="Save RuleΓÇª"
                     className="chip ml-auto"
                     onClick={() => { setSaveRuleScenario(lastWhatIfScenarioRef.current || ''); setShowSaveRuleModal(true); }}
                   >
-                    Save Rule…
+                    Save RuleΓÇª
                   </button>
                 )}
               </div>
@@ -840,7 +874,7 @@ export default function ChatDock() {
   const appendUser = React.useCallback((text: string) => {
     const ts = Date.now();
 
-    // 🔥 Write to Zustand store (primary)
+    // ≡ƒöÑ Write to Zustand store (primary)
     const state = useChatSession.getState();
     useChatSession.setState({
       messages: [...state.messages, {
@@ -1240,13 +1274,13 @@ export default function ChatDock() {
           const errors = snapshot.filter(t => t.status === 'error').map(t => t.name);
           if (errors.length) {
             const pretty = errors.map(stripToolNamespaces);
-            aggregated += `\n\n⚠️ Skipped: ${pretty.join(', ')} (unavailable). I used everything else.`;
+            aggregated += `\n\nΓÜá∩╕Å Skipped: ${pretty.join(', ')} (unavailable). I used everything else.`;
           }
           setBusy(false); setAguiRunActive(false); appendAssistant(aggregated || '(no content)');
           if (reqRef.current === currentReqRef) reqRef.current = null;
         },
         onError() {
-          setBusy(false); setAguiRunActive(false); appendAssistant('(stream error – fallback)');
+          setBusy(false); setAguiRunActive(false); appendAssistant('(stream error ΓÇô fallback)');
           if (reqRef.current === currentReqRef) reqRef.current = null;
         }
       });
@@ -1329,8 +1363,8 @@ export default function ChatDock() {
       appendUser('Identify recurring subscriptions this month and suggest which I could cancel.');
       await runToolWithRephrase(
         'analytics.subscriptions',
-        () => analytics.subscriptions(month),
-        (raw: any) => `Identify likely subscriptions for ${month} and which to cancel, with reasons:\n\n${JSON.stringify(raw)}`,
+        () => analytics.subscriptions(month) as Promise<AnalyticsSubscriptionsResponse>,
+        (raw: AnalyticsSubscriptionsResponse) => formatSubscriptionsReply(raw),
         (msg, meta) => appendAssistant(msg, { ...meta, ctxMonth: month }),
         (on) => setBusy(on),
         () => ({ context: getContext() })
@@ -1605,7 +1639,7 @@ export default function ChatDock() {
 
   // Central mapping of AGUI actions to prompts + forced gateway mode
   const AGUI_ACTIONS: Record<string, { prompt: string; mode: string }> = {
-    'overview':         { prompt: 'Give me this month’s overview summary.', mode: 'overview' },
+    'overview':         { prompt: 'Give me this monthΓÇÖs overview summary.', mode: 'overview' },
     'subscriptions':    { prompt: 'Identify recurring subscriptions this month and suggest which I could cancel.', mode: 'subscriptions' },
     'merchants':        { prompt: 'Show top merchants for the current month.', mode: 'merchants' },
     'cashflow':         { prompt: 'Show my cashflow breakdown for this month.', mode: 'cashflow' },
@@ -1614,7 +1648,7 @@ export default function ChatDock() {
     'insights-expanded':{ prompt: 'Give me expanded insights for this month (last 60 days if needed).', mode: 'overview' },
     'budget':           { prompt: 'Check my budget status for this month.', mode: 'budget' },
     'kpis':             { prompt: 'Show KPIs for this month.', mode: 'kpis' },
-    'forecast':         { prompt: 'Forecast next month’s spending.', mode: 'forecast' },
+    'forecast':         { prompt: 'Forecast next monthΓÇÖs spending.', mode: 'forecast' },
     'anomalies':        { prompt: 'Show anomalies or unusual transactions for this month.', mode: 'anomalies' },
     'recurring':        { prompt: 'List recurring charges this month.', mode: 'subscriptions' },
     'budget-suggest':   { prompt: 'Suggest budget targets for this month.', mode: 'budget' },
@@ -1684,7 +1718,7 @@ export default function ChatDock() {
         const errors = snapshot.filter(t => t.status === 'error').map(t => t.name);
         if (errors.length) {
           const pretty = errors.map(stripToolNamespaces);
-            aggregated += `\n\n⚠️ Skipped: ${pretty.join(', ')} (unavailable). I used everything else.`;
+            aggregated += `\n\nΓÜá∩╕Å Skipped: ${pretty.join(', ')} (unavailable). I used everything else.`;
         }
         // Emit additional gateway suggestions based on last run context (KPI & Merchants heuristics)
         try {
@@ -1720,7 +1754,7 @@ export default function ChatDock() {
         } catch (err) { /* non-fatal */ }
         setBusy(false); setAguiRunActive(false); appendAssistant(aggregated || '(no content)');
       },
-  onError() { setBusy(false); setAguiRunActive(false); appendAssistant('(stream error – fallback)'); }
+  onError() { setBusy(false); setAguiRunActive(false); appendAssistant('(stream error ΓÇô fallback)'); }
     });
     return true;
   }
@@ -1786,7 +1820,7 @@ export default function ChatDock() {
         startAguiRun('budget', 'Suggest a budget using the forecast', currentMonth);
         break;
       case 'compare_prev':
-        startAguiRun('overview', 'Compare this month’s forecast with last month', currentMonth);
+        startAguiRun('overview', 'Compare this monthΓÇÖs forecast with last month', currentMonth);
         break;
       case 'apply_budget':
         startAguiRun('budget', 'Apply this what-if scenario to my budget', currentMonth);
@@ -1837,7 +1871,7 @@ export default function ChatDock() {
       };
   console.debug('[chat] alerts -> /agent/chat', { preview: req.messages[0]?.content?.slice(0, 80) });
   const resp = await agentChat(req);
-  console.debug('[chat] alerts ← ok', { model: resp?.model });
+  console.debug('[chat] alerts ΓåÉ ok', { model: resp?.model });
       handleAgentResponse(resp);
     } finally { setBusy(false); }
   }, [busy, handleAgentResponse]);
@@ -1885,7 +1919,7 @@ export default function ChatDock() {
   const handleScrollWheel = useCallback(
     (event: React.WheelEvent<HTMLDivElement>) => {
       const el = event.currentTarget;
-      const { scrollHeight, clientHeight, scrollTop } = el;
+      const { scrollHeight, clientHeight } = el;
 
       // If no vertical overflow, let the page handle the scroll normally
       if (scrollHeight <= clientHeight) {
@@ -1893,13 +1927,9 @@ export default function ChatDock() {
       }
 
       // Apply the wheel delta manually
+      // Note: Can't call preventDefault() in React wheel handlers (they're passive by default)
+      // The browser will scroll the element naturally via CSS overflow
       el.scrollTop += event.deltaY;
-
-      // If scrollTop actually changed, we consumed the scroll
-      if (el.scrollTop !== scrollTop) {
-        event.preventDefault();
-        event.stopPropagation();
-      }
     },
     []
   );
@@ -1930,10 +1960,7 @@ export default function ChatDock() {
   }, [rb]);
 
   const bubbleIcon = (
-    <>
-      <span className="text-base" aria-hidden>💬</span>
-      <span className="sr-only">{open ? "Close agent chat" : "Open agent chat"}</span>
-    </>
+    <span className="lm-chat-launcher-glyph">LM</span>
   );
 
   const panel = (
@@ -2128,7 +2155,7 @@ export default function ChatDock() {
                 className="lm-chat-tool"
                 onClick={() => { void handleTransactionsNL(); }}
                 disabled={busy}
-                title="Search transactions (NL) — Try: 'Starbucks this month', 'Delta in Aug 2025', 'transactions > $50 last 90 days'. Pro tips: MTD, YTD, last N days/weeks/months, since YYYY-MM-DD."
+                title="Search transactions (NL) ΓÇö Try: 'Starbucks this month', 'Delta in Aug 2025', 'transactions > $50 last 90 days'. Pro tips: MTD, YTD, last N days/weeks/months, since YYYY-MM-DD."
               >
                 <Search className="lm-chat-tool-icon" />
                 <span>Search transactions (NL)</span>
@@ -2140,15 +2167,24 @@ export default function ChatDock() {
 
       {/* Dark footer */}
       <CardFooter className="lm-chat-footer">
-        <div className="lm-chat-footer-inner">
-          <div className="lm-chat-greeting">
-            <p className="lm-chat-greeting-title">Hey! 👋</p>
-            <p className="lm-chat-greeting-body">
-              Start a conversation or pick a tool from the header to explore your spending.
-            </p>
-          </div>
+          <div className="lm-chat-footer-inner">
+            <div
+              className="lm-chat-body mt-3 max-h-[260px] overflow-y-auto space-y-3 pr-1"
+              data-testid="lm-chat-messages"
+            >
+              {uiMessages.length === 0 ? (
+                <div className="lm-chat-greeting">
+                  <p className="lm-chat-greeting-title">Hey! 👋</p>
+                  <p className="lm-chat-greeting-body">
+                    Start a conversation or pick a tool from the header to explore your spending.
+                  </p>
+                </div>
+              ) : (
+                renderedMessages
+              )}
+            </div>
 
-          <form className="lm-chat-input-row" onSubmit={(e) => { e.preventDefault(); handleSend(); }}>
+            <form className="lm-chat-input-row" onSubmit={(e) => { e.preventDefault(); handleSend(); }}>
             <input
               className="lm-chat-input"
               placeholder="Ask or type a command..."
@@ -2170,58 +2206,54 @@ export default function ChatDock() {
   if (!portalReady || !isPrimary) return null;
 
   // --- Shell (backdrop + card) ---------------------------------
-  const shell = (
-    <div
-      data-testid="lm-chat-shell"
-      className={cn(
-        "lm-chat-shell",
-        open && !isClosing && "lm-chat-shell--open",
-        isClosing && "lm-chat-shell--closing"
-      )}
-      // clicking outside the card but inside the shell closes
-      onClick={handleClose}
-    >
-      <div
-        data-testid="lm-chat-backdrop"
-        className="lm-chat-backdrop"
-      />
-      <div
-        className="lm-chat-shell-inner"
-        onClick={(e) => e.stopPropagation()} // keep card clicks from closing
-      >
-        {panel}
-      </div>
-    </div>
-  );
-
   // --- Launcher + overlay (portal to <body>) --------------------
   const node = (
     <div
       data-testid="lm-chat-launcher"
       className={cn(
         "lm-chat-launcher",
-        open ? "lm-chat-launcher--open" : "lm-chat-launcher--closed"
+        open && "lm-chat-launcher--open"
       )}
       data-state={open ? "open" : "closed"}
     >
+      {/* Bubble */}
       <button
         type="button"
         ref={triggerRef}
         data-testid="lm-chat-launcher-button"
+        aria-label={open ? 'Close LedgerMind Assistant' : 'Open LedgerMind Assistant'}
+        onClick={open ? undefined : handleOpen}
         className="lm-chat-launcher-bubble"
-        onClick={handleToggle}
       >
         {bubbleIcon}
       </button>
 
+      {/* Invisible backdrop when open - catches clicks to close */}
       {open && (
-        <div
-          data-testid="lm-chat-overlay"
-          className="lm-chat-overlay"
-        >
-          {shell}
-        </div>
+        <button
+          type="button"
+          data-testid="lm-chat-backdrop"
+          className="lm-chat-backdrop"
+          aria-label="Close LedgerMind Assistant"
+          onClick={handleClose}
+          onWheel={handleBackdropWheel}
+          onTouchMove={handleBackdropTouchMove}
+        />
       )}
+
+      {/* Shell */}
+      <div
+        data-testid="lm-chat-shell"
+        data-state={open ? "open" : "closed"}
+        className={cn(
+          "lm-chat-shell",
+          open && "lm-chat-shell--open"
+        )}
+      >
+        <div className="lm-chat-shell-inner">
+          {panel}
+        </div>
+      </div>
     </div>
   );
 

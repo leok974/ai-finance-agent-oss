@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import re
+from collections import defaultdict
+from dataclasses import dataclass
 from datetime import date as _date, timedelta
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from sqlalchemy import select, func, case, or_, and_
 from sqlalchemy.orm import Session
@@ -151,6 +154,7 @@ def get_month_summary(db: Session, user_id: int, month: str) -> Dict[str, Any]:
             Transaction.user_id == user_id,  # ✅ Scope by user
             Transaction.date >= start,
             Transaction.date < end,
+            ~Transaction.pending,  # Exclude pending transactions
         )
     ).one()
     total_spend = float(totals[0] or 0.0)
@@ -163,6 +167,7 @@ def get_month_summary(db: Session, user_id: int, month: str) -> Dict[str, Any]:
             Transaction.user_id == user_id,  # ✅ Scope by user
             Transaction.date >= start,
             Transaction.date < end,
+            ~Transaction.pending,  # Exclude pending transactions
         )
         .group_by(cat_expr)
         .order_by(func.sum(spend_expr).desc())
@@ -178,43 +183,178 @@ def get_month_summary(db: Session, user_id: int, month: str) -> Dict[str, Any]:
     }
 
 
+# --- Merchant normalization with brand rules ----------------------------------
+
+
+@dataclass(frozen=True)
+class MerchantBrandRule:
+    """Brand recognition rule for merchant normalization."""
+
+    key: str  # internal canonical key
+    label: str  # user-facing label
+    patterns: List[str]  # substrings to match in normalized string
+
+
+# Brand rules config - centralized brand knowledge
+# Add new rules here as you discover noisy merchant patterns
+MERCHANT_BRAND_RULES: List[MerchantBrandRule] = [
+    MerchantBrandRule(
+        key="playstation",
+        label="PlayStation",
+        patterns=["playstatio", "playstation"],
+    ),
+    MerchantBrandRule(
+        key="harris_teeter",
+        label="Harris Teeter",
+        patterns=["harris teeter"],
+    ),
+    MerchantBrandRule(
+        key="now_withdrawal",
+        label="NOW Withdrawal",
+        patterns=["now withdrawal"],
+    ),
+    MerchantBrandRule(
+        key="amazon",
+        label="Amazon",
+        patterns=["amazon"],
+    ),
+    MerchantBrandRule(
+        key="starbucks",
+        label="Starbucks",
+        patterns=["starbucks"],
+    ),
+    MerchantBrandRule(
+        key="target",
+        label="Target",
+        patterns=["target"],
+    ),
+    MerchantBrandRule(
+        key="walmart",
+        label="Walmart",
+        patterns=["walmart"],
+    ),
+]
+
+
+def normalize_merchant_base(raw: str) -> str:
+    """
+    Base merchant normalization - brand-agnostic.
+    Strips digits, punctuation, and normalizes spacing.
+    """
+    if not raw:
+        return "unknown"
+
+    s = raw.lower()
+
+    # Strip digits / punctuation / duplicate spaces
+    s = re.sub(r"\d+", " ", s)
+    s = re.sub(r"[^a-z& ]+", " ", s)
+    s = re.sub(r"\s+", " ", s).strip()
+
+    return s or raw.lower()
+
+
+def canonical_and_label(raw: str) -> tuple[str, str]:
+    """
+    Combined function: base normalize → then apply brand rules.
+    Returns (canonical_key, display_label) tuple.
+    """
+    base = normalize_merchant_base(raw)
+
+    # 1) Try brand rules first
+    for rule in MERCHANT_BRAND_RULES:
+        if any(pat in base for pat in rule.patterns):
+            return rule.key, rule.label
+
+    # 2) Generic fallback for unknown merchants
+    key = base or "unknown"
+    label = key.title()
+    if len(label) > 32:
+        label = label[:29] + "..."
+    return key, label
+
+
 def get_month_merchants(
-    db: Session, user_id: int, month: str, limit: int = 10
+    db: Session, user_id: int, month: str, limit: int = 8
 ) -> Dict[str, Any]:
     """
-    Fast SQL GROUP BY over canonical merchant; expenses only as positive magnitudes.
-    Display name preserves raw merchant casing by selecting a representative raw value.
+    Aggregate top merchants using brand-aware normalization with Redis cache.
+    Groups transactions by normalized merchant key and returns friendly labels.
+
+    Uses merchant memory cache to learn and remember merchants over time.
+    Default limit reduced to 8 for better chart readability.
     """
+    from app.redis_client import redis
+    from app.services.merchant_cache import learn_merchant
+
     start, end = month_bounds(month)
-    spend_abs = func.sum(func.abs(Transaction.amount)).label("amount")
-    cnt = func.count().label("n")
-    rows = db.execute(
-        select(
-            # Preserve display casing: pick a representative raw merchant for the group
-            func.min(Transaction.merchant).label("merchant"),
-            spend_abs,
-            cnt,
-        )
-        .where(
-            Transaction.user_id == user_id,  # ✅ Scope by user
+    redis_client = redis()
+
+    # Fetch all expense transactions for the month
+    txns = db.execute(
+        select(Transaction.merchant, Transaction.amount, Transaction.description).where(
+            Transaction.user_id == user_id,
             Transaction.date >= start,
             Transaction.date < end,
             Transaction.amount < 0,
+            ~Transaction.pending,
         )
-        .group_by(Transaction.merchant_canonical)
-        .order_by(spend_abs.desc())
-        .limit(limit)
     ).all()
+
+    # Aggregate using brand-aware normalization with cache
+    buckets: Dict[str, Dict[str, Any]] = defaultdict(
+        lambda: {
+            "label": "",
+            "total": 0.0,
+            "count": 0,
+            "statement_examples": set(),
+            "category": None,
+        }
+    )
+
+    for raw_merchant, amount, description in txns:
+        raw = raw_merchant or "unknown"
+
+        # Try to learn/lookup merchant from cache
+        if redis_client:
+            hint = learn_merchant(
+                redis_client, db, raw, description=description, amount=amount
+            )
+            key = hint.normalized_name
+            label = hint.display_name
+            category = hint.category
+        else:
+            # Fallback to direct normalization if Redis unavailable
+            key, label = canonical_and_label(raw)
+            category = None
+
+        b = buckets[key]
+        b["label"] = label
+        b["category"] = category
+        b["total"] = float(b["total"]) + abs(float(amount or 0.0))
+        b["count"] = int(b["count"]) + 1
+        b["statement_examples"].add(raw)  # type: ignore
+
+    # Convert to list and sort by total spend
+    items = []
+    for key, b in buckets.items():
+        items.append(
+            {
+                "merchant_key": key,
+                "label": b["label"],
+                "total": b["total"],
+                "count": b["count"],
+                "statement_examples": sorted(b["statement_examples"])[:3],
+                "category": b["category"],  # Include learned category
+            }
+        )
+
+    items.sort(key=lambda r: r["total"], reverse=True)
+    top_merchants = items[:limit]
+
     return {
         "month": month,
-        "merchants": [
-            {
-                "merchant": (m or "(unknown)"),
-                "amount": float(a or 0.0),
-                "n": int(n or 0),
-            }
-            for (m, a, n) in rows
-        ],
+        "merchants": top_merchants,
     }
 
 
@@ -236,6 +376,7 @@ def get_month_categories(
             Transaction.amount < 0,
             Transaction.category.is_not(None),
             Transaction.category != "",
+            ~Transaction.pending,  # Exclude pending transactions
         )
         .group_by(Transaction.category)
         .order_by(spend_abs.desc())
@@ -252,6 +393,7 @@ def get_month_flows(db: Session, user_id: int, month: str) -> Dict[str, Any]:
             Transaction.user_id == user_id,  # ✅ Scope by user
             Transaction.date >= start,
             Transaction.date < end,
+            ~Transaction.pending,  # Exclude pending transactions
         )
         .order_by(Transaction.date)
     ).all()

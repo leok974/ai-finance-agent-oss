@@ -94,6 +94,14 @@ htmlcov/
 **/.pytest_cache/
 **/htmlcov/
 
+### Playwright test artifacts
+**/test-results/
+**/playwright-report/
+**/.last-run.json
+apps/web/test-results/
+apps/web/playwright-report/
+apps/web/.last-run.json
+
 ### Playwright persistent profile (contains cookies/session)
 .pw-userdata/
 

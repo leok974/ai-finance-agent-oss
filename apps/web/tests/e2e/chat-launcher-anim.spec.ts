@@ -13,7 +13,7 @@ async function ensureChatAvailable(page: Page) {
     } catch {
       test.skip(
         true,
-        'Chat launcher button not found in prod – likely E2E session/auth issue'
+        'Chat launcher button not found in prod ΓÇô likely E2E session/auth issue'
       );
     }
   }
@@ -54,8 +54,9 @@ test('bubble hides and panel shows from same corner', async ({ page }) => {
   await expect(launcherRoot).toHaveAttribute('data-state', 'open', { timeout: 3000 });
   await expect(shell).toBeVisible({ timeout: 3000 });
 
-  // close via clicking bubble again (backdrop may be outside viewport)
-  await bubble.click();
+  // close via backdrop
+  const backdrop = page.getByTestId('lm-chat-backdrop');
+  await backdrop.click({ force: true });
 
   await expect(launcherRoot).toHaveAttribute('data-state', 'closed', { timeout: 3000 });
   await expect(bubble).toBeVisible();
@@ -64,14 +65,15 @@ test('bubble hides and panel shows from same corner', async ({ page }) => {
 test('multiple open/close cycles work correctly', async ({ page }) => {
   const launcherRoot = page.getByTestId('lm-chat-launcher');
   const bubble = page.getByTestId('lm-chat-launcher-button');
+  const backdrop = page.getByTestId('lm-chat-backdrop');
 
   for (let i = 0; i < 3; i++) {
     // Open
     await bubble.click();
     await expect(launcherRoot).toHaveAttribute('data-state', 'open', { timeout: 3000 });
 
-    // Close (click bubble again instead of backdrop which may be outside viewport)
-    await bubble.click();
+    // Close (click backdrop)
+    await backdrop.click({ force: true });
     await expect(launcherRoot).toHaveAttribute('data-state', 'closed', { timeout: 3000 });
   }
 });

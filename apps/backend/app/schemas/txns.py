@@ -10,6 +10,7 @@ class Txn(BaseModel):
     description: str = ""
     amount: float
     category: str = "Unknown"
+    pending: bool = False
 
 
 class CategorizeRequest(BaseModel):

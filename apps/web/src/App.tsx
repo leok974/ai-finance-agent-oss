@@ -50,6 +50,8 @@ import MonthPicker from "@/components/header/MonthPicker";
 import DevMenu from "@/features/dev/DevMenu";
 import logoPng from "@/assets/ledgermind-lockup-1024.png";
 import { useLlmStore } from '@/state/llmStore';
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 
 // Lazy-load admin panels (only load when accessed)
 const AdminRulesPanel = React.lazy(() => import("@/components/admin/AdminRulesPanel"));
@@ -119,6 +121,7 @@ const App: React.FC = () => {
   const [txPanelOpen, setTxPanelOpen] = useState<boolean>(false)
   const [adminRulesOpen, setAdminRulesOpen] = useState<boolean>(false)
   const [adminKnowledgeOpen, setAdminKnowledgeOpen] = useState<boolean>(false)
+  const [includePending, setIncludePending] = useState<boolean>(false)
   const booted = useRef(false)
   const [dbRev, setDbRev] = useState<string | null>(null);
   const [inSync, setInSync] = useState<boolean | undefined>(undefined);
@@ -247,8 +250,9 @@ const App: React.FC = () => {
     let cancelled = false;
     try {
       // Wrap in retry + auth guard for extra safety
+      const status = includePending ? 'all' : 'posted';
       const [insightsData, alertsData] = await Promise.all([
-        withRetry(() => withAuthGuard(agentTools.insightsExpanded)({ month, large_limit: 10 }), { maxAttempts: 2 }).catch(() => null),
+        withRetry(() => withAuthGuard(agentTools.insightsExpanded)({ month, large_limit: 10, status }), { maxAttempts: 2 }).catch(() => null),
         withRetry(() => withAuthGuard(getAlerts)(month), { maxAttempts: 2 }).catch(() => null),
       ]);
       if (cancelled) return;
@@ -263,7 +267,7 @@ const App: React.FC = () => {
       setAlerts(null);
     }
     return () => { cancelled = true; };
-  })() }, [authReady, authOk, ready, month, refreshKey])
+  })() }, [authReady, authOk, ready, month, refreshKey, includePending])
 
   // Probe backend emptiness (latest by default). If charts summary returns null or month:null, show banner.
   useEffect(() => { (async () => {
@@ -363,6 +367,20 @@ const App: React.FC = () => {
 
         {/* Insights */}
         <div className="section">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-lg font-semibold">Insights</h2>
+            <div className="flex items-center gap-2">
+              <Switch
+                id="include-pending-toggle"
+                checked={includePending}
+                onCheckedChange={setIncludePending}
+                data-testid="include-pending-toggle"
+              />
+              <Label htmlFor="include-pending-toggle" className="text-sm cursor-pointer">
+                Include pending in totals
+              </Label>
+            </div>
+          </div>
           {insights && <AgentResultRenderer tool="insights.expanded" data={insights} />}
           {/* Anomalies quick card */}
           <InsightsAnomaliesCard />

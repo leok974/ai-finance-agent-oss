@@ -8,9 +8,10 @@ import { dirname, join } from 'node:path';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const root = join(__dirname, '..');
+const repoRoot = join(root, '..', '..');
 
 function safe(cmd, fallback) {
-  try { return execSync(cmd, { stdio: ['ignore','pipe','ignore'] }).toString().trim(); } catch { return fallback; }
+  try { return execSync(cmd, { cwd: repoRoot, stdio: ['ignore','pipe','ignore'] }).toString().trim(); } catch { return fallback; }
 }
 
 const stampPath = join(root, 'src', 'build-stamp.json');
@@ -22,8 +23,14 @@ if (process.env.RESPECT_EXISTING_STAMP === '1' && existsSync(stampPath)) {
   } catch {}
 }
 
-const branch = process.env.GIT_BRANCH || safe('git rev-parse --abbrev-ref HEAD', 'unknown');
-const commit = process.env.GIT_COMMIT || safe('git rev-parse --short HEAD', 'unknown');
+const gitBranch = safe('git rev-parse --abbrev-ref HEAD', 'unknown');
+const gitCommit = safe('git rev-parse --short HEAD', 'unknown');
+
+// In CI/CD, GIT_BRANCH/GIT_COMMIT env vars take precedence
+// In dev, prefer fresh git detection (unless BUILD_ID is set, indicating CI)
+const isCI = Boolean(process.env.BUILD_ID);
+const branch = isCI && process.env.GIT_BRANCH ? process.env.GIT_BRANCH : gitBranch;
+const commit = isCI && process.env.GIT_COMMIT ? process.env.GIT_COMMIT : gitCommit;
 const buildId = process.env.BUILD_ID || `${Date.now().toString(36)}`;
 const stamp = { branch, commit, buildId, ts: new Date().toISOString() };
 

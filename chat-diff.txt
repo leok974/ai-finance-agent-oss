@@ -1,0 +1,425 @@
+diff --git a/apps/web/src/chat/index.css b/apps/web/src/chat/index.css
+index b9230409..71bdfde9 100644
+--- a/apps/web/src/chat/index.css
++++ b/apps/web/src/chat/index.css
+@@ -765,7 +765,7 @@ textarea.lm-input,
+    LAUNCHER + BUBBLE (FIXED BOTTOM-RIGHT)
+    ============================================ */
+
+-/* Root launcher container (fixed bottom-right, but non-draggable) */
++/* Root launcher container – fixed bottom-right, non-draggable */
+ .lm-chat-launcher {
+   position: fixed;
+   right: 1.5rem;
+@@ -774,102 +774,93 @@ textarea.lm-input,
+   pointer-events: none; /* children opt-in */
+ }
+
+-/* When the panel is open we add a slight lift for the bubble */
+-.lm-chat-launcher--open .lm-chat-launcher-bubble {
+-  transform: translateY(-4px) scale(0.96);
++.lm-chat-launcher--open {
++  transform: translateY(0);
+ }
+
+-/* Floating bubble button */
++.lm-chat-launcher--closed {
++  transform: translateY(0);
++}
++
++/* Bubble */
+ .lm-chat-launcher-bubble {
+   pointer-events: auto;
+-  width: 44px;
+-  height: 44px;
+-  border-radius: 9999px;
+-  border: 1px solid rgba(148, 163, 184, 0.35);
+-  background: radial-gradient(circle at 30% 0%, #22d3ee 0, #0f172a 40%, #020617 100%);
+-  display: flex;
++  display: inline-flex;
+   align-items: center;
+   justify-content: center;
++  border-radius: 9999px;
++  width: 3rem;
++  height: 3rem;
++  border: 1px solid rgba(148, 163, 184, 0.45);
++  background: radial-gradient(circle at 30% 0%, #1d4ed8, #020617 65%);
+   box-shadow:
+-    0 14px 45px rgba(15, 23, 42, 0.75),
+-    0 8px 20px rgba(15, 23, 42, 0.9);
+-  cursor: pointer;
++    0 14px 45px rgba(15, 23, 42, 0.9),
++    0 0 0 1px rgba(15, 23, 42, 0.9);
+   transition:
+-    transform 120ms ease-out,
+-    box-shadow 120ms ease-out,
+-    background 180ms ease-out;
++    transform 150ms cubic-bezier(0.16, 1, 0.3, 1),
++    box-shadow 150ms ease,
++    background 150ms ease,
++    border-color 120ms ease;
+ }
+
+ .lm-chat-launcher-bubble:hover {
+-  transform: translateY(-2px) scale(1.02);
++  transform: translateY(-2px);
+   box-shadow:
+-    0 18px 60px rgba(15, 23, 42, 0.85),
+-    0 10px 24px rgba(15, 23, 42, 0.95);
++    0 18px 55px rgba(15, 23, 42, 0.95),
++    0 0 0 1px rgba(30, 64, 175, 0.9);
+ }
+
+-/* ============================================
+-   OVERLAY + SHELL (CENTERED CARD, ANIMATIONS)
+-   ============================================ */
++.lm-chat-launcher-bubble:active {
++  transform: translateY(0) scale(0.96);
++}
+
+-/* Full-screen overlay used only for positioning; does NOT block page scroll */
++/* Overlay spans viewport but doesn't block scroll */
+ .lm-chat-overlay {
+   position: fixed;
+   inset: 0;
+   display: flex;
+   align-items: flex-end;
+   justify-content: center;
+-  pointer-events: none; /* page still scrolls outside the card */
++  pointer-events: none;
+   z-index: 61;
+ }
+
+-/* Shell wraps backdrop + card and IS clickable */
++/* Shell wraps backdrop + card */
+ .lm-chat-shell {
+   position: relative;
+   pointer-events: auto;
+-  margin-bottom: 1.75rem;
++  margin-bottom: 2rem;
+   max-width: 640px;
+   width: min(640px, 100% - 2rem);
+ }
+
+-/* Inner container so backdrop can sit behind card */
+ .lm-chat-shell-inner {
+-  position: relative;
+   border-radius: 1.5rem;
+   overflow: hidden;
++  background:
++    radial-gradient(circle at 0% 0%, rgba(59, 130, 246, 0.35), transparent 45%),
++    radial-gradient(circle at 100% 0%, rgba(56, 189, 248, 0.3), transparent 55%),
++    #020617;
++  box-shadow:
++    0 30px 80px rgba(15, 23, 42, 0.95),
++    0 0 0 1px rgba(15, 23, 42, 0.9);
+ }
+
+-/* Subtle glossy backdrop behind the card */
++/* Backdrop is purely visual */
+ .lm-chat-backdrop {
+   position: absolute;
+-  inset: -16px;
++  inset: 0;
+   border-radius: 1.75rem;
+-  background:
+-    radial-gradient(circle at 0 0, rgba(56, 189, 248, 0.24), transparent 55%),
+-    radial-gradient(circle at 100% 0, rgba(129, 140, 248, 0.26), transparent 60%),
+-    radial-gradient(circle at 50% 120%, rgba(15, 23, 42, 0.98), rgba(2, 6, 23, 0.98));
+-  filter: blur(8px);
+-  opacity: 0.95;
+-}
+-
+-/* Card itself */
+-.lm-chat-card {
+-  position: relative;
+-  border-radius: 1.25rem;
+-  padding: 1.25rem 1.25rem 0.75rem;
+-  background: radial-gradient(circle at 0 0, #1d2437, #020617 65%);
+-  box-shadow:
+-    0 24px 80px rgba(15, 23, 42, 0.95),
+-    0 0 0 1px rgba(148, 163, 184, 0.25);
+-  color: #e5e7eb;
+-  display: flex;
+-  flex-direction: column;
++  background: radial-gradient(circle at 50% 100%, rgba(15, 23, 42, 0.9), transparent 55%);
++  opacity: 0.75;
++  pointer-events: none;
+ }
+
+-/* Animations */
++/* Open/close animations */
+ @keyframes lm-chat-fade-up-in {
+   from {
+     opacity: 0;
+-    transform: translate3d(0, 10px, 0) scale(0.97);
++    transform: translate3d(0, 12px, 0) scale(0.97);
+   }
+   to {
+     opacity: 1;
+@@ -884,7 +875,7 @@ textarea.lm-input,
+   }
+   to {
+     opacity: 0;
+-    transform: translate3d(0, 10px, 0) scale(0.96);
++    transform: translate3d(0, 10px, 0) scale(0.97);
+   }
+ }
+
+@@ -893,66 +884,45 @@ textarea.lm-input,
+ }
+
+ .lm-chat-shell--closing {
+-  animation: lm-chat-fade-down-out 140ms cubic-bezier(0.16, 1, 0.3, 1);
+   pointer-events: none;
++  animation: lm-chat-fade-down-out 140ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+ }
+
+
+-/* Card shell: flex column, let gradient control height */
+-.lm-chat-card {
+-  border-radius: 1.75rem;
+-  overflow: hidden;
+-  border: 1px solid rgba(148, 163, 184, 0.5);
+-  background: transparent;
+-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.75);
+-
+-  display: flex;
+-  flex-direction: column;
+-
+-  /* ❌ no max-height here — let the gradient control it */
+-  min-height: 0;
+-}
+-
+-/* ============================================
+-   SCROLLABLE GRADIENT AREA (KEEP YOUR "NICE" VERSION)
+-   ============================================ */
+-
+-/* Gradient scroll region inside the card */
++/* Scroll area inside panel (already used by ChatDock) */
+ .lm-chat-gradient {
+-  flex: 1 1 auto;
+-  min-height: 0;
++  position: relative;
+   max-height: min(340px, 100vh - 260px);
+-  margin-top: 0.75rem;
+-  padding: 0.75rem 0.5rem 0.75rem 0;
+-  border-radius: 0.85rem;
+-  background: radial-gradient(circle at 0 0, rgba(148, 163, 184, 0.22), transparent 45%);
+   overflow-y: auto;
+-  overscroll-behavior: contain;
++  padding-right: 0.4rem;
+   scrollbar-width: thin;
+   scrollbar-color: rgba(148, 163, 184, 0.8) transparent;
+ }
+
+-/* Chromium/Safari scrollbar */
+ .lm-chat-gradient::-webkit-scrollbar {
+   width: 8px;
+ }
++
+ .lm-chat-gradient::-webkit-scrollbar-track {
+   background: transparent;
+ }
++
+ .lm-chat-gradient::-webkit-scrollbar-thumb {
+   background: rgba(148, 163, 184, 0.55);
+   border-radius: 9999px;
+   border: 1px solid rgba(15, 23, 42, 0.9);
+   transition:
+-    background-color 120ms ease-out,
+-    border-color 120ms ease-out,
+-    box-shadow 120ms ease-out;
++    background-color 120ms ease,
++    border-color 120ms ease,
++    box-shadow 120ms ease;
+ }
++
+ .lm-chat-gradient::-webkit-scrollbar-thumb:hover {
+   background: rgba(248, 250, 252, 0.96);
+-  box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.85);
++  box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.9);
+ }
+
++
+ /* Header */
+ .lm-chat-header {
+   padding: 0;
+@@ -1176,3 +1146,75 @@ textarea.lm-input,
+   opacity: 0.4;
+   cursor: not-allowed;
+ }
++
++/* === ChatDock v2 layout overrides === */
++
++.lm-chat-launcher {
++  position: fixed !important;
++  inset: auto 1.75rem 1.75rem auto !important;
++  z-index: 70 !important;
++  pointer-events: none;
++}
++
++.lm-chat-launcher-button {
++  pointer-events: auto;
++}
++
++/* Slight lift when open */
++.lm-chat-launcher[data-state="open"] .lm-chat-launcher-button {
++  transform: translateY(-4px);
++}
++
++/* Full-screen overlay used only for positioning */
++.lm-chat-overlay {
++  position: fixed !important;
++  inset: 0 !important;
++  z-index: 69 !important;
++  display: flex;
++  align-items: center;
++  justify-content: center;
++  pointer-events: none;
++}
++
++/* Shell wraps backdrop + card */
++.lm-chat-shell {
++  position: relative;
++  width: min(480px, calc(100vw - 2.5rem));
++  max-height: min(480px, calc(100vh - 4rem));
++  display: flex;
++  align-items: stretch;
++  justify-content: center;
++  pointer-events: auto;
++}
++
++/* Backdrop: blur behind the card, click to close */
++.lm-chat-backdrop {
++  position: fixed;
++  inset: 0;
++  background: radial-gradient(circle at 10% 0%, rgba(15,23,42,0.85), rgba(15,23,42,0.35) 45%, transparent);
++  backdrop-filter: blur(14px);
++  opacity: 1;
++}
++
++/* Centered floating card */
++.lm-chat-shell-inner {
++  position: relative;
++  margin: 0 auto;
++  border-radius: 1.5rem;
++  overflow: hidden;
++  box-shadow:
++    0 24px 80px rgba(15,23,42,0.95),
++    0 0 0 1px rgba(15,23,42,1);
++  background: radial-gradient(circle at 0% 0%, #1d4ed8 0%, #020617 60%);
++}
++
++/* Scroll area inside card should never stretch page */
++.lm-chat-panel {
++  max-height: min(420px, calc(100vh - 6rem));
++  display: flex;
++  flex-direction: column;
++}
++
++.lm-chat-scroll {
++  overflow-y: auto;
++}
+diff --git a/apps/web/src/components/ChatDock.tsx b/apps/web/src/components/ChatDock.tsx
+index da63998a..d8650681 100644
+--- a/apps/web/src/components/ChatDock.tsx
++++ b/apps/web/src/components/ChatDock.tsx
+@@ -483,6 +483,17 @@ export default function ChatDock() {
+     return () => { if (syncTimerRef.current) window.clearTimeout(syncTimerRef.current); };
+   }, [isPrimary]);
+
++  // ChatDock v2 layout activation log
++  React.useEffect(() => {
++    if (!isPrimary) return;
++    // eslint-disable-next-line no-console
++    console.info(
++      "%c💬 ChatDock v2%c overlay-card layout active",
++      "color:#a855f7;font-weight:bold;",
++      "color:#9ca3af;"
++    );
++  }, [isPrimary]);
++
+   // 🔐 Click-away handler: closes when clicking outside bubble + shell
+   useEffect(() => {
+     if (!open) return;
+@@ -1937,7 +1948,18 @@ export default function ChatDock() {
+   );
+
+   const panel = (
+-    <Card className="lm-chat-card bg-transparent border-0 shadow-none" data-testid="lm-chat-panel">
++    <section
++      data-testid="lm-chat-panel"
++      className={cn(
++        "lm-chat-panel",
++        "relative flex w-full flex-col gap-4",
++        "bg-slate-950/95 text-slate-50",
++        "border border-slate-800/80",
++        "shadow-[0_24px_80px_rgba(15,23,42,0.95)]",
++        "rounded-3xl p-4 sm:p-6"
++      )}
++    >
++    <Card className="lm-chat-card bg-transparent border-0 shadow-none">
+       {/* Gradient top: header + sections */}
+       <div
+         className="lm-chat-gradient"
+@@ -2163,22 +2185,24 @@ export default function ChatDock() {
+         </div>
+       </CardFooter>
+       </Card>
++    </section>
+   );
+
+   // Since we're already mounted in Shadow DOM via chatMount.tsx,
+   // just return the content directly instead of creating another root
+   if (!portalReady || !isPrimary) return null;
+
+-  // --- Shell (backdrop + card) ---------------------------------
++  const shellClasses = cn(
++    "lm-chat-shell",
++    open && !isClosing && "lm-chat-shell--open",
++    isClosing && "lm-chat-shell--closing"
++  );
++
+   const shell = (
+     <div
++      ref={shellRef}
+       data-testid="lm-chat-shell"
+-      className={cn(
+-        "lm-chat-shell",
+-        open && !isClosing && "lm-chat-shell--open",
+-        isClosing && "lm-chat-shell--closing"
+-      )}
+-      // clicking outside the card but inside the shell closes
++      className={shellClasses}
+       onClick={handleClose}
+     >
+       <div
+@@ -2187,15 +2211,14 @@ export default function ChatDock() {
+       />
+       <div
+         className="lm-chat-shell-inner"
+-        onClick={(e) => e.stopPropagation()} // keep card clicks from closing
++        onClick={(e) => e.stopPropagation()}
+       >
+         {panel}
+       </div>
+     </div>
+   );
+
+-  // --- Launcher + overlay (portal to <body>) --------------------
+-  const node = (
++  const launcherNode = (
+     <div
+       data-testid="lm-chat-launcher"
+       className={cn(
+@@ -2225,8 +2248,7 @@ export default function ChatDock() {
+     </div>
+   );
+
+-  const root = document.body;
+-  return root ? createPortal(node, root) : null;
++  return createPortal(launcherNode, document.body);
+ }
+
+ // Helper: format NL transaction query result for chat rendering

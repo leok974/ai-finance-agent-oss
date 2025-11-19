@@ -39,18 +39,30 @@ CATS = [
 ]
 
 RULES = [
+    # P2P / Transfers (highest priority)
+    (r"ZELLE|NOW\s+WITHDRAWAL", "transfers", 5),
+    (r"VENMO", "transfers", 5),
+    (r"CASH\s+APP|SQC\*", "transfers", 5),
+    (r"PAYPAL(?!.*(NETFLIX|SPOTIFY|AMAZON|ADOBE))", "transfers", 5),
+    (r"APPLE\s+CASH", "transfers", 5),
+    # Ride hailing
     (r"UBER|LYFT", "transportation.ride_hailing", 10),
+    # Streaming subscriptions
     (r"NETFLIX|HULU|DISNEY\+|MAX|PARAMOUNT", "subscriptions.streaming", 10),
     (r"SPOTIFY|APPLE\s*MUSIC|YTMUSIC|YOUTUBE\s*PREMIUM", "subscriptions.streaming", 10),
+    # Software subscriptions
     (r"ADOBE|MICROSOFT\s*365|OFFICE\s*365", "subscriptions.software", 20),
     (r"GOOGLE\s*ONE|DROPBOX|ICLOUD", "subscriptions.storage", 20),
+    # Restaurants / Coffee
     (
         r"MCDONALD|STARBUCKS|DUNKIN",
         "restaurants",
         30,
     ),  # 'coffee' can be learned via hints
+    # Transportation
     (r"SHELL|EXXON|BP|CHEVRON", "transportation.fuel", 20),
     (r"UNITED|DELTA|AMERICAN\s*AIRLINES|SOUTHWEST", "travel.flights", 20),
+    # Utilities
     (r"XFINITY|COMCAST|SPECTRUM|VERIZON|AT&T", "housing.utilities.internet", 20),
     (r"T[- ]?MOBILE", "housing.utilities.mobile", 20),
 ]

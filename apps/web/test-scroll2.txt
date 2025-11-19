@@ -1,0 +1,99 @@
+[dotenv@17.2.3] injecting env (8) from ..\..\.env -- tip: ≡ƒ¢á∩╕Å  run anywhere with `dotenvx run -- yourcommand`
+[global-setup] Starting E2E session mint...
+[global-setup] TEST_HOST: app.ledger-mind.org, HTTPS: true
+[global-setup] Minting session for leoklemet.pa@gmail.com...
+[global-setup] Session minted successfully
+[global-setup] Extracted 1 cookies from response
+[global-setup] Normalized cookies to domain: app.ledger-mind.org, secure: true
+[global-setup] Storage state saved to C:\ai-finance-agent-oss-clean\apps\web\tests\e2e\.auth\prod-state.json
+
+Running 1 test using 1 worker
+
+[1A[2K[dotenv@17.2.3] injecting env (0) from ..\..\.env -- tip: ΓÜÖ∩╕Å  enable debug logging with { debug: true }
+
+[1A[2K[1/1] [chromium-prod] ΓÇ║ tests\e2e\page-scroll.spec.ts:10:3 ΓÇ║ @prod Page scroll regression ΓÇ║ main page remains scrollable with ChatDock present
+[1A[2K[chromium-prod] ΓÇ║ tests\e2e\page-scroll.spec.ts:10:3 ΓÇ║ @prod Page scroll regression ΓÇ║ main page remains scrollable with ChatDock present
+Page height: 720, Viewport: 720, Initial scroll: 0
+
+[1A[2KBody overflow styles: {
+  overflow: [32m'hidden'[39m,
+  overflowX: [32m'hidden'[39m,
+  overflowY: [32m'hidden'[39m,
+  inlineStyle: [32m'(none)'[39m,
+  classes: [ [32m'dark'[39m ]
+}
+
+[1A[2K[dotenv@17.2.3] injecting env (0) from ..\..\.env -- tip: ≡ƒöÉ encrypt with Dotenvx: https://dotenvx.com
+
+[1A[2K[2/1] (retries) [chromium-prod] ΓÇ║ tests\e2e\page-scroll.spec.ts:10:3 ΓÇ║ @prod Page scroll regression ΓÇ║ main page remains scrollable with ChatDock present (retry #1)
+[1A[2KPage height: 720, Viewport: 720, Initial scroll: 0
+
+[1A[2KBody overflow styles: {
+  overflow: [32m'hidden'[39m,
+  overflowX: [32m'hidden'[39m,
+  overflowY: [32m'hidden'[39m,
+  inlineStyle: [32m'(none)'[39m,
+  classes: [ [32m'dark'[39m ]
+}
+
+[1A[2K  1) [chromium-prod] ΓÇ║ tests\e2e\page-scroll.spec.ts:10:3 ΓÇ║ @prod Page scroll regression ΓÇ║ main page remains scrollable with ChatDock present
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mnot[2m.[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: not [32m"hidden"[39m
+
+      53 |
+      54 |       console.log(`Body overflow styles:`, bodyStyles);
+    > 55 |       expect(bodyStyles.overflow).not.toBe('hidden');
+         |                                       ^
+      56 |       expect(bodyStyles.overflowY).not.toBe('hidden');
+      57 |     }
+      58 |   });
+        at C:\ai-finance-agent-oss-clean\apps\web\tests\e2e\page-scroll.spec.ts:55:39
+
+    attachment #1: screenshot (image/png) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+    test-results\page-scroll--prod-Page-scr-5cea0-lable-with-ChatDock-present-chromium-prod\test-failed-1.png
+    ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+
+    attachment #2: video (video/webm) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+    test-results\page-scroll--prod-Page-scr-5cea0-lable-with-ChatDock-present-chromium-prod\video.webm
+    ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+
+    Error Context: test-results\page-scroll--prod-Page-scr-5cea0-lable-with-ChatDock-present-chromium-prod\error-context.md
+
+    Retry #1 ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mnot[2m.[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: not [32m"hidden"[39m
+
+      53 |
+      54 |       console.log(`Body overflow styles:`, bodyStyles);
+    > 55 |       expect(bodyStyles.overflow).not.toBe('hidden');
+         |                                       ^
+      56 |       expect(bodyStyles.overflowY).not.toBe('hidden');
+      57 |     }
+      58 |   });
+        at C:\ai-finance-agent-oss-clean\apps\web\tests\e2e\page-scroll.spec.ts:55:39
+
+    attachment #1: screenshot (image/png) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+    test-results\page-scroll--prod-Page-scr-5cea0-lable-with-ChatDock-present-chromium-prod-retry1\test-failed-1.png
+    ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+
+    attachment #2: video (video/webm) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+    test-results\page-scroll--prod-Page-scr-5cea0-lable-with-ChatDock-present-chromium-prod-retry1\video.webm
+    ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+
+    Error Context: test-results\page-scroll--prod-Page-scr-5cea0-lable-with-ChatDock-present-chromium-prod-retry1\error-context.md
+
+    attachment #4: trace (application/zip) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+    test-results\page-scroll--prod-Page-scr-5cea0-lable-with-ChatDock-present-chromium-prod-retry1\trace.zip
+    Usage:
+
+        pnpm exec playwright show-trace test-results\page-scroll--prod-Page-scr-5cea0-lable-with-ChatDock-present-chromium-prod-retry1\trace.zip
+
+    ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+
+
+[1A[2K  1 failed
+    [chromium-prod] ΓÇ║ tests\e2e\page-scroll.spec.ts:10:3 ΓÇ║ @prod Page scroll regression ΓÇ║ main page remains scrollable with ChatDock present

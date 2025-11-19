@@ -19,6 +19,36 @@ LedgerMind ChatDock v2 is built as a **single-page application** served by Nginx
 
 ---
 
+## ChatDock CSS Wiring Guardrails
+
+**Critical:** All assistant/chat styling lives in `apps/web/src/chat/index.css`. This file is **intentionally imported twice**:
+
+1. **Globally** from `apps/web/src/index.css` via `@import "./chat/index.css";`
+2. **Locally** from `apps/web/src/components/ChatDock.tsx` via `import '../chat/index.css';`
+
+**Do NOT remove or rename these imports** without also updating the build guard script.
+
+### Why Two Imports?
+
+- The global import ensures chat CSS is bundled into the main CSS chunk that `index.html` loads
+- The local import provides a fallback and makes the dependency explicit in the component
+- Without the global import, Vite creates an **orphaned CSS chunk** that never gets loaded, causing the assistant to render unstyled in production
+
+### Verification
+
+After changing chat CSS, always verify the build:
+
+```bash
+cd apps/web
+pnpm build && pnpm verify:chat-css
+```
+
+The build will fail if the compiled CSS referenced by `index.html` does not contain the `.lm-chat-…` rules.
+
+**Known failure mode:** If you remove `@import "./chat/index.css";` from `index.css`, the chat CSS compiles into a separate chunk file (e.g., `chat-abc123.css`) that is never referenced by `index.html`. The app loads successfully but the assistant renders completely unstyled.
+
+---
+
 ## Frontend Build Pipeline
 
 ### 1. Multi-Stage Dockerfile (`deploy/Dockerfile.nginx`)
@@ -697,6 +727,102 @@ location /assets/ {
 
 ---
 
+## LedgerMind – Prod Nginx Deploy & Verification
+
+### Golden Rule: Always Verify Version Before Debugging
+
+**Before debugging ANY production UI/agent issues, verify that the nginx build matches the current Git commit.**
+
+If `version.json` doesn't match your local `HEAD`, **STOP** and redeploy nginx first. Do not waste time debugging behavior that might be from old code.
+
+---
+
+### Fast Deploy Checklist (Nginx Only)
+
+From repo root on the correct branch:
+
+```bash
+# 1. Confirm branch/commit
+git rev-parse --abbrev-ref HEAD
+git rev-parse --short=8 HEAD
+
+# 2. Build nginx image (no cache)
+VITE_GIT_BRANCH=$(git rev-parse --abbrev-ref HEAD) \
+VITE_GIT_COMMIT=$(git rev-parse --short=8 HEAD) \
+BUILD_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ") \
+docker compose -f docker-compose.prod.yml build --no-cache nginx
+
+# 3. Recreate nginx container
+docker compose -f docker-compose.prod.yml up -d --force-recreate nginx
+
+# 4. (Optional) Restart Cloudflare tunnels
+docker restart cfd-a cfd-b
+
+# 5. Verify prod version
+curl -s https://app.ledger-mind.org/version.json | jq
+# Check: branch == current branch, commit == `git rev-parse --short HEAD`
+```
+
+**⚠️ If step 5 doesn't match local HEAD, don't debug anything else yet.**
+
+---
+
+### One-Command Deploy
+
+**Bash (Linux/macOS/WSL):**
+```bash
+# Deploy nginx
+scripts/deploy-ledgermind-nginx.sh
+
+# Verify deployment
+scripts/check-ledgermind-prod-version.sh
+```
+
+**PowerShell (Windows):**
+```powershell
+# Deploy nginx
+.\scripts\deploy-ledgermind-nginx.ps1
+
+# Verify deployment
+.\scripts\check-ledgermind-prod-version.ps1
+```
+
+**What These Scripts Do:**
+
+- `deploy-ledgermind-nginx.sh` / `.ps1`:
+  - Builds nginx image with `VITE_GIT_BRANCH`, `VITE_GIT_COMMIT`, `BUILD_TIME`
+  - Uses `--no-cache` to prevent Docker layer caching issues
+  - Recreates nginx container with fresh image
+  - Restarts Cloudflare tunnels (`cfd-a`, `cfd-b`) if present
+
+- `check-ledgermind-prod-version.sh` / `.ps1`:
+  - Fetches `https://app.ledger-mind.org/version.json`
+  - Compares remote `branch` + `commit` to local Git `HEAD`
+  - ✅ Exit 0 if prod matches local (safe to debug)
+  - ⚠️ Exit 1 if mismatch (redeploy nginx first)
+
+**Custom Compose File:**
+```bash
+# If prod compose lives under ops/
+COMPOSE_FILE=ops/docker-compose.prod.yml scripts/deploy-ledgermind-nginx.sh
+```
+
+---
+
+### Why This Matters
+
+**Common Deployment Pitfall:**
+- Docker build caches layers from previous builds (even after `git pull`)
+- `version.json` shows old commit but you think you deployed new code
+- You waste hours debugging "broken" features that work fine in the new build
+
+**The Fix:**
+- Always use `--no-cache` for production nginx builds
+- Always verify `version.json` before debugging
+- Use automated scripts to enforce correct build process
+
+---
+
 ## References
 
 - **Dockerfile:** `deploy/Dockerfile.nginx`
@@ -708,3 +834,7 @@ location /assets/ {
 - **Build stamp script:** `apps/web/scripts/build-stamp.mjs`
 - **Cloudflare tunnel config:** `cloudflared/config.yml`
 - **Docker Compose prod:** `docker-compose.prod.yml`
+- **Deploy scripts:** `scripts/deploy-ledgermind-nginx.{sh,ps1}`
+- **Version check scripts:** `scripts/check-ledgermind-prod-version.{sh,ps1}`
+
+````

@@ -19,6 +19,8 @@ This creates synthetic labeled transaction data matching your feature schema.
 
 ### 2. Train Model
 
+#### Full Training (All Categories)
+
 ```bash
 python -m app.ml.train_lightgbm \
   --golden-path data/golden/txns_labeled.parquet \
@@ -29,6 +31,71 @@ python -m app.ml.train_lightgbm \
 **Output:**
 - `data/models/model.joblib` - Trained LightGBM + calibrated probabilities
 - `data/models/version.json` - Metadata (features, metrics, classes)
+
+#### P2P/Transfers Training (Simplified CLI)
+
+Train specifically on P2P detection features (`feat_p2p_flag`, `feat_p2p_large_outflow`):
+
+```bash
+# Quick dry-run test (computes metrics but doesn't save model)
+python -m app.ml.train --max-rows 200 --dry-run
+
+# Full training (saves model to models/p2p_classifier.joblib)
+python -m app.ml.train --max-rows 1000
+
+# With JSON metrics output for CI/automation
+python -m app.ml.train --max-rows 1000 --out-json data/p2p_metrics.json
+```
+
+**CLI Flags:**
+- `--max-rows N`: Limit training to N rows (for fast dev/test runs)
+- `--dry-run`: Compute metrics but skip saving model artifact
+- `--out-json PATH`: Write metrics to JSON file for CI integration
+
+**Model Artifact:**
+- Location: `models/p2p_classifier.joblib`
+- Contents: LightGBM classifier + preprocessor pipeline
+- Features: All ML features including P2P binary flags
+
+**P2P Features:**
+- `feat_p2p_flag`: Binary indicator (1 if P2P pattern detected in merchant name)
+- `feat_p2p_large_outflow`: Binary indicator (1 if P2P transaction >= $100 outflow)
+
+These features are extracted by `app.ml.feature_build` from transaction merchant/description text using regex patterns for:
+- Zelle (NOW Withdrawal, Zelle keywords)
+- Venmo (VENMO keywords)
+- Cash App (SQ *, SQC*, CASH APP)
+- PayPal (PAYPAL - excluding merchant processors)
+- Apple Cash (APPLE CASH keywords)
+
+#### Automation
+
+**Local Pipeline Script:**
+The P2P training is automated via `run-p2p-pipeline.ps1` (STEP 5):
+- Runs `python -m app.ml.train --max-rows 200 --out-json data/p2p_train_metrics.json`
+- Fails the pipeline if training exits with non-zero code
+- Generates JSON metrics for inspection and CI integration
+
+**CI/CD Integration:**
+The `p2p-ml-training` job in `.github/workflows/ml-train.yml`:
+- Runs `python -m app.ml.train --max-rows 200 --dry-run` (validates pipeline without saving model)
+- Executes `pytest tests/test_ml_p2p_training_e2e.py` (E2E tests for model artifact creation)
+- Triggers on workflow_dispatch or weekly schedule (Mondays 04:21 UTC)
+
+**Usage:**
+```bash
+# Local: Full pipeline with E2E tests
+.\run-p2p-pipeline.ps1
+
+# Local: Skip E2E tests (faster dev runs)
+.\run-p2p-pipeline.ps1 -SkipTests
+
+# Local: Custom max rows for training
+.\run-p2p-pipeline.ps1 -MaxRows 500
+
+# CI: Manual trigger via GitHub Actions UI
+# Navigate to: Actions → ml-train → Run workflow
+```
 
 ### 3. Configure Backend
 
