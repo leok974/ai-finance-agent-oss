@@ -126,7 +126,12 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
   }, []);
 
   const categoriesData = useMemo(() => categories, [categories]);
-  const merchantsData = useMemo(() => merchants, [merchants]);
+  const merchantsData = useMemo(() => {
+    // Clean up merchant data for chart display
+    return merchants
+      .filter((m) => Number.isFinite(m.total) && m.total > 0)
+      .filter((m) => m.label.toLowerCase() !== 'unknown');
+  }, [merchants]);
   const flowsData = useMemo(() => daily, [daily]);
   const trendsData = useMemo(
     () => (trends?.trends ?? []).map((t: any) => ({ month: t.month, spent: t.spent ?? t.spending ?? 0 })),
@@ -301,24 +306,8 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
         {!loading && merchantsData.length > 0 && (
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={merchantsData}>
-                <CartesianGrid stroke="var(--grid-line)" />
-                <XAxis
-                  dataKey="label"
-                  tick={{ fill: "var(--text-muted)", fontSize: 11 }}
-                  stroke="var(--border-subtle)"
-                  angle={-30}
-                  textAnchor="end"
-                  height={80}
-                  interval={0}
-                  tickFormatter={(value: any) => truncateMerchantLabel(value, 12)}
-                />
-                <YAxis
-                  tick={{ fill: "var(--text-muted)" }}
-                  stroke="var(--border-subtle)"
-                  tickFormatter={formatCurrency}
-                  label={{ value: t('ui.charts.axis_spend'), angle: -90, position: "insideLeft", fill: "var(--text-muted)" }}
-                />
+              <BarChart data={merchantsData} margin={{ top: 16, right: 16, left: 0, bottom: 0 }} barCategoryGap={24}>
+                {/* No axes - clean look with tooltips only */}
                 <Tooltip
                   contentStyle={tooltipStyle}
                   itemStyle={tooltipItemStyle}
@@ -338,15 +327,13 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
                       : d.label;
                   }}
                 />
-                <Legend content={<BarPaletteLegend label={t('ui.charts.legend_spend')} />} />
-                <Bar dataKey="total" name={t('ui.charts.legend_spend')} activeBar={{ fillOpacity: 1, stroke: "#fff", strokeWidth: 1 }} fillOpacity={0.9}>
+                <Bar dataKey="total" radius={[8, 8, 0, 0]} barSize={28} activeBar={{ fillOpacity: 1, stroke: "#fff", strokeWidth: 1 }} fillOpacity={0.9}>
                   {merchantsData.map((d: any, i: number) => (
                     <Cell key={i} fill={pickColor(Number(d?.total ?? 0), maxMerchant)} />
                   ))}
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
-            {/* Tip removed per request */}
           </div>
         )}
   </Card>
