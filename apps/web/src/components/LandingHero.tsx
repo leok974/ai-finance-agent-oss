@@ -19,12 +19,12 @@ export default function LandingHero() {
         <div className="w-full max-w-6xl grid gap-10 lg:grid-cols-2 items-center">
           {/* Left: Logo + Copy + CTA */}
           <div className="space-y-6">
-            {/* Logo + Brand */}
-            <div className="mb-6">
+            {/* Large Logo + Brand - Much more prominent */}
+            <div className="mb-8">
               <img
                 src={logoPng}
                 alt="LedgerMind"
-                className="h-12 sm:h-14 w-auto select-none"
+                className="h-16 sm:h-20 md:h-24 lg:h-28 w-auto select-none"
                 draggable={false}
               />
             </div>
