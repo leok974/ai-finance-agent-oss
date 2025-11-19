@@ -1916,7 +1916,7 @@ export default function ChatDock() {
   const handleScrollWheel = useCallback(
     (event: React.WheelEvent<HTMLDivElement>) => {
       const el = event.currentTarget;
-      const { scrollHeight, clientHeight, scrollTop } = el;
+      const { scrollHeight, clientHeight } = el;
 
       // If no vertical overflow, let the page handle the scroll normally
       if (scrollHeight <= clientHeight) {
@@ -1924,13 +1924,9 @@ export default function ChatDock() {
       }
 
       // Apply the wheel delta manually
+      // Note: Can't call preventDefault() in React wheel handlers (they're passive by default)
+      // The browser will scroll the element naturally via CSS overflow
       el.scrollTop += event.deltaY;
-
-      // If scrollTop actually changed, we consumed the scroll
-      if (el.scrollTop !== scrollTop) {
-        event.preventDefault();
-        event.stopPropagation();
-      }
     },
     []
   );
