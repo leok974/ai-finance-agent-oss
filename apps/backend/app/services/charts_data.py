@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import re
+from collections import defaultdict
+from dataclasses import dataclass
 from datetime import date as _date, timedelta
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from sqlalchemy import select, func, case, or_, and_
 from sqlalchemy.orm import Session
@@ -180,106 +183,159 @@ def get_month_summary(db: Session, user_id: int, month: str) -> Dict[str, Any]:
     }
 
 
-def canonicalize_merchant(raw: str) -> str:
+# --- Merchant normalization with brand rules ----------------------------------
+
+
+@dataclass(frozen=True)
+class MerchantBrandRule:
+    """Brand recognition rule for merchant normalization."""
+
+    key: str  # internal canonical key
+    label: str  # user-facing label
+    patterns: List[str]  # substrings to match in normalized string
+
+
+# Brand rules config - centralized brand knowledge
+# Add new rules here as you discover noisy merchant patterns
+MERCHANT_BRAND_RULES: List[MerchantBrandRule] = [
+    MerchantBrandRule(
+        key="playstation",
+        label="PlayStation",
+        patterns=["playstatio", "playstation"],
+    ),
+    MerchantBrandRule(
+        key="harris_teeter",
+        label="Harris Teeter",
+        patterns=["harris teeter"],
+    ),
+    MerchantBrandRule(
+        key="now_withdrawal",
+        label="NOW Withdrawal",
+        patterns=["now withdrawal"],
+    ),
+    MerchantBrandRule(
+        key="amazon",
+        label="Amazon",
+        patterns=["amazon"],
+    ),
+    MerchantBrandRule(
+        key="starbucks",
+        label="Starbucks",
+        patterns=["starbucks"],
+    ),
+    MerchantBrandRule(
+        key="target",
+        label="Target",
+        patterns=["target"],
+    ),
+    MerchantBrandRule(
+        key="walmart",
+        label="Walmart",
+        patterns=["walmart"],
+    ),
+]
+
+
+def normalize_merchant_base(raw: str) -> str:
     """
-    Generic merchant normalization without brand-specific rules.
-    Removes digits, extra punctuation, and normalizes spacing.
+    Base merchant normalization - brand-agnostic.
+    Strips digits, punctuation, and normalizes spacing.
     """
     if not raw:
         return "unknown"
 
-    import re
-
     s = raw.lower()
 
-    # Remove obvious noise: digits, extra punctuation
+    # Strip digits / punctuation / duplicate spaces
     s = re.sub(r"\d+", " ", s)
     s = re.sub(r"[^a-z& ]+", " ", s)
     s = re.sub(r"\s+", " ", s).strip()
 
-    # If we stripped everything somehow, fall back to raw lower
     return s or raw.lower()
 
 
-def display_name_for(canonical: str) -> str:
+def canonical_and_label(raw: str) -> tuple[str, str]:
     """
-    Convert canonical merchant key to user-facing display name.
-    Generic approach with safety truncation for long labels.
+    Combined function: base normalize → then apply brand rules.
+    Returns (canonical_key, display_label) tuple.
     """
-    if not canonical or canonical == "unknown":
-        return "(unknown)"
+    base = normalize_merchant_base(raw)
 
-    name = canonical.title()
-    # Safety truncation so labels/tooltips don't explode
-    return name if len(name) <= 32 else name[:29] + "..."
+    # 1) Try brand rules first
+    for rule in MERCHANT_BRAND_RULES:
+        if any(pat in base for pat in rule.patterns):
+            return rule.key, rule.label
+
+    # 2) Generic fallback for unknown merchants
+    key = base or "unknown"
+    label = key.title()
+    if len(label) > 32:
+        label = label[:29] + "..."
+    return key, label
 
 
 def get_month_merchants(
     db: Session, user_id: int, month: str, limit: int = 8
 ) -> Dict[str, Any]:
     """
-    Fast SQL GROUP BY over canonical merchant; expenses only as positive magnitudes.
-    Returns enhanced data with friendly display names and statement examples.
+    Aggregate top merchants using brand-aware normalization.
+    Groups transactions by normalized merchant key and returns friendly labels.
 
     Default limit reduced to 8 for better chart readability.
     """
-    start, end = month_bounds(month)
-    spend_abs = func.sum(func.abs(Transaction.amount)).label("amount")
-    cnt = func.count().label("n")
 
-    # First, get aggregated totals grouped by canonical merchant
-    rows = db.execute(
-        select(
-            Transaction.merchant_canonical.label("canonical"),
-            func.min(Transaction.merchant).label("merchant"),  # Keep one example
-            spend_abs,
-            cnt,
-        )
-        .where(
+    start, end = month_bounds(month)
+
+    # Fetch all expense transactions for the month
+    txns = db.execute(
+        select(Transaction.merchant, Transaction.amount).where(
             Transaction.user_id == user_id,
             Transaction.date >= start,
             Transaction.date < end,
             Transaction.amount < 0,
             ~Transaction.pending,
         )
-        .group_by(Transaction.merchant_canonical)
-        .order_by(spend_abs.desc())
-        .limit(limit)
     ).all()
 
-    # For each canonical merchant, collect statement examples
-    merchants_data = []
-    for canonical, first_merchant, amount, count in rows:
-        # Get up to 3 unique statement descriptors for this canonical merchant
-        examples = (
-            db.execute(
-                select(func.distinct(Transaction.merchant))
-                .where(
-                    Transaction.user_id == user_id,
-                    Transaction.date >= start,
-                    Transaction.date < end,
-                    Transaction.merchant_canonical == canonical,
-                    Transaction.merchant.is_not(None),
-                )
-                .limit(3)
-            )
-            .scalars()
-            .all()
-        )
+    # Aggregate using brand-aware normalization
+    buckets: Dict[str, Dict[str, Any]] = defaultdict(
+        lambda: {
+            "label": "",
+            "total": 0.0,
+            "count": 0,
+            "statement_examples": set(),
+        }
+    )
 
-        merchants_data.append(
+    for raw_merchant, amount in txns:
+        raw = raw_merchant or "unknown"
+        key, label = canonical_and_label(raw)
+
+        b = buckets[key]
+        b["label"] = label
+        b["total"] = float(b["total"]) + abs(float(amount or 0.0))
+        b["count"] = int(b["count"]) + 1
+        b["statement_examples"].add(raw)  # type: ignore
+
+    # Convert to list and sort by total spend
+    items = []
+    for key, b in buckets.items():
+        items.append(
             {
-                "merchant_key": canonical or "(unknown)",
-                "label": display_name_for(canonical),
-                "total": float(amount or 0.0),
-                "count": int(count or 0),
-                "statement_examples": [ex for ex in examples if ex],
+                "merchant_key": key,
+                "label": b["label"],
+                "total": b["total"],
+                "count": b["count"],
+                "statement_examples": sorted(b["statement_examples"])[:3],
             }
         )
 
+    items.sort(key=lambda r: r["total"], reverse=True)
+    top_merchants = items[:limit]
+
     return {
         "month": month,
-        "merchants": merchants_data,
+        "merchants": top_merchants,
     }
 
 

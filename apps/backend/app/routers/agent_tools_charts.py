@@ -165,53 +165,61 @@ def charts_merchants(
     body: MerchantsBody, db: Session = Depends(get_db)
 ) -> MerchantsResp:
     """
-    Get top merchants with canonicalized names and statement examples.
-    Uses generic normalization without brand-specific rules.
+    Get top merchants with brand-aware normalization.
+    Uses centralized brand rules config for consistent labeling.
     """
-    from app.services.charts_data import display_name_for
+    from collections import defaultdict
+    from typing import Any, Dict
+    from app.services.charts_data import canonical_and_label
 
-    # Group by merchant_canonical
-    q = (
-        db.query(
-            Transaction.merchant_canonical.label("canonical"),
-            func.min(Transaction.merchant).label("first_merchant"),
-            _abs_outflow_sum().label("spend"),
-            func.sum(case((Transaction.amount != 0, 1), else_=0)).label("txns"),
+    # Fetch all expense transactions for the month
+    txns = (
+        db.query(Transaction.merchant, Transaction.amount)
+        .filter(
+            Transaction.month == body.month,
+            Transaction.amount < 0,
+            ~Transaction.pending,
         )
-        .filter(Transaction.month == body.month)
-        .group_by(Transaction.merchant_canonical)
-        .order_by(desc("spend"))
-        .limit(body.top_n)
+        .all()
     )
 
-    items = []
-    for row in q.all():
-        if (row.spend or 0.0) <= 0:
-            continue
+    # Aggregate using brand-aware normalization
+    buckets: Dict[str, Dict[str, Any]] = defaultdict(
+        lambda: {
+            "label": "",
+            "total": 0.0,
+            "count": 0,
+            "statement_examples": set(),
+        }
+    )
 
-        # Get statement examples for this canonical merchant
-        examples_q = (
-            db.query(func.distinct(Transaction.merchant))
-            .filter(
-                Transaction.month == body.month,
-                Transaction.merchant_canonical == row.canonical,
-                Transaction.merchant.is_not(None),
-            )
-            .limit(3)
-        )
-        examples = [ex for ex in examples_q.scalars().all() if ex]
+    for raw_merchant, amount in txns:
+        raw = raw_merchant or "unknown"
+        key, label = canonical_and_label(raw)
 
-        items.append(
+        b = buckets[key]
+        b["label"] = label
+        b["total"] = float(b["total"]) + abs(float(amount or 0.0))
+        b["count"] = int(b["count"]) + 1
+        b["statement_examples"].add(raw)  # type: ignore
+
+    # Convert to list and sort by total spend
+    items_list = []
+    for key, b in buckets.items():
+        items_list.append(
             MerchantItem(
-                merchant_key=row.canonical or "(unknown)",
-                label=display_name_for(row.canonical),
-                total=float(row.spend or 0.0),
-                count=int(row.txns or 0),
-                statement_examples=examples,
+                merchant_key=key,
+                label=b["label"],
+                total=b["total"],
+                count=b["count"],
+                statement_examples=sorted(b["statement_examples"])[:3],
             )
         )
 
-    return MerchantsResp(month=body.month, items=items)
+    items_list.sort(key=lambda r: r.total, reverse=True)
+    top_items = items_list[: body.top_n]
+
+    return MerchantsResp(month=body.month, items=top_items)
 
 
 @router.post("/flows", response_model=FlowsResp)
