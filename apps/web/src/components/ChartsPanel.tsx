@@ -127,70 +127,53 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
 
   const categoriesData = useMemo(() => categories, [categories]);
   const merchantsData = useMemo(() => {
-    // Resilient merchant filtering - treat API data defensively
+    // Simple, deterministic merchant filtering
     const MIN_SPEND = 0.01;
 
-    // 1) Separate known vs unknown merchants
-    const known = merchants.filter((m) => {
-      const label = (m.label || '').toLowerCase();
-      const spend = Math.abs(m.total);
-      return label && label !== 'unknown' && spend >= MIN_SPEND;
+    // Map to normalized shape with spend field
+    const merchantsChart = merchants
+      .map((m) => {
+        const value = typeof m.total === 'number' ? m.total : 0;
+        const spend = Math.abs(value);
+        const label = (m.label && m.label.trim()) || 'Unknown';
+
+        return {
+          ...m,
+          spend,
+          label,
+        };
+      })
+      .filter((m) => Number.isFinite(m.spend) && m.spend >= MIN_SPEND);
+
+    // Fallback: if nothing passed filter but raw data has spend, use raw
+    let topMerchantsData = merchantsChart;
+
+    const rawHasSpend = merchants.some((m) => {
+      const v = typeof m.total === 'number' ? m.total : 0;
+      return Math.abs(v) >= MIN_SPEND;
     });
 
-    const unknownRows = merchants.filter((m) => {
-      const label = (m.label || '').toLowerCase();
-      const spend = Math.abs(m.total);
-      return (!label || label === 'unknown') && spend >= MIN_SPEND;
-    });
-
-    // 2) Aggregate unknown into a single bucket if needed
-    let unknownBucket: UIMerchant | null = null;
-    if (unknownRows.length) {
-      const total = unknownRows.reduce((sum, m) => sum + Math.abs(m.total), 0);
-      const count = unknownRows.reduce((sum, m) => sum + (m.count ?? 0), 0);
-      unknownBucket = {
-        merchant_key: 'unknown',
-        label: 'Unknown',
-        total,
-        count,
-        statement_examples: unknownRows
-          .flatMap((m) => m.statement_examples ?? [])
-          .slice(0, 3),
-      };
+    if (topMerchantsData.length === 0 && rawHasSpend) {
+      topMerchantsData = merchants.map((m) => {
+        const value = typeof m.total === 'number' ? m.total : 0;
+        return {
+          ...m,
+          spend: Math.abs(value),
+          label: (m.label && m.label.trim()) || 'Unknown',
+        };
+      });
     }
 
-    // 3) Build chart data
-    let chartMerchants: UIMerchant[] = [];
-    if (known.length) {
-      chartMerchants = known;
-    } else if (unknownBucket) {
-      // Only unknown merchants in the month → show the single Unknown bar
-      chartMerchants = [unknownBucket];
-    }
-
-    // 4) Final safety: if we still have nothing but the API had spend,
-    //    fall back to whatever the backend gave us
-    if (
-      !chartMerchants.length &&
-      merchants.some((m) => Math.abs(m.total) >= MIN_SPEND)
-    ) {
-      chartMerchants = merchants.map((m) => ({
-        ...m,
-        total: Math.abs(m.total),
-      }));
-    }
-
-    // Debug logging (can remove after verification)
-    console.log('[charts] merchants raw', merchants);
-    console.log('[charts] merchants chart', chartMerchants);
-
-    return chartMerchants;
+    return topMerchantsData;
   }, [merchants]);
   const flowsData = useMemo(() => daily, [daily]);
   const trendsData = useMemo(
     () => (trends?.trends ?? []).map((t: any) => ({ month: t.month, spent: t.spent ?? t.spending ?? 0 })),
     [trends]
   );
+
+  // Max merchant spend for color coding
+  const maxMerchant = useMemo(() => Math.max(1, ...merchantsData.map((d: any) => Math.abs(Number(d?.spend ?? 0)))), [merchantsData]);
 
   // Color helpers for bars
   function pickColor(v: number, max: number) {
@@ -201,7 +184,6 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
     return "#ef4444";                    // red-500
   }
   const maxCategory = useMemo(() => Math.max(1, ...categoriesData.map((d: any) => Math.abs(Number(d?.amount ?? 0)))), [categoriesData]);
-  const maxMerchant = useMemo(() => Math.max(1, ...merchantsData.map((d: any) => Math.abs(Number(d?.total ?? 0)))), [merchantsData]);
 
   // Dark tooltip style
   const tooltipStyle = useMemo(() => ({
@@ -229,7 +211,7 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
   );
 
   return (
-    <div id="charts-panel" className="grid gap-6 md:gap-7 grid-cols-1 lg:grid-cols-2">
+    <div id="charts-panel" data-testid="charts-panel-root" className="grid gap-6 md:gap-7 grid-cols-1 lg:grid-cols-2">
       {empty && !error && (
         <div className="lg:col-span-2">
           <EmptyState title={t('ui.empty.no_transactions_title')} note={t('ui.empty.charts_note')} />
@@ -355,35 +337,54 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
           </div>
         )}
         {!loading && merchantsData.length === 0 && (
-          <p className="text-sm text-gray-400">{t('ui.charts.empty_merchants')}</p>
+          <div
+            className="text-sm text-muted-foreground px-4 py-6"
+            data-testid="top-merchants-empty"
+          >
+            No merchant data.
+          </div>
         )}
         {!loading && merchantsData.length > 0 && (
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={merchantsData} margin={{ top: 16, right: 16, left: 0, bottom: 0 }} barCategoryGap={24}>
+              <BarChart
+                data={merchantsData}
+                margin={{ top: 16, right: 16, left: 0, bottom: 0 }}
+                barCategoryGap={24}
+                data-testid="top-merchants-chart"
+              >
                 {/* No axes - clean look with tooltips only */}
                 <Tooltip
                   contentStyle={tooltipStyle}
                   itemStyle={tooltipItemStyle}
                   labelStyle={tooltipLabelStyle}
                   formatter={(value: any, _name: any, props: any) => {
-                    const d = props?.payload as UIMerchant;
-                    const base = value as number;
-                    const suffix = d.count > 1 ? ` (${d.count} txns)` : '';
-                    return [`${formatCurrency(base)}${suffix}`, 'Spend'];
+                    const d = props?.payload as any;
+                    const amount = value as number;
+                    const suffix = d.count && d.count > 1 ? ` (${d.count} txns)` : '';
+                    return [
+                      amount.toLocaleString('en-US', {
+                        style: 'currency',
+                        currency: 'USD',
+                        maximumFractionDigits: 0,
+                      }) + suffix,
+                      'Spend',
+                    ];
                   }}
                   labelFormatter={(_: any, payload: any) => {
-                    const d = payload?.[0]?.payload as UIMerchant;
-                    if (!d) return '';
-                    const examples = (d.statement_examples || []).join(' · ');
-                    return examples
-                      ? `${d.label}\nBank labels: ${examples}`
-                      : d.label;
+                    const d = payload?.[0]?.payload as any;
+                    return d?.label || 'Unknown merchant';
                   }}
                 />
-                <Bar dataKey="total" radius={[8, 8, 0, 0]} barSize={28} activeBar={{ fillOpacity: 1, stroke: "#fff", strokeWidth: 1 }} fillOpacity={0.9}>
+                <Bar
+                  dataKey="spend"
+                  radius={[8, 8, 0, 0]}
+                  barSize={28}
+                  activeBar={{ fillOpacity: 1, stroke: "#fff", strokeWidth: 1 }}
+                  fillOpacity={0.9}
+                >
                   {merchantsData.map((d: any, i: number) => (
-                    <Cell key={i} fill={pickColor(Number(d?.total ?? 0), maxMerchant)} />
+                    <Cell key={i} fill={pickColor(Number(d?.spend ?? 0), maxMerchant)} />
                   ))}
                 </Bar>
               </BarChart>
