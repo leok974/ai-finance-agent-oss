@@ -26,7 +26,12 @@ import {
   formatLegendLabel,
   truncateMerchantLabel,
 } from "@/lib/charts/formatters";
-import { MONEY_Y_AXIS_PROPS, formatMoneyTick } from "@/components/charts/utils";
+import {
+  MONEY_Y_AXIS_PROPS,
+  formatMoneyTick,
+  AXIS_TICK_COLOR,
+  GRID_LINE_COLOR,
+} from "@/components/charts/utils";
 
 // Cast so TS treats them as FCs (safe for now)
 const ResponsiveContainer = RC.ResponsiveContainer as unknown as React.FC<any>;
@@ -300,7 +305,7 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
                   dataKey="name"
                   tickLine={false}
                   axisLine={false}
-                  tick={{ fontSize: 11, fill: 'var(--lm-chart-axis)' }}
+                  tick={{ fontSize: 11, fill: AXIS_TICK_COLOR }}
                 />
                 {/* Shared money Y axis */}
                 <YAxis {...MONEY_Y_AXIS_PROPS} />
@@ -358,8 +363,21 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
                 margin={{ top: 16, right: 16, left: 0, bottom: 0 }}
                 barCategoryGap={24}
               >
+                {/* Subtle horizontal grid, like other cards */}
+                <CartesianGrid
+                  vertical={false}
+                  stroke={GRID_LINE_COLOR}
+                  strokeDasharray="3 3"
+                />
+
                 {/* Keep X axis hidden - merchant names come from tooltip */}
-                <XAxis dataKey="label" hide />
+                <XAxis
+                  dataKey="label"
+                  hide
+                  tickLine={false}
+                  axisLine={false}
+                  tick={{ fontSize: 11, fill: AXIS_TICK_COLOR }}
+                />
 
                 {/* Shared money Y axis */}
                 <YAxis {...MONEY_Y_AXIS_PROPS} />
@@ -368,6 +386,7 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
                   contentStyle={tooltipStyle}
                   itemStyle={tooltipItemStyle}
                   labelStyle={tooltipLabelStyle}
+                  cursor={{ fill: 'rgba(255,255,255,0.04)' }}
                   formatter={(value: any, _name: any, props: any) => {
                     const d = props?.payload as TopMerchantPoint;
                     const amount = value as number;
@@ -427,7 +446,7 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
                   dataKey="date"
                   tickLine={false}
                   axisLine={false}
-                  tick={{ fontSize: 11, fill: 'var(--lm-chart-axis)' }}
+                  tick={{ fontSize: 11, fill: AXIS_TICK_COLOR }}
                   tickFormatter={formatDateLabel}
                 />
                 {/* Shared money Y axis */}
@@ -483,7 +502,7 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
                   dataKey="month"
                   tickLine={false}
                   axisLine={false}
-                  tick={{ fontSize: 11, fill: 'var(--lm-chart-axis)' }}
+                  tick={{ fontSize: 11, fill: AXIS_TICK_COLOR }}
                 />
                 {/* Shared money Y axis */}
                 <YAxis {...MONEY_Y_AXIS_PROPS} />
