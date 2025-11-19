@@ -206,16 +206,16 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
   const tooltipLabelStyle = useMemo(() => ({ color: "#fff" } as const), []);
   const legendTextStyle = useMemo(() => ({ color: "#e5e7eb" } as const), []);
 
-  // Custom legend for bar charts to reflect multi-color palette
-  const BarPaletteLegend: React.FC<{ label?: string }> = ({ label = "Spend" }) => (
-    <div className="flex items-center gap-3 text-xs" style={{ color: "#e5e7eb" }}>
-      <span className="opacity-90">{label}</span>
+  // Spend legend component - shows color gradient for bar charts
+  const SpendLegend: React.FC = () => (
+    <div className="flex items-center gap-2 text-[11px] text-slate-400">
       <div className="flex items-center gap-1">
-        <span className="inline-block w-3 h-3 rounded-[2px]" style={{ backgroundColor: "#22c55e" }} />
-        <span className="inline-block w-3 h-3 rounded-[2px]" style={{ backgroundColor: "#f59e0b" }} />
-        <span className="inline-block w-3 h-3 rounded-[2px]" style={{ backgroundColor: "#ef4444" }} />
+        <span className="inline-block h-2 w-2 rounded-sm bg-emerald-500" />
+        <span className="inline-block h-2 w-2 rounded-sm bg-amber-500" />
+        <span className="inline-block h-2 w-2 rounded-sm bg-red-500" />
       </div>
-      <span className="opacity-60">low → high</span>
+      <span className="font-medium">Spend</span>
+      <span className="ml-1 text-slate-500">low → high</span>
     </div>
   );
 
@@ -282,6 +282,7 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
             {t('ui.charts.top_categories_title', { month: resolvedMonth })}
             <CardHelpTooltip cardId="charts.top_categories" month={resolvedMonth} ctx={{ data: categoriesData }} baseText={getHelpBaseText('charts.top_categories', { month: resolvedMonth })} />
           </h3>
+          <SpendLegend />
         </div>
         {loading && (
           <div className="h-64">
@@ -314,7 +315,6 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
                   labelStyle={tooltipLabelStyle}
                   formatter={(value: any) => [formatMoneyTick(Number(value)), 'Spend']}
                 />
-                <Legend content={<BarPaletteLegend label={t('ui.charts.legend_spend')} />} />
                 <Bar dataKey="amount" name={t('ui.charts.legend_spend')} activeBar={{ fillOpacity: 1, stroke: "#fff", strokeWidth: 1 }} fillOpacity={0.9}>
                   {categoriesData.map((d: any, i: number) => (
                     <Cell key={i} fill={pickColor(Number(d?.amount ?? 0), maxCategory)} />
@@ -329,14 +329,13 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
 
   <div className="chart-card" data-explain-key="charts.month_merchants" data-month={resolvedMonth}>
   <Card className="border-0 bg-transparent shadow-none p-0">
-        <CardHeaderRow
-          title={t('ui.charts.merchants_title', { month: resolvedMonth })}
-          helpKey="charts.month_merchants"
-          month={resolvedMonth}
-          helpCtx={{ data: topMerchantsData }}
-          helpBaseText={getHelpBaseText('charts.month_merchants', { month: resolvedMonth })}
-          className="mb-2"
-        />
+        <div className="flex items-center justify-between mb-2">
+          <h3 className="chart-title flex items-center">
+            {t('ui.charts.merchants_title', { month: resolvedMonth })}
+            <CardHelpTooltip cardId="charts.month_merchants" month={resolvedMonth} ctx={{ data: topMerchantsData }} baseText={getHelpBaseText('charts.month_merchants', { month: resolvedMonth })} />
+          </h3>
+          <SpendLegend />
+        </div>
         {loading && (
           <div className="h-64">
             <div className="h-full w-full flex items-end gap-2">
