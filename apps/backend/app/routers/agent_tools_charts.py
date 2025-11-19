@@ -41,9 +41,9 @@ class MerchantsBody(MonthParam):
 
 class MerchantItem(BaseModel):
     merchant_key: str
-    display_name: str
-    spend: float
-    txns: int
+    label: str  # Normalized display name
+    total: float  # Total spend amount
+    count: int  # Transaction count
     statement_examples: List[str] = Field(default_factory=list)
 
 
@@ -166,17 +166,9 @@ def charts_merchants(
 ) -> MerchantsResp:
     """
     Get top merchants with canonicalized names and statement examples.
-    Now uses the charts_data service which provides friendly names and deduplication.
+    Uses generic normalization without brand-specific rules.
     """
-    # Call the service function (note: it doesn't require user_id, uses month only)
-    # We need to get user_id from the current session, but this endpoint doesn't have auth context
-    # For now, we'll use the direct query approach but with enhanced logic
-
-    # Get user_id from session (this endpoint should be authenticated)
-    # For simplicity, assuming month filter is sufficient or we add user context later
-    # Using direct implementation for now with canonicalization
-
-    from app.services.charts_data import _friendly_merchant_name
+    from app.services.charts_data import display_name_for
 
     # Group by merchant_canonical
     q = (
@@ -212,9 +204,9 @@ def charts_merchants(
         items.append(
             MerchantItem(
                 merchant_key=row.canonical or "(unknown)",
-                display_name=_friendly_merchant_name(row.canonical),
-                spend=float(row.spend or 0.0),
-                txns=int(row.txns or 0),
+                label=display_name_for(row.canonical),
+                total=float(row.spend or 0.0),
+                count=int(row.txns or 0),
                 statement_examples=examples,
             )
         )

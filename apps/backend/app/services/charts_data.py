@@ -180,46 +180,38 @@ def get_month_summary(db: Session, user_id: int, month: str) -> Dict[str, Any]:
     }
 
 
-def _friendly_merchant_name(canonical: str) -> str:
+def canonicalize_merchant(raw: str) -> str:
     """
-    Map canonical merchant keys to human-friendly display names.
-    Handles common brands that appear with various statement descriptors.
+    Generic merchant normalization without brand-specific rules.
+    Removes digits, extra punctuation, and normalizes spacing.
     """
-    # Lowercase for case-insensitive matching
-    key = (canonical or "").lower()
+    if not raw:
+        return "unknown"
 
-    # Common brand mappings
-    if "playstation" in key or "playstatio" in key:
-        return "PlayStation"
-    if "harris teeter" in key or "harristeeter" in key:
-        return "Harris Teeter"
-    if "amazon" in key:
-        return "Amazon"
-    if "starbucks" in key:
-        return "Starbucks"
-    if "target" in key:
-        return "Target"
-    if "walmart" in key:
-        return "Walmart"
-    if "kroger" in key:
-        return "Kroger"
-    if "whole foods" in key or "wholefoods" in key:
-        return "Whole Foods"
-    if "trader joe" in key:
-        return "Trader Joe's"
-    if "costco" in key:
-        return "Costco"
-    if "netflix" in key:
-        return "Netflix"
-    if "spotify" in key:
-        return "Spotify"
-    if "apple.com" in key or "apple inc" in key:
-        return "Apple"
-    if "google" in key:
-        return "Google"
+    import re
 
-    # Default: capitalize canonical key
-    return canonical.title() if canonical else "(unknown)"
+    s = raw.lower()
+
+    # Remove obvious noise: digits, extra punctuation
+    s = re.sub(r"\d+", " ", s)
+    s = re.sub(r"[^a-z& ]+", " ", s)
+    s = re.sub(r"\s+", " ", s).strip()
+
+    # If we stripped everything somehow, fall back to raw lower
+    return s or raw.lower()
+
+
+def display_name_for(canonical: str) -> str:
+    """
+    Convert canonical merchant key to user-facing display name.
+    Generic approach with safety truncation for long labels.
+    """
+    if not canonical or canonical == "unknown":
+        return "(unknown)"
+
+    name = canonical.title()
+    # Safety truncation so labels/tooltips don't explode
+    return name if len(name) <= 32 else name[:29] + "..."
 
 
 def get_month_merchants(
@@ -278,8 +270,8 @@ def get_month_merchants(
         merchants_data.append(
             {
                 "merchant_key": canonical or "(unknown)",
-                "display_name": _friendly_merchant_name(canonical),
-                "amount": float(amount or 0.0),
+                "label": display_name_for(canonical),
+                "total": float(amount or 0.0),
                 "count": int(count or 0),
                 "statement_examples": [ex for ex in examples if ex],
             }

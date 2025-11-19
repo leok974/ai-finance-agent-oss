@@ -142,7 +142,7 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
     return "#ef4444";                    // red-500
   }
   const maxCategory = useMemo(() => Math.max(1, ...categoriesData.map((d: any) => Math.abs(Number(d?.amount ?? 0)))), [categoriesData]);
-  const maxMerchant = useMemo(() => Math.max(1, ...merchantsData.map((d: any) => Math.abs(Number(d?.spend ?? 0)))), [merchantsData]);
+  const maxMerchant = useMemo(() => Math.max(1, ...merchantsData.map((d: any) => Math.abs(Number(d?.total ?? 0)))), [merchantsData]);
 
   // Dark tooltip style
   const tooltipStyle = useMemo(() => ({
@@ -304,13 +304,14 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
               <BarChart data={merchantsData}>
                 <CartesianGrid stroke="var(--grid-line)" />
                 <XAxis
-                  dataKey="display_name"
-                  tick={{ fill: "var(--text-muted)", fontSize: 12 }}
+                  dataKey="label"
+                  tick={{ fill: "var(--text-muted)", fontSize: 11 }}
                   stroke="var(--border-subtle)"
                   angle={-30}
                   textAnchor="end"
                   height={80}
-                  tickFormatter={(value: any) => truncateMerchantLabel(value, 18)}
+                  interval={0}
+                  tickFormatter={(value: any) => truncateMerchantLabel(value, 12)}
                 />
                 <YAxis
                   tick={{ fill: "var(--text-muted)" }}
@@ -322,29 +323,25 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
                   contentStyle={tooltipStyle}
                   itemStyle={tooltipItemStyle}
                   labelStyle={tooltipLabelStyle}
-                  formatter={(value: any, name: any, props: any) => {
-                    const examples = props.payload.statement_examples || [];
-                    const label = formatCurrency(Number(value));
-                    if (examples.length > 0) {
-                      return [
-                        <div key="tooltip-content">
-                          <div>{label}</div>
-                          <div style={{ fontSize: '0.75rem', opacity: 0.8, marginTop: '4px' }}>
-                            {examples.slice(0, 2).map((ex: string, i: number) => (
-                              <div key={i}>{ex}</div>
-                            ))}
-                          </div>
-                        </div>,
-                        name
-                      ];
-                    }
-                    return [label, name];
+                  formatter={(value: any, _name: any, props: any) => {
+                    const d = props?.payload as UIMerchant;
+                    const base = value as number;
+                    const suffix = d.count > 1 ? ` (${d.count} txns)` : '';
+                    return [`${formatCurrency(base)}${suffix}`, 'Spend'];
+                  }}
+                  labelFormatter={(_: any, payload: any) => {
+                    const d = payload?.[0]?.payload as UIMerchant;
+                    if (!d) return '';
+                    const examples = (d.statement_examples || []).join(' · ');
+                    return examples
+                      ? `${d.label}\nBank labels: ${examples}`
+                      : d.label;
                   }}
                 />
                 <Legend content={<BarPaletteLegend label={t('ui.charts.legend_spend')} />} />
-                <Bar dataKey="spend" name={t('ui.charts.legend_spend')} activeBar={{ fillOpacity: 1, stroke: "#fff", strokeWidth: 1 }} fillOpacity={0.9}>
+                <Bar dataKey="total" name={t('ui.charts.legend_spend')} activeBar={{ fillOpacity: 1, stroke: "#fff", strokeWidth: 1 }} fillOpacity={0.9}>
                   {merchantsData.map((d: any, i: number) => (
-                    <Cell key={i} fill={pickColor(Number(d?.spend ?? 0), maxMerchant)} />
+                    <Cell key={i} fill={pickColor(Number(d?.total ?? 0), maxMerchant)} />
                   ))}
                 </Bar>
               </BarChart>
