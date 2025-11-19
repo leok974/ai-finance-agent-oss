@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { getExplain, type ExplainResponse } from '@/api'
+import { getExplain, type ExplainResponse, rejectSuggestion, undoRejectSuggestion } from '@/api'
 import type { Transaction } from '@/types/agent'
 import Chip from '@/components/ui/chip'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -9,6 +9,8 @@ import { getPortalRoot } from '@/lib/portal';
 import { buildDeterministicExplain } from '@/lib/explainFallback'
 import Pill from '@/components/ui/pill'
 import { useSafePortalReady } from '@/hooks/useSafePortal'
+import { emitToastSuccess, emitToastError } from '@/lib/toast-helpers'
+import { t } from '@/lib/i18n'
 
 function GroundedBadge() {
   return (
@@ -38,6 +40,8 @@ export default function ExplainSignalDrawer({ txnId, open, onOpenChange, txn, su
   const [error, setError] = React.useState<string | null>(null)
   const [llmUnavailable, setLlmUnavailable] = React.useState(false)
   const [data, setData] = React.useState<ExplainResponse | null>(null)
+  const [rejectingId, setRejectingId] = React.useState<string | null>(null)
+  const [rejectedIds, setRejectedIds] = React.useState<Set<string>>(new Set())
 
   React.useEffect(() => {
     if (!open || !txnId) return
@@ -69,6 +73,42 @@ export default function ExplainSignalDrawer({ txnId, open, onOpenChange, txn, su
   const rationale = data?.llm_rationale || data?.rationale || ''
   const mode = data?.mode || (data?.llm_rationale ? 'llm' : 'deterministic')
   const top = React.useMemo(() => selectTopMerchantCat(data), [data])
+
+  const handleDontSuggest = React.useCallback(async (sug: SuggestionItem) => {
+    const merchant = (txn?.merchant_canonical || txn?.merchant || '').toLowerCase()
+    if (!merchant || !sug.category_slug) return
+
+    const id = `${merchant}:${sug.category_slug}`
+    try {
+      setRejectingId(id)
+      await rejectSuggestion(merchant, sug.category_slug)
+      setRejectedIds(prev => new Set(prev).add(id))
+      emitToastSuccess(t('ui.toast.rule_ignored', { merchant: txn?.merchant || merchant, category: sug.label || sug.category_slug }), {
+        action: {
+          label: 'Undo',
+          onClick: async () => {
+            try {
+              await undoRejectSuggestion(merchant, sug.category_slug)
+              setRejectedIds(prev => {
+                const next = new Set(prev)
+                next.delete(id)
+                return next
+              })
+              emitToastSuccess(t('ui.toast.rule_accepted', { merchant: txn?.merchant || merchant, category: sug.label || sug.category_slug }))
+            } catch (err) {
+              const msg = err instanceof Error ? err.message : String(err)
+              emitToastError(t('ui.toast.rule_accept_failed'), { description: msg })
+            }
+          }
+        }
+      })
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      emitToastError(t('ui.toast.rule_dismiss_failed'), { description: msg })
+    } finally {
+      setRejectingId(null)
+    }
+  }, [txn])
 
   if (!open || !portalReady || !document.body) return null;
   const fallbackHtml = buildDeterministicExplain(txn, data?.evidence, rationale);
@@ -118,32 +158,55 @@ export default function ExplainSignalDrawer({ txnId, open, onOpenChange, txn, su
           {suggestions && suggestions.length > 0 && (
             <section className="space-y-3">
               <div className="text-xs uppercase tracking-wide opacity-70 mb-2">Suggestions for this transaction</div>
-              {suggestions.map((sug) => (
-                <div key={sug.category_slug} className="rounded-lg bg-slate-900/70 p-3 border border-white/5">
-                  <div className="flex items-center justify-between text-sm mb-2">
-                    <span className="font-medium">
-                      {sug.label || sug.category_slug}
-                    </span>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-slate-400">
-                        {Math.round(sug.score * 100)}%
+              {suggestions.map((sug) => {
+                const merchant = (txn?.merchant_canonical || txn?.merchant || '').toLowerCase()
+                const id = `${merchant}:${sug.category_slug}`
+                const isRejected = rejectedIds.has(id)
+                const isLoading = rejectingId === id
+
+                return (
+                  <div key={sug.category_slug} className="rounded-lg bg-slate-900/70 p-3 border border-white/5 space-y-2">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="font-medium">
+                        {sug.label || sug.category_slug}
                       </span>
-                      <span className="text-[10px] px-2 py-0.5 rounded-full border border-current bg-accent/10 text-slate-400 uppercase tracking-wide">
-                        Model
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-slate-400">
+                          {Math.round(sug.score * 100)}%
+                        </span>
+                        <span className="text-[10px] px-2 py-0.5 rounded-full border border-current bg-accent/10 text-slate-400 uppercase tracking-wide">
+                          Model
+                        </span>
+                      </div>
+                    </div>
+                    {sug.why && sug.why.length > 0 ? (
+                      <ul className="text-xs text-slate-300 list-disc ml-4 space-y-1">
+                        {sug.why.map((reason, idx) => (
+                          <li key={idx}>{reason}</li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="text-xs text-slate-400">No additional explanation provided.</p>
+                    )}
+                    <div className="pt-1">
+                      {!isRejected ? (
+                        <button
+                          type="button"
+                          className="text-[11px] text-slate-400 hover:text-rose-300 underline-offset-2 hover:underline disabled:opacity-60 transition-colors"
+                          onClick={() => handleDontSuggest(sug)}
+                          disabled={isLoading}
+                        >
+                          {isLoading ? 'Saving...' : "Don't suggest this"}
+                        </button>
+                      ) : (
+                        <span className="text-[11px] text-emerald-400">
+                          ✓ We'll stop suggesting this category for this merchant
+                        </span>
+                      )}
                     </div>
                   </div>
-                  {sug.why && sug.why.length > 0 ? (
-                    <ul className="text-xs text-slate-300 list-disc ml-4 space-y-1">
-                      {sug.why.map((reason, idx) => (
-                        <li key={idx}>{reason}</li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <p className="text-xs text-slate-400">No additional explanation provided.</p>
-                  )}
-                </div>
-              ))}
+                )
+              })}
             </section>
           )}
 
