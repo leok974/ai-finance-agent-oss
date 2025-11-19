@@ -151,7 +151,7 @@ def get_month_summary(db: Session, user_id: int, month: str) -> Dict[str, Any]:
             Transaction.user_id == user_id,  # ✅ Scope by user
             Transaction.date >= start,
             Transaction.date < end,
-            Transaction.pending == False,  # Exclude pending transactions
+            ~Transaction.pending,  # Exclude pending transactions
         )
     ).one()
     total_spend = float(totals[0] or 0.0)
@@ -164,7 +164,7 @@ def get_month_summary(db: Session, user_id: int, month: str) -> Dict[str, Any]:
             Transaction.user_id == user_id,  # ✅ Scope by user
             Transaction.date >= start,
             Transaction.date < end,
-            Transaction.pending == False,  # Exclude pending transactions
+            ~Transaction.pending,  # Exclude pending transactions
         )
         .group_by(cat_expr)
         .order_by(func.sum(spend_expr).desc())
@@ -180,44 +180,114 @@ def get_month_summary(db: Session, user_id: int, month: str) -> Dict[str, Any]:
     }
 
 
+def _friendly_merchant_name(canonical: str) -> str:
+    """
+    Map canonical merchant keys to human-friendly display names.
+    Handles common brands that appear with various statement descriptors.
+    """
+    # Lowercase for case-insensitive matching
+    key = (canonical or "").lower()
+
+    # Common brand mappings
+    if "playstation" in key or "playstatio" in key:
+        return "PlayStation"
+    if "harris teeter" in key or "harristeeter" in key:
+        return "Harris Teeter"
+    if "amazon" in key:
+        return "Amazon"
+    if "starbucks" in key:
+        return "Starbucks"
+    if "target" in key:
+        return "Target"
+    if "walmart" in key:
+        return "Walmart"
+    if "kroger" in key:
+        return "Kroger"
+    if "whole foods" in key or "wholefoods" in key:
+        return "Whole Foods"
+    if "trader joe" in key:
+        return "Trader Joe's"
+    if "costco" in key:
+        return "Costco"
+    if "netflix" in key:
+        return "Netflix"
+    if "spotify" in key:
+        return "Spotify"
+    if "apple.com" in key or "apple inc" in key:
+        return "Apple"
+    if "google" in key:
+        return "Google"
+
+    # Default: capitalize canonical key
+    return canonical.title() if canonical else "(unknown)"
+
+
 def get_month_merchants(
-    db: Session, user_id: int, month: str, limit: int = 10
+    db: Session, user_id: int, month: str, limit: int = 8
 ) -> Dict[str, Any]:
     """
     Fast SQL GROUP BY over canonical merchant; expenses only as positive magnitudes.
-    Display name preserves raw merchant casing by selecting a representative raw value.
+    Returns enhanced data with friendly display names and statement examples.
+
+    Default limit reduced to 8 for better chart readability.
     """
     start, end = month_bounds(month)
     spend_abs = func.sum(func.abs(Transaction.amount)).label("amount")
     cnt = func.count().label("n")
+
+    # First, get aggregated totals grouped by canonical merchant
     rows = db.execute(
         select(
-            # Preserve display casing: pick a representative raw merchant for the group
-            func.min(Transaction.merchant).label("merchant"),
+            Transaction.merchant_canonical.label("canonical"),
+            func.min(Transaction.merchant).label("merchant"),  # Keep one example
             spend_abs,
             cnt,
         )
         .where(
-            Transaction.user_id == user_id,  # ✅ Scope by user
+            Transaction.user_id == user_id,
             Transaction.date >= start,
             Transaction.date < end,
             Transaction.amount < 0,
-            Transaction.pending == False,  # Exclude pending transactions
+            ~Transaction.pending,
         )
         .group_by(Transaction.merchant_canonical)
         .order_by(spend_abs.desc())
         .limit(limit)
     ).all()
+
+    # For each canonical merchant, collect statement examples
+    merchants_data = []
+    for canonical, first_merchant, amount, count in rows:
+        # Get up to 3 unique statement descriptors for this canonical merchant
+        examples = (
+            db.execute(
+                select(func.distinct(Transaction.merchant))
+                .where(
+                    Transaction.user_id == user_id,
+                    Transaction.date >= start,
+                    Transaction.date < end,
+                    Transaction.merchant_canonical == canonical,
+                    Transaction.merchant.is_not(None),
+                )
+                .limit(3)
+            )
+            .scalars()
+            .all()
+        )
+
+        merchants_data.append(
+            {
+                "merchant_key": canonical or "(unknown)",
+                "display_name": _friendly_merchant_name(canonical),
+                "amount": float(amount or 0.0),
+                "count": int(count or 0),
+                "statement_examples": [ex for ex in examples if ex],
+            }
+        )
+
     return {
         "month": month,
-        "merchants": [
-            {
-                "merchant": (m or "(unknown)"),
-                "amount": float(a or 0.0),
-                "n": int(n or 0),
-            }
-            for (m, a, n) in rows
-        ],
+        "merchants": merchants_data,
     }
 
 
@@ -239,7 +309,7 @@ def get_month_categories(
             Transaction.amount < 0,
             Transaction.category.is_not(None),
             Transaction.category != "",
-            Transaction.pending == False,  # Exclude pending transactions
+            ~Transaction.pending,  # Exclude pending transactions
         )
         .group_by(Transaction.category)
         .order_by(spend_abs.desc())
@@ -256,7 +326,7 @@ def get_month_flows(db: Session, user_id: int, month: str) -> Dict[str, Any]:
             Transaction.user_id == user_id,  # ✅ Scope by user
             Transaction.date >= start,
             Transaction.date < end,
-            Transaction.pending == False,  # Exclude pending transactions
+            ~Transaction.pending,  # Exclude pending transactions
         )
         .order_by(Transaction.date)
     ).all()
