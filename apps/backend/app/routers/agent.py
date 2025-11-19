@@ -1429,6 +1429,7 @@ def agent_chat(
 def agent_rephrase(
     req: AgentChatRequest,
     db: Session = Depends(get_db),
+    auth: dict = Depends(verify_hmac_auth),
     request=None,
     debug: bool = Query(False, description="Return raw CONTEXT in response (dev only)"),
 ):
