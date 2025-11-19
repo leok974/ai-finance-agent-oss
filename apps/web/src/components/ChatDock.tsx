@@ -2051,13 +2051,6 @@ export default function ChatDock() {
         </CardHeader>
 
         <CardContent className="lm-chat-body">
-          {/* MESSAGE HISTORY */}
-          {uiMessages.length > 0 && (
-            <div className="lm-chat-messages-container mb-4">
-              {renderedMessages}
-            </div>
-          )}
-
           {/* INSIGHTS */}
           <section className="lm-chat-section" data-testid="lm-chat-section-insights">
             <div className="lm-chat-section-header">
@@ -2175,12 +2168,23 @@ export default function ChatDock() {
       {/* Dark footer */}
       <CardFooter className="lm-chat-footer">
           <div className="lm-chat-footer-inner">
-            <div className="lm-chat-greeting">
-              <p className="lm-chat-greeting-title">Hey! 👋</p>
-              <p className="lm-chat-greeting-body">
-                Start a conversation or pick a tool from the header to explore your spending.
-              </p>
-            </div>          <form className="lm-chat-input-row" onSubmit={(e) => { e.preventDefault(); handleSend(); }}>
+            <div
+              className="lm-chat-body mt-3 max-h-[260px] overflow-y-auto space-y-3 pr-1"
+              data-testid="lm-chat-messages"
+            >
+              {uiMessages.length === 0 ? (
+                <div className="lm-chat-greeting">
+                  <p className="lm-chat-greeting-title">Hey! 👋</p>
+                  <p className="lm-chat-greeting-body">
+                    Start a conversation or pick a tool from the header to explore your spending.
+                  </p>
+                </div>
+              ) : (
+                renderedMessages
+              )}
+            </div>
+
+            <form className="lm-chat-input-row" onSubmit={(e) => { e.preventDefault(); handleSend(); }}>
             <input
               className="lm-chat-input"
               placeholder="Ask or type a command..."
