@@ -31,6 +31,7 @@ export default function UnknownsPanel({ month, onSeedRule: _onSeedRule, onChange
   const [explainOpen, setExplainOpen] = useState(false)
   const [explainTxnId, setExplainTxnId] = useState<number | null>(null)
   const [explainTxn, setExplainTxn] = useState<UnknownTxn | null>(null)
+  const [explainSuggestions, setExplainSuggestions] = useState<{ category_slug: string; label?: string; score: number; why?: string[] }[]>([])
   const [suggestions, setSuggestions] = useState<Record<number, { category_slug: string; label?: string; score: number; why?: string[] }[]>>({})
   const isAdmin = useIsAdmin()
   // One shared timer for all unknowns refresh requests across this tab
@@ -171,7 +172,12 @@ export default function UnknownsPanel({ month, onSeedRule: _onSeedRule, onChange
               <Button
                 variant="pill-outline"
                 size="sm"
-                onClick={() => { setExplainTxnId(tx.id); setExplainTxn(tx); setExplainOpen(true); }}
+                onClick={() => {
+                  setExplainTxnId(tx.id);
+                  setExplainTxn(tx);
+                  setExplainSuggestions(suggestions[tx.id] || []);
+                  setExplainOpen(true);
+                }}
               >
                 {t('ui.unknowns.explain')}
               </Button>
@@ -186,16 +192,7 @@ export default function UnknownsPanel({ month, onSeedRule: _onSeedRule, onChange
                     key={`${tx.id}-sug-${idx}`}
                     txn={{ id: tx.id, merchant: tx.merchant || '', description: tx.description || '', amount: tx.amount }}
                     s={{ category_slug: sug.category_slug, label: sug.label || sug.category_slug, score: sug.score, why: sug.why || [] }}
-                    isAdmin={isAdmin}
-                    onApplied={(id)=> onSuggestionApplied(id, sug.category_slug)}
-                    onRefreshSuggestions={() => {
-                      // Reload suggestions for only this txn (cheap path: refetch for all and rely on memoization)
-                      suggestForTxnBatch([tx.id]).then(res => {
-                        const map: Record<number, { category_slug: string; label?: string; score: number; why?: string[] }[]> = {}
-                        for (const it of res?.items || []) map[it.txn] = (it.suggestions || [])
-                        setSuggestions(prev => ({ ...prev, ...map }))
-                      }).catch(() => {/* ignore */})
-                    }}
+                    onApplied={(id: number)=> onSuggestionApplied(id, sug.category_slug)}
                   />
                 ))}
               </div>
@@ -206,7 +203,13 @@ export default function UnknownsPanel({ month, onSeedRule: _onSeedRule, onChange
           </li>
         ))}
       </ul>
-  <ExplainSignalDrawer txnId={explainTxnId} txn={explainTxn} open={explainOpen} onOpenChange={(v)=>{ setExplainOpen(v); if(!v){ setExplainTxnId(null); setExplainTxn(null);} }} />
+  <ExplainSignalDrawer
+    txnId={explainTxnId}
+    txn={explainTxn}
+    suggestions={explainSuggestions}
+    open={explainOpen}
+    onOpenChange={(v)=>{ setExplainOpen(v); if(!v){ setExplainTxnId(null); setExplainTxn(null); setExplainSuggestions([]);} }}
+  />
       </Card>
     </section>
   )

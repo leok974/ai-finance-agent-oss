@@ -19,12 +19,12 @@ export default function LandingHero() {
         <div className="w-full max-w-6xl grid gap-10 lg:grid-cols-2 items-center">
           {/* Left: Logo + Copy + CTA */}
           <div className="space-y-6">
-            {/* Large Logo + Brand - Much more prominent */}
+            {/* Extra Large Logo + Brand - 3x bigger, very prominent */}
             <div className="mb-8">
               <img
                 src={logoPng}
                 alt="LedgerMind"
-                className="h-16 sm:h-20 md:h-24 lg:h-28 w-auto select-none"
+                className="h-32 sm:h-40 md:h-48 lg:h-56 xl:h-64 w-auto select-none"
                 draggable={false}
               />
             </div>
@@ -79,8 +79,7 @@ export default function LandingHero() {
                 🔒
               </span>
               <span>
-                Secure by design: sign in with Google, data encrypted in transit and at rest.
-                LedgerMind never asks for your bank login.
+                Secure by design: sign in with Google, data encrypted in transit and at rest, and LedgerMind never asks for your bank login.
               </span>
             </div>
           </div>
@@ -148,12 +147,59 @@ export default function LandingHero() {
         </div>
       </main>
 
+      {/* How it works section */}
+      <section
+        className="border-t border-slate-900/70 bg-black/40"
+        data-testid="how-it-works-section"
+      >
+        <div className="mx-auto max-w-6xl px-4 py-10 md:py-14">
+          <h2 className="text-lg md:text-xl font-semibold text-slate-50 mb-4">
+            How LedgerMind works
+          </h2>
+          <p className="text-sm text-slate-300 mb-6 max-w-2xl">
+            Get from messy bank exports to clear insights in just a few steps.
+          </p>
+
+          <div className="grid gap-6 md:grid-cols-3 text-sm text-slate-200">
+            <div className="space-y-2">
+              <div className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-emerald-500/15 text-xs font-semibold text-emerald-400">
+                1
+              </div>
+              <h3 className="font-semibold">Sign in with Google</h3>
+              <p className="text-slate-300">
+                Create your account in under a minute using Google. No extra password to remember.
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <div className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-emerald-500/15 text-xs font-semibold text-emerald-400">
+                2
+              </div>
+              <h3 className="font-semibold">Upload statements</h3>
+              <p className="text-slate-300">
+                Export CSV or Excel (.xls, .xlsx) from your bank and drag &amp; drop into LedgerMind.
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <div className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-emerald-500/15 text-xs font-semibold text-emerald-400">
+                3
+              </div>
+              <h3 className="font-semibold">Explore insights &amp; chat</h3>
+              <p className="text-slate-300">
+                See income, spend, and top merchants for each month, and ask ChatDock questions about your spending.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* Footer with legal links */}
-      <footer className="border-t border-slate-800/60 bg-black/60">
+      <footer className="border-t border-slate-900/70 bg-black/70">
         <div className="mx-auto flex max-w-6xl flex-col gap-3 px-4 py-4 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between">
           <span>© {new Date().getFullYear()} LedgerMind. All rights reserved.</span>
 
-          <div className="flex flex-wrap gap-4">
+          <nav className="flex flex-wrap gap-4">
             <a href="/legal/privacy" className="hover:text-slate-300 transition-colors">
               Privacy
             </a>
@@ -163,7 +209,7 @@ export default function LandingHero() {
             <a href="/legal/security" className="hover:text-slate-300 transition-colors">
               Security
             </a>
-          </div>
+          </nav>
         </div>
       </footer>
     </div>
