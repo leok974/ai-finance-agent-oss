@@ -81,6 +81,15 @@ class MLFeature(Base):
         Text, nullable=True
     )  # normalized description
     tokens: Mapped[Optional[list[str]]] = mapped_column(JSON, nullable=True)
+
+    # P2P/Transfer detection features
+    feat_p2p_flag: Mapped[Optional[bool]] = mapped_column(
+        Boolean, nullable=True
+    )  # Binary: 1 if P2P pattern detected
+    feat_p2p_large_outflow: Mapped[Optional[bool]] = mapped_column(
+        Boolean, nullable=True
+    )  # Binary: 1 if P2P + large outflow (>=$100)
+
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP, nullable=False, server_default="NOW()"
     )
