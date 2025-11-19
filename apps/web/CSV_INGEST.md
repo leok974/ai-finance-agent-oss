@@ -384,11 +384,11 @@ Please try again or contact support if the problem persists.
 
 **Test IDs:**
 
-| Element | Test ID | Description |
-|---------|---------|-------------|
-| Toggle Checkbox | `csv-ingest-toggle-json` | Shows/hides JSON block |
-| JSON Display | `csv-ingest-json` | Prettified JSON response |
-| Message Display | `csv-ingest-message` | User-friendly message |
+| Element         | Test ID                  | Description              |
+| --------------- | ------------------------ | ------------------------ |
+| Toggle Checkbox | `csv-ingest-toggle-json` | Shows/hides JSON block   |
+| JSON Display    | `csv-ingest-json`        | Prettified JSON response |
+| Message Display | `csv-ingest-message`     | User-friendly message    |
 
 **Behavior:**
 
@@ -397,9 +397,7 @@ const [showJson, setShowJson] = useState(false);
 
 return (
   <>
-    <div data-testid="csv-ingest-message">
-      {/* User-friendly message */}
-    </div>
+    <div data-testid="csv-ingest-message">{/* User-friendly message */}</div>
 
     <label>
       <input
@@ -563,17 +561,17 @@ test("@prod @csv shows headers for unknown format", async ({ page }) => {
   await page.locator('[data-testid="csv-upload-submit"]').click();
 
   // Assert error message
-  await expect(page.locator('[data-testid="csv-ingest-message"]')).toContainText(
-    "CSV format not recognized"
-  );
+  await expect(
+    page.locator('[data-testid="csv-ingest-message"]')
+  ).toContainText("CSV format not recognized");
 
   // Assert headers are shown
-  await expect(page.locator('[data-testid="csv-ingest-message"]')).toContainText(
-    "transaction_id"
-  );
-  await expect(page.locator('[data-testid="csv-ingest-message"]')).toContainText(
-    "posting_date"
-  );
+  await expect(
+    page.locator('[data-testid="csv-ingest-message"]')
+  ).toContainText("transaction_id");
+  await expect(
+    page.locator('[data-testid="csv-ingest-message"]')
+  ).toContainText("posting_date");
 });
 ```
 
@@ -616,13 +614,17 @@ test("@prod @csv JSON toggle works", async ({ page }) => {
   await page.locator('[data-testid="csv-ingest-toggle-json"]').check();
   await expect(page.locator('[data-testid="csv-ingest-json"]')).toBeVisible();
 
-  const jsonText = await page.locator('[data-testid="csv-ingest-json"]').textContent();
+  const jsonText = await page
+    .locator('[data-testid="csv-ingest-json"]')
+    .textContent();
   const parsed = JSON.parse(jsonText);
   expect(parsed).toHaveProperty("ok");
 
   // Toggle JSON off
   await page.locator('[data-testid="csv-ingest-toggle-json"]').uncheck();
-  await expect(page.locator('[data-testid="csv-ingest-json"]')).not.toBeVisible();
+  await expect(
+    page.locator('[data-testid="csv-ingest-json"]')
+  ).not.toBeVisible();
 });
 ```
 
@@ -641,6 +643,7 @@ test("@prod @csv JSON toggle works", async ({ page }) => {
 **Behavior:**
 
 - When **enabled** (default):
+
   - Pending transactions are included in Income/Spend/Net calculations
   - All charts include pending transactions
   - Transactions table shows all transactions by default

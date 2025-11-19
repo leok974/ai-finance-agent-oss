@@ -68,6 +68,7 @@ The account menu is a dropdown that displays the user's email and provides quick
 **Actions:**
 
 1. **Copy Email**
+
    - Icon: `Copy` from `lucide-react`
    - Text: "Copy email"
    - Behavior: Copy user's email to clipboard, show toast confirmation
@@ -85,11 +86,11 @@ The account menu is a dropdown that displays the user's email and provides quick
 
 ## Test IDs
 
-| Element | Test ID | Description |
-|---------|---------|-------------|
-| Trigger Button | `account-menu` | Button that opens the dropdown menu |
-| Copy Email Action | `account-menu-copy-email` | Row/button to copy email |
-| Logout Action | `account-menu-logout` | Row/button to log out |
+| Element           | Test ID                   | Description                         |
+| ----------------- | ------------------------- | ----------------------------------- |
+| Trigger Button    | `account-menu`            | Button that opens the dropdown menu |
+| Copy Email Action | `account-menu-copy-email` | Row/button to copy email            |
+| Logout Action     | `account-menu-logout`     | Row/button to log out               |
 
 **Note:** The dropdown content itself doesn't need a separate test ID (accessible via trigger).
 
@@ -114,9 +115,7 @@ import { Copy, LogOut } from "lucide-react";
       <div className="text-xs font-medium text-gray-400 uppercase mb-1">
         Account
       </div>
-      <div className="text-sm text-white break-all">
-        {user.email}
-      </div>
+      <div className="text-sm text-white break-all">{user.email}</div>
     </div>
 
     {/* Actions */}
@@ -138,7 +137,7 @@ import { Copy, LogOut } from "lucide-react";
       Log out
     </DropdownMenuItem>
   </DropdownMenuContent>
-</DropdownMenu>
+</DropdownMenu>;
 ```
 
 ## Playwright Test Specification
@@ -159,8 +158,9 @@ test("@prod @ui account menu shows email", async ({ page }) => {
   await page.locator('[data-testid="account-menu"]').click();
 
   // Assert email is visible
-  const emailText = await page.locator('[data-testid="account-menu"]')
-    .locator('..') // Navigate to dropdown content
+  const emailText = await page
+    .locator('[data-testid="account-menu"]')
+    .locator("..") // Navigate to dropdown content
     .textContent();
 
   expect(emailText).toContain("@"); // Basic email check
@@ -176,7 +176,7 @@ test("@prod @ui long email wraps without overflow", async ({ page }) => {
   await page.locator('[data-testid="account-menu"]').click();
 
   // Get email element
-  const emailElement = page.locator('text=@').first();
+  const emailElement = page.locator("text=@").first();
 
   // Check that email doesn't overflow container
   const emailBox = await emailElement.boundingBox();
@@ -196,11 +196,13 @@ test("@prod @ui copy email action", async ({ page, context }) => {
   await page.locator('[data-testid="account-menu-copy-email"]').click();
 
   // Assert clipboard contains email
-  const clipboardText = await page.evaluate(() => navigator.clipboard.readText());
+  const clipboardText = await page.evaluate(() =>
+    navigator.clipboard.readText()
+  );
   expect(clipboardText).toContain("@");
 
   // Assert toast appears
-  await expect(page.locator('text=/copied/i')).toBeVisible();
+  await expect(page.locator("text=/copied/i")).toBeVisible();
 });
 ```
 
@@ -241,11 +243,13 @@ test("@prod @ui actions are visible and clickable", async ({ page }) => {
 ## Accessibility Considerations
 
 1. **Keyboard Navigation:**
+
    - Menu should open with `Enter` or `Space` on trigger
    - Arrow keys should navigate between actions
    - `Escape` should close menu
 
 2. **Screen Readers:**
+
    - Trigger should have `aria-label="Account menu"`
    - Actions should have descriptive text (not just icons)
    - Email should be announced when menu opens
