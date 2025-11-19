@@ -50,8 +50,17 @@ INGEST_ERRORS = Counter(
     ["phase"],  # phase=replace|append
 )
 
+INGEST_FILES = Counter(
+    "lm_ingest_files_total",
+    "Total files uploaded by format",
+    ["format"],  # format=csv|xls|xlsx
+)
+
 # Prime metrics so they appear immediately in /metrics
 INGEST_REQUESTS.labels(phase="replace").inc(0)
 INGEST_REQUESTS.labels(phase="append").inc(0)
 INGEST_ERRORS.labels(phase="replace").inc(0)
 INGEST_ERRORS.labels(phase="append").inc(0)
+INGEST_FILES.labels(format="csv").inc(0)
+INGEST_FILES.labels(format="xls").inc(0)
+INGEST_FILES.labels(format="xlsx").inc(0)

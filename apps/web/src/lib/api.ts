@@ -1627,8 +1627,8 @@ export async function mlSelftest(): Promise<MLStatusResponse> {
 }
 
 // Simple CSV upload (auto-detect month server side). Backend expected route: /ingest/csv
-export async function uploadCsv(file: File | Blob, replace = true): Promise<unknown> {
-  // New canonical ingest path: POST /ingest?replace=bool (no /csv suffix)
+export async function uploadCsv(file: File | Blob, replace = true, format = 'csv'): Promise<unknown> {
+  // New canonical ingest path: POST /ingest?replace=bool&format=csv|xls|xlsx (no /csv suffix)
   const form = new FormData();
   let toSend: File | Blob = file;
   let filename = (file as File)?.name;
@@ -1645,7 +1645,7 @@ export async function uploadCsv(file: File | Blob, replace = true): Promise<unkn
   }
   form.append('file', toSend, filename || 'upload.csv');
   const path = `/ingest`;
-  return fetchJSON(path + `?replace=${replace ? 'true' : 'false'}`, {
+  return fetchJSON(path + `?replace=${replace ? 'true' : 'false'}&format=${encodeURIComponent(format)}`, {
     method: 'POST',
     body: form
   });

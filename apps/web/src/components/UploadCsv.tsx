@@ -18,6 +18,10 @@ import { Label } from "@/components/ui/label";
 import { Upload } from "lucide-react";
 import { isExcelFile, normalizeExcelToCsvFile } from "../lib/excel";
 
+// Max file size: 50MB (configurable for future)
+const MAX_FILE_SIZE_MB = 50;
+const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
+
 type UploadResult = {
   ok: boolean;
   status?: number;
@@ -180,6 +184,17 @@ const UploadCsv: React.FC<UploadCsvProps> = ({ onUploaded, defaultReplace = true
 
   const onPick = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0] ?? null;
+
+    // Validate file size before setting
+    if (f && f.size > MAX_FILE_SIZE_BYTES) {
+      emitToastError("File Too Large", {
+        description: `Maximum file size is ${MAX_FILE_SIZE_MB}MB. Your file is ${prettyBytes(f.size)}. Try splitting your data into smaller periods or contact support for help.`
+      });
+      // Clear the input so user can pick another file
+      if (inputRef.current) inputRef.current.value = "";
+      return;
+    }
+
     setFile(f);
     setResult(null);
   }, []);
@@ -189,6 +204,15 @@ const UploadCsv: React.FC<UploadCsvProps> = ({ onUploaded, defaultReplace = true
     e.stopPropagation();
     setDragOver(false);
     const f = e.dataTransfer.files?.[0] ?? null;
+
+    // Validate file size before setting
+    if (f && f.size > MAX_FILE_SIZE_BYTES) {
+      emitToastError("File Too Large", {
+        description: `Maximum file size is ${MAX_FILE_SIZE_MB}MB. Your file is ${prettyBytes(f.size)}. Try splitting your data into smaller periods or contact support for help.`
+      });
+      return;
+    }
+
     setFile(f);
     setResult(null);
   }, []);
@@ -259,13 +283,18 @@ const UploadCsv: React.FC<UploadCsvProps> = ({ onUploaded, defaultReplace = true
     try {
       let uploadFile = file;
 
+      // Detect original format for metrics tracking
+      const originalFormat = isExcelFile(file)
+        ? (file.name.toLowerCase().endsWith('.xls') ? 'xls' : 'xlsx')
+        : 'csv';
+
       // Convert Excel to CSV if needed
       if (isExcelFile(file)) {
         try {
           uploadFile = await normalizeExcelToCsvFile(file);
         } catch (err: unknown) {
           const message = err instanceof Error ? err.message : "Failed to parse Excel file";
-          const errorMessage = `Excel conversion failed: ${message}. Try exporting as CSV or share a sample with support.`;
+          const errorMessage = `We couldn't parse that Excel file. ${message}. Please try: (1) Export your spreadsheet as CSV, (2) Check for empty rows/columns, or (3) Share a sample with support.`;
           const errorData: IngestResult = {
             ok: false,
             added: 0,
@@ -296,7 +325,8 @@ const UploadCsv: React.FC<UploadCsvProps> = ({ onUploaded, defaultReplace = true
       }
 
       // Uses your existing API helper; falls back to direct fetch if needed.
-      const data = await uploadCsv(uploadFile, replace); // Auto-inference enabled
+      // Pass original format for backend metrics tracking
+      const data = await uploadCsv(uploadFile, replace, originalFormat); // Auto-inference enabled
 
       // Check if backend indicated failure (ok: false or added === 0)
       const responseOk = (data as { ok?: boolean; added?: number; message?: string; error?: string }).ok;
