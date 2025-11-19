@@ -236,8 +236,32 @@ def _infer_category_heuristic(
     """
     Simple heuristic-based category inference.
     Replace with LLM call for production.
+
+    Priority order:
+    1. P2P / Transfers (Zelle, Venmo, Cash App, PayPal)
+    2. Subscriptions (streaming, gaming, software)
+    3. Groceries
+    4. Restaurants / Coffee
+    5. Transportation (gas, ride-hailing)
+    6. Unknown
     """
     text = (raw_merchant or "").lower()
+    desc = (description or "").lower()
+
+    # P2P / Transfer patterns (highest priority to catch Zelle/Venmo/etc)
+    if any(
+        kw in text or kw in desc
+        for kw in [
+            "zelle",
+            "venmo",
+            "cash app",
+            "sqc*",
+            "paypal",
+            "apple cash",
+            "now withdrawal",
+        ]
+    ):
+        return "transfers", ["Transfers", "P2P"], 0.90
 
     # Subscription patterns
     if any(
@@ -252,24 +276,28 @@ def _infer_category_heuristic(
             "xbox",
         ]
     ):
-        return "Subscriptions", ["Entertainment", "Streaming"], 0.85
+        return "subscriptions", ["Entertainment", "Streaming"], 0.85
 
     # Grocery patterns
     if any(
         kw in text
         for kw in ["teeter", "kroger", "whole foods", "trader joe", "safeway"]
     ):
-        return "Groceries", ["Food & Dining"], 0.80
+        return "groceries", ["Food & Dining"], 0.80
 
     # Restaurant patterns
     if any(
         kw in text for kw in ["restaurant", "cafe", "coffee", "starbucks", "mcdonald"]
     ):
-        return "Dining", ["Food & Dining", "Restaurants"], 0.75
+        return "restaurants", ["Food & Dining", "Restaurants"], 0.75
 
     # Gas station patterns
     if any(kw in text for kw in ["shell", "chevron", "bp", "exxon", "gas"]):
-        return "Transportation", ["Gas & Fuel"], 0.75
+        return "transportation.fuel", ["Gas & Fuel"], 0.75
+
+    # Ride hailing patterns
+    if any(kw in text for kw in ["uber", "lyft"]):
+        return "transportation.ride_hailing", ["Ride Hailing"], 0.75
 
     # Default: unknown with low confidence
     return None, [], 0.3

@@ -32,7 +32,12 @@ import {
   AXIS_TICK_COLOR,
   GRID_LINE_COLOR,
 } from "@/components/charts/utils";
-import { normalizeMerchantForDisplay } from "@/lib/merchant-normalize";
+import {
+  normalizeAndGroupMerchantsForChart,
+  type MerchantChartRow,
+  type MerchantChartRowGrouped,
+} from "@/lib/merchant-normalizer";
+import { getCategoryColor } from "@/lib/categories";
 
 // Cast so TS treats them as FCs (safe for now)
 const ResponsiveContainer = RC.ResponsiveContainer as unknown as React.FC<any>;
@@ -135,28 +140,17 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
 
   const categoriesData = useMemo(() => categories, [categories]);
 
-  // Raw data from backend – handle both camelCase and snake_case
-  type TopMerchantPoint = {
-    id: string;
-    merchantRaw: string;  // Original bank statement text
-    merchant: string;     // Normalized/branded name
-    label: string;        // Same as merchant (for chart dataKey)
-    spend: number;
-    count: number;
-  };
-
   const MIN_SPEND = 0.01;
 
-  const topMerchantsData: TopMerchantPoint[] = useMemo(() => {
-    return merchants.map((row: any, index: number) => {
+  const topMerchantsData: MerchantChartRowGrouped[] = useMemo(() => {
+    // Map backend API response to MerchantChartRow format
+    const rawRows: MerchantChartRow[] = merchants.map((row: any) => {
       // Try multiple field names for total spend
       const rawValue =
         typeof row.total === 'number' ? row.total :
         typeof row.spend === 'number' ? row.spend :
         typeof row.amount === 'number' ? row.amount :
         0;
-
-      const spend = Math.abs(rawValue);
 
       // Get raw merchant name from multiple sources
       const merchantRaw =
@@ -165,18 +159,15 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
         (row.name && String(row.name).trim()) ||
         'Unknown';
 
-      // Normalize for display with brand recognition
-      const normalized = normalizeMerchantForDisplay(merchantRaw);
-
       return {
-        id: String(row.merchant_key ?? row.key ?? row.id ?? index),
-        merchantRaw,      // Keep original for debugging
-        merchant: normalized,  // Branded name
-        label: normalized,     // Used by chart (same as merchant)
-        spend,
-        count: Number(row.count ?? row.txn_count ?? row.transactions ?? 0),
+        merchantRaw,
+        spend: Math.abs(rawValue),
+        txns: Number(row.count ?? row.txn_count ?? row.transactions ?? 0),
       };
     });
+
+    // Normalize and group (P2P merchants → "Transfers / P2P")
+    return normalizeAndGroupMerchantsForChart(rawRows, MIN_SPEND);
   }, [merchants]);
 
   // Decide if we actually have merchant spend
@@ -285,7 +276,7 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
   </div>
 
   <div className="chart-card" data-explain-key="charts.top_categories" data-month={resolvedMonth}>
-  <Card className="border-0 bg-transparent shadow-none p-0">
+  <Card className="border-0 bg-transparent shadow-none p-0" data-testid="top-categories-card">
         <div className="flex items-center justify-between mb-2">
           <h3 className="chart-title flex items-center">
             {t('ui.charts.top_categories_title', { month: resolvedMonth })}
@@ -305,7 +296,7 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
           <p className="text-sm text-gray-400">{t('ui.charts.empty_categories')}</p>
         )}
         {!loading && categoriesData.length > 0 && (
-          <div className="h-64">
+          <div className="h-64" data-testid="top-categories-chart">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={categoriesData}>
                 <CartesianGrid stroke="var(--grid-line)" />
@@ -380,7 +371,7 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
 
                 {/* Keep X axis hidden - merchant names come from tooltip */}
                 <XAxis
-                  dataKey="label"
+                  dataKey="merchant"
                   hide
                   tickLine={false}
                   axisLine={false}
@@ -397,15 +388,10 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
                   cursor={{ fill: 'rgba(255,255,255,0.04)' }}
                   formatter={(value: any, _name: any, props: any) => {
                     const payload = props?.payload ?? {};
-                    // Prefer normalized name for clean display
-                    const merchantName =
-                      payload.merchant ??        // Normalized from normalizeMerchantForDisplay
-                      payload.label ??           // Same normalized label
-                      payload.merchantRaw ??     // Fallback to raw statement if needed
-                      'Merchant';
-
+                    // Use merchant field from normalized data
+                    const merchantName = payload.merchant ?? 'Merchant';
                     const amount = value as number;
-                    const suffix = payload.count && payload.count > 1 ? ` (${payload.count} txns)` : '';
+                    const suffix = payload.txns && payload.txns > 1 ? ` (${payload.txns} txns)` : '';
 
                     return [formatMoneyTick(amount) + suffix, merchantName];
                   }}

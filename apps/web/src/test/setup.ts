@@ -22,7 +22,7 @@ if (!("BroadcastChannel" in globalThis)) {
 // Basic localStorage shim if your env lacks it
 if (!("localStorage" in globalThis)) {
   const store = new Map<string, string>();
-  global.localStorage = {
+  (globalThis as any).localStorage = {
     getItem: (k: string) => store.get(k) ?? null,
     setItem: (k: string, v: string) => void store.set(k, v),
     removeItem: (k: string) => void store.delete(k),

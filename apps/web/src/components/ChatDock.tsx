@@ -1363,7 +1363,7 @@ export default function ChatDock() {
       appendUser('Identify recurring subscriptions this month and suggest which I could cancel.');
       await runToolWithRephrase(
         'analytics.subscriptions',
-        () => analytics.subscriptions(month),
+        () => analytics.subscriptions(month) as Promise<AnalyticsSubscriptionsResponse>,
         (raw: AnalyticsSubscriptionsResponse) => formatSubscriptionsReply(raw),
         (msg, meta) => appendAssistant(msg, { ...meta, ctxMonth: month }),
         (on) => setBusy(on),
