@@ -796,33 +796,21 @@ export const listRules = getRules;
 // New brief list endpoint returning items[] with optional active filter
 export const deleteRule = (id: number) => http(`/rules/${id}`, { method: 'DELETE' });
 // Enhanced createRule with richer FastAPI error reporting (e.g., 422 validation errors)
+// Per project instructions: use relative path 'rules' (no /api/ prefix)
 export async function createRule(body: RuleInput): Promise<RuleCreateResponse> {
-  const url = apiUrl('/rules');
-  const r = await fetch(url, withCreds({
-    method: 'POST',
-    headers: withAuthHeaders({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify(body),
-  }));
-  if (!r.ok) {
-    let msg = `createRule failed: ${r.status}`;
-    try {
-      const data = await r.json();
-      if (data?.detail) {
-        const text = Array.isArray(data.detail)
-          ? data.detail.map((d: unknown) => (d && typeof d === 'object' && 'msg' in d) ? (d as { msg: string }).msg : JSON.stringify(d)).join('; ')
-          : JSON.stringify(data.detail);
-        msg += ` — ${text}`;
-      }
-    } catch {
-      // Try to append response text if JSON parse fails
-      try {
-        const t = await r.text();
-        if (t) msg += ` — ${t}`;
-      } catch (_err) { /* intentionally empty: swallow to render empty-state */ }
+  try {
+    const data = await fetchJSON('rules', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+    return data as RuleCreateResponse;
+  } catch (error) {
+    // Enhanced error reporting for 422 validation errors
+    if (error instanceof Error) {
+      throw error;
     }
-    throw new Error(msg);
+    throw new Error(`createRule failed: ${String(error)}`);
   }
-  return r.json() as Promise<RuleCreateResponse>; // { id, display_name }
 }
 
 // ---------- ML ----------
