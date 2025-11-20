@@ -46,17 +46,20 @@ class MlFeedbackMerchantCategoryStats(Base):
     def apply_event(cls, db: Session, event: "MlFeedbackEvent") -> None:
         """
         Increment accept/reject counters for the merchant/category of this transaction.
-        If we can't resolve merchant_normalized, we no-op.
+        If we can't resolve merchant_canonical, we no-op.
         """
         from app.orm_models import Transaction
 
         txn = (
             db.query(Transaction).filter(Transaction.id == event.txn_id).one_or_none()
         )
-        if not txn or not getattr(txn, "merchant_normalized", None):
+        if not txn:
             return
-
-        merchant = txn.merchant_normalized
+        
+        # Use merchant_canonical from Transaction model
+        merchant = getattr(txn, "merchant_canonical", None)
+        if not merchant:
+            return
 
         row = (
             db.query(cls)

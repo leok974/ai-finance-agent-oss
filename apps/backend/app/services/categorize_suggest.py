@@ -1,5 +1,6 @@
 """Smart categorization suggestion service with ranked scoring."""
 
+import os
 import re
 from collections import defaultdict
 from typing import Dict, List
@@ -10,6 +11,19 @@ from app.db import SessionLocal
 
 # Import ML scorer (optional, may not be enabled)
 from app.services import ml_scorer
+
+# ML Feedback scoring
+ML_FEEDBACK_SCORES_ENABLED = os.getenv("ML_FEEDBACK_SCORES_ENABLED", "1") == "1"
+
+try:
+    from app.services.ml_feedback_scores import (
+        FeedbackKey,
+        load_feedback_stats_map,
+        adjust_score_with_feedback,
+    )
+    ML_FEEDBACK_AVAILABLE = True
+except ImportError:
+    ML_FEEDBACK_AVAILABLE = False
 
 WEIGHTS = {
     "hints": 0.65,
@@ -242,6 +256,45 @@ def suggest_categories_for_txn(txn: dict, db: Session | None = None) -> List[Dic
         # Remove any blocked categories before ranking
         cands = [c for c in cands if c.get("category_slug") not in blocked]
         ranked = dedupe_and_rank(cands)
+
+        # Apply ML feedback scoring if enabled
+        if ML_FEEDBACK_SCORES_ENABLED and ML_FEEDBACK_AVAILABLE and merchant_canonical:
+            # Collect feedback keys for all candidates
+            keys = [
+                FeedbackKey(merchant_normalized=merchant_canonical, category=r["category_slug"])
+                for r in ranked
+                if r.get("category_slug")
+            ]
+
+            if keys:
+                # Batch load stats in single query
+                stats_map = load_feedback_stats_map(db, keys)
+
+                # Adjust scores based on historical feedback
+                for r in ranked:
+                    cat = r.get("category_slug")
+                    if not cat:
+                        continue
+                    
+                    key = FeedbackKey(merchant_normalized=merchant_canonical, category=cat)
+                    stats = stats_map.get(key)
+                    
+                    # Adjust score with feedback
+                    original_score = r["score"]
+                    adjusted_score = adjust_score_with_feedback(
+                        base_score=original_score,
+                        merchant_normalized=merchant_canonical,
+                        category=cat,
+                        stats=stats,
+                    )
+                    
+                    # Update score and track adjustment
+                    if adjusted_score != original_score:
+                        r["score"] = adjusted_score
+                        r["why"].append(f"ml_feedback_adjusted({original_score:.3f}→{adjusted_score:.3f})")
+
+                # Re-sort by adjusted scores
+                ranked.sort(key=lambda x: x["score"], reverse=True)
 
         # Ensure at least 3 diverse options with priors if needed
         needed = 3 - len(ranked)
