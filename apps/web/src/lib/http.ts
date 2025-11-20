@@ -50,6 +50,16 @@ export async function fetchJSON<T>(path: string, opts: FetchOpts = {}): Promise<
   const isForm = typeof FormData !== 'undefined' && opts.body instanceof FormData;
   if (!isForm && !hdrs.has('Content-Type')) hdrs.set('Content-Type', 'application/json');
 
+  // CSRF: include header for unsafe methods if cookie is present
+  const method = (opts.method ?? 'GET').toUpperCase();
+  if (method !== 'GET' && method !== 'HEAD' && method !== 'OPTIONS') {
+    if (typeof document !== 'undefined') {
+      const m = document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/);
+      const csrf = m && m[1] ? decodeURIComponent(m[1]) : undefined;
+      if (csrf && !hdrs.has("X-CSRF-Token")) hdrs.set("X-CSRF-Token", csrf);
+    }
+  }
+
   // E2E test mode: add x-test-mode header for deterministic responses
   if (typeof window !== 'undefined' && (window as any).__E2E_TEST__ && url.includes('/agent/chat')) {
     hdrs.set('x-test-mode', 'stub');
