@@ -108,6 +108,7 @@ test('@prod uncategorized suggestion chips apply and hide row', async ({ page })
 
   const initialCount = rowCount;
   const firstRow = rows.first();
+  const firstRowText = await firstRow.textContent();
   const firstChip = firstRow.locator('[data-testid="uncat-suggestion-chip"]').first();
 
   await expect(firstChip).toBeVisible();
@@ -123,11 +124,17 @@ test('@prod uncategorized suggestion chips apply and hide row', async ({ page })
   // Click the chip to apply the suggestion
   await firstChip.click();
 
-  // Wait for the row to disappear (with generous timeout for network + UI update)
-  console.log('[unknowns-e2e] Waiting for row to disappear...');
-  await expect(firstRow).toHaveCount(0, { timeout: 10_000 });
+  // Wait for the specific row's text to disappear
+  if (firstRowText) {
+    console.log('[unknowns-e2e] Waiting for specific row to disappear...');
+    await expect(
+      page.locator('[data-testid="uncat-transaction-row"]', {
+        hasText: firstRowText.trim(),
+      }),
+    ).toHaveCount(0, { timeout: 10_000 });
+  }
 
-  // Verify final count is less than initial
+  // And ensure total count dropped
   const finalCount = await rows.count();
   console.log(`[unknowns-e2e] Final row count: ${finalCount}`);
 
