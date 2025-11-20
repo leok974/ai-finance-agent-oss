@@ -23,6 +23,7 @@ from pydantic import BaseModel
 from app.config import settings
 from app.auth.session import issue_session_for_user
 from app.utils.auth import set_auth_cookies
+from app.utils.csrf import issue_csrf_cookie
 
 logger = logging.getLogger(__name__)
 
@@ -124,5 +125,6 @@ async def mint_e2e_session(
     # Set cookie and return success
     resp = JSONResponse({"ok": True, "user": body.user})
     set_auth_cookies(resp, token_pair)
+    issue_csrf_cookie(resp)  # Add CSRF cookie for authenticated requests
 
     return resp
