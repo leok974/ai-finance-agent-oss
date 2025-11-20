@@ -50,9 +50,9 @@ export async function fetchJSON<T>(path: string, opts: FetchOpts = {}): Promise<
   const isForm = typeof FormData !== 'undefined' && opts.body instanceof FormData;
   if (!isForm && !hdrs.has('Content-Type')) hdrs.set('Content-Type', 'application/json');
 
-  // CSRF: include header for unsafe methods if cookie is present
+  // CSRF: include header for unsafe methods if cookie is present (matches api.ts pattern)
   const method = (opts.method ?? 'GET').toUpperCase();
-  if (method !== 'GET' && method !== 'HEAD' && method !== 'OPTIONS') {
+  if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) {
     if (typeof document !== 'undefined') {
       const m = document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/);
       const csrf = m && m[1] ? decodeURIComponent(m[1]) : undefined;
@@ -66,7 +66,7 @@ export async function fetchJSON<T>(path: string, opts: FetchOpts = {}): Promise<
   }
 
   const r = await fetch(url, {
-    credentials: 'same-origin',
+    credentials: 'include', // Match api.ts: ensure cookies are sent
     headers: hdrs,
     method: opts.method ?? 'GET',
     body: opts.body,
