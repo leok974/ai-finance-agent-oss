@@ -26,21 +26,50 @@ from app.utils.auth import require_roles
 from app.utils.csrf import csrf_protect
 from app.utils.state import current_month_key
 from app.services.rules_budget import list_budget_rules
-from app.services.rule_suggestions_store import (
-    list_persisted as _db_list_persisted,
-    upsert_from_mined as _db_upsert_from_mined,
-    set_status as _db_set_status,
-    clear_non_new as _db_clear_non_new,
-)
 from app.orm_models import (
     RuleSuggestion,
 )  # legacy suggestions table for compat fallback
-from app.services.rule_suggestion_ignores_store import (
-    list_ignores as rsi_list,
-    list_ignores_cached as rsi_list_cached,
-    add_ignore as rsi_add,
-    remove_ignore as rsi_remove,
-)
+
+
+# Legacy modules removed in Phase 1 cleanup - create minimal stubs
+def _db_list_persisted(db):
+    """Legacy stub"""
+    return []
+
+
+def _db_upsert_from_mined(db, window_days, min_count, max_results):
+    """Legacy stub"""
+    pass
+
+
+def _db_set_status(db, sid, status):
+    """Legacy stub"""
+    raise ValueError("Legacy suggestions system removed")
+
+
+def _db_clear_non_new(db):
+    """Legacy stub"""
+    pass
+
+
+def rsi_list(db):
+    """Legacy stub"""
+    return []
+
+
+def rsi_list_cached(db):
+    """Legacy stub"""
+    return []
+
+
+def rsi_add(db, merchant, category):
+    """Legacy stub"""
+    return []
+
+
+def rsi_remove(db, merchant, category):
+    """Legacy stub"""
+    return []
 
 
 # Legacy rule_suggestions module was removed (Phase 1 cleanup)
