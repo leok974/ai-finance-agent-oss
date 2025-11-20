@@ -56,6 +56,7 @@ from app.routers import categorize_admin as categorize_admin_router
 from app.routers import agent_tools_suggestions as agent_tools_suggestions_router
 from app.routers import suggestions as suggestions_router  # ML suggestions
 from app.routers import ml_status as ml_status_router  # ML status endpoint
+from app.routers import ml_feedback as ml_feedback_router  # ML feedback endpoint
 from .routers import charts
 from app.routers import txns_edit as txns_edit_router
 from app.routers import auth as auth_router
@@ -570,6 +571,7 @@ try:
     app.include_router(agent_tools_suggestions_router.router)
     app.include_router(suggestions_router.router)  # ML suggestions endpoints
     app.include_router(ml_status_router.router)  # ML status endpoint
+    app.include_router(ml_feedback_router.router)  # ML feedback endpoint
     app.include_router(agent_actions_router.router)
 except Exception as e:
     logger.error(f"Failed to include agent_tools routers: {e}", exc_info=True)
