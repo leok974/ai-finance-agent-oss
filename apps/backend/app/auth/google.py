@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from app.db import get_db
 from app.orm_models import User, UserRole, Role
 from app.utils.auth import create_tokens, set_auth_cookies
+from app.utils.csrf import issue_csrf_cookie
 
 logger = logging.getLogger("auth.google")
 router = APIRouter(prefix="/api/auth/google", tags=["auth"])
@@ -267,6 +268,7 @@ async def callback(request: Request, db: Session = Depends(get_db)):
         print("[OAUTH DEBUG] Setting auth cookies and redirecting to /", flush=True)
         response = RedirectResponse(url="/", status_code=307)
         set_auth_cookies(response, tokens)
+        issue_csrf_cookie(response)  # Add CSRF cookie for authenticated requests
         print("[OAUTH DEBUG] OAuth flow complete!", flush=True)
 
         # Track successful OAuth callback
