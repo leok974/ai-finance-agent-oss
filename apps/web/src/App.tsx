@@ -54,6 +54,7 @@ import LandingHero from "@/components/LandingHero";
 import PrivacyPage from "@/pages/legal/PrivacyPage";
 import TermsPage from "@/pages/legal/TermsPage";
 import SecurityPage from "@/pages/legal/SecurityPage";
+import { RuleSeedProvider } from "@/hooks/useRuleSeed";
 
 // Lazy-load admin panels (only load when accessed)
 const AdminRulesPanel = React.lazy(() => import("@/components/admin/AdminRulesPanel"));
@@ -312,6 +313,7 @@ const App: React.FC = () => {
   return (
   <MonthContext.Provider value={{ month, setMonth }}>
       <ChatDockProvider>
+        <RuleSeedProvider>
   <NetActivityBlip />
       <div className="min-h-screen bg-gray-50 text-gray-900 p-6 dark:bg-gray-950 dark:text-gray-100">
   <HelpMode />
@@ -453,6 +455,7 @@ const App: React.FC = () => {
   </div>
       <TransactionsDrawer open={txPanelOpen} onClose={() => setTxPanelOpen(false)} />
       <ChatDock />
+        </RuleSeedProvider>
   </ChatDockProvider>
     </MonthContext.Provider>
   );

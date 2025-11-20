@@ -18,6 +18,8 @@ import { emitToastSuccess, emitToastError } from '@/lib/toast-helpers'
 import { Button } from '@/components/ui/button'
 import { useIsAdmin } from '@/state/auth'
 import { t } from '@/lib/i18n'
+import { useRuleSeed } from '@/hooks/useRuleSeedHook'
+import { scrollToId } from '@/lib/scroll'
 
 // Session-level dismissal tracking (survives component remounts and re-fetches)
 const dismissedTxnIdsForSession = new Set<number>()
@@ -37,6 +39,7 @@ export default function UnknownsPanel({ month, onSeedRule: _onSeedRule, onChange
   const [explainSuggestions, setExplainSuggestions] = useState<{ category_slug: string; label?: string; score: number; why?: string[] }[]>([])
   const [suggestions, setSuggestions] = useState<Record<number, { category_slug: string; label?: string; score: number; why?: string[] }[]>>({})
   const isAdmin = useIsAdmin()
+  const { setRuleSeed } = useRuleSeed()
   // One shared timer for all unknowns refresh requests across this tab
   const scheduleUnknownsRefresh = useCoalescedRefresh('unknowns-refresh', () => refresh(), 450)
 
@@ -88,19 +91,30 @@ export default function UnknownsPanel({ month, onSeedRule: _onSeedRule, onChange
   )
 
   function seedRuleFromRow(row: UnknownTxn) {
-    const draft = seedRuleFromTxn({
-      merchant: row.merchant ?? undefined,
-      description: row.description ?? undefined,
-    }, { month: currentMonth || month })
-    // Provide a toast with an action to forcibly open (if listener not auto-opened)
+    // Build the seed from the transaction
+    const merchant = row.merchant || row.description || '';
+    const seed = {
+      merchant,
+      description: row.description || undefined,
+      categorySlug: row.category || undefined,
+      txnId: row.id,
+    };
+
+    // Set the seed in context
+    setRuleSeed(seed);
+
+    // Scroll to Rules panel
+    setTimeout(() => {
+      const rulesSection = document.querySelector('[data-panel-id="rules-panel"]');
+      if (rulesSection) {
+        rulesSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }, 100);
+
+    // Show success toast
     emitToastSuccess(t('ui.toast.seed_rule_title'), {
       description: t('ui.toast.seed_rule_description'),
-      action: {
-        label: t('ui.toast.seed_rule_action_open'),
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        onClick: () => (window as any).__openRuleTester?.(draft),
-      },
-    })
+    });
   }
 
   // Batch load top suggestions for current rows
