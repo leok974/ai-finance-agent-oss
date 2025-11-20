@@ -100,12 +100,12 @@ test('@prod unknowns suggestions are loaded from backend for uncategorized card'
 });
 
 test('@prod uncategorized suggestion chips apply and hide row', async ({ page }) => {
-  // Listen to console messages from the page
+  // Listen to ALL console messages from the page for debugging
   page.on('console', msg => {
-    if (msg.text().includes('[UnknownsPanel]')) {
-      console.log('[BROWSER CONSOLE]', msg.text())
-    }
-  })
+    const text = msg.text();
+    // Log everything to see what's happening
+    console.log(`[BROWSER ${msg.type().toUpperCase()}]`, text);
+  });
 
   await page.goto('/');
   await page.waitForLoadState('load');
@@ -116,7 +116,7 @@ test('@prod uncategorized suggestion chips apply and hide row', async ({ page })
   const initialCount = rowCount;
   const firstRow = rows.first();
   const firstRowText = await firstRow.textContent();
-  
+
   // Wait for suggestions to load - the suggestForTxnBatch API is async
   const firstChip = firstRow.locator('[data-testid="uncat-suggestion-chip"]').first();
   console.log('[unknowns-e2e] Waiting for suggestion chip to load...');
