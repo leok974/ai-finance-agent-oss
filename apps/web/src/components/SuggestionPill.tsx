@@ -1,36 +1,39 @@
-import { applyCategory } from '@/lib/api';
+import { useState } from 'react';
+import { categorizeTxn } from '@/api';
+
+type SuggestionPillProps = {
+  txn: { id: number; merchant: string; description: string; amount: number };
+  s: { category_slug: string; label: string; score: number; why: string[] };
+  disabled?: boolean;
+  onApplied: (txnId: number, categorySlug: string) => void;
+};
 
 export default function SuggestionPill({
   txn,
   s,
   disabled = false,
   onApplied,
-}: {
-  txn: { id:number; merchant:string; merchant_canonical?:string; description:string; amount:number };
-  s: { category_slug:string; label:string; score:number; why:string[] };
-  disabled?: boolean;
-  onApplied: (id:number, categorySlug: string)=>void;
-}) {
-  console.log('[SuggestionPill] Rendering pill for:', { txnId: txn.id, category: s.category_slug, disabled });
-  
+}: SuggestionPillProps) {
+  const [pending, setPending] = useState(false);
+
   const handleClick = async () => {
-    console.log('[SuggestionPill] handleClick called! disabled=', disabled);
-    if (disabled) return;
+    if (pending || disabled) return;
 
     console.log('[SuggestionPill] Starting categorization:', { txnId: txn.id, category: s.category_slug });
-    
-    try {
-      // This is the real categorize call
-      const result = await applyCategory(txn.id, s.category_slug);
-      console.log('[SuggestionPill] Categorization succeeded:', result);
+    setPending(true);
 
-      // Notify parent so it can dismiss row + send feedback
-      console.log('[SuggestionPill] Calling onApplied callback');
+    try {
+      // Call the categorize endpoint
+      await categorizeTxn(txn.id, s.category_slug);
+      console.log('[SuggestionPill] Categorization succeeded');
+
+      // Only on success, notify parent to dismiss row
       onApplied(txn.id, s.category_slug);
-      console.log('[SuggestionPill] onApplied callback completed');
     } catch (err) {
       console.error('[SuggestionPill] Failed to apply suggestion', err);
-      // Error handling happens in parent
+      // Error handling: parent won't dismiss the row
+    } finally {
+      setPending(false);
     }
   };
 
@@ -48,11 +51,8 @@ export default function SuggestionPill({
       "
       title={(s.why || []).join(' • ')}
       data-testid="uncat-suggestion-chip"
-      disabled={disabled}
-      onClick={(e) => {
-        console.log('[SuggestionPill] ONCLICK FIRED!', { txnId: txn.id, category: s.category_slug, disabled });
-        handleClick();
-      }}
+      disabled={pending || disabled}
+      onClick={handleClick}
     >
       <span className="font-medium">{s.label}</span>
       <span className="opacity-70">{Math.round(s.score * 100)}%</span>

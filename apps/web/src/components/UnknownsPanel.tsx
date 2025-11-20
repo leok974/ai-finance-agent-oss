@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useCallback } from 'react'
 import Card from './Card'
 import EmptyState from './EmptyState'
 import { mlFeedback, suggestForTxnBatch } from '@/api'
@@ -19,6 +19,9 @@ import { Button } from '@/components/ui/button'
 import { useIsAdmin } from '@/state/auth'
 import { t } from '@/lib/i18n'
 
+// Session-level dismissal tracking (survives component remounts and re-fetches)
+const dismissedTxnIdsForSession = new Set<number>()
+
 export default function UnknownsPanel({ month, onSeedRule: _onSeedRule, onChanged, refreshKey: _refreshKey }: {
   month?: string
   onSeedRule?: (seed: { id: number; merchant?: string; description?: string }) => void
@@ -37,11 +40,42 @@ export default function UnknownsPanel({ month, onSeedRule: _onSeedRule, onChange
   // One shared timer for all unknowns refresh requests across this tab
   const scheduleUnknownsRefresh = useCoalescedRefresh('unknowns-refresh', () => refresh(), 450)
 
-  // Track dismissed transactions for immediate UI feedback
-  const [dismissedTxnIds, setDismissedTxnIds] = useState<Set<number>>(new Set())
-  const [applyingKey, setApplyingKey] = useState<string | null>(null)
+  // Force re-render when we mutate the global dismissal set
+  const [, forceRender] = useState(0)
 
-  // (Quick apply is now handled via SuggestionPill.onApplied)
+  // Filter out dismissed transactions using the session-level set
+  const visibleUnknowns = useMemo(
+    () => items.filter((u) => !dismissedTxnIdsForSession.has(u.id)),
+    [items, forceRender]
+  )
+
+  // Callback: dismiss row immediately + send ML feedback (fire-and-forget)
+  const handleSuggestionApplied = useCallback(
+    (txnId: number, categorySlug: string) => {
+      console.log('[UnknownsPanel] handleSuggestionApplied:', { txnId, categorySlug })
+
+      // 1) Hide it for this session (permanent until page reload)
+      dismissedTxnIdsForSession.add(txnId)
+      forceRender((n) => n + 1)
+
+      // 2) Fire-and-forget ML feedback; errors should NOT unhide the row
+      void mlFeedback({
+        txn_id: txnId,
+        category: categorySlug,
+        action: 'accept',
+      }).catch((err) => {
+        console.error('[UnknownsPanel] mlFeedback failed', err)
+        // DO NOT remove from dismissedTxnIdsForSession - row stays hidden
+      })
+
+      // 3) Show success toast
+      ok?.(t('ui.toast.category_applied', { category: categorySlug }))
+
+      // 4) Notify parent
+      onChanged?.()
+    },
+    [ok, onChanged]
+  )
 
   function seedRuleFromRow(row: UnknownTxn) {
     const draft = seedRuleFromTxn({
@@ -75,53 +109,6 @@ export default function UnknownsPanel({ month, onSeedRule: _onSeedRule, onChange
     return () => { aborted = true }
   }, [items])
 
-  const onSuggestionApplied = (id: number, category: string) => {
-    console.log('[UnknownsPanel] onSuggestionApplied called:', { id, category })
-    // 1) Immediately hide this txn from the UI
-    setDismissedTxnIds((prev) => {
-      const next = new Set(prev)
-      next.add(id)
-      console.log('[UnknownsPanel] dismissedTxnIds updated:', Array.from(next))
-      return next
-    })
-
-    // 2) Fire-and-forget feedback; don't block UI
-    void (async () => {
-      try {
-        setLearned((prev) => ({ ...prev, [id]: true }))
-
-        await mlFeedback({ txn_id: id, category, action: 'accept' })
-
-        // Clear "learned" flag after a few seconds
-        setTimeout(() => {
-          setLearned((prev) => {
-            const next = { ...prev }
-            delete next[id]
-            return next
-          })
-        }, 4500)
-      } catch (e: unknown) {
-        // Undo dismiss on hard failure
-        setDismissedTxnIds((prev) => {
-          const next = new Set(prev)
-          next.delete(id)
-          return next
-        })
-
-        const msg = e instanceof Error ? e.message : String(e)
-        err(t('ui.toast.ml_feedback_failed', { error: msg }))
-      }
-    })()
-
-    // 3) Let the rest of the app know it changed
-    onChanged?.()
-    ok?.(t('ui.toast.category_applied', { category }))
-
-    // 4) Do NOT refresh - let the dismissal be client-side permanent
-    // User can manually refresh the page if they want to see updated backend state
-    // scheduleUnknownsRefresh is also skipped to prevent race conditions
-  }
-
   const resolvedMonth = (currentMonth ?? month) || '(latest)'
   return (
   <section
@@ -154,7 +141,7 @@ export default function UnknownsPanel({ month, onSeedRule: _onSeedRule, onChange
         </div>
       )}
       {!loading && error && <div className="text-sm text-rose-300">{error}</div>}
-      {!loading && !error && items.filter((item) => !dismissedTxnIds.has(item.id)).length === 0 && (
+      {!loading && !error && visibleUnknowns.length === 0 && (
         <EmptyState title={t('ui.empty.no_transactions_title')} note={t('ui.empty.unknowns_note')} />
       )}
       <div className="flex items-center justify-between mb-2 text-sm font-medium">
@@ -174,15 +161,8 @@ export default function UnknownsPanel({ month, onSeedRule: _onSeedRule, onChange
         </div>
   <div className="text-xs opacity-70">{t('ui.unknowns.workflow_hint')}</div>
       </div>
-  <ul className="space-y-2" key={dismissedTxnIds.size}>
-        {(() => {
-          const filtered = items.filter((item) => !dismissedTxnIds.has(item.id))
-          console.log('[UnknownsPanel] Rendering:', {
-            totalItems: items.length,
-            dismissedIds: Array.from(dismissedTxnIds),
-            filteredCount: filtered.length
-          })
-          return filtered.map(tx => (
+  <ul className="space-y-2">
+        {visibleUnknowns.map(tx => (
             <li
               key={tx.id}
               className="panel-tight md:p-5 lg:p-6"
@@ -241,8 +221,8 @@ export default function UnknownsPanel({ month, onSeedRule: _onSeedRule, onChange
                       key={`${tx.id}-sug-${idx}`}
                       txn={{ id: tx.id, merchant: tx.merchant || '', description: tx.description || '', amount: tx.amount }}
                       s={{ category_slug: sug.category_slug, label: sug.label || sug.category_slug, score: sug.score, why: sug.why || [] }}
-                      disabled={applyingKey === key}
-                      onApplied={(id: number, categorySlug: string) => onSuggestionApplied(id, categorySlug)}
+                      disabled={false}
+                      onApplied={handleSuggestionApplied}
                     />
                   );
                 })}
@@ -252,8 +232,7 @@ export default function UnknownsPanel({ month, onSeedRule: _onSeedRule, onChange
               {learned[tx.id] && <LearnedBadge />}
             </div>
           </li>
-          ))
-        })()}
+        ))}
       </ul>
   <ExplainSignalDrawer
     txnId={explainTxnId}
