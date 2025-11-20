@@ -667,9 +667,9 @@ export const fetchRuleSuggestConfig = () => {
 };
 
 // If you have explain/categorize helpers, keep them as-is
-export const categorizeTxn = (id: number, category: string) => http(`txns/${id}/categorize`, {
+export const categorizeTxn = (id: number, category: string) => fetchJSON<{ updated: number; category: string; txn_ids: number[] }>('agent/tools/transactions/categorize', {
   method: 'POST',
-  body: JSON.stringify({ category, category_slug: category })
+  body: JSON.stringify({ txn_ids: [id], category })
 })
 
 // Aliases for SuggestionPill component API

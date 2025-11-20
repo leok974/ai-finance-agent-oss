@@ -100,6 +100,13 @@ test('@prod unknowns suggestions are loaded from backend for uncategorized card'
 });
 
 test('@prod uncategorized suggestion chips apply and hide row', async ({ page }) => {
+  // Listen to console messages from the page
+  page.on('console', msg => {
+    if (msg.text().includes('[UnknownsPanel]')) {
+      console.log('[BROWSER CONSOLE]', msg.text())
+    }
+  })
+
   await page.goto('/');
   await page.waitForLoadState('load');
 
