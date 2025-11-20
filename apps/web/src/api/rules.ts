@@ -5,32 +5,18 @@ export type RuleCreateResult = { ok: boolean; id?: string | number; message?: st
 // We first try the new agent tools endpoint (preferred). Fallbacks try legacy save.
 export async function createCategorizeRule(params: { merchant: string; category: string }): Promise<RuleCreateResult> {
   const { merchant, category } = params;
-  // Shapes to attempt (stop at first success)
+  // Use the correct backend payload format: { rule: { when: {...}, then: {...} } }
   const attempts: Array<() => Promise<RuleCreateResult>> = [
     async () => {
       const data = await fetchJSON('agent/tools/rules/save', {
         method: 'POST',
-        body: JSON.stringify({ rules: [{ kind: 'categorize', merchant, category }] }),
+        body: JSON.stringify({
+          rule: {
+            when: { description_like: merchant },
+            then: { category }
+          }
+        }),
       });
-      return normalizeCreateResp(data, 'created');
-    },
-    async () => {
-      const data = await fetchJSON('agent/tools/rules/save', {
-        method: 'POST',
-        body: JSON.stringify({ rules: [{ action: 'set_category', field: 'merchant', op: 'equals', pattern: merchant, category }] }),
-      });
-      return normalizeCreateResp(data, 'created');
-    },
-    // Legacy path (kept for compatibility). This intentionally uses /api/ because legacy backend may only expose it there.
-    async () => {
-      const resp = await fetch('/api/rules/save', {
-        method: 'POST',
-        credentials: 'same-origin',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ rules: [{ action: 'set_category', field: 'merchant', op: 'equals', pattern: merchant, category }] }),
-      });
-      if (!resp.ok) throw new Error(`legacy save failed ${resp.status}`);
-      const data = await resp.json().catch(() => ({}));
       return normalizeCreateResp(data, 'created');
     },
   ];
