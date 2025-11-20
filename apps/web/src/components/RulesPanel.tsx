@@ -11,6 +11,7 @@ import { InfoDot } from './InfoDot';
 import Card from './Card';
 import { setBudget, deleteBudget } from '@/lib/api';
 import { Button } from '@/components/ui/button';
+import { useRuleSeed } from '@/hooks/useRuleSeedHook';
 
 type Props = { month?: string; refreshKey?: number };
 
@@ -32,6 +33,43 @@ function RulesPanelImpl({ month, refreshKey }: Props) {
   });
   const [editingId, setEditingId] = useState<string | number | null>(null);
   const [editAmount, setEditAmount] = useState<string>('');
+  const [seedBanner, setSeedBanner] = useState<string | null>(null);
+
+  const { ruleSeed, setRuleSeed } = useRuleSeed();
+
+  // Handle rule seed from Unknowns panel
+  useEffect(() => {
+    if (!ruleSeed) return;
+
+    // Don't override if user is already editing
+    const hasExistingDraft = form.when?.description_like || form.then?.category;
+    if (hasExistingDraft) {
+      console.log('[RulesPanel] Ignoring seed - user has existing draft');
+      setRuleSeed(null);
+      return;
+    }
+
+    // Pre-fill form with seed
+    setForm({
+      name: '',
+      enabled: true,
+      when: { description_like: ruleSeed.merchant || ruleSeed.description || '' },
+      then: { category: ruleSeed.categorySlug || '' },
+    });
+
+    // Show banner
+    setSeedBanner(
+      ruleSeed.txnId
+        ? `Draft rule seeded from transaction #${ruleSeed.txnId} (${ruleSeed.merchant || 'merchant'})`
+        : `Draft rule seeded from transaction`
+    );
+
+    // Clear seed after consuming
+    setRuleSeed(null);
+
+    // Auto-hide banner after 5 seconds
+    setTimeout(() => setSeedBanner(null), 5000);
+  }, [ruleSeed, setRuleSeed, form.when?.description_like, form.then?.category]);
 
   // Derived values for UX and validation
   const { like, category, derivedName, canCreate } = useMemo(() => {
@@ -172,8 +210,22 @@ function RulesPanelImpl({ month, refreshKey }: Props) {
   }
 
   return (
-    <section className="panel p-4 md:p-5">
+    <section className="panel p-4 md:p-5" data-panel-id="rules-panel">
     <div>
+      {/* Seed banner */}
+      {seedBanner && (
+        <div className="mb-3 p-3 rounded-md bg-blue-500/10 border border-blue-500/20 text-blue-400 text-sm flex items-center justify-between">
+          <span>{seedBanner}</span>
+          <button
+            onClick={() => setSeedBanner(null)}
+            className="text-blue-400 hover:text-blue-300"
+            aria-label="Dismiss"
+          >
+            ×
+          </button>
+        </div>
+      )}
+
       {/* Header grid prevents overlap and keeps a tidy top-right Actions area */}
       <header className="grid grid-cols-[1fr_auto] gap-3 pb-3 mb-3 border-b border-border">
         <div className="flex items-center gap-2 min-w-0">
