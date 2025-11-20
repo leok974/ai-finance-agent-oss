@@ -1,8 +1,11 @@
 # 🚀 Production Update Required - Deploy Latest Changes
 
-**Status:** Local code has critical changes NOT yet deployed to EKS
-**Impact:** Backend pod running OLD code without pgvector, NIM providers, and RAG endpoints
-**Action Required:** Rebuild & push Docker image, then restart deployment
+> **⚠️ OUTDATED:** This document describes a Kubernetes/EKS-based deployment.
+> **LedgerMind no longer uses Kubernetes in production.** See [DEPLOY.md](./DEPLOY.md) for current Docker Compose deployment instructions.
+
+**Status:** Local code has critical changes NOT yet deployed to EKS (HISTORICAL)
+**Impact:** Backend pod running OLD code without pgvector, NIM providers, and RAG endpoints (HISTORICAL)
+**Action Required:** See DEPLOY.md for current deployment process
 
 ---
 
