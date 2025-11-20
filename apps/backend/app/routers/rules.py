@@ -2,11 +2,12 @@ from fastapi import APIRouter, HTTPException, Depends, Query, Body, Path
 from typing import List, Dict, Any, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import delete, or_, func
-from app.db import get_db
+from datetime import datetime, date
 from pydantic import BaseModel, ConfigDict, Field
-from app.models import Rule
+from pydantic import Field as _Field
 
-# (Removed unused latest_month_from_data / apply_all_active_rules imports)
+from app.db import get_db
+from app.models import Rule
 from app.services import rules_service, ml_train_service, txns_service
 from app.transactions import Transaction
 from app.deps.auth_guard import get_current_user_id
@@ -20,18 +21,11 @@ from app.schemas.rules import (
     RuleListResponse,
     TransactionSample,
 )
-from datetime import datetime, date
-import app.services.rule_suggestions as rs
 from app.services.rules_preview import preview_rule_matches, backfill_rule_apply
 from app.utils.auth import require_roles
 from app.utils.csrf import csrf_protect
-from app.services.rule_suggestions import mine_suggestions
-from app.services.rule_suggestions import (
-    list_suggestions as list_persisted_suggestions,
-)
 from app.utils.state import current_month_key
 from app.services.rules_budget import list_budget_rules
-from pydantic import Field as _Field
 from app.services.rule_suggestions_store import (
     list_persisted as _db_list_persisted,
     upsert_from_mined as _db_upsert_from_mined,
@@ -47,6 +41,36 @@ from app.services.rule_suggestion_ignores_store import (
     add_ignore as rsi_add,
     remove_ignore as rsi_remove,
 )
+
+
+# Legacy rule_suggestions module was removed (Phase 1 cleanup)
+# Keeping minimal stubs for backward compatibility
+class _LegacyRuleSuggestionsCompat:
+    @staticmethod
+    def get_config():
+        return {"enabled": False, "reason": "legacy_removed"}
+
+    @staticmethod
+    def mine_suggestions(db, **kwargs):
+        return []
+
+    @staticmethod
+    def accept_suggestion(db, sid):
+        return None
+
+    @staticmethod
+    def dismiss_suggestion(db, sid):
+        return False
+
+
+rs = _LegacyRuleSuggestionsCompat()
+mine_suggestions = rs.mine_suggestions
+
+
+def list_persisted_suggestions(*args, **kwargs):
+    """Legacy compatibility stub"""
+    return {"suggestions": [], "total": 0}
+
 
 router = APIRouter(prefix="/rules", tags=["rules"])
 
