@@ -11,7 +11,10 @@ export default function SuggestionPill({
   disabled?: boolean;
   onApplied: (id:number, categorySlug: string)=>void;
 }) {
+  console.log('[SuggestionPill] Rendering pill for:', { txnId: txn.id, category: s.category_slug, disabled });
+  
   const handleClick = async () => {
+    console.log('[SuggestionPill] handleClick called! disabled=', disabled);
     if (disabled) return;
 
     console.log('[SuggestionPill] Starting categorization:', { txnId: txn.id, category: s.category_slug });
