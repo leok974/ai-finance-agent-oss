@@ -63,8 +63,18 @@ export default function UnknownsPanel({ month, onSeedRule: _onSeedRule, onChange
         txn_id: txnId,
         category: categorySlug,
         action: 'accept',
-      }).catch((err) => {
-        console.error('[UnknownsPanel] mlFeedback failed', err)
+      }).catch((err: unknown) => {
+        // Treat 404 as "feature not deployed" - don't log error
+        const message = err instanceof Error ? err.message : String(err)
+        const is404 = message.includes('404') || message.includes('Not Found')
+
+        if (is404) {
+          console.debug('[UnknownsPanel] mlFeedback endpoint not available (404) - skipping optional analytics')
+          return
+        }
+
+        // Log other errors as warnings but don't break UX
+        console.warn('[UnknownsPanel] mlFeedback failed (non-critical):', message)
         // DO NOT remove from dismissedTxnIdsForSession - row stays hidden
       })
 
