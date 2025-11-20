@@ -81,34 +81,51 @@ export default function UnknownsPanel({ month, onSeedRule: _onSeedRule, onChange
     return () => { aborted = true }
   }, [items])
 
-  const onSuggestionApplied = async (id: number, category: string) => {
-    try {
-      // Immediately dismiss from UI
-      setDismissedTxnIds((prev) => {
-        const next = new Set(prev)
-        next.add(id)
-        return next
-      })
+  const onSuggestionApplied = (id: number, category: string) => {
+    // 1) Immediately hide this txn from the UI
+    setDismissedTxnIds((prev) => {
+      const next = new Set(prev)
+      next.add(id)
+      return next
+    })
 
-      await mlFeedback({ txn_id: id, category, action: 'accept' })
-      setLearned(prev => ({ ...prev, [id]: true }))
-      setTimeout(() => {
-        setLearned(prev => { const next = { ...prev }; delete next[id]; return next })
-      }, 4500)
-    } catch (e: unknown) {
-      // Restore the row if there was an error
-      setDismissedTxnIds((prev) => {
-        const next = new Set(prev)
-        next.delete(id)
-        return next
-      })
-      const msg = e instanceof Error ? e.message : String(e)
-      err(t('ui.toast.ml_feedback_failed', { error: msg }))
-    }
-    refresh()
+    // 2) Fire-and-forget feedback; don't block UI
+    void (async () => {
+      try {
+        setLearned((prev) => ({ ...prev, [id]: true }))
+
+        await mlFeedback({ txn_id: id, category, action: 'accept' })
+
+        // Clear "learned" flag after a few seconds
+        setTimeout(() => {
+          setLearned((prev) => {
+            const next = { ...prev }
+            delete next[id]
+            return next
+          })
+        }, 4500)
+      } catch (e: unknown) {
+        // Undo dismiss on hard failure
+        setDismissedTxnIds((prev) => {
+          const next = new Set(prev)
+          next.delete(id)
+          return next
+        })
+
+        const msg = e instanceof Error ? e.message : String(e)
+        err(t('ui.toast.ml_feedback_failed', { error: msg }))
+      }
+    })()
+
+    // 3) Let the rest of the app know it changed
     onChanged?.()
     ok?.(t('ui.toast.category_applied', { category }))
-    scheduleUnknownsRefresh()
+
+    // 4) 🔑 Slow refresh so backend has time to finish applyCategory
+    setTimeout(() => {
+      refresh()
+      scheduleUnknownsRefresh()
+    }, 2000)
   }
 
   const resolvedMonth = (currentMonth ?? month) || '(latest)'
@@ -224,7 +241,7 @@ export default function UnknownsPanel({ month, onSeedRule: _onSeedRule, onChange
                       txn={{ id: tx.id, merchant: tx.merchant || '', description: tx.description || '', amount: tx.amount }}
                       s={{ category_slug: sug.category_slug, label: sug.label || sug.category_slug, score: sug.score, why: sug.why || [] }}
                       disabled={applyingKey === key}
-                      onApplied={(id: number)=> onSuggestionApplied(id, sug.category_slug)}
+                      onApplied={(id: number, categorySlug: string) => onSuggestionApplied(id, categorySlug)}
                     />
                   );
                 })}
