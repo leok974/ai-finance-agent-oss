@@ -116,9 +116,12 @@ test('@prod uncategorized suggestion chips apply and hide row', async ({ page })
   const initialCount = rowCount;
   const firstRow = rows.first();
   const firstRowText = await firstRow.textContent();
+  
+  // Wait for suggestions to load - the suggestForTxnBatch API is async
   const firstChip = firstRow.locator('[data-testid="uncat-suggestion-chip"]').first();
-
-  await expect(firstChip).toBeVisible();
+  console.log('[unknowns-e2e] Waiting for suggestion chip to load...');
+  await expect(firstChip).toBeVisible({ timeout: 15_000 });
+  console.log('[unknowns-e2e] Suggestion chip is visible');
 
   // Get the merchant text and chip label before clicking
   const merchantText = await firstRow.locator('div.font-medium').first().textContent();
