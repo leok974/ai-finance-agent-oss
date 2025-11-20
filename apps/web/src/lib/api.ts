@@ -667,7 +667,7 @@ export const fetchRuleSuggestConfig = () => {
 };
 
 // If you have explain/categorize helpers, keep them as-is
-export const categorizeTxn = (id: number, category: string) => fetchJSON<{ updated: number; category: string; txn_ids: number[] }>('agent/tools/transactions/categorize', {
+export const categorizeTxn = (id: number, category: string) => api<{ updated: number; category: string; txn_ids: number[] }>('agent/tools/transactions/categorize', {
   method: 'POST',
   body: JSON.stringify({ txn_ids: [id], category })
 })
@@ -680,7 +680,7 @@ export const rejectSuggestion = (merchant_canonical: string, category_slug: stri
   rejectCategorizeSuggestion({ merchant_canonical, category_slug });
 
 export const undoRejectSuggestion = (merchant_canonical: string, category_slug: string) =>
-  fetchJSON<{ ok: boolean; deleted?: number }>('agent/tools/categorize/feedback/undo', {
+  api<{ ok: boolean; deleted?: number }>('agent/tools/categorize/feedback/undo', {
     method: 'POST',
     body: JSON.stringify({ merchant_canonical, category_slug }),
   });
@@ -688,13 +688,13 @@ export const undoRejectSuggestion = (merchant_canonical: string, category_slug: 
 // ---- Categorize suggestions (agent tools) ----
 export type CategorizeSuggestion = { category_slug: string; score: number; why?: string[] };
 export async function suggestForTxn(txnId: number) {
-  return fetchJSON<{ txn: number; suggestions: CategorizeSuggestion[] }>('agent/tools/categorize/suggest', {
+  return api<{ txn: number; suggestions: CategorizeSuggestion[] }>('agent/tools/categorize/suggest', {
     method: 'POST',
     body: JSON.stringify({ txn_id: txnId }),
   });
 }
 export async function suggestForTxnBatch(txnIds: number[]) {
-  return fetchJSON<{ items: Array<{ txn: number; suggestions: CategorizeSuggestion[] }> }>('agent/tools/categorize/suggest/batch', {
+  return api<{ items: Array<{ txn: number; suggestions: CategorizeSuggestion[] }> }>('agent/tools/categorize/suggest/batch', {
     method: 'POST',
     body: JSON.stringify({ txn_ids: txnIds }),
   });
