@@ -41,12 +41,12 @@ export default function UnknownsPanel({ month, onSeedRule: _onSeedRule, onChange
   const scheduleUnknownsRefresh = useCoalescedRefresh('unknowns-refresh', () => refresh(), 450)
 
   // Force re-render when we mutate the global dismissal set
-  const [, forceRender] = useState(0)
+  const [renderKey, setRenderKey] = useState(0)
 
   // Filter out dismissed transactions using the session-level set
   const visibleUnknowns = useMemo(
     () => items.filter((u) => !dismissedTxnIdsForSession.has(u.id)),
-    [items, forceRender]
+    [items, renderKey]
   )
 
   // Callback: dismiss row immediately + send ML feedback (fire-and-forget)
@@ -56,7 +56,7 @@ export default function UnknownsPanel({ month, onSeedRule: _onSeedRule, onChange
 
       // 1) Hide it for this session (permanent until page reload)
       dismissedTxnIdsForSession.add(txnId)
-      forceRender((n) => n + 1)
+      setRenderKey((n) => n + 1)
 
       // 2) Fire-and-forget ML feedback; errors should NOT unhide the row
       void mlFeedback({
