@@ -41,12 +41,6 @@ export default function UnknownsPanel({ month, onSeedRule: _onSeedRule, onChange
   const [dismissedTxnIds, setDismissedTxnIds] = useState<Set<number>>(new Set())
   const [applyingKey, setApplyingKey] = useState<string | null>(null)
 
-  // Filter out dismissed transactions
-  const visibleUnknowns = useMemo(
-    () => items.filter((item) => !dismissedTxnIds.has(item.id)),
-    [items, dismissedTxnIds]
-  )
-
   // (Quick apply is now handled via SuggestionPill.onApplied)
 
   function seedRuleFromRow(row: UnknownTxn) {
@@ -158,7 +152,7 @@ export default function UnknownsPanel({ month, onSeedRule: _onSeedRule, onChange
         </div>
       )}
       {!loading && error && <div className="text-sm text-rose-300">{error}</div>}
-      {!loading && !error && visibleUnknowns.length === 0 && (
+      {!loading && !error && items.filter((item) => !dismissedTxnIds.has(item.id)).length === 0 && (
         <EmptyState title={t('ui.empty.no_transactions_title')} note={t('ui.empty.unknowns_note')} />
       )}
       <div className="flex items-center justify-between mb-2 text-sm font-medium">
@@ -179,7 +173,9 @@ export default function UnknownsPanel({ month, onSeedRule: _onSeedRule, onChange
   <div className="text-xs opacity-70">{t('ui.unknowns.workflow_hint')}</div>
       </div>
   <ul className="space-y-2">
-        {visibleUnknowns.map(tx => (
+        {items
+          .filter((item) => !dismissedTxnIds.has(item.id))
+          .map(tx => (
       <li
         key={tx.id}
         className="panel-tight md:p-5 lg:p-6"
