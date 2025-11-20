@@ -14,14 +14,19 @@ export default function SuggestionPill({
   const handleClick = async () => {
     if (disabled) return;
 
+    console.log('[SuggestionPill] Starting categorization:', { txnId: txn.id, category: s.category_slug });
+    
     try {
       // This is the real categorize call
-      await applyCategory(txn.id, s.category_slug);
+      const result = await applyCategory(txn.id, s.category_slug);
+      console.log('[SuggestionPill] Categorization succeeded:', result);
 
       // Notify parent so it can dismiss row + send feedback
+      console.log('[SuggestionPill] Calling onApplied callback');
       onApplied(txn.id, s.category_slug);
+      console.log('[SuggestionPill] onApplied callback completed');
     } catch (err) {
-      console.error('Failed to apply suggestion', err);
+      console.error('[SuggestionPill] Failed to apply suggestion', err);
       // Error handling happens in parent
     }
   };
