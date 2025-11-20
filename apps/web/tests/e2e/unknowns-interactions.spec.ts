@@ -99,13 +99,14 @@ test('@prod unknowns suggestions are loaded from backend for uncategorized card'
   }
 });
 
-test('@prod uncategorized suggestion chips are interactive and show feedback', async ({ page }) => {
+test('@prod uncategorized suggestion chips apply and hide row', async ({ page }) => {
   await page.goto('/');
   await page.waitForLoadState('load');
 
   const { rows, rowCount } = await getUncatRowCount(page);
   test.skip(rowCount === 0, 'No uncategorized transactions visible in UI after waiting');
 
+  const initialCount = rowCount;
   const firstRow = rows.first();
   const firstChip = firstRow.locator('[data-testid="uncat-suggestion-chip"]').first();
 
@@ -117,35 +118,24 @@ test('@prod uncategorized suggestion chips are interactive and show feedback', a
   const categoryLabel = chipText?.split(' ')[0] || ''; // "Groceries 85%" → "Groceries"
 
   console.log(`[unknowns-e2e] Applying suggestion: ${merchantText} → ${categoryLabel}`);
+  console.log(`[unknowns-e2e] Initial row count: ${initialCount}`);
 
   // Click the chip to apply the suggestion
   await firstChip.click();
 
-  // Wait for any toast to appear (success or error)
-  await page.waitForTimeout(1000);
+  // Wait for the row to disappear (with generous timeout for network + UI update)
+  console.log('[unknowns-e2e] Waiting for row to disappear...');
+  await expect(firstRow).toHaveCount(0, { timeout: 10_000 });
 
-  const anyToast = page.locator('[role="status"], [role="alert"]').first();
-  const toastVisible = await anyToast.isVisible();
+  // Verify final count is less than initial
+  const finalCount = await rows.count();
+  console.log(`[unknowns-e2e] Final row count: ${finalCount}`);
 
-  if (toastVisible) {
-    const toastText = await anyToast.textContent();
-    console.log(`[unknowns-e2e] Toast appeared: ${toastText?.slice(0, 100)}`);
+  expect(finalCount).toBeLessThan(initialCount);
+  console.log(`[unknowns-e2e] Row successfully disappeared! ✓`);
 
-    // Behavioral assertion: A toast appeared (could be success confirmation)
-    expect(toastText).toBeTruthy();
-  } else {
-    console.log(`[unknowns-e2e] No toast appeared (category might apply silently)`);
-  }
-
-  console.log(`[unknowns-e2e] Suggestion chip click completed without crash ✓`);
-
-  // Strong behavioral assertion: the card still renders properly (no UI crash)
+  // Behavioral assertion: the card still renders properly
   await expect(page.locator('[data-testid="uncat-card-root"]')).toBeVisible();
-
-  // Additional assertion: The chip interaction triggered successfully
-  // (If it crashed or failed, the page would be in an error state)
-  const pageTitle = await page.title();
-  expect(pageTitle).toBeTruthy();
 });
 
 test('@prod seed rule button opens rule tester with prefilled data', async ({ page }) => {

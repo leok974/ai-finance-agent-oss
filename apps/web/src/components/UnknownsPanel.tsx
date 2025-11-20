@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useMemo } from 'react'
 import Card from './Card'
 import EmptyState from './EmptyState'
 import { mlFeedback, suggestForTxnBatch } from '@/api'
@@ -37,6 +37,16 @@ export default function UnknownsPanel({ month, onSeedRule: _onSeedRule, onChange
   // One shared timer for all unknowns refresh requests across this tab
   const scheduleUnknownsRefresh = useCoalescedRefresh('unknowns-refresh', () => refresh(), 450)
 
+  // Track dismissed transactions for immediate UI feedback
+  const [dismissedTxnIds, setDismissedTxnIds] = useState<Set<number>>(new Set())
+  const [applyingKey, setApplyingKey] = useState<string | null>(null)
+
+  // Filter out dismissed transactions
+  const visibleUnknowns = useMemo(
+    () => items.filter((item) => !dismissedTxnIds.has(item.id)),
+    [items, dismissedTxnIds]
+  )
+
   // (Quick apply is now handled via SuggestionPill.onApplied)
 
   function seedRuleFromRow(row: UnknownTxn) {
@@ -73,12 +83,25 @@ export default function UnknownsPanel({ month, onSeedRule: _onSeedRule, onChange
 
   const onSuggestionApplied = async (id: number, category: string) => {
     try {
+      // Immediately dismiss from UI
+      setDismissedTxnIds((prev) => {
+        const next = new Set(prev)
+        next.add(id)
+        return next
+      })
+
       await mlFeedback({ txn_id: id, category, action: 'accept' })
       setLearned(prev => ({ ...prev, [id]: true }))
       setTimeout(() => {
         setLearned(prev => { const next = { ...prev }; delete next[id]; return next })
       }, 4500)
     } catch (e: unknown) {
+      // Restore the row if there was an error
+      setDismissedTxnIds((prev) => {
+        const next = new Set(prev)
+        next.delete(id)
+        return next
+      })
       const msg = e instanceof Error ? e.message : String(e)
       err(t('ui.toast.ml_feedback_failed', { error: msg }))
     }
@@ -120,7 +143,7 @@ export default function UnknownsPanel({ month, onSeedRule: _onSeedRule, onChange
         </div>
       )}
       {!loading && error && <div className="text-sm text-rose-300">{error}</div>}
-      {!loading && !error && items.length === 0 && (
+      {!loading && !error && visibleUnknowns.length === 0 && (
         <EmptyState title={t('ui.empty.no_transactions_title')} note={t('ui.empty.unknowns_note')} />
       )}
       <div className="flex items-center justify-between mb-2 text-sm font-medium">
@@ -141,7 +164,7 @@ export default function UnknownsPanel({ month, onSeedRule: _onSeedRule, onChange
   <div className="text-xs opacity-70">{t('ui.unknowns.workflow_hint')}</div>
       </div>
   <ul className="space-y-2">
-        {items.map(tx => (
+        {visibleUnknowns.map(tx => (
       <li
         key={tx.id}
         className="panel-tight md:p-5 lg:p-6"
@@ -193,14 +216,18 @@ export default function UnknownsPanel({ month, onSeedRule: _onSeedRule, onChange
 
               {/* Dynamic suggestions */}
               <div className="flex flex-wrap gap-2 justify-start">
-                {Array.isArray(suggestions[tx.id]) && suggestions[tx.id].slice(0,3).map((sug, idx) => (
-                  <SuggestionPill
-                    key={`${tx.id}-sug-${idx}`}
-                    txn={{ id: tx.id, merchant: tx.merchant || '', description: tx.description || '', amount: tx.amount }}
-                    s={{ category_slug: sug.category_slug, label: sug.label || sug.category_slug, score: sug.score, why: sug.why || [] }}
-                    onApplied={(id: number)=> onSuggestionApplied(id, sug.category_slug)}
-                  />
-                ))}
+                {Array.isArray(suggestions[tx.id]) && suggestions[tx.id].slice(0,3).map((sug, idx) => {
+                  const key = `${tx.id}:${sug.category_slug}`;
+                  return (
+                    <SuggestionPill
+                      key={`${tx.id}-sug-${idx}`}
+                      txn={{ id: tx.id, merchant: tx.merchant || '', description: tx.description || '', amount: tx.amount }}
+                      s={{ category_slug: sug.category_slug, label: sug.label || sug.category_slug, score: sug.score, why: sug.why || [] }}
+                      disabled={applyingKey === key}
+                      onApplied={(id: number)=> onSuggestionApplied(id, sug.category_slug)}
+                    />
+                  );
+                })}
               </div>
 
               {/* Promote moved inline next to each suggestion */}
