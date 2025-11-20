@@ -278,6 +278,17 @@ def add_rule(body: CompatRuleInput = Body(...), db: Session = Depends(get_db)):
     return RuleCreateResponse(id=str(getattr(r, "id", "")), display_name=display)
 
 
+# Alias binding to exact /rules (no trailing slash) for POST
+@router.post(
+    "",
+    response_model=RuleCreateResponse,
+    summary="Create a rule (alias)",
+    description="Alias of POST /rules/ that binds to /rules without trailing slash.",
+)
+def add_rule_alias(body: CompatRuleInput = Body(...), db: Session = Depends(get_db)):
+    return add_rule(body=body, db=db)
+
+
 @router.delete("/", dependencies=[Depends(csrf_protect)])
 def clear_rules(db: Session = Depends(get_db)):
     db.execute(delete(Rule))
