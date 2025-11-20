@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
+from sqlalchemy import text
 
 from app.db import get_db
 from app.services.ml_feedback_promote import promote_feedback_to_hints
@@ -12,6 +13,57 @@ router = APIRouter(
     prefix="/admin/ml-feedback",
     tags=["admin", "ml-feedback"],
 )
+
+
+@router.get("/hints")
+def list_hints(
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(get_db),
+):
+    """
+    List promoted merchant category hints.
+
+    Returns paginated list of hints with confidence scores and support counts.
+    """
+    # Get total count
+    total_result = db.execute(text("SELECT COUNT(*) FROM merchant_category_hints"))
+    total = total_result.scalar() or 0
+
+    # Get paginated results
+    hints_result = db.execute(
+        text(
+            """
+            SELECT id, merchant_canonical, category_slug, confidence, support,
+                   created_at, updated_at
+            FROM merchant_category_hints
+            ORDER BY updated_at DESC NULLS LAST
+            LIMIT :limit OFFSET :offset
+        """
+        ),
+        {"limit": limit, "offset": offset},
+    )
+
+    hints = []
+    for row in hints_result:
+        hints.append(
+            {
+                "id": row.id,
+                "merchant_canonical": row.merchant_canonical,
+                "category_slug": row.category_slug,
+                "confidence": round(row.confidence, 3) if row.confidence else 0.0,
+                "support": row.support or 0,
+                "created_at": row.created_at.isoformat() if row.created_at else None,
+                "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+            }
+        )
+
+    return {
+        "items": hints,
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+    }
 
 
 @router.post("/promote-hints")

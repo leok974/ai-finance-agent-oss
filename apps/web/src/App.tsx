@@ -2,7 +2,6 @@ import React, { useState, useCallback, useEffect, useRef, Suspense, lazy } from 
 import { MonthContext } from "./context/MonthContext";
 import UploadCsv from "./components/UploadCsv";
 import UnknownsPanel from "./components/UnknownsPanel";
-import SuggestionsPanel from "./components/SuggestionsPanel";
 // import RuleTesterPanel from "./components/RuleTesterPanel"; // rendered only inside DevDock
 import { AgentResultRenderer } from "./components/AgentResultRenderers";
 import { emitToastSuccess } from "@/lib/toast-helpers";
@@ -35,7 +34,6 @@ import { initBroadcastChannelSync } from "@/state/chatSession";
 // import AgentChat from "./components/AgentChat"; // legacy chat bubble disabled
 import { setGlobalMonth } from "./state/month";
 // Providers are applied at the top-level (main.tsx)
-import RuleSuggestionsPersistentPanel from "@/components/RuleSuggestionsPersistentPanel";
 import InsightsAnomaliesCard from "./components/InsightsAnomaliesCard";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import HelpMode from "@/components/HelpMode";
@@ -60,6 +58,7 @@ import SecurityPage from "@/pages/legal/SecurityPage";
 // Lazy-load admin panels (only load when accessed)
 const AdminRulesPanel = React.lazy(() => import("@/components/admin/AdminRulesPanel"));
 const AdminKnowledgePanel = React.lazy(() => import("@/components/admin/AdminKnowledgePanel"));
+import MerchantHintsPanel from "@/components/MerchantHintsPanel";
 
 // Log frontend version info
 console.info("[Web] branch=", __WEB_BRANCH__, "commit=", __WEB_COMMIT__);
@@ -391,19 +390,11 @@ const App: React.FC = () => {
           <ForecastCard />
         </div>
 
-        {/* Main grid */}
+        {/* Main grid - CANONICAL: Unknowns card with ML feedback suggestions */}
         <div className="section">
           <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
             <UnknownsPanel month={month} refreshKey={refreshKey} />
-            <SuggestionsPanel month={month} />
           </div>
-        </div>
-
-        {/* Persistent rule suggestions table */}
-        <div id="rule-suggestions" className="section">
-          <ErrorBoundary fallback={(e)=> <div className="text-sm text-red-500">Failed to render suggestions: {String(e?.message||e)}</div>}>
-            <RuleSuggestionsPersistentPanel />
-          </ErrorBoundary>
         </div>
 
         {/* Admin: Knowledge + Category Rules (dev-only, admin-only) */}
@@ -430,7 +421,7 @@ const App: React.FC = () => {
           </div>
         )}
 
-        {/* Rules + Rule Tester + ML Status */}
+        {/* CANONICAL: Rules table + Rule Tester + ML Status */}
         <div className="section">
           <div className="grid gap-6 lg:grid-cols-2">
             <RulesPanel refreshKey={refreshKey} />
@@ -442,6 +433,13 @@ const App: React.FC = () => {
             ) : null}
           </div>
         </div>
+
+        {/* ML Feedback: Promoted Merchant Hints (dev-only, admin-only) */}
+        {flags.dev && isAdmin && (
+          <div className="section">
+            <MerchantHintsPanel />
+          </div>
+        )}
 
           {/* Dev Dock at very bottom: only Planner DevTool */}
           {flags.dev && (

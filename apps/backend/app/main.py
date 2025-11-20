@@ -53,7 +53,6 @@ from app.routers import agent_tools_rules_apply_all as rules_apply_all_router
 from app.routers import agent_tools_meta as meta_router
 from app.routers import agent_tools_categorize as agent_tools_categorize_router
 from app.routers import categorize_admin as categorize_admin_router
-from app.routers import agent_tools_suggestions as agent_tools_suggestions_router
 from app.routers import suggestions as suggestions_router  # ML suggestions
 from app.routers import ml_status as ml_status_router  # ML status endpoint
 from app.routers import ml_feedback as ml_feedback_router  # ML feedback endpoint
@@ -576,7 +575,7 @@ try:
     app.include_router(agent_tools_rules_apply_all_router.router)
     app.include_router(agent_tools_budget_router.router)
     app.include_router(agent_tools_insights_router.router)
-    app.include_router(agent_tools_suggestions_router.router)
+
     app.include_router(suggestions_router.router)  # ML suggestions endpoints
     app.include_router(ml_status_router.router)  # ML status endpoint
     app.include_router(agent_actions_router.router)
@@ -975,7 +974,6 @@ app.include_router(agent_tools_rules_save.router)
 app.include_router(rules_crud_router.router)
 app.include_router(rules_apply_all_router.router)
 app.include_router(meta_router.router)
-app.include_router(agent_tools_suggestions_router.router)
 app.include_router(agent_tools_categorize_router.router)
 app.include_router(categorize_admin_router.router)
 app.include_router(meta.router)

@@ -87,18 +87,38 @@ click → category applied → row disappears → feedback logged → future sco
                                └───────────────────────┘
 ```
 
+## ML Feedback Learning Loop (Complete)
+
+### Real-time Scoring ✅
+- ✅ Implemented `ml_feedback_scores.py` (commit 086913f3)
+- ✅ Integrated into `categorize_suggest.py` (commit 0ebcc543)
+- ✅ Environment variable `ML_FEEDBACK_SCORES_ENABLED=1` (commit 190def0a)
+- ✅ Deployed and tested (IHOP example: 0.390 → 0.579 for restaurants)
+
+### Nightly Promotion Service ✅
+- ✅ Core service `ml_feedback_promote.py` (commit a239b424)
+- ✅ Admin API endpoint `/admin/ml-feedback/promote-hints`
+- ✅ CLI script `promote_feedback_to_hints.py`
+- ✅ Quality filters (min 2 accepts, 70% accept ratio, etc.)
+- ✅ Confidence calculation (4-factor formula)
+- ⏳ **Automated cron/GitHub Actions integration deferred to future sprint**
+
+**Current Automation Status:**
+- Manual runs: `docker exec ai-finance-backend python -m app.scripts.promote_feedback_to_hints`
+- API dry-run: `curl -X POST 'http://localhost:8000/admin/ml-feedback/promote-hints?dry_run=true'`
+
 ## Open Items
 
-1. **Wire feedback stats into suggestion scoring**
-   - ✅ Implemented `ml_feedback_scores.py` (commit 086913f3)
-   - ⏳ Call it from suggestions service when env flag enabled
-   - Add `ML_FEEDBACK_SCORES_ENABLED=1` to production environment
-
-2. **Migrations alignment**
+1. **Migrations alignment**
    - ⏳ Add Alembic migration that:
      - Creates `ml_feedback_events` and `ml_feedback_merchant_category_stats` if missing, OR
      - Marks them as present when they already exist.
    - Current status: Tables created via manual SQL (production-ready)
+
+2. **Automated promotion scheduling (future)**
+   - GitHub Actions workflow for nightly runs
+   - Health checks and alerting
+   - Metrics dashboard for promotion tracking
 
 3. **Deterministic Unknowns E2E data (optional)**
    - Add dev/test seed endpoint to create at least one uncategorized transaction.
@@ -128,9 +148,14 @@ click → category applied → row disappears → feedback logged → future sco
 | Frontend | ✅ Deployed | 73d58196 |
 | Backend (ML Feedback Router) | ✅ Deployed | c0272aa8 |
 | Backend (ML Feedback Models) | ✅ Deployed | 118262d8 |
-| Backend (ML Feedback Scoring) | ✅ Committed | 086913f3 |
+| Backend (ML Feedback Scoring) | ✅ Deployed | 086913f3 |
+| Scoring Integration | ✅ Deployed | 0ebcc543 |
+| Environment Variables | ✅ Deployed | 190def0a |
+| Promotion Service | ✅ Deployed | a239b424 |
 | Database Tables | ✅ Created | Manual SQL |
-| Scoring Integration | ⏳ Pending | - |
+| **Automated Cron** | ⏳ Future | - |
+
+**Latest Build:** 2025-11-20T21:38:20Z
 
 ## Maintenance Notes
 
@@ -141,7 +166,7 @@ click → category applied → row disappears → feedback logged → future sco
 **Database Monitoring:**
 ```sql
 -- Check recent feedback activity
-SELECT 
+SELECT
     merchant_normalized,
     category,
     accept_count,
@@ -154,6 +179,45 @@ LIMIT 20;
 -- Check total feedback events
 SELECT COUNT(*) FROM ml_feedback_events;
 SELECT action, COUNT(*) FROM ml_feedback_events GROUP BY action;
+
+-- View promoted hints from ML feedback
+SELECT
+    merchant_canonical,
+    category_slug,
+    source,
+    confidence,
+    updated_at
+FROM merchant_category_hints
+WHERE source = 'ml_feedback'
+ORDER BY updated_at DESC
+LIMIT 20;
+
+-- Check promotion candidates
+SELECT
+    merchant_normalized,
+    category,
+    accept_count,
+    reject_count,
+    ROUND(accept_count::numeric / NULLIF(accept_count + reject_count, 0), 2) as accept_ratio
+FROM ml_feedback_merchant_category_stats
+WHERE accept_count + reject_count >= 2
+ORDER BY (accept_count + reject_count) DESC;
+```
+
+**Manual Operations:**
+```bash
+# Run promotion service manually
+docker exec ai-finance-backend python -m app.scripts.promote_feedback_to_hints
+
+# Dry-run to preview what would be promoted
+curl -X POST 'http://localhost:8000/admin/ml-feedback/promote-hints?dry_run=true'
+
+# Check promotion results
+docker exec lm-postgres psql -U lm -d lm -c "
+  SELECT merchant_canonical, category_slug, confidence
+  FROM merchant_category_hints
+  WHERE source = 'ml_feedback'
+  ORDER BY updated_at DESC;"
 ```
 
 **Performance Considerations:**
@@ -161,6 +225,22 @@ SELECT action, COUNT(*) FROM ml_feedback_events GROUP BY action;
 - No N+1 queries even with many suggestions
 - Stats table has composite unique index on (merchant_normalized, category)
 - Feedback recording is fire-and-forget (never blocks categorization)
+- Promotion runs in single transaction with upsert semantics
+
+**Learning Pipeline:**
+```
+User Action → Feedback Event → Stats Aggregation → Real-time Scoring
+                                       ↓
+                              Manual Promotion Job (for now)
+                                       ↓
+                              Merchant Hints Created
+                                       ↓
+                         Future Suggestions Use Hints
+                                       ↓
+                              More User Feedback
+                                       ↓
+                                    LOOP
+```
 
 ## Future Enhancements
 
