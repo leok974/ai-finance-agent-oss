@@ -552,6 +552,13 @@ try:
 except Exception:
     pass
 
+# ML Feedback endpoint
+try:
+    app.include_router(ml_feedback_router.router, prefix="/api")
+except Exception as e:
+    logger.error(f"Failed to include ml_feedback router: {e}", exc_info=True)
+    pass
+
 # Session middleware already configured above (line ~328) - don't add duplicate
 
 # Mount RAG routers (no auth gating here; rely on global auth/CSRF config if needed)
@@ -571,7 +578,6 @@ try:
     app.include_router(agent_tools_suggestions_router.router)
     app.include_router(suggestions_router.router)  # ML suggestions endpoints
     app.include_router(ml_status_router.router)  # ML status endpoint
-    app.include_router(ml_feedback_router.router)  # ML feedback endpoint
     app.include_router(agent_actions_router.router)
 except Exception as e:
     logger.error(f"Failed to include agent_tools routers: {e}", exc_info=True)
