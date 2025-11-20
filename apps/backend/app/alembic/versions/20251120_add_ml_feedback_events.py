@@ -11,7 +11,7 @@ import sqlalchemy as sa
 
 
 revision = "20251120_add_ml_feedback_events"
-down_revision = "20250915_idx_enc_label"
+down_revision = "207f1bbd265a"
 branch_labels = None
 depends_on = None
 
