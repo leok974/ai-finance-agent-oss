@@ -3,10 +3,12 @@ import { applyCategory } from '@/lib/api';
 export default function SuggestionPill({
   txn,
   s,
+  disabled = false,
   onApplied,
 }: {
   txn: { id:number; merchant:string; merchant_canonical?:string; description:string; amount:number };
   s: { category_slug:string; label:string; score:number; why:string[] };
+  disabled?: boolean;
   onApplied: (id:number)=>void;
 }) {
   return (
@@ -18,9 +20,11 @@ export default function SuggestionPill({
         focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950
         transition-all duration-150 ease-out
         hover:-translate-y-[1px] cursor-pointer
+        disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0
       "
       title={(s.why || []).join(' • ')}
       data-testid="uncat-suggestion-chip"
+      disabled={disabled}
       onClick={async () => {
         await applyCategory(txn.id, s.category_slug);
         onApplied(txn.id);

@@ -667,7 +667,7 @@ export const fetchRuleSuggestConfig = () => {
 };
 
 // If you have explain/categorize helpers, keep them as-is
-export const categorizeTxn = (id: number, category: string) => http(`/txns/${id}/categorize`, {
+export const categorizeTxn = (id: number, category: string) => http(`txns/${id}/categorize`, {
   method: 'POST',
   body: JSON.stringify({ category, category_slug: category })
 })
