@@ -1,10 +1,15 @@
 """ML Feedback Router - Record user feedback on ML suggestions."""
+
 from datetime import datetime
 from typing import Literal, Optional
 
 import logging
-from fastapi import APIRouter, Request, status
+from fastapi import APIRouter, Depends, Request, status
 from pydantic import BaseModel, Field
+from sqlalchemy.orm import Session
+
+from app.db import get_db
+from app.models.ml_feedback import MlFeedbackEvent
 
 logger = logging.getLogger(__name__)
 
@@ -16,8 +21,9 @@ router = APIRouter(
 
 class MlFeedbackPayload(BaseModel):
     """
-    Payload sent from the frontend when a user accepts / rejects a model suggestion.
+    Feedback from the UI when a user interacts with ML suggestions.
     """
+
     txn_id: int = Field(..., ge=1)
     category: str = Field(..., min_length=1, max_length=128)
     action: Literal["accept", "reject", "undo"]
@@ -48,30 +54,46 @@ class MlFeedbackResponse(BaseModel):
     status_code=status.HTTP_202_ACCEPTED,
     response_model=MlFeedbackResponse,
 )
-async def ml_feedback(request: Request, payload: MlFeedbackPayload) -> MlFeedbackResponse:
+async def ml_feedback(
+    request: Request,
+    payload: MlFeedbackPayload,
+    db: Session = Depends(get_db),
+) -> MlFeedbackResponse:
     """
-    Record ML feedback when the user accepts / rejects a suggestion.
+    Record ML feedback and lightly update merchant/category priors.
 
-    For now this writes to logs; you can later pipe these logs to your
-    warehouse / training pipeline, or persist to a DB table.
+    This endpoint is *fire-and-forget* from the UI perspective – it should
+    never block or break the main categorization flow.
     """
-    ts = datetime.utcnow().isoformat()
+    user_id = getattr(request.state, "user_id", None)
+
+    event = MlFeedbackEvent(
+        txn_id=payload.txn_id,
+        user_id=user_id,
+        category=payload.category,
+        action=payload.action,
+        score=payload.score,
+        model=payload.model,
+        source=payload.source or "unknowns-panel",
+    )
+    db.add(event)
+
+    # Update aggregate stats used by the suggester
+    event.apply_to_stats(db)
+
+    db.commit()
 
     logger.info(
         "ml_feedback_event",
         extra={
             "txn_id": payload.txn_id,
+            "user_id": str(user_id) if user_id else None,
             "category": payload.category,
             "action": payload.action,
             "score": payload.score,
             "model": payload.model,
             "source": payload.source or "unknowns-panel",
-            "ts": ts,
-            # You can add more context here later (user_id, request_id, etc.)
         },
     )
-
-    # If you later want DB persistence, this is where you'd insert a row
-    # into an ml_feedback_events table.
 
     return MlFeedbackResponse(ok=True)
