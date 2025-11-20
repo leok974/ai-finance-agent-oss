@@ -1,7 +1,10 @@
 # ✅ DEPLOYMENT COMPLETE - v2 Image with pgvector + NIM
 
+> **⚠️ OUTDATED:** This document describes a Kubernetes-based deployment from November 2025.
+> **LedgerMind no longer uses Kubernetes in production.** See [DEPLOY.md](./DEPLOY.md) for current Docker Compose deployment instructions.
+
 **Date:** November 2, 2025 9:15 PM EST
-**Status:** 🎉 PRODUCTION UPDATED WITH LATEST CODE
+**Status:** 🎉 PRODUCTION UPDATED WITH LATEST CODE (HISTORICAL)
 
 ---
 
