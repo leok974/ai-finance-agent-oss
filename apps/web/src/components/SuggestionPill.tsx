@@ -20,6 +20,7 @@ export default function SuggestionPill({
         hover:-translate-y-[1px] cursor-pointer
       "
       title={(s.why || []).join(' • ')}
+      data-testid="uncat-suggestion-chip"
       onClick={async () => {
         await applyCategory(txn.id, s.category_slug);
         onApplied(txn.id);

@@ -96,6 +96,7 @@ export default function UnknownsPanel({ month, onSeedRule: _onSeedRule, onChange
     data-explain-key="cards.unknowns"
   data-help-key="cards.unknowns"
   data-help-id={currentMonth || month}
+    data-testid="uncat-card-root"
   >
   <Card title={t('ui.cards.unknowns_title', { month: resolvedMonth })} className="border-0 bg-transparent shadow-none p-0">
   {loading && (
@@ -141,7 +142,11 @@ export default function UnknownsPanel({ month, onSeedRule: _onSeedRule, onChange
       </div>
   <ul className="space-y-2">
         {items.map(tx => (
-      <li key={tx.id} className="panel-tight md:p-5 lg:p-6">
+      <li
+        key={tx.id}
+        className="panel-tight md:p-5 lg:p-6"
+        data-testid="uncat-transaction-row"
+      >
             <div className="flex items-center justify-between">
               <div>
                 <div className="font-medium">{tx.merchant ?? '—'}</div>
@@ -161,6 +166,7 @@ export default function UnknownsPanel({ month, onSeedRule: _onSeedRule, onChange
                     size="sm"
                     onClick={()=> seedRuleFromRow(tx)}
                     aria-label={t('ui.unknowns.seed_rule_aria')}
+                    data-testid="uncat-seed-rule"
                   >
                     {t('ui.unknowns.seed_rule')}
                   </Button>
