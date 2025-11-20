@@ -70,6 +70,7 @@ from .routers import dev as dev_router
 from app.routers import metrics as metrics_router
 from app.routers import admin as admin_router
 from app.routers import admin_maintenance as admin_maintenance_router
+from app.routers import admin_ml_feedback as admin_ml_feedback_router
 from .routers import health as health_router
 from .routers import agent_plan as agent_plan_router
 from app.routers import rag as rag_router
@@ -1002,6 +1003,7 @@ app.include_router(config_router)  # /config endpoint
 app.include_router(metrics_router.router)  # /api/metrics endpoint
 app.include_router(admin_router.router)
 app.include_router(admin_maintenance_router.router)  # Admin maintenance endpoints
+app.include_router(admin_ml_feedback_router.router)  # Admin ML feedback management
 
 # Optional auth debug router (diagnostics). Enable with ENABLE_AUTH_DEBUG=1 or DEBUG truthy.
 try:
