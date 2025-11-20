@@ -76,10 +76,12 @@ export default function UnknownsPanel({ month, onSeedRule: _onSeedRule, onChange
   }, [items])
 
   const onSuggestionApplied = (id: number, category: string) => {
+    console.log('[UnknownsPanel] onSuggestionApplied called:', { id, category })
     // 1) Immediately hide this txn from the UI
     setDismissedTxnIds((prev) => {
       const next = new Set(prev)
       next.add(id)
+      console.log('[UnknownsPanel] dismissedTxnIds updated:', Array.from(next))
       return next
     })
 
@@ -173,14 +175,19 @@ export default function UnknownsPanel({ month, onSeedRule: _onSeedRule, onChange
   <div className="text-xs opacity-70">{t('ui.unknowns.workflow_hint')}</div>
       </div>
   <ul className="space-y-2">
-        {items
-          .filter((item) => !dismissedTxnIds.has(item.id))
-          .map(tx => (
-      <li
-        key={tx.id}
-        className="panel-tight md:p-5 lg:p-6"
-        data-testid="uncat-transaction-row"
-      >
+        {(() => {
+          const filtered = items.filter((item) => !dismissedTxnIds.has(item.id))
+          console.log('[UnknownsPanel] Rendering:', {
+            totalItems: items.length,
+            dismissedIds: Array.from(dismissedTxnIds),
+            filteredCount: filtered.length
+          })
+          return filtered.map(tx => (
+            <li
+              key={tx.id}
+              className="panel-tight md:p-5 lg:p-6"
+              data-testid="uncat-transaction-row"
+            >
             <div className="flex items-center justify-between">
               <div>
                 <div className="font-medium">{tx.merchant ?? '—'}</div>
@@ -245,7 +252,8 @@ export default function UnknownsPanel({ month, onSeedRule: _onSeedRule, onChange
               {learned[tx.id] && <LearnedBadge />}
             </div>
           </li>
-        ))}
+          ))
+        })()}
       </ul>
   <ExplainSignalDrawer
     txnId={explainTxnId}
