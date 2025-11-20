@@ -49,7 +49,10 @@ export default function SuggestionPill({
       title={(s.why || []).join(' • ')}
       data-testid="uncat-suggestion-chip"
       disabled={disabled}
-      onClick={handleClick}
+      onClick={(e) => {
+        console.log('[SuggestionPill] ONCLICK FIRED!', { txnId: txn.id, category: s.category_slug, disabled });
+        handleClick();
+      }}
     >
       <span className="font-medium">{s.label}</span>
       <span className="opacity-70">{Math.round(s.score * 100)}%</span>
