@@ -1,0 +1,114 @@
+{
+  "project": "LedgerMind",
+  "snapshot_version": 4,
+  "date": "2025-11-20",
+  "feature": "Unknowns Suggestions – ML Feedback Scoring + Auto-Hints",
+  "env": {
+    "app_url": "https://app.ledger-mind.org",
+    "backend_container": "ai-finance-backend",
+    "db_container": "lm-postgres",
+    "db_name": "lm",
+    "flags": {
+      "ML_FEEDBACK_SCORES_ENABLED": "1"
+    }
+  },
+  "data_model": {
+    "events_table": "ml_feedback_events",
+    "stats_table": "ml_feedback_merchant_category_stats",
+    "hints_table": "merchant_category_hints",
+    "keys": {
+      "feedback": "(merchant_normalized, category)",
+      "hints": "(merchant_canonical, category_slug)"
+    }
+  },
+  "runtime_learning": {
+    "flow": [
+      "User clicks suggestion chip on Unknowns card",
+      "Frontend: POST /api/txns/{id}/categorize",
+      "Frontend (fire-and-forget): POST /api/ml/feedback { txn_id, category, action }",
+      "Backend: insert ml_feedback_events row",
+      "Backend: update ml_feedback_merchant_category_stats aggregate",
+      "Next /agent/tools/categorize/suggest/batch call: load stats, adjust scores via ml_feedback_scores, re-sort suggestions"
+    ],
+    "scoring_module": "apps/backend/app/services/ml_feedback_scores.py",
+    "scoring_formula": "final_score = base_score + 0.20*log1p(accept_count) - 0.30*log1p(reject_count) + recency_bonus (clamped)",
+    "integration": "categorize_suggest service adjusts suggestion.score when ML_FEEDBACK_SCORES_ENABLED=1",
+    "observed_example": {
+      "merchant": "ihop 2009 gainesville",
+      "txn_id": 1458,
+      "before": {
+        "restaurants": 0.390,
+        "groceries": 0.260
+      },
+      "feedback": {
+        "restaurants": { "accept_count": 1, "reject_count": 0 },
+        "groceries": { "accept_count": 0, "reject_count": 2 }
+      },
+      "after": {
+        "restaurants": 0.579,
+        "groceries": -0.020,
+        "why_sample": "ml_feedback_adjusted(0.390→0.579)"
+      }
+    },
+    "constraint": "Feedback scoring only adjusts suggestions that actually exist (rules / hints / ML). Pure fallback priors are not currently adjusted."
+  },
+  "promotion_job": {
+    "service": "apps/backend/app/services/ml_feedback_promote.py",
+    "cli_script": "apps/backend/app/scripts/promote_feedback_to_hints.py",
+    "admin_endpoint": "POST /admin/ml-feedback/promote-hints?dry_run={true|false}",
+    "criteria": {
+      "min_total_feedback": 2,
+      "min_accepts": 2,
+      "min_accept_ratio": 0.7,
+      "max_reject_ratio": 0.3
+    },
+    "confidence_formula": {
+      "base": "0.4 + 0.4 * accept_ratio",
+      "volume_bonus": "min(0.2, 0.1 * log1p(total))",
+      "recency_bonus": "+0.05 if last_feedback_at within 30 days",
+      "reject_penalty": "0.3 * reject_ratio",
+      "range": "[0.0, 0.99]"
+    },
+    "effects": [
+      "For each strong (merchant_normalized, category) pair, upsert merchant_category_hints row with source='ml_feedback' and computed confidence.",
+      "Hints raised by promotion then feed into the base suggestion pipeline, so future Unknowns for that merchant start with smarter suggestions."
+    ],
+    "last_run_example": {
+      "promoted_count": 0,
+      "skipped_example_reason": "insufficient_accepts (test groceries reject candidate with < 2 accepts)"
+    },
+    "automation_status": "MANUAL - CLI script available, cron/GitHub Actions integration deferred to future sprint"
+  },
+  "complete_loop": [
+    "1. User interacts with Unknowns suggestions.",
+    "2. Feedback events logged (ml_feedback_events).",
+    "3. Stats aggregated per (merchant_normalized, category) (ml_feedback_merchant_category_stats).",
+    "4. Suggestion scores adjusted in real-time via ml_feedback_scores.",
+    "5. Nightly job promotes strong patterns to merchant_category_hints (manual runs for now).",
+    "6. Future suggestions start from hints that reflect learned behavior."
+  ],
+  "deployment": {
+    "commits": [
+      "419c0b00 - ML feedback endpoint (logging-only)",
+      "118262d8 - ML feedback models",
+      "5d3cd51d - Migration fix",
+      "c0272aa8 - Router /api prefix fix",
+      "086913f3 - ML feedback scoring module + tests",
+      "0ebcc543 - Scoring integration into suggestions",
+      "190def0a - Environment variable ML_FEEDBACK_SCORES_ENABLED",
+      "a239b424 - Nightly promotion service (service/API/CLI)"
+    ],
+    "deployed_at": "2025-11-20T21:38:20Z",
+    "branch": "feat/excel-upload-polish",
+    "build_metadata": {
+      "backend": "2025-11-20T21:13:38Z",
+      "frontend": "feat/chart-readability-improvements@54735982"
+    }
+  },
+  "manual_operations": {
+    "run_promotion": "docker exec ai-finance-backend python -m app.scripts.promote_feedback_to_hints",
+    "dry_run": "curl -X POST 'http://localhost:8000/admin/ml-feedback/promote-hints?dry_run=true'",
+    "check_hints": "docker exec lm-postgres psql -U lm -d lm -c \"SELECT merchant_canonical, category_slug, source, confidence FROM merchant_category_hints WHERE source = 'ml_feedback' ORDER BY updated_at DESC LIMIT 20;\"",
+    "view_candidates": "docker exec lm-postgres psql -U lm -d lm -c \"SELECT merchant_normalized, category, accept_count, reject_count FROM ml_feedback_merchant_category_stats WHERE accept_count + reject_count >= 2 ORDER BY (accept_count + reject_count) DESC;\""
+  }
+}
