@@ -121,11 +121,9 @@ export default function UnknownsPanel({ month, onSeedRule: _onSeedRule, onChange
     onChanged?.()
     ok?.(t('ui.toast.category_applied', { category }))
 
-    // 4) 🔑 Slow refresh so backend has time to finish applyCategory
-    setTimeout(() => {
-      refresh()
-      scheduleUnknownsRefresh()
-    }, 2000)
+    // 4) Do NOT refresh - let the dismissal be client-side permanent
+    // User can manually refresh the page if they want to see updated backend state
+    // scheduleUnknownsRefresh is also skipped to prevent race conditions
   }
 
   const resolvedMonth = (currentMonth ?? month) || '(latest)'
