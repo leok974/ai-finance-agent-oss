@@ -803,6 +803,23 @@ export async function getRules(params: GetRulesParams = {}): Promise<GetRulesRes
 export const listRules = getRules;
 // New brief list endpoint returning items[] with optional active filter
 export const deleteRule = (id: number) => http(`/rules/${id}`, { method: 'DELETE' });
+
+// Update rule (e.g., toggle active state)
+export async function updateRule(id: number, body: Partial<RuleInput>): Promise<Rule> {
+  try {
+    const data = await fetchJSON(`rules/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    });
+    return data as Rule;
+  } catch (error) {
+    if (error instanceof Error) {
+      throw error;
+    }
+    throw new Error(`updateRule failed: ${String(error)}`);
+  }
+}
+
 // Enhanced createRule with richer FastAPI error reporting (e.g., 422 validation errors)
 // Per project instructions: use relative path 'rules' (no /api/ prefix)
 export async function createRule(body: RuleInput): Promise<RuleCreateResponse> {

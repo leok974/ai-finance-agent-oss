@@ -19,15 +19,19 @@ import {
   AvatarFallback,
   AvatarImage,
 } from "@/components/ui/avatar";
-import { LogOut, User2, Copy, Check } from "lucide-react";
+import { LogOut, User2, Copy, Check, Settings } from "lucide-react";
 import { useState } from "react";
+
+interface AuthMenuProps {
+  onOpenSettings?: () => void;
+}
 
 /**
  * AuthMenu for production:
  * - Unauthenticated: Google OAuth button with logo
  * - Authenticated: User avatar/icon button with dropdown menu
  */
-export default function AuthMenu() {
+export default function AuthMenu({ onOpenSettings }: AuthMenuProps = {}) {
   const { user } = useAuth();
   const [emailCopied, setEmailCopied] = useState(false);
   const googleHref = "/api/auth/google/login";
@@ -144,6 +148,16 @@ export default function AuthMenu() {
         </div>
 
         <DropdownMenuSeparator className="my-1 bg-slate-700/80" />
+
+        <DropdownMenuItem
+          onClick={onOpenSettings}
+          className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-[13px] text-slate-100 hover:bg-slate-800/90 focus:bg-slate-800/90"
+          data-testid="account-menu-settings"
+        >
+          <Settings className="h-3.5 w-3.5 opacity-80" />
+          <span className="flex-1">Settings</span>
+          <span className="text-[10px] uppercase tracking-wide text-slate-500">Rules</span>
+        </DropdownMenuItem>
 
         <DropdownMenuItem
           onClick={handleCopyEmail}
