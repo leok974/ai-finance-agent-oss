@@ -274,37 +274,42 @@ services:
       sh -c 'while :; do sleep 12h; docker exec "$NGINX_CONTAINER" nginx -s reload || true; done'
     restart: unless-stopped
 
-  cloudflared:
-    # AI/COPILOT: Service name MUST remain "cloudflared".
-    # Health monitoring and configs reference this name.
-    image: cloudflare/cloudflared:latest
-    command: tunnel run
-    # Using credentials-file mode via mounted config/credentials. Remove token env to avoid ambiguity.
-    # environment:
-    #   TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
-    volumes:
-      - ./cloudflared:/etc/cloudflared:ro
-    ports:
-      - "2000:2000" # expose metrics for strict verification
-    depends_on:
-      nginx:
-        condition: service_healthy
-    # Note: healthcheck disabled - cloudflared image lacks shell/wget/curl
-    # Tunnel status visible via metrics at localhost:2000/metrics (cloudflared_tunnel_ha_connections)
-    restart: unless-stopped
-    networks:
-      - infra_net
-      - shared-ollama
+  # cloudflared:
+  #   # AI/COPILOT: Service name MUST remain "cloudflared".
+  #   # Health monitoring and configs reference this name.
+  #   # ⚠️ DISABLED: Redundant local cloudflared causing race condition with remote CF tunnel.
+  #   # The remote tunnel already routes to ledgermind-web.int and ledgermind-api.int.
+  #   # See: LedgerMind tunnel stabilization (2025-01)
+  #   image: cloudflare/cloudflared:latest
+  #   command: tunnel run
+  #   # Using credentials-file mode via mounted config/credentials. Remove token env to avoid ambiguity.
+  #   # environment:
+  #   #   TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
+  #   volumes:
+  #     - ./cloudflared:/etc/cloudflared:ro
+  #   ports:
+  #     - "2000:2000" # expose metrics for strict verification
+  #   depends_on:
+  #     nginx:
+  #       condition: service_healthy
+  #   # Note: healthcheck disabled - cloudflared image lacks shell/wget/curl
+  #   # Tunnel status visible via metrics at localhost:2000/metrics (cloudflared_tunnel_ha_connections)
+  #   restart: unless-stopped
+  #   networks:
+  #     - infra_net
+  #     - shared-ollama
 
-  cf-health:
-    image: curlimages/curl:8.10.1
-    command: sh -lc "while :; do curl -sf http://cloudflared:2000/metrics | grep -q cloudflared_tunnel_ha_connections || exit 1; sleep 30; done"
-    depends_on:
-      cloudflared:
-        condition: service_started
-    restart: unless-stopped
-    networks:
-      - shared-ollama
+  # cf-health:
+  #   # ⚠️ DISABLED: Depends on local cloudflared which has been disabled.
+  #   # See: LedgerMind tunnel stabilization (2025-01)
+  #   image: curlimages/curl:8.10.1
+  #   command: sh -lc "while :; do curl -sf http://cloudflared:2000/metrics | grep -q cloudflared_tunnel_ha_connections || exit 1; sleep 30; done"
+  #   depends_on:
+  #     cloudflared:
+  #       condition: service_started
+  #   restart: unless-stopped
+  #   networks:
+  #     - shared-ollama
 
   # Local models runtime (pull & serve models via Ollama API)
   ollama:
