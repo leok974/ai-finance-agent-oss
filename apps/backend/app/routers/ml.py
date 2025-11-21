@@ -10,9 +10,9 @@ from app.services.ml_suggest import suggest_for_unknowns
 from app.services import rule_suggestions
 from app.services.ml_train import incremental_update, train_on_db
 from app.services.ml_train_service import incremental_update_rows, latest_model_path
+from app.utils.csrf import csrf_protect
 
 router = APIRouter()
-from app.utils.csrf import csrf_protect
 
 
 def _fetch_txn_row(db: Session, any_id: int):
