@@ -115,7 +115,7 @@ export function useMLSuggestions(
 
   const getSuggestionsForTransaction = useCallback(
     (txnId: number) => {
-      return state.items.get(txnId);
+      return state.items.get(txnId) || [];
     },
     [state.items]
   );
