@@ -37,6 +37,7 @@ vi.mock('@/lib/api', () => ({
 // Mock the suggestForTxnBatch API
 vi.mock('@/api', () => ({
   mlFeedback: vi.fn().mockResolvedValue(undefined),
+  categorizeTxn: vi.fn().mockResolvedValue({ success: true }),
   suggestForTxnBatch: vi.fn().mockResolvedValue({
     items: [
       {
@@ -160,15 +161,54 @@ vi.mock('@/lib/i18n', () => ({
   t: (key: string) => key,
 }));
 
+// Import RuleSeedProvider
+import { RuleSeedProvider } from '@/hooks/useRuleSeed';
+
 describe('UnknownsPanel – suggestion chips', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Note: We can't easily reset dismissedTxnIdsForSession (module-level Set)
+    // Tests must be order-independent or use different transaction IDs
   });
 
+  // Run non-interactive tests first (before any mutations to dismissedTxnIdsForSession)
+  it('renders transaction details correctly', async () => {
+    render(
+      <RuleSeedProvider>
+        <UnknownsPanel />
+      </RuleSeedProvider>
+    );
+
+    // Wait for transaction to be visible
+    await waitFor(() => {
+      expect(screen.getByText('Test Merchant')).toBeInTheDocument();
+    });
+    expect(screen.getByText('$-42.00')).toBeInTheDocument(); // Amount is negative
+  });
+
+  it('renders suggestion chip with correct label and score', async () => {
+    render(
+      <RuleSeedProvider>
+        <UnknownsPanel />
+      </RuleSeedProvider>
+    );
+
+    // Wait for chip to appear (loaded asynchronously)
+    const chip = await screen.findByTestId('uncat-suggestion-chip', {}, { timeout: 3000 });
+    expect(chip).toBeInTheDocument();
+    expect(chip).toHaveTextContent('Groceries');
+    expect(chip).toHaveTextContent('90%');
+  });
+
+  // Run interactive test last (mutates dismissedTxnIdsForSession)
   it('hides the row after clicking a suggestion chip', async () => {
     const user = userEvent.setup();
 
-    render(<UnknownsPanel />);
+    render(
+      <RuleSeedProvider>
+        <UnknownsPanel />
+      </RuleSeedProvider>
+    );
 
     // Initially: one row visible
     const rows = screen.getAllByTestId('uncat-transaction-row');
@@ -176,7 +216,7 @@ describe('UnknownsPanel – suggestion chips', () => {
 
     // Wait for suggestions to load
     const chip = await screen.findByTestId('uncat-suggestion-chip', {}, { timeout: 3000 });
-    
+
     // Click the chip
     await user.click(chip);
 
@@ -188,22 +228,5 @@ describe('UnknownsPanel – suggestion chips', () => {
       },
       { timeout: 5000 }
     );
-  });
-
-  it('renders transaction details correctly', () => {
-    render(<UnknownsPanel />);
-
-    // Check that transaction data is displayed
-    expect(screen.getByText('Test Merchant')).toBeInTheDocument();
-    expect(screen.getByText('$42.00')).toBeInTheDocument();
-  });
-
-  it('renders suggestion chip with correct label and score', () => {
-    render(<UnknownsPanel />);
-
-    const chip = screen.getByTestId('uncat-suggestion-chip');
-    expect(chip).toBeInTheDocument();
-    expect(chip).toHaveTextContent('Groceries');
-    expect(chip).toHaveTextContent('90%');
   });
 });
