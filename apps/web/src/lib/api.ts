@@ -1453,8 +1453,8 @@ export type ExplainResponse = {
   evidence?: ExplainSignalData['evidence'];
 };
 export async function getExplain(txnId: number | string, opts?: { use_llm?: boolean }) {
-  const use = opts?.use_llm ? '?use_llm=1' : '';
-  return http<ExplainResponse>(`/txns/${encodeURIComponent(String(txnId))}/explain${use}`);
+  const query = opts?.use_llm ? { use_llm: 1 } : undefined;
+  return fetchJSON<ExplainResponse>(`txns/${encodeURIComponent(String(txnId))}/explain`, { query });
 }
 export async function explainTxnForChat(txnId: number | string) {
   return getExplain(txnId, { use_llm: true });
