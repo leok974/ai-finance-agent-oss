@@ -5,6 +5,10 @@ export type ChipAction =
   | { type: "nl_search"; query: string; presetText?: string }
   | { type: "nl_search_filters"; filters: unknown; presetText?: string }
   | { type: "toggle"; key: "insightsExpanded" }
+  | { type: "insights_tool"; month?: string; presetText?: string }
+  | { type: "budget_tool"; month?: string; presetText?: string }
+  | { type: "analytics_recurring"; month?: string; presetText?: string }
+  | { type: "find_subscriptions"; month?: string; presetText?: string }
   | { type: "nav"; href: string };
 
 export type QuickChipItem = { label: string; action: ChipAction; presetText?: string };

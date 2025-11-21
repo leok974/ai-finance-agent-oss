@@ -7,6 +7,10 @@ export const EXAMPLES: { label: string; action: ChipAction }[] = [
   { label: "Delta in Aug 2025", action: { type: "nl_search", query: "Delta in Aug 2025", presetText: "Delta in Aug 2025" } },
   { label: "Transactions > $50 last 90 days", action: { type: "nl_search", query: "transactions > $50 last 90 days", presetText: "Transactions > $50 last 90 days" } },
   { label: "Refunds last month", action: { type: "nl_search", query: "refunds last month", presetText: "Refunds last month" } },
+  { label: "Insights (Q)", action: { type: "insights_tool", presetText: "Show me expanded insights for this month." } },
+  { label: "Budget Suggest", action: { type: "budget_tool", presetText: "Suggest a budget based on my recent spending." } },
+  { label: "Recurring", action: { type: "analytics_recurring", presetText: "Show my recurring subscriptions and bills." } },
+  { label: "Find subscriptions", action: { type: "find_subscriptions", presetText: "Scan my transactions and find subscriptions." } },
 ];
 
 type TransactionsPayload = { query?: string; filters?: any; presetText?: string };
@@ -53,6 +57,14 @@ if (typeof window !== "undefined") {
           void handleTransactionsNL({ query: action.query, presetText: action.presetText });
         } else if (action.type === "nl_search_filters") {
           void handleTransactionsNL({ filters: action.filters, presetText: action.presetText });
+        } else if (action.type === "insights_tool") {
+          void callTool("insights_expanded", { month: action.month, presetText: action.presetText });
+        } else if (action.type === "budget_tool") {
+          void callTool("budget_suggest", { month: action.month, presetText: action.presetText });
+        } else if (action.type === "analytics_recurring") {
+          void callTool("analytics_recurring", { month: action.month, presetText: action.presetText });
+        } else if (action.type === "find_subscriptions") {
+          void callTool("find_subscriptions", { month: action.month, presetText: action.presetText });
         } else if (action.type === "toggle" && action.key === "insightsExpanded") {
           document.querySelector<HTMLButtonElement>("#toggle-insights-expanded")?.click();
           if (lastTransactionsPayload) {

@@ -185,6 +185,7 @@ else:
     from app.services.agent.analytics_tag import tag_if_analytics
     import app.analytics_emit as analytics_emit
     from app.services import rag_tools
+    from app.agent.modes_finance import MODE_HANDLERS
 
     router = APIRouter()  # real router only in non‑hermetic mode
 
@@ -1087,6 +1088,85 @@ def agent_chat(
                         "used_context": {"month": ctx.get("month")},
                         "tool_trace": [
                             {"tool": "rag", "status": "error", "error": error_msg}
+                        ],
+                        "model": "deterministic",
+                    }
+                    if request is not None:
+                        request.state.llm_path = "router"
+
+            # 1.5) Finance mode handlers (deterministic, data-driven responses)
+            if resp is None and effective_mode in MODE_HANDLERS:
+                try:
+                    import httpx
+                    import asyncio
+                    from app.utils.auth import get_current_user
+
+                    # Get current user for authenticated API calls
+                    user = None
+                    if request:
+                        try:
+                            user = get_current_user(request, db=db)
+                        except Exception:
+                            pass
+
+                    # Define async wrapper for mode handler call
+                    async def call_mode_handler():
+                        async with httpx.AsyncClient(
+                            base_url=settings.INTERNAL_API_ROOT,
+                            headers={"User-Agent": "LedgerMind/Agent"},
+                            timeout=15.0,
+                        ) as client:
+                            handler = MODE_HANDLERS[effective_mode]
+                            month = ctx.get("month", "")
+                            return await handler(
+                                month, client, user_context={"user": user, "db": db}
+                            )
+
+                    # Run async handler in sync context
+                    try:
+                        loop = asyncio.get_event_loop()
+                        if loop.is_running():
+                            message = asyncio.run(call_mode_handler())
+                        else:
+                            message = loop.run_until_complete(call_mode_handler())
+                    except RuntimeError:
+                        message = asyncio.run(call_mode_handler())
+
+                    resp = {
+                        "ok": True,
+                        "mode": effective_mode,
+                        "reply": message,
+                        "message": message,
+                        "citations": [{"type": "finance_mode", "mode": effective_mode}],
+                        "used_context": {"month": ctx.get("month")},
+                        "tool_trace": [
+                            {
+                                "tool": "finance_mode",
+                                "mode": effective_mode,
+                                "status": "ok",
+                            }
+                        ],
+                        "model": "deterministic",
+                    }
+                    if request is not None:
+                        request.state.llm_path = "router"
+                except Exception as e:
+                    error_msg = str(e)
+                    message = f"⚠️ Finance mode {effective_mode} failed: {error_msg}"
+                    resp = {
+                        "ok": False,
+                        "mode": "error",
+                        "reply": message,
+                        "message": message,
+                        "error": error_msg,
+                        "used_context": {"month": ctx.get("month")},
+                        "tool_trace": [
+                            {
+                                "tool": "finance_mode",
+                                "mode": effective_mode,
+                                "status": "error",
+                                "error": error_msg,
+                            }
                         ],
                         "model": "deterministic",
                     }
