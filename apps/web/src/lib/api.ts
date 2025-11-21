@@ -1052,6 +1052,135 @@ export const searchTransactionsNl = async (
   });
 };
 
+// Insights expanded tool types
+export type InsightsExpandedRequest = {
+  month?: string | null;
+  large_limit?: number;
+  status?: 'all' | 'posted' | 'pending';
+};
+
+export type InsightsExpandedResponse = {
+  reply: string;
+  month: string;
+  summary: { income: number; spend: number; net: number } | null;
+  mom: {
+    income: { curr: number; prev: number; delta: number; pct: number | null };
+    spend: { curr: number; prev: number; delta: number; pct: number | null };
+    net: { curr: number; prev: number; delta: number; pct: number | null };
+  } | null;
+  unknown_spend: { count: number; amount: number } | null;
+  top_categories: Array<{ category: string; amount: number }>;
+  top_merchants: Array<{ merchant: string; amount: number }>;
+  large_transactions: Array<{
+    id: number;
+    date: string | null;
+    merchant: string;
+    description: string;
+    amount: number;
+    category: string | null;
+  }>;
+  anomalies: {
+    categories: Array<{ key: string; curr: number; prev: number; delta: number; pct: number | null }>;
+    merchants: Array<{ key: string; curr: number; prev: number; delta: number; pct: number | null }>;
+  };
+};
+
+export const insightsExpanded = async (
+  month?: string | null,
+  largeLimit: number = 10
+): Promise<InsightsExpandedResponse> => {
+  return fetchJSON<InsightsExpandedResponse>('agent/tools/insights/expanded', {
+    method: 'POST',
+    body: JSON.stringify({ month, large_limit: largeLimit, status: 'posted' }),
+  });
+};
+
+// Budget suggest tool types
+export type BudgetSuggestRequest = {
+  month?: string | null;
+};
+
+export type BudgetCategorySuggestion = {
+  category_slug: string;
+  category_label: string;
+  spend: number;
+  suggested: number;
+};
+
+export type BudgetSuggestResponse = {
+  reply: string;
+  month: string;
+  total_spend: number;
+  suggested_budget: number;
+  categories: BudgetCategorySuggestion[];
+};
+
+export const budgetSuggest = async (
+  month?: string | null
+): Promise<BudgetSuggestResponse> => {
+  return fetchJSON<BudgetSuggestResponse>('agent/tools/analytics/budget/suggest', {
+    method: 'POST',
+    body: JSON.stringify({ month }),
+  });
+};
+
+// Recurring tool types
+export type RecurringToolRequest = {
+  month?: string | null;
+};
+
+export type RecurringItem = {
+  merchant: string;
+  amount: number;
+  category_slug?: string | null;
+  average_interval_days?: number | null;
+  last_seen?: string | null;
+};
+
+export type RecurringToolResponse = {
+  reply: string;
+  month: string;
+  recurring: RecurringItem[];
+};
+
+export const recurringTool = async (
+  month?: string | null
+): Promise<RecurringToolResponse> => {
+  return fetchJSON<RecurringToolResponse>('agent/tools/analytics/recurring', {
+    method: 'POST',
+    body: JSON.stringify({ month }),
+  });
+};
+
+// Find subscriptions tool types
+export type FindSubscriptionsToolRequest = {
+  month?: string | null;
+};
+
+export type SubscriptionItem = {
+  merchant: string;
+  amount: number;
+  category_slug?: string | null;
+  first_seen?: string | null;
+  last_seen?: string | null;
+  txn_count: number;
+};
+
+export type FindSubscriptionsToolResponse = {
+  reply: string;
+  month: string;
+  subscriptions: SubscriptionItem[];
+};
+
+export const findSubscriptionsTool = async (
+  month?: string | null
+): Promise<FindSubscriptionsToolResponse> => {
+  return fetchJSON<FindSubscriptionsToolResponse>('agent/tools/analytics/subscriptions/find', {
+    method: 'POST',
+    body: JSON.stringify({ month }),
+  });
+};
+
 export type TxnQueryResult =
   | { intent: "sum"; filters: Record<string, unknown>; result: { total_abs: number }; meta?: Record<string, unknown> }
   | { intent: "count"; filters: Record<string, unknown>; result: { count: number }; meta?: Record<string, unknown> }

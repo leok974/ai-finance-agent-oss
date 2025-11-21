@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from app.db import get_db
 from app.transactions import Transaction
 from app.services.insights_expanded import build_expanded_insights
-from app.deps.auth_guard import get_current_user_id
+from app.utils.auth import get_current_user
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/agent/tools/insights", tags=["agent-tools:insights"])
@@ -84,32 +84,114 @@ class ExpandedIn(BaseModel):
 @router.post("/expanded")
 def insights_expanded(
     body: ExpandedIn,
+    user=Depends(get_current_user),
     db: Session = Depends(get_db),
-    user_id: int = Depends(get_current_user_id),
 ) -> Dict[str, Any]:
     try:
-        result = build_expanded_insights(
+        data = build_expanded_insights(
             db=db,
             month=body.month,
             status=body.status,
             large_limit=body.large_limit or 10,
         )
+
         # If service returns None/empty, provide safe fallback
-        if not result:
+        if not data or not data.get("month"):
             return {
                 "month": body.month or "",
+                "reply": "No data available for this month.",
+                "summary": None,
+                "mom": None,
+                "unknown_spend": None,
+                "top_categories": [],
                 "top_merchants": [],
-                "unknown_spend": 0.0,
-                "stats": {"count": 0, "total": 0.0},
+                "large_transactions": [],
+                "anomalies": {"categories": [], "merchants": []},
             }
-        return result
+
+        # Compose a data-driven reply suitable for chat
+        reply_lines = [
+            f"Expanded insights for {data['month']}:",
+            "",
+        ]
+
+        # Summary stats
+        summary = data.get("summary") or {}
+        spend = summary.get("spend", 0.0)
+        income = summary.get("income", 0.0)
+        net = summary.get("net", 0.0)
+
+        reply_lines.append(f"- Spend: ${spend:.2f}")
+        reply_lines.append(f"- Income: ${income:.2f}")
+        reply_lines.append(f"- Net: ${net:.2f}")
+
+        # MoM comparison if available
+        mom = data.get("mom")
+        if mom:
+            spend_delta = mom.get("spend", {}).get("delta", 0.0)
+            spend_pct = mom.get("spend", {}).get("pct")
+            if spend_pct is not None:
+                reply_lines.append(
+                    f"- vs prev month: {spend_delta:+.2f} ({spend_pct*100:+.1f}%)"
+                )
+
+        # Unknown spend
+        unknown = data.get("unknown_spend") or {}
+        unknown_amount = unknown.get("amount", 0.0)
+        unknown_count = unknown.get("count", 0)
+        if unknown_amount > 0:
+            reply_lines.append(
+                f"- Unknown spend: ${unknown_amount:.2f} over {unknown_count} txn(s)"
+            )
+
+        # Top anomaly
+        anomalies = data.get("anomalies") or {}
+        cat_anomalies = anomalies.get("categories", [])
+        merch_anomalies = anomalies.get("merchants", [])
+        if cat_anomalies:
+            top = cat_anomalies[0]
+            reply_lines.append(
+                f"- Biggest category increase: {top['key']} ${top['curr']:.2f} (was ${top['prev']:.2f})"
+            )
+        elif merch_anomalies:
+            top = merch_anomalies[0]
+            reply_lines.append(
+                f"- Biggest merchant increase: {top['key']} ${top['curr']:.2f} (was ${top['prev']:.2f})"
+            )
+
+        # Top large transaction
+        large = data.get("large_transactions", [])
+        if large:
+            top_txn = large[0]
+            reply_lines.append(
+                f"- Largest transaction: {top_txn.get('merchant', 'Unknown')} ${abs(top_txn.get('amount', 0)):.2f} on {top_txn.get('date', 'unknown date')}"
+            )
+
+        reply = "\n".join(reply_lines)
+
+        return {
+            "reply": reply,
+            "month": data["month"],
+            "summary": data.get("summary"),
+            "mom": data.get("mom"),
+            "unknown_spend": data.get("unknown_spend"),
+            "top_categories": data.get("top_categories", []),
+            "top_merchants": data.get("top_merchants", []),
+            "large_transactions": data.get("large_transactions", []),
+            "anomalies": data.get("anomalies", {"categories": [], "merchants": []}),
+        }
     except Exception:
         logger.exception("insights_expanded failed for month=%s", body.month)
         return {
             "month": body.month or "",
+            "reply": f"Error loading insights for {body.month or 'this month'}.",
+            "summary": None,
+            "mom": None,
+            "unknown_spend": None,
+            "top_categories": [],
             "top_merchants": [],
-            "unknown_spend": 0.0,
-            "stats": {"count": 0, "total": 0.0},
+            "large_transactions": [],
+            "anomalies": {"categories": [], "merchants": []},
         }
 
 

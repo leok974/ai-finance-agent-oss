@@ -85,6 +85,7 @@ from app.routers import (
 )
 from app.routers import agent_tools_budget as agent_tools_budget_router
 from app.routers import agent_tools_insights as agent_tools_insights_router
+from app.routers import agent_tools_analytics as agent_tools_analytics_router
 from app.routers import agent_actions as agent_actions_router
 from app.routers import agent_session as agent_session_router  # NEW: session management
 from app.routers import dev_overlay as dev_overlay_router
@@ -575,6 +576,7 @@ try:
     app.include_router(agent_tools_rules_apply_all_router.router)
     app.include_router(agent_tools_budget_router.router)
     app.include_router(agent_tools_insights_router.router)
+    app.include_router(agent_tools_analytics_router.router)
 
     app.include_router(suggestions_router.router)  # ML suggestions endpoints
     app.include_router(ml_status_router.router)  # ML status endpoint

@@ -17,7 +17,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent, CardFooter } from "@/components/ui/card";
-import { agentTools, agentChat, type AgentChatRequest, type AgentChatResponse, type TxnQueryResult, explainTxnForChat, agentRephrase, analytics, transactionsNl, txnsQueryCsv, txnsQuery, agentStatus, type AgentStatusResponse, searchTransactionsNl } from "../lib/api";
+import { agentTools, agentChat, type AgentChatRequest, type AgentChatResponse, type TxnQueryResult, explainTxnForChat, agentRephrase, analytics, transactionsNl, txnsQueryCsv, txnsQuery, agentStatus, type AgentStatusResponse, searchTransactionsNl, insightsExpanded, budgetSuggest, recurringTool, findSubscriptionsTool } from "../lib/api";
 import { fmtMonthSummary, fmtTopMerchants, fmtCashflow, fmtTrends } from "../lib/formatters";
 import { renderQuick, renderDeep, type MonthSummary as FinanceMonthSummary } from "../lib/formatters/finance";
 import { adaptChartsSummaryToMonthSummary } from "../lib/formatters/financeAdapters";
@@ -1669,6 +1669,175 @@ export default function ChatDock() {
     }
   }, [appendAssistant, appendUser, busy, focusComposer, setBusy, setComposer, setComposerPlaceholderUI, syncFromStoreDebounced, transactionsNl]);
 
+  const callInsightsExpanded = React.useCallback(async (payload?: Record<string, any>) => {
+    if (busy) return null;
+
+    const data = payload ?? {};
+    const targetMonth = data.month || month;
+    const largeLimit = typeof data.largeLimit === 'number' ? data.largeLimit : 10;
+    const presetText = typeof data.presetText === 'string' ? data.presetText.trim() : '';
+
+    // Append user message
+    const userMessage = presetText || `Show me expanded insights for ${targetMonth}.`;
+    appendUser(userMessage);
+
+    setComposer('');
+    setComposerPlaceholderUI(DEFAULT_PLACEHOLDER);
+    focusComposer();
+
+    try {
+      setBusy(true);
+
+      const response = await insightsExpanded(targetMonth, largeLimit);
+
+      const metaPayload: Record<string, any> = {
+        toolId: 'insights_expanded',
+        month: response.month,
+        summary: response.summary,
+        mom: response.mom,
+        unknown_spend: response.unknown_spend,
+        top_categories: response.top_categories,
+        top_merchants: response.top_merchants,
+        large_transactions: response.large_transactions,
+        anomalies: response.anomalies,
+      };
+
+      appendAssistant(response.reply, metaPayload);
+
+      return response;
+    } catch (err: any) {
+      const status = err?.status || '';
+      const message = err?.message ? String(err.message) : String(err ?? 'Unknown error');
+      appendAssistant(`**insights.expanded failed:** HTTP ${status} ${message}`);
+      throw err;
+    } finally {
+      setBusy(false);
+      syncFromStoreDebounced(120);
+    }
+  }, [appendAssistant, appendUser, busy, focusComposer, month, setBusy, setComposer, setComposerPlaceholderUI, syncFromStoreDebounced]);
+
+  const callBudgetSuggest = React.useCallback(async (payload?: Record<string, any>) => {
+    if (busy) return null;
+
+    const data = payload ?? {};
+    const targetMonth = data.month || month;
+    const presetText = typeof data.presetText === 'string' ? data.presetText.trim() : '';
+
+    // Append user message
+    const userMessage = presetText || `Suggest a budget for ${targetMonth}.`;
+    appendUser(userMessage);
+
+    setComposer('');
+    setComposerPlaceholderUI(DEFAULT_PLACEHOLDER);
+    focusComposer();
+
+    try {
+      setBusy(true);
+
+      const response = await budgetSuggest(targetMonth);
+
+      const metaPayload: Record<string, any> = {
+        toolId: 'budget_suggest',
+        month: response.month,
+        totalSpend: response.total_spend,
+        suggestedBudget: response.suggested_budget,
+        categories: response.categories,
+      };
+
+      appendAssistant(response.reply, metaPayload);
+
+      return response;
+    } catch (err: any) {
+      const status = err?.status || '';
+      const message = err?.message ? String(err.message) : String(err ?? 'Unknown error');
+      appendAssistant(`**analytics.budget_suggest failed:** HTTP ${status} ${message}`);
+      throw err;
+    } finally {
+      setBusy(false);
+      syncFromStoreDebounced(120);
+    }
+  }, [appendAssistant, appendUser, busy, focusComposer, month, setBusy, setComposer, setComposerPlaceholderUI, syncFromStoreDebounced]);
+
+  const callRecurringTool = React.useCallback(async (payload?: Record<string, any>) => {
+    if (busy) return null;
+
+    const data = payload ?? {};
+    const targetMonth = data.month || month;
+    const presetText = typeof data.presetText === 'string' ? data.presetText.trim() : '';
+
+    // Append user message
+    const userMessage = presetText || `Show my recurring subscriptions and bills for ${targetMonth}.`;
+    appendUser(userMessage);
+
+    setComposer('');
+    setComposerPlaceholderUI(DEFAULT_PLACEHOLDER);
+    focusComposer();
+
+    try {
+      setBusy(true);
+
+      const response = await recurringTool(targetMonth);
+
+      const metaPayload: Record<string, any> = {
+        toolId: 'analytics_recurring',
+        month: response.month,
+        recurring: response.recurring,
+      };
+
+      appendAssistant(response.reply, metaPayload);
+
+      return response;
+    } catch (err: any) {
+      const status = err?.status || '';
+      const message = err?.message ? String(err.message) : String(err ?? 'Unknown error');
+      appendAssistant(`**analytics.recurring failed:** HTTP ${status} ${message}`);
+      throw err;
+    } finally {
+      setBusy(false);
+      syncFromStoreDebounced(120);
+    }
+  }, [appendAssistant, appendUser, busy, focusComposer, month, setBusy, setComposer, setComposerPlaceholderUI, syncFromStoreDebounced]);
+
+  const callFindSubscriptionsTool = React.useCallback(async (payload?: Record<string, any>) => {
+    if (busy) return null;
+
+    const data = payload ?? {};
+    const targetMonth = data.month || month;
+    const presetText = typeof data.presetText === 'string' ? data.presetText.trim() : '';
+
+    // Append user message
+    const userMessage = presetText || `Scan my transactions and find subscriptions for ${targetMonth}.`;
+    appendUser(userMessage);
+
+    setComposer('');
+    setComposerPlaceholderUI(DEFAULT_PLACEHOLDER);
+    focusComposer();
+
+    try {
+      setBusy(true);
+
+      const response = await findSubscriptionsTool(targetMonth);
+
+      const metaPayload: Record<string, any> = {
+        toolId: 'find_subscriptions',
+        month: response.month,
+        subscriptions: response.subscriptions,
+      };
+
+      appendAssistant(response.reply, metaPayload);
+
+      return response;
+    } catch (err: any) {
+      const status = err?.status || '';
+      const message = err?.message ? String(err.message) : String(err ?? 'Unknown error');
+      appendAssistant(`**analytics.find_subscriptions failed:** HTTP ${status} ${message}`);
+      throw err;
+    } finally {
+      setBusy(false);
+      syncFromStoreDebounced(120);
+    }
+  }, [appendAssistant, appendUser, busy, focusComposer, month, setBusy, setComposer, setComposerPlaceholderUI, syncFromStoreDebounced]);
+
   // Insert AGUI feature flag and streaming helper near top-level utility section
   // (legacy runAguiStream removed in favor of wireAguiStream)
 
@@ -1807,10 +1976,22 @@ export default function ChatDock() {
         if (tool === 'transactions.nl') {
           return callTransactionsNl(payload);
         }
+        if (tool === 'insights_expanded') {
+          return callInsightsExpanded(payload);
+        }
+        if (tool === 'budget_suggest') {
+          return callBudgetSuggest(payload);
+        }
+        if (tool === 'analytics_recurring') {
+          return callRecurringTool(payload);
+        }
+        if (tool === 'find_subscriptions') {
+          return callFindSubscriptionsTool(payload);
+        }
         throw new Error(`Unsupported chat tool: ${tool}`);
       },
     });
-  }, [appendAssistant, appendUser, callTransactionsNl]);
+  }, [appendAssistant, appendUser, callTransactionsNl, callInsightsExpanded, callBudgetSuggest, callRecurringTool, callFindSubscriptionsTool]);
 
   // Legacy inline submit removed; new SaveRuleModal handles validation + save
   function handleSuggestionChip(chip: { label: string; action: string; source?: string }) {
