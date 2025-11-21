@@ -93,8 +93,9 @@ export function TransactionRowWithSuggestions({
       // 4) Notify parent to refresh the transaction
       await onAcceptSuggestion(transaction.id, candidate.label);
 
-      // 5) Show success feedback
-      toast.success(`Category updated to ${candidate.label}`);
+      // 5) Show success feedback with details
+      const merchantDisplay = transaction.merchant || transaction.description;
+      toast.success(`Suggestion applied: Set category to "${candidate.label}" for "${merchantDisplay}"`);
     } catch (error) {
       toast.error('Failed to apply suggestion');
       console.error('Accept suggestion error:', error);

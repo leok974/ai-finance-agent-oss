@@ -14,7 +14,7 @@ type SuggestionPillProps = {
     feedback_ratio?: number | null;
   };
   disabled?: boolean;
-  onApplied: (txnId: number, categorySlug: string) => void;
+  onApplied: (txnId: number, categorySlug: string, suggestionLabel?: string, txnMerchant?: string) => void;
 };
 
 export default function SuggestionPill({
@@ -36,8 +36,8 @@ export default function SuggestionPill({
       await categorizeTxn(txn.id, s.category_slug);
       console.log('[SuggestionPill] Categorization succeeded');
 
-      // Only on success, notify parent to dismiss row
-      onApplied(txn.id, s.category_slug);
+      // Only on success, notify parent to dismiss row with full context
+      onApplied(txn.id, s.category_slug, s.label, txn.merchant || txn.description);
     } catch (err) {
       console.error('[SuggestionPill] Failed to apply suggestion', err);
       // Error handling: parent won't dismiss the row
