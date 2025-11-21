@@ -3,6 +3,26 @@
 { "name": "Web", "path": "apps/web" },
 { "name": "API", "path": "apps/backend" }
 ],
+"github.copilot.chat.codeGeneration.instructions": [
+{
+"file": "AGENTS.md"
+},
+{
+"file": "agents/api-agent.md"
+},
+{
+"file": "agents/test-agent.md"
+},
+{
+"file": "agents/docs-agent.md"
+},
+{
+"file": "agents/dev-deploy-agent.md"
+},
+{
+"file": "agents/security-agent.md"
+}
+],
 "settings": {
 "files.exclude": {
 "/node_modules": true,

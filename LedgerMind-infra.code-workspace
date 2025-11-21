@@ -6,6 +6,20 @@
 { "name": "Cloudflared", "path": "cloudflared" },
 { "name": "Prometheus", "path": "prometheus" }
 ],
+"github.copilot.chat.codeGeneration.instructions": [
+{
+"file": "AGENTS.md"
+},
+{
+"file": "agents/dev-deploy-agent.md"
+},
+{
+"file": "agents/security-agent.md"
+},
+{
+"file": "agents/docs-agent.md"
+}
+],
 "settings": {
 "yaml.schemas": { "kubernetes": "*.yaml" },
 "docker.enableDockerCommands": true
