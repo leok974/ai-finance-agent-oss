@@ -55,7 +55,7 @@ export default function UnknownsPanel({ month, onSeedRule: _onSeedRule, onChange
 
   // Callback: dismiss row immediately + send ML feedback (fire-and-forget)
   const handleSuggestionApplied = useCallback(
-    (txnId: number, categorySlug: string) => {
+    (txnId: number, categorySlug: string, suggestionLabel?: string, txnMerchant?: string) => {
       console.log('[UnknownsPanel] handleSuggestionApplied:', { txnId, categorySlug })
 
       // 1) Hide it for this session (permanent until page reload)
@@ -82,8 +82,10 @@ export default function UnknownsPanel({ month, onSeedRule: _onSeedRule, onChange
         // DO NOT remove from dismissedTxnIdsForSession - row stays hidden
       })
 
-      // 3) Show success toast
-      ok?.(t('ui.toast.category_applied', { category: categorySlug }))
+      // 3) Show success toast with details
+      const categoryDisplay = suggestionLabel || categorySlug
+      const merchantDisplay = txnMerchant || 'transaction'
+      ok(`Suggestion applied: Set category to "${categoryDisplay}" for "${merchantDisplay}"`)
 
       // 4) Notify parent
       onChanged?.()
