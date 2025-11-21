@@ -20,6 +20,7 @@ import { useIsAdmin } from '@/state/auth'
 import { t } from '@/lib/i18n'
 import { useRuleSeed } from '@/hooks/useRuleSeedHook'
 import { scrollToId } from '@/lib/scroll'
+import { SuggestionsInfoModal } from './SuggestionsInfoModal'
 
 // Session-level dismissal tracking (survives component remounts and re-fetches)
 const dismissedTxnIdsForSession = new Set<number>()
@@ -182,6 +183,7 @@ export default function UnknownsPanel({ month, onSeedRule: _onSeedRule, onChange
               {t('ui.unknowns.tooltip_info')}
             </TooltipContent>
           </Tooltip>
+          <SuggestionsInfoModal source="unknowns" />
         </div>
   <div className="text-xs opacity-70">{t('ui.unknowns.workflow_hint')}</div>
       </div>

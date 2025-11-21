@@ -11,6 +11,7 @@ import { createCategorizeRule } from '@/api/rules';
 import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { ExplainSuggestionButton } from './ExplainSuggestionButton';
+import { SuggestionsInfoModal } from './SuggestionsInfoModal';
 
 type Transaction = {
   id: number;
@@ -246,28 +247,32 @@ export function TransactionRowWithSuggestions({
                     Suggested
                   </span>
                   {suggestions.length > 0 && (
-                    <span className="text-[11px] text-slate-400/90">
+                    <span className="px-2 py-0.5 rounded-full bg-slate-800 text-[10px] text-slate-100">
                       {Math.round(suggestions[0].confidence * 100)}% confident
                     </span>
                   )}
+                  <SuggestionsInfoModal
+                    source="transactions"
+                    triggerClassName="text-[10px] text-slate-400 hover:text-slate-200 underline underline-offset-2"
+                  />
                 </div>
 
-                <div className="flex flex-wrap gap-1">
+                <div className="flex flex-wrap items-center gap-2">
                   <SuggestionList
                     candidates={categoryCandidates}
                     onAccept={handleAccept}
                     onReject={handleReject}
                     maxVisible={3}
                   />
-                </div>
 
-                {/* Show explain button if we have a primary suggestion */}
-                {suggestions.length > 0 && (
-                  <ExplainSuggestionButton
-                    txnId={transaction.id}
-                    categorySlug={suggestions[0].label}
-                  />
-                )}
+                  {/* Show explain button if we have a primary suggestion */}
+                  {suggestions.length > 0 && (
+                    <ExplainSuggestionButton
+                      txnId={transaction.id}
+                      categorySlug={suggestions[0].label}
+                    />
+                  )}
+                </div>
               </div>
             )}
           </td>
