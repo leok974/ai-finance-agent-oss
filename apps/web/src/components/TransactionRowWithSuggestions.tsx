@@ -10,6 +10,7 @@ import { categorizeTxn, mlFeedback } from '@/lib/api';
 import { createCategorizeRule } from '@/api/rules';
 import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { ExplainSuggestionButton } from './ExplainSuggestionButton';
 
 type Transaction = {
   id: number;
@@ -239,16 +240,26 @@ export function TransactionRowWithSuggestions({
                 <span>Loading suggestions...</span>
               </div>
             ) : (
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-gray-500 font-medium">
-                  Suggested:
-                </span>
-                <SuggestionList
-                  candidates={categoryCandidates}
-                  onAccept={handleAccept}
-                  onReject={handleReject}
-                  maxVisible={3}
-                />
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-gray-500 font-medium">
+                    Suggested:
+                  </span>
+                  <SuggestionList
+                    candidates={categoryCandidates}
+                    onAccept={handleAccept}
+                    onReject={handleReject}
+                    maxVisible={3}
+                  />
+                </div>
+                {/* Show explain button if we have a primary suggestion */}
+                {suggestions.length > 0 && (
+                  <ExplainSuggestionButton
+                    txnId={transaction.id}
+                    categorySlug={suggestions[0].label}
+                    className="pl-0"
+                  />
+                )}
               </div>
             )}
           </td>

@@ -1,9 +1,18 @@
 import { useState } from 'react';
 import { categorizeTxn } from '@/api';
+import clsx from 'clsx';
 
 type SuggestionPillProps = {
   txn: { id: number; merchant: string; description: string; amount: number };
-  s: { category_slug: string; label: string; score: number; why: string[] };
+  s: {
+    category_slug: string;
+    label: string;
+    score: number;
+    why: string[];
+    feedback_accepts?: number | null;
+    feedback_rejects?: number | null;
+    feedback_ratio?: number | null;
+  };
   disabled?: boolean;
   onApplied: (txnId: number, categorySlug: string) => void;
 };
@@ -37,11 +46,25 @@ export default function SuggestionPill({
     }
   };
 
+  // Calculate learning indicator state
+  const accepts = s.feedback_accepts ?? 0;
+  const rejects = s.feedback_rejects ?? 0;
+  const total = accepts + rejects;
+  const isLearning = total > 0;
+  const isMostlyPositive = total > 0 && (accepts / total) >= 0.6;
+
+  // Build tooltip for learning indicator
+  const learningTooltip = isLearning
+    ? rejects === 0
+      ? `Learning from ${accepts} confirm${accepts === 1 ? '' : 's'}`
+      : `Learning from ${accepts} confirm${accepts === 1 ? '' : 's'} and ${rejects} correction${rejects === 1 ? '' : 's'}`
+    : '';
+
   return (
     <button
       type="button"
       className="
-        inline-flex items-center gap-2 px-3 py-1 rounded-2xl border font-medium text-xs
+        relative inline-flex items-center gap-2 px-3 py-1 rounded-2xl border font-medium text-xs
         border-slate-700 bg-slate-900/80 text-slate-100
         hover:border-emerald-400 hover:bg-emerald-500/10 hover:text-emerald-100
         focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950
@@ -56,6 +79,21 @@ export default function SuggestionPill({
     >
       <span className="font-medium">{s.label}</span>
       <span className="opacity-70">{Math.round(s.score * 100)}%</span>
+
+      {/* Learning indicator bar */}
+      {isLearning && (
+        <div
+          className="absolute inset-x-1 bottom-0 h-0.5 rounded-full"
+          title={learningTooltip}
+        >
+          <div
+            className={clsx(
+              'h-full w-full rounded-full transition-colors',
+              isMostlyPositive ? 'bg-emerald-400/70' : 'bg-amber-400/70'
+            )}
+          />
+        </div>
+      )}
     </button>
   );
 }

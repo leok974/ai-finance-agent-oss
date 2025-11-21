@@ -669,7 +669,15 @@ export const undoRejectSuggestion = (merchant_canonical: string, category_slug: 
   });
 
 // ---- Categorize suggestions (agent tools) ----
-export type CategorizeSuggestion = { category_slug: string; score: number; why?: string[] };
+export type CategorizeSuggestion = {
+  category_slug: string;
+  score: number;
+  why?: string[];
+  // Learning indicator fields (populated when feedback exists)
+  feedback_accepts?: number | null;
+  feedback_rejects?: number | null;
+  feedback_ratio?: number | null;
+};
 export async function suggestForTxn(txnId: number) {
   return api<{ txn: number; suggestions: CategorizeSuggestion[] }>('agent/tools/categorize/suggest', {
     method: 'POST',
