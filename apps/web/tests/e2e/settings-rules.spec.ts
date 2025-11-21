@@ -6,12 +6,15 @@ test.describe('@prod Settings drawer rules', () => {
       waitUntil: 'load',
       timeout: 60000,
     });
+
+    // Wait for auth to complete by checking for account menu
+    await page.waitForSelector('[data-testid="account-menu"]', { timeout: 30000 });
   });
 
   test('Settings menu item opens drawer and shows rules', async ({ page }) => {
     // Open account menu
     const accountMenu = page.getByTestId('account-menu');
-    await expect(accountMenu).toBeVisible({ timeout: 15000 });
+    await expect(accountMenu).toBeVisible({ timeout: 5000 });
     await accountMenu.click();
 
     // Click Settings
