@@ -171,6 +171,12 @@ class Settings(BaseSettings):
     E2E_SESSION_ENABLED: bool = _env_bool("E2E_SESSION_ENABLED", False)
     E2E_SESSION_HMAC_SECRET: str | None = os.getenv("E2E_SESSION_HMAC_SECRET", None)
 
+    # === Demo Account ===
+    DEMO_ENABLED: bool = _env_bool("DEMO_ENABLED", True)
+    DEMO_USER_EMAIL: str = os.getenv("DEMO_USER_EMAIL", "demo@ledger-mind.org")
+    DEMO_USER_NAME: str = os.getenv("DEMO_USER_NAME", "LedgerMind Demo")
+    DEMO_DEFAULT_CURRENCY: str = os.getenv("DEMO_DEFAULT_CURRENCY", "USD")
+
     # === Redis (Replay Cache) ===
     REDIS_URL: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
     REDIS_REPLAY_PREFIX: str = "hmac:replay:"
