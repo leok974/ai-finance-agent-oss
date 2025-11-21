@@ -1,26 +1,31 @@
 /**
  * useMLSuggestions - Hook for fetching and managing ML category suggestions
+ * Refactored to use canonical API (suggestForTxnBatch, mlFeedback)
  */
 import { useState, useEffect, useCallback } from 'react';
-import { getMLSuggestions, sendSuggestionFeedback, type SuggestItem } from '@/lib/api';
+import { suggestForTxnBatch, mlFeedback, type CategorizeSuggestion } from '@/lib/api';
 
 type UseMLSuggestionsOptions = {
   enabled?: boolean;
   topK?: number;
-  mode?: 'heuristic' | 'model' | 'auto';
+};
+
+type SuggestionItem = {
+  txn: number;
+  suggestions: CategorizeSuggestion[];
 };
 
 type SuggestionsState = {
-  items: Map<string, SuggestItem>;
+  items: Map<number, CategorizeSuggestion[]>;
   loading: boolean;
   error: string | null;
 };
 
 export function useMLSuggestions(
-  transactionIds: string[],
+  transactionIds: number[],
   options: UseMLSuggestionsOptions = {}
 ) {
-  const { enabled = true, topK = 3, mode = 'auto' } = options;
+  const { enabled = true } = options;
 
   const [state, setState] = useState<SuggestionsState>({
     items: new Map(),
@@ -30,21 +35,18 @@ export function useMLSuggestions(
 
   const fetchSuggestions = useCallback(async () => {
     if (!enabled || transactionIds.length === 0) {
+      setState({ items: new Map(), loading: false, error: null });
       return;
     }
 
     setState((prev) => ({ ...prev, loading: true, error: null }));
 
     try {
-      const response = await getMLSuggestions({
-        txn_ids: transactionIds,
-        top_k: topK,
-        mode,
-      });
+      const response = await suggestForTxnBatch(transactionIds);
 
-      const itemsMap = new Map<string, SuggestItem>();
-      response.items.forEach((item) => {
-        itemsMap.set(item.txn_id, item);
+      const itemsMap = new Map<number, CategorizeSuggestion[]>();
+      (response?.items || []).forEach((item: SuggestionItem) => {
+        itemsMap.set(item.txn, item.suggestions || []);
       });
 
       setState({
@@ -53,56 +55,66 @@ export function useMLSuggestions(
         error: null,
       });
     } catch (err) {
-      setState((prev) => ({
-        ...prev,
-        loading: false,
-        error: err instanceof Error ? err.message : 'Failed to fetch suggestions',
-      }));
+      const message = err instanceof Error ? err.message : 'Failed to fetch suggestions';
+      const is404 = message.includes('404') || message.includes('Not Found');
+
+      // Don't treat 404 as error - feature may not be deployed
+      if (is404) {
+        setState({ items: new Map(), loading: false, error: null });
+      } else {
+        setState((prev) => ({
+          ...prev,
+          loading: false,
+          error: message,
+        }));
+      }
     }
-  }, [transactionIds.join(','), enabled, topK, mode]);
+  }, [transactionIds.join(','), enabled]);
 
   useEffect(() => {
     fetchSuggestions();
   }, [fetchSuggestions]);
 
   const acceptSuggestion = useCallback(
-    async (txnId: string, label: string) => {
-      const item = state.items.get(txnId);
-      if (!item?.event_id) {
-        return;
-      }
-
-      try {
-        await sendSuggestionFeedback(item.event_id, 'accept', `Applied category: ${label}`);
-      } catch (err) {
-        console.error('Failed to send feedback:', err);
-      }
+    async (txnId: number, category: string, merchant?: string) => {
+      // Fire-and-forget ML feedback
+      mlFeedback({
+        txn_id: txnId,
+        merchant,
+        category,
+        action: 'accept',
+      }).catch((err) => {
+        const message = err instanceof Error ? err.message : String(err);
+        const is404 = message.includes('404') || message.includes('Not Found');
+        if (!is404) {
+          console.warn('[useMLSuggestions] mlFeedback failed (non-critical):', message);
+        }
+      });
     },
-    [state.items]
+    []
   );
 
   const rejectSuggestion = useCallback(
-    async (txnId: string, label: string, reason?: string) => {
-      const item = state.items.get(txnId);
-      if (!item?.event_id) {
-        return;
-      }
-
-      try {
-        await sendSuggestionFeedback(
-          item.event_id,
-          'reject',
-          reason || `Rejected suggestion: ${label}`
-        );
-      } catch (err) {
-        console.error('Failed to send feedback:', err);
-      }
+    async (txnId: number, category: string, merchant?: string) => {
+      // Fire-and-forget ML feedback
+      mlFeedback({
+        txn_id: txnId,
+        merchant,
+        category,
+        action: 'reject',
+      }).catch((err) => {
+        const message = err instanceof Error ? err.message : String(err);
+        const is404 = message.includes('404') || message.includes('Not Found');
+        if (!is404) {
+          console.warn('[useMLSuggestions] mlFeedback failed (non-critical):', message);
+        }
+      });
     },
-    [state.items]
+    []
   );
 
   const getSuggestionsForTransaction = useCallback(
-    (txnId: string) => {
+    (txnId: number) => {
       return state.items.get(txnId);
     },
     [state.items]
@@ -127,8 +139,8 @@ export function useUncategorizedMLSuggestions(
   options: UseMLSuggestionsOptions = {}
 ) {
   const uncategorizedIds = transactions
-    .filter((t) => !t.category || t.category === 'Unknown' || t.category === '')
-    .map((t) => String(t.id));
+    .filter((t) => !t.category || t.category === 'uncategorized' || t.category === 'unknown')
+    .map((t) => Number(t.id));
 
   return useMLSuggestions(uncategorizedIds, options);
 }
