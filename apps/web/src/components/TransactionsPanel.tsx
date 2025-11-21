@@ -79,9 +79,17 @@ export default function TransactionsPanel() {
     rejectSuggestion,
   } = useUncategorizedMLSuggestions(rows, {
     enabled: true,
-    topK: 3,
-    mode: 'auto',
   });
+
+  // Transform canonical CategorizeSuggestion[] to component's CategorySuggestion[] format
+  const transformSuggestions = React.useCallback((txnId: number) => {
+    const canonical = getSuggestionsForTransaction(txnId);
+    return canonical.map(s => ({
+      label: s.category_slug,
+      confidence: s.score,
+      reasons: s.why,
+    }));
+  }, [getSuggestionsForTransaction]);
 
   // Handler for accepting ML suggestions
   const handleAcceptSuggestion = React.useCallback(async (txnId: number, category: string) => {
@@ -89,8 +97,12 @@ export default function TransactionsPanel() {
       // Update transaction category
       await patchTxn(txnId, { category });
 
+      // Find merchant for feedback
+      const txn = rows.find(r => r.id === txnId);
+      const merchant = txn?.merchant_canonical || txn?.merchant || undefined;
+
       // Send feedback to backend
-      await acceptSuggestion(String(txnId), category);
+      await acceptSuggestion(txnId, category, merchant);
 
       // Show success toast
       emitToastSuccess(t('ui.toast.category_applied_title'), {
@@ -104,13 +116,15 @@ export default function TransactionsPanel() {
         description: error instanceof Error ? error.message : 'Unknown error',
       });
     }
-  }, [acceptSuggestion, refresh]);
+  }, [acceptSuggestion, refresh, rows]);
 
   // Handler for rejecting ML suggestions
   const handleRejectSuggestion = React.useCallback((txnId: number, category: string) => {
-    rejectSuggestion(String(txnId), category);
+    const txn = rows.find(r => r.id === txnId);
+    const merchant = txn?.merchant_canonical || txn?.merchant || undefined;
+    rejectSuggestion(txnId, category, merchant);
     // Optional: Could show a toast or update UI
-  }, [rejectSuggestion]);
+  }, [rejectSuggestion, rows]);
 
   // Keyboard shortcuts for selection actions
   React.useEffect(() => {
@@ -205,7 +219,7 @@ export default function TransactionsPanel() {
                 <TransactionRowWithSuggestions
                   key={r.id}
                   transaction={r}
-                  suggestion={getSuggestionsForTransaction(String(r.id))}
+                  suggestions={transformSuggestions(r.id)}
                   allCategories={allCategories}
                   isSelected={sel.includes(r.id)}
                   onSelect={(id, checked) => toggleOne(id, checked)}
