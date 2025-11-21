@@ -16,7 +16,7 @@ const asSeries = (input: any): Array<{ month: string; spend: number }> => {
   if (input && typeof input === "object") {
     return Object.entries(input).map(([k, v]: [string, any]) => ({
       month: k,
-      spend: Number(typeof v === "object" ? (v?.spend ?? v?.amount ?? v?.value ?? 0) : v),
+      spend: Number(typeof v === "object" ? (v?.spend ?? v?.spending ?? v?.amount ?? v?.value ?? 0) : v),
     }));
   }
   return [];
