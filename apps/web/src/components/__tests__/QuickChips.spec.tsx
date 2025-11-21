@@ -31,4 +31,28 @@ describe('QuickChips', () => {
 		const ev = handler.mock.calls[0][0] as CustomEvent;
 		expect(ev.detail).toEqual({ type: 'nl_search', query: 'show kpis' });
 	});
+
+	it('dispatches chip-action with presetText for filter-based actions', () => {
+		const items: QuickChipItem[] = [
+			{
+				label: 'View last 90 days',
+				action: {
+					type: 'nl_search_filters',
+					filters: { start: '2024-01-01', end: '2024-03-31' },
+					presetText: 'View last 90 days'
+				}
+			},
+		];
+		const handler = vi.fn();
+		window.addEventListener('chip-action', handler as EventListener);
+		render(<QuickChips items={items} />);
+		fireEvent.click(screen.getByText('View last 90 days'));
+		expect(handler).toHaveBeenCalledTimes(1);
+		const ev = handler.mock.calls[0][0] as CustomEvent;
+		expect(ev.detail).toMatchObject({
+			type: 'nl_search_filters',
+			presetText: 'View last 90 days',
+			filters: { start: '2024-01-01', end: '2024-03-31' }
+		});
+	});
 });

@@ -1022,6 +1022,36 @@ export const transactionsNl = async (
   });
 };
 
+// New NL search with inline results
+export type SearchTransactionsNlRequest = {
+  query: string;
+};
+
+export type SearchTransactionsNlItem = {
+  id: number;
+  booked_at: string;
+  merchant_canonical: string;
+  amount: number;
+  category_slug?: string | null;
+};
+
+export type SearchTransactionsNlResponse = {
+  reply: string;
+  query: string;
+  total_count: number;
+  total_amount: number;
+  items: SearchTransactionsNlItem[];
+};
+
+export const searchTransactionsNl = async (
+  query: string
+): Promise<SearchTransactionsNlResponse> => {
+  return fetchJSON<SearchTransactionsNlResponse>('agent/tools/transactions/search_nl', {
+    method: 'POST',
+    body: JSON.stringify({ query }),
+  });
+};
+
 export type TxnQueryResult =
   | { intent: "sum"; filters: Record<string, unknown>; result: { total_abs: number }; meta?: Record<string, unknown> }
   | { intent: "count"; filters: Record<string, unknown>; result: { count: number }; meta?: Record<string, unknown> }

@@ -9,6 +9,7 @@ import RobotThinking from "@/components/ui/RobotThinking";
 import EnvAvatar from "@/components/EnvAvatar";
 import { useAuth, getUserInitial } from "@/state/auth";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { SearchTransactionsInlineTable } from "./ChatDock/ToolResults/SearchTransactionsInlineTable";
 import { useSafePortalReady } from "@/hooks/useSafePortal";
 import { ChevronUp, ChevronDown, Wrench, Sparkles, TrendingUp, Bell, Repeat, Search, Wallet, MessageCircle } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
@@ -16,7 +17,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent, CardFooter } from "@/components/ui/card";
-import { agentTools, agentChat, type AgentChatRequest, type AgentChatResponse, type TxnQueryResult, explainTxnForChat, agentRephrase, analytics, transactionsNl, txnsQueryCsv, txnsQuery, agentStatus, type AgentStatusResponse } from "../lib/api";
+import { agentTools, agentChat, type AgentChatRequest, type AgentChatResponse, type TxnQueryResult, explainTxnForChat, agentRephrase, analytics, transactionsNl, txnsQueryCsv, txnsQuery, agentStatus, type AgentStatusResponse, searchTransactionsNl } from "../lib/api";
 import { fmtMonthSummary, fmtTopMerchants, fmtCashflow, fmtTrends } from "../lib/formatters";
 import { renderQuick, renderDeep, type MonthSummary as FinanceMonthSummary } from "../lib/formatters/finance";
 import { adaptChartsSummaryToMonthSummary } from "../lib/formatters/financeAdapters";
@@ -673,7 +674,12 @@ export default function ChatDock() {
             {isThinking ? (
               <div className="py-1"><span className="sr-only">Thinking.</span><RobotThinking size={32} /></div>
             ) : (
-              m.role === 'assistant' ? <MessageRenderer text={m.text} /> : <>{m.text}</>
+              <>
+                {m.role === 'assistant' ? <MessageRenderer text={m.text} /> : <>{m.text}</>}
+                {m.role === 'assistant' && meta?.toolId === 'search_transactions' && meta?.items ? (
+                  <SearchTransactionsInlineTable items={meta.items.slice(0, 5)} />
+                ) : null}
+              </>
             )}
           </div>
           {isUser && (
@@ -1592,9 +1598,12 @@ export default function ChatDock() {
     const data = payload ?? {};
     const query = typeof data.query === 'string' ? data.query.trim() : '';
     const filters = data.filters;
+    const presetText = typeof data.presetText === 'string' ? data.presetText.trim() : '';
 
-    if (query) {
-      appendUser(query);
+    // Always append a user message - use query if available, otherwise presetText
+    const userMessage = query || presetText;
+    if (userMessage) {
+      appendUser(userMessage);
     }
 
     setComposer('');
@@ -1603,6 +1612,29 @@ export default function ChatDock() {
 
     try {
       setBusy(true);
+
+      // Use new NL search endpoint if we have a query, otherwise fall back to old endpoint
+      if (query) {
+        const response = await searchTransactionsNl(query);
+        const metaPayload: Record<string, any> = {
+          toolId: 'search_transactions',
+          query: response.query,
+          totalCount: response.total_count,
+          totalAmount: response.total_amount,
+          items: response.items.slice(0, 5), // Top 5 for inline display
+        };
+        appendAssistant(response.reply, metaPayload);
+
+        lastNlqRef.current = {
+          q: response.query,
+          filters: {},
+          intent: 'list',
+        };
+
+        return response;
+      }
+
+      // Fallback to old endpoint for filter-based queries
       const response = await transactionsNl(data);
       const meta = (response as any)?.meta ?? {};
       const suggestions = Array.isArray(meta.suggestions) ? meta.suggestions : undefined;

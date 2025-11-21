@@ -2,12 +2,12 @@ import React from "react";
 import { Button } from "@/components/ui/button";
 
 export type ChipAction =
-  | { type: "nl_search"; query: string }
-  | { type: "nl_search_filters"; filters: unknown }
+  | { type: "nl_search"; query: string; presetText?: string }
+  | { type: "nl_search_filters"; filters: unknown; presetText?: string }
   | { type: "toggle"; key: "insightsExpanded" }
   | { type: "nav"; href: string };
 
-export type QuickChipItem = { label: string; action: ChipAction };
+export type QuickChipItem = { label: string; action: ChipAction; presetText?: string };
 
 export function QuickChips({ items }: { items: QuickChipItem[] }) {
   // Hooks first (none yet besides useCallback) to avoid conditional violation
