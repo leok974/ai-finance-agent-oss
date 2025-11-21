@@ -9,7 +9,9 @@ from pydantic import Field as _Field
 from app.db import get_db
 from app.models import Rule
 from app.services import rules_service, ml_train_service, txns_service
+from app.services.ml_feedback_promote import log_rule_feedback_to_stats
 from app.transactions import Transaction
+from app.utils.text import canonicalize_merchant
 from app.deps.auth_guard import get_current_user_id
 from app.schemas.rules import (
     SaveTrainPayload,
@@ -143,6 +145,14 @@ class CompatRuleInput(BaseModel):
     enabled: bool = True
     when: Dict[str, Any] = {}
     then: Dict[str, Any] = {}
+
+
+class RuleUpdate(BaseModel):
+    """Schema for PATCH /rules/{id} - partial updates."""
+
+    active: Optional[bool] = None
+    category: Optional[str] = None
+    model_config = ConfigDict(extra="forbid")
 
 
 def map_to_orm_fields(body: CompatRuleInput) -> Dict[str, Any]:
@@ -359,11 +369,99 @@ def clear_rules(db: Session = Depends(get_db)):
     return {"ok": True}
 
 
+@router.patch("/{rule_id}", dependencies=[Depends(csrf_protect)])
+def update_rule(
+    rule_id: int,
+    updates: RuleUpdate = Body(...),
+    db: Session = Depends(get_db),
+):
+    """Update a rule and log feedback to ML stats."""
+    rule = db.query(Rule).filter(Rule.id == rule_id).first()
+    if not rule:
+        raise HTTPException(status_code=404, detail="not found")
+
+    # Capture old state for feedback logging
+    old_active = rule.active
+    old_category = rule.category
+    merchant_norm = canonicalize_merchant(rule.merchant or rule.pattern or "")
+
+    # Apply updates
+    if updates.active is not None and updates.active != old_active:
+        rule.active = updates.active
+        # Log feedback: enable=accept, disable=reject
+        if merchant_norm and rule.category:
+            try:
+                action = "accept" if updates.active else "reject"
+                log_rule_feedback_to_stats(
+                    db=db,
+                    merchant_normalized=merchant_norm,
+                    category=rule.category,
+                    action=action,
+                    weight=1,
+                )
+            except Exception:
+                pass  # Don't block update on feedback logging failure
+
+    if updates.category is not None and updates.category != old_category:
+        # Log reject for old category, accept for new (weight=2)
+        if merchant_norm:
+            try:
+                if old_category:
+                    log_rule_feedback_to_stats(
+                        db=db,
+                        merchant_normalized=merchant_norm,
+                        category=old_category,
+                        action="reject",
+                        weight=2,
+                    )
+                log_rule_feedback_to_stats(
+                    db=db,
+                    merchant_normalized=merchant_norm,
+                    category=updates.category,
+                    action="accept",
+                    weight=2,
+                )
+            except Exception:
+                pass
+        rule.category = updates.category
+
+    db.commit()
+    db.refresh(rule)
+
+    return {
+        "id": rule.id,
+        "active": rule.active,
+        "category": rule.category,
+        "merchant": rule.merchant,
+        "pattern": rule.pattern,
+    }
+
+
 @router.delete("/{rule_id}", dependencies=[Depends(csrf_protect)])
 def delete_rule(rule_id: int, db: Session = Depends(get_db)):
-    res = db.execute(delete(Rule).where(Rule.id == rule_id))
-    if getattr(res, "rowcount", 0) == 0:
+    # Fetch the rule before deleting to log feedback
+    rule = db.query(Rule).filter(Rule.id == rule_id).first()
+    if not rule:
         raise HTTPException(status_code=404, detail="not found")
+
+    # Log strong reject feedback (weight=3) for deleted rule
+    if rule.merchant or rule.pattern:
+        merchant_norm = canonicalize_merchant(rule.merchant or rule.pattern or "")
+        if merchant_norm and rule.category:
+            try:
+                log_rule_feedback_to_stats(
+                    db=db,
+                    merchant_normalized=merchant_norm,
+                    category=rule.category,
+                    action="reject",
+                    weight=3,
+                )
+            except Exception:
+                # Don't block delete if feedback logging fails
+                pass
+
+    # Delete the rule
+    db.delete(rule)
     db.commit()
     return {"ok": True}
 
