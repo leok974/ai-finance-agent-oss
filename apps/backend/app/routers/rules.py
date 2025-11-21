@@ -91,6 +91,16 @@ class _LegacyRuleSuggestionsCompat:
     def dismiss_suggestion(db, sid):
         return False
 
+    @staticmethod
+    def canonicalize_merchant(merchant):
+        """Legacy stub: return merchant as-is"""
+        return merchant
+
+    @staticmethod
+    def evaluate_candidate(db, merchant_norm, category):
+        """Legacy stub: no suggestion created"""
+        return None
+
 
 rs = _LegacyRuleSuggestionsCompat()
 mine_suggestions = rs.mine_suggestions
