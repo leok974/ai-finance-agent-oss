@@ -1,12 +1,12 @@
 /**
  * TransactionRowWithSuggestions - Enhanced transaction row with ML suggestions
+ * Uses canonical API helpers (categorizeTxn, mlFeedback) aligned with UnknownsPanel
  */
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { CategoryCell } from './CategoryCell';
 import { SuggestionList } from './SuggestionChip';
-import type { SuggestItem } from '@/lib/api';
-import { sendSuggestionFeedback } from '@/lib/api';
+import { categorizeTxn, mlFeedback } from '@/lib/api';
 import { createCategorizeRule } from '@/api/rules';
 import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -25,22 +25,28 @@ type Transaction = {
   pending?: boolean;
 };
 
+type CategorySuggestion = {
+  label: string;
+  confidence: number;
+  reasons?: string[];
+};
+
 type TransactionRowWithSuggestionsProps = {
   transaction: Transaction;
-  suggestion?: SuggestItem;
+  suggestions?: CategorySuggestion[];
   allCategories: string[];
   isSelected: boolean;
   onSelect: (id: number, checked: boolean) => void;
   onEdit: (id: number) => void;
   onDelete: (id: number) => void;
   onAcceptSuggestion: (id: number, category: string) => Promise<void>;
-  onRejectSuggestion: (id: number, category: string) => void;
+  onRejectSuggestion?: (id: number, category: string) => void;
   suggestionsLoading?: boolean;
 };
 
 export function TransactionRowWithSuggestions({
   transaction,
-  suggestion,
+  suggestions = [],
   allCategories,
   isSelected,
   onSelect,
@@ -51,42 +57,42 @@ export function TransactionRowWithSuggestions({
   suggestionsLoading = false,
 }: TransactionRowWithSuggestionsProps) {
   const [applying, setApplying] = useState(false);
-  const [lastEventId, setLastEventId] = useState<string | null>(null);
-  const [previousCategory, setPreviousCategory] = useState<string | null>(null);
-  const showSuggestions = !transaction.category && suggestion?.candidates && suggestion.candidates.length > 0;
+  const [appliedCategory, setAppliedCategory] = useState<string | null>(null);
 
-  // Load last event ID from localStorage on mount
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem(`lm:lastEvent:${transaction.id}`);
-      if (stored) {
-        setLastEventId(stored);
-      }
-    } catch {
-      // Ignore localStorage errors
-    }
-  }, [transaction.id]);
+  // Only show suggestions for uncategorized transactions
+  const isUncategorized = !transaction.category || transaction.category === 'uncategorized' || transaction.category === 'unknown';
+  const showSuggestions = isUncategorized && suggestions.length > 0;
 
+  // Handle accepting a suggestion (same flow as UnknownsPanel)
   const handleAccept = async (candidate: { label: string }) => {
     setApplying(true);
     try {
-      // Store previous category for potential undo
-      setPreviousCategory(transaction.category || null);
+      // 1) Apply the category to the transaction
+      await categorizeTxn(transaction.id, candidate.label);
 
-      // Send accept feedback if we have an event_id
-      if (suggestion?.event_id) {
-        await sendSuggestionFeedback(suggestion.event_id, 'accept', 'user accepted');
-        setLastEventId(suggestion.event_id);
-        try {
-          localStorage.setItem(`lm:lastEvent:${transaction.id}`, suggestion.event_id);
-        } catch {
-          // Ignore localStorage errors
+      // 2) Fire-and-forget ML feedback for learning
+      mlFeedback({
+        txn_id: transaction.id,
+        merchant: transaction.merchant_canonical || transaction.merchant || undefined,
+        category: candidate.label,
+        action: 'accept',
+      }).catch((err) => {
+        // Swallow errors - this is learning signal, not core UX
+        const message = err instanceof Error ? err.message : String(err);
+        const is404 = message.includes('404') || message.includes('Not Found');
+        if (!is404) {
+          console.warn('[TransactionRow] mlFeedback failed (non-critical):', message);
         }
-      }
+      });
 
-      // Update transaction category
+      // 3) Update local state
+      setAppliedCategory(candidate.label);
+
+      // 4) Notify parent to refresh the transaction
       await onAcceptSuggestion(transaction.id, candidate.label);
-      toast.success('Category updated');
+
+      // 5) Show success feedback
+      toast.success(`Category updated to ${candidate.label}`);
     } catch (error) {
       toast.error('Failed to apply suggestion');
       console.error('Accept suggestion error:', error);
@@ -96,79 +102,61 @@ export function TransactionRowWithSuggestions({
   };
 
   const handleReject = (candidate: { label: string }) => {
-    if (suggestion?.event_id) {
-      sendSuggestionFeedback(suggestion.event_id, 'reject', 'user rejected').catch(console.error);
-    }
-    onRejectSuggestion(transaction.id, candidate.label);
+    // Optional: notify parent if rejection tracking needed
+    onRejectSuggestion?.(transaction.id, candidate.label);
     toast('Suggestion dismissed');
   };
 
-  const handleUndo = async () => {
-    const eventId = lastEventId || (typeof window !== 'undefined' ? localStorage.getItem(`lm:lastEvent:${transaction.id}`) : null);
-    if (!eventId) return;
-
-    setApplying(true);
-    try {
-      await sendSuggestionFeedback(eventId, 'undo', 'user undo');
-
-      // Restore previous category if available
-      if (previousCategory !== null) {
-        await onAcceptSuggestion(transaction.id, previousCategory);
-      }
-
-      // Clear stored event
-      setLastEventId(null);
-      try {
-        localStorage.removeItem(`lm:lastEvent:${transaction.id}`);
-      } catch {
-        // Ignore localStorage errors
-      }
-
-      toast.success('Reverted last change');
-    } catch (error) {
-      toast.error('Failed to undo');
-      console.error('Undo error:', error);
-    } finally {
-      setApplying(false);
-    }
-  };
-
-  const canUndo = !!(lastEventId || (typeof window !== 'undefined' && localStorage.getItem(`lm:lastEvent:${transaction.id}`)));
-
-  // Convert ML suggestions to CategoryCell format
-  const categoryCandidates = suggestion?.candidates?.map((c) => ({
-    label: c.label,
-    confidence: c.confidence,
-  })) ?? [];
+  // Convert suggestions to CategoryCell format
+  const categoryCandidates = suggestions.map((s) => ({
+    label: s.label,
+    confidence: s.confidence,
+    reasons: s.reasons || [],
+  }));
 
   // Handle category save from inline picker
   const handleCategorySave = async ({ category, makeRule }: { category: string; makeRule: boolean }) => {
-    // Update transaction category
-    await onAcceptSuggestion(transaction.id, category);
+    setApplying(true);
+    try {
+      // Update transaction category
+      await categorizeTxn(transaction.id, category);
 
-    // Create rule if requested
-    if (makeRule && transaction.merchant) {
-      try {
-        await createCategorizeRule({
-          merchant: transaction.merchant_canonical || transaction.merchant,
-          category,
-        });
-        toast.success('Rule created for similar transactions');
-      } catch (error) {
-        console.error('Failed to create rule:', error);
-        toast.error('Failed to create rule');
+      // Create rule if requested
+      if (makeRule && transaction.merchant) {
+        try {
+          await createCategorizeRule({
+            merchant: transaction.merchant_canonical || transaction.merchant,
+            category,
+          });
+          toast.success('Rule created for similar transactions');
+        } catch (error) {
+          console.error('Failed to create rule:', error);
+          toast.error('Failed to create rule');
+        }
       }
-    }
 
-    // Send feedback if we have an event_id
-    if (suggestion?.event_id) {
-      await sendSuggestionFeedback(suggestion.event_id, 'accept', 'user accepted');
-      setLastEventId(suggestion.event_id);
-      try {
-        localStorage.setItem(`lm:lastEvent:${transaction.id}`, suggestion.event_id);
-      } catch {
-        // Ignore localStorage errors
-      }
+      // Send ML feedback for learning
+      mlFeedback({
+        txn_id: transaction.id,
+        merchant: transaction.merchant_canonical || transaction.merchant || undefined,
+        category,
+        action: 'accept',
+      }).catch((err) => {
+        const message = err instanceof Error ? err.message : String(err);
+        const is404 = message.includes('404') || message.includes('Not Found');
+        if (!is404) {
+          console.warn('[TransactionRow] mlFeedback failed (non-critical):', message);
+        }
+      });
+
+      setAppliedCategory(category);
+      await onAcceptSuggestion(transaction.id, category);
+      toast.success(`Category updated to ${category}`);
+    } catch (error) {
+      console.error('Failed to save category:', error);
+      toast.error('Failed to save category');
+    } finally {
+      setApplying(false);
     }
   };
 
@@ -256,23 +244,26 @@ export function TransactionRowWithSuggestions({
                   Suggested:
                 </span>
                 <SuggestionList
-                  candidates={suggestion.candidates}
+                  candidates={categoryCandidates}
                   onAccept={handleAccept}
                   onReject={handleReject}
                   maxVisible={3}
                 />
-                {canUndo && (
-                  <button
-                    onClick={handleUndo}
-                    disabled={applying}
-                    className="text-xs underline opacity-80 hover:opacity-100 text-blue-600 ml-2 disabled:opacity-50"
-                    title="Undo last suggestion acceptance"
-                  >
-                    Undo last apply
-                  </button>
-                )}
               </div>
             )}
+          </td>
+        </tr>
+      )}
+
+      {/* Show applied confirmation if category was just set */}
+      {appliedCategory && !isUncategorized && (
+        <tr className="bg-gradient-to-r from-green-50/50 to-transparent border-l-2 border-l-green-400">
+          <td colSpan={2} className="px-2 py-2"></td>
+          <td colSpan={4} className="px-2 py-2">
+            <div className="flex items-center gap-2 text-sm text-green-700">
+              <span className="font-medium">✓ Applied:</span>
+              <span>{appliedCategory}</span>
+            </div>
           </td>
         </tr>
       )}
