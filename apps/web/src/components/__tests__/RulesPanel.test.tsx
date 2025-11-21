@@ -96,9 +96,15 @@ describe('RulesPanel', () => {
       expect(screen.queryByText(/loading/i)).not.toBeInTheDocument();
     });
 
-    // Fill in the form (find inputs by role/label)
-    const descriptionInput = screen.getByPlaceholderText(/pattern/i);
-    const categoryInput = screen.getByPlaceholderText(/category/i);
+    // Fill in the form (find inputs by their exact placeholder text for specificity)
+    const inputs = screen.getAllByRole('textbox');
+    // Match contains (STARBUCKS), Set category (Coffee)
+    const descriptionInput = inputs.find(i => i.getAttribute('placeholder')?.includes('STARBUCKS'));
+    const categoryInput = inputs.find(i => i.getAttribute('placeholder') === 'e.g., Coffee');
+
+    if (!descriptionInput || !categoryInput) {
+      throw new Error('Could not find form inputs');
+    }
 
     await user.type(descriptionInput, 'whole foods');
     await user.type(categoryInput, 'groceries');
@@ -137,8 +143,13 @@ describe('RulesPanel', () => {
     });
 
     // Fill in the form
-    const descriptionInput = screen.getByPlaceholderText(/pattern/i);
-    const categoryInput = screen.getByPlaceholderText(/category/i);
+    const inputs = screen.getAllByRole('textbox');
+    const descriptionInput = inputs.find(i => i.getAttribute('placeholder')?.includes('STARBUCKS'));
+    const categoryInput = inputs.find(i => i.getAttribute('placeholder') === 'e.g., Coffee');
+
+    if (!descriptionInput || !categoryInput) {
+      throw new Error('Could not find form inputs');
+    }
 
     await user.type(descriptionInput, 'test');
     await user.type(categoryInput, 'invalid');
