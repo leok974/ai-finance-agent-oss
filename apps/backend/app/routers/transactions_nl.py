@@ -250,6 +250,7 @@ def transactions_nl(req: TxnNLRequest, db: Session = Depends(get_db)) -> TxnNLRe
                             "action": {
                                 "type": "nl_search_filters",
                                 "filters": suggestion_filters,
+                                "presetText": "View last 90 days",
                             },
                         }
                     ],

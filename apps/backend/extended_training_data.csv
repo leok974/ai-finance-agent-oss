@@ -1,0 +1,300 @@
+Date,Description,Comments,Check Number,Amount,Balance,merchant_canonical,category,category_slug
+2024-08-15,TRADER JOE'S #456 SPRINGFIELD VA,,,−45.82,2341.15,TRADER JOE'S,Groceries,groceries
+2024-08-15,TRADER JOES 456,,,−23.14,2318.01,TRADER JOE'S,Groceries,groceries
+2024-08-16,TRADER JOE'S STORE 456,,,−67.91,2250.10,TRADER JOE'S,Groceries,groceries
+2024-08-16,TJ'S SPRINGFIELD VA,,,−31.55,2218.55,TRADER JOE'S,Groceries,groceries
+2024-08-17,TRADER JOE'S #0456 VA,,,−89.23,2129.32,TRADER JOE'S,Groceries,groceries
+2024-08-17,WHOLE FOODS MARKET #10234 ARLINGTON,,,−112.45,2016.87,WHOLE FOODS,Groceries,groceries
+2024-08-18,WHOLEFOODS ARLINGTON VA,,,−76.33,1940.54,WHOLE FOODS,Groceries,groceries
+2024-08-18,WHOLE FOODS MKT 10234,,,−54.21,1886.33,WHOLE FOODS,Groceries,groceries
+2024-08-19,WFM ARLINGTON 10234,,,−91.67,1794.66,WHOLE FOODS,Groceries,groceries
+2024-08-19,WHOLE FOODS 866-123-4567,,,−43.88,1750.78,WHOLE FOODS,Groceries,groceries
+2024-08-20,WALMART SUPERCENTER 1234 FAIRFAX VA,,,−156.72,1594.06,WALMART,Groceries,groceries
+2024-08-20,WALMART.COM 800-966-6546,,,−87.91,1506.15,WALMART,Groceries,groceries
+2024-08-21,WAL-MART #1234,,,−65.43,1440.72,WALMART,Groceries,groceries
+2024-08-21,WALMART GROCERY PICKUP,,,−98.76,1341.96,WALMART,Groceries,groceries
+2024-08-22,WALMART SC 1234 FAIRFAX,,,−71.22,1270.74,WALMART,Groceries,groceries
+2024-08-22,KROGER #456 ALEXANDRIA VA,,,−85.34,1185.40,KROGER,Groceries,groceries
+2024-08-23,KROGER 456,,,−42.19,1143.21,KROGER,Groceries,groceries
+2024-08-23,KROGER STORE 0456,,,−67.88,1075.33,KROGER,Groceries,groceries
+2024-08-24,KROGER FUEL #456,,,−52.00,1023.33,KROGER,Groceries,groceries
+2024-08-24,SAFEWAY STORE 1234 BETHESDA,,,−93.45,929.88,SAFEWAY,Groceries,groceries
+2024-08-25,SAFEWAY #1234,,,−76.21,853.67,SAFEWAY,Groceries,groceries
+2024-08-25,SAFEWAY.COM,,,−54.32,799.35,SAFEWAY,Groceries,groceries
+2024-08-26,SAFEWAY 1234 BETHESDA MD,,,−88.90,710.45,SAFEWAY,Groceries,groceries
+2024-08-26,ALDI 76543 ROCKVILLE MD,,,−45.67,664.78,ALDI,Groceries,groceries
+2024-08-27,ALDI STORE 76543,,,−31.23,633.55,ALDI,Groceries,groceries
+2024-08-27,ALDI #76543,,,−52.89,580.66,ALDI,Groceries,groceries
+2024-08-28,WEGMANS #123 STERLING VA,,,−124.56,456.10,WEGMANS,Groceries,groceries
+2024-08-28,WEGMANS STERLING,,,−87.43,368.67,WEGMANS,Groceries,groceries
+2024-08-29,WEGMANS FOOD MARKETS,,,−95.21,273.46,WEGMANS,Groceries,groceries
+2024-08-29,COSTCO WAREHOUSE #456,,,−234.87,38.59,COSTCO,Groceries,groceries
+2024-08-30,COSTCO WHSE #0456,,,−156.78,−118.19,COSTCO,Groceries,groceries
+2024-08-30,COSTCO.COM 800-123-4567,,,−89.91,−208.10,COSTCO,Groceries,groceries
+2024-08-31,TARGET T-2345 TYSONS VA,,,−67.23,−275.33,TARGET,Shopping - Miscellaneous,shopping_misc
+2024-08-31,TARGET.COM * 800-591-3869,,,−125.45,−400.78,TARGET,Shopping - Miscellaneous,shopping_misc
+2024-09-01,TGT *TARGET.COM,,,−34.67,−435.45,TARGET,Shopping - Miscellaneous,shopping_misc
+2024-09-01,TARGET 2345 TYSONS CORNER,,,−89.91,−525.36,TARGET,Shopping - Miscellaneous,shopping_misc
+2024-09-02,MCDONALD'S #12345 FAIRFAX,,,−8.76,−534.12,MCDONALD'S,Restaurant,restaurant
+2024-09-02,MCDONALD'S F12345,,,−12.43,−546.55,MCDONALD'S,Restaurant,restaurant
+2024-09-02,MCDONALDS 12345 FAIRFAX VA,,,−6.89,−553.44,MCDONALD'S,Restaurant,restaurant
+2024-09-03,MCDONALD'S APP,,,−10.21,−563.65,MCDONALD'S,Restaurant,restaurant
+2024-09-03,CHIPOTLE #1234 ARLINGTON,,,−14.87,−578.52,CHIPOTLE,Restaurant,restaurant
+2024-09-04,CHIPOTLE MEXICAN GRILL,,,−12.65,−591.17,CHIPOTLE,Restaurant,restaurant
+2024-09-04,CHIPOTLE 1234,,,−15.43,−606.60,CHIPOTLE,Restaurant,restaurant
+2024-09-05,CHIPOTLE ONLINE,,,−13.98,−620.58,CHIPOTLE,Restaurant,restaurant
+2024-09-05,STARBUCKS #12345 BETHESDA,,,−5.67,−626.25,STARBUCKS,Restaurant,restaurant
+2024-09-06,STARBUCKS STORE 12345,,,−6.45,−632.70,STARBUCKS,Restaurant,restaurant
+2024-09-06,STARBUCKS CORP 800-782-7282,,,−7.89,−640.59,STARBUCKS,Restaurant,restaurant
+2024-09-07,STARBUCKS APP,,,−5.23,−645.82,STARBUCKS,Restaurant,restaurant
+2024-09-07,STARBUCKS CARD RELOAD,,,−25.00,−670.82,STARBUCKS,Restaurant,restaurant
+2024-09-08,PANERA BREAD #4567 ALEXANDRIA,,,−11.45,−682.27,PANERA BREAD,Restaurant,restaurant
+2024-09-08,PANERA 4567,,,−13.67,−695.94,PANERA BREAD,Restaurant,restaurant
+2024-09-09,PANERA BREAD ONLINE,,,−15.89,−711.83,PANERA BREAD,Restaurant,restaurant
+2024-09-09,PANERABREAD.COM,,,−12.34,−724.17,PANERA BREAD,Restaurant,restaurant
+2024-09-10,SUBWAY #23456 SPRINGFIELD,,,−7.89,−732.06,SUBWAY,Restaurant,restaurant
+2024-09-10,SUBWAY 23456,,,−8.45,−740.51,SUBWAY,Restaurant,restaurant
+2024-09-11,SUBWAY SANDWICHES,,,−9.23,−749.74,SUBWAY,Restaurant,restaurant
+2024-09-11,CHICK-FIL-A #00456,,,−11.87,−761.61,CHICK-FIL-A,Restaurant,restaurant
+2024-09-12,CFA MOBILE 00456,,,−10.45,−772.06,CHICK-FIL-A,Restaurant,restaurant
+2024-09-12,CHICK FIL A,,,−12.67,−784.73,CHICK-FIL-A,Restaurant,restaurant
+2024-09-13,OLIVE GARDEN #1234 TYSONS,,,−45.67,−830.40,OLIVE GARDEN,Restaurant,restaurant
+2024-09-13,OLIVE GARDEN ITALIAN,,,−52.34,−882.74,OLIVE GARDEN,Restaurant,restaurant
+2024-09-14,OLIVE GARDEN 1234,,,−48.91,−931.65,OLIVE GARDEN,Restaurant,restaurant
+2024-09-14,DOMINO'S PIZZA #3456,,,−21.45,−953.10,DOMINO'S,Restaurant,restaurant
+2024-09-15,DOMINOS 3456,,,−18.76,−971.86,DOMINO'S,Restaurant,restaurant
+2024-09-15,DOMINO'S ONLINE,,,−24.32,−996.18,DOMINO'S,Restaurant,restaurant
+2024-09-16,DOMINOS.COM,,,−19.87,−1016.05,DOMINO'S,Restaurant,restaurant
+2024-09-16,DD *DOORDASH CHIPOTLE,,,−18.76,−1034.81,DOORDASH,Restaurant - Delivery,restaurant_delivery
+2024-09-17,DD *DOORDASH MCDONALD'S,,,−14.32,−1049.13,DOORDASH,Restaurant - Delivery,restaurant_delivery
+2024-09-17,DOORDASH*PANERA,,,−21.45,−1070.58,DOORDASH,Restaurant - Delivery,restaurant_delivery
+2024-09-18,DOORDASH*SUBWAY,,,−12.67,−1083.25,DOORDASH,Restaurant - Delivery,restaurant_delivery
+2024-09-18,DD *DOORDASH FIVE GUYS,,,−32.45,−1115.70,DOORDASH,Restaurant - Delivery,restaurant_delivery
+2024-09-19,UBER EATS CHIPOTLE,,,−16.78,−1132.48,UBER EATS,Restaurant - Delivery,restaurant_delivery
+2024-09-19,UBER EATS*STARBUCKS,,,−8.91,−1141.39,UBER EATS,Restaurant - Delivery,restaurant_delivery
+2024-09-20,UBER EATS MCDONALD'S,,,−12.34,−1153.73,UBER EATS,Restaurant - Delivery,restaurant_delivery
+2024-09-20,UBEREATS PENDING,,,−25.67,−1179.40,UBER EATS,Restaurant - Delivery,restaurant_delivery
+2024-09-21,GRUBHUB*CHIPOTLE,,,−15.43,−1194.83,GRUBHUB,Restaurant - Delivery,restaurant_delivery
+2024-09-21,GRUBHUB SEAMLESS,,,−28.91,−1223.74,GRUBHUB,Restaurant - Delivery,restaurant_delivery
+2024-09-22,GRUBHUB*PANERA BREAD,,,−18.76,−1242.50,GRUBHUB,Restaurant - Delivery,restaurant_delivery
+2024-09-22,POSTMATES CHIPOTLE,,,−14.32,−1256.82,POSTMATES,Restaurant - Delivery,restaurant_delivery
+2024-09-23,POSTMATES*STARBUCKS,,,−7.89,−1264.71,POSTMATES,Restaurant - Delivery,restaurant_delivery
+2024-09-23,NETFLIX.COM 866-579-7172 CA,,,−15.99,−1280.70,NETFLIX,Subscriptions - Digital,subscriptions_digital
+2024-09-24,NETFLIX.COM CA,,,−15.99,−1296.69,NETFLIX,Subscriptions - Digital,subscriptions_digital
+2024-09-24,NETFLIX    408-123-4567,,,−15.99,−1312.68,NETFLIX,Subscriptions - Digital,subscriptions_digital
+2024-09-25,NETFLIX MONTHLY,,,−15.99,−1328.67,NETFLIX,Subscriptions - Digital,subscriptions_digital
+2024-09-25,HULU 877-824-8858,,,−7.99,−1336.66,HULU,Subscriptions - Digital,subscriptions_digital
+2024-09-26,HULU.COM,,,−7.99,−1344.65,HULU,Subscriptions - Digital,subscriptions_digital
+2024-09-26,HULU SUBSCRIPTION,,,−14.99,−1359.64,HULU,Subscriptions - Digital,subscriptions_digital
+2024-09-27,DISNEY PLUS,,,−13.99,−1373.63,DISNEY PLUS,Subscriptions - Digital,subscriptions_digital
+2024-09-27,DISNEY+ SUBSCRIPTION,,,−13.99,−1387.62,DISNEY PLUS,Subscriptions - Digital,subscriptions_digital
+2024-09-28,DISNEYPLUS.COM,,,−13.99,−1401.61,DISNEY PLUS,Subscriptions - Digital,subscriptions_digital
+2024-09-28,HBO MAX 855-442-6629,,,−15.99,−1417.60,HBO MAX,Subscriptions - Digital,subscriptions_digital
+2024-09-29,HBOMAX.COM,,,−15.99,−1433.59,HBO MAX,Subscriptions - Digital,subscriptions_digital
+2024-09-29,HBO MAX SUBSCRIPTION,,,−15.99,−1449.58,HBO MAX,Subscriptions - Digital,subscriptions_digital
+2024-09-30,PARAMOUNT PLUS,,,−11.99,−1461.57,PARAMOUNT PLUS,Subscriptions - Digital,subscriptions_digital
+2024-09-30,PARAMOUNT+ CBS,,,−11.99,−1473.56,PARAMOUNT PLUS,Subscriptions - Digital,subscriptions_digital
+2024-10-01,PEACOCK TV,,,−5.99,−1479.55,PEACOCK,Subscriptions - Digital,subscriptions_digital
+2024-10-01,PEACOCKTV.COM,,,−11.99,−1491.54,PEACOCK,Subscriptions - Digital,subscriptions_digital
+2024-10-02,APPLE TV+ SUBSCRIPTION,,,−9.99,−1501.53,APPLE TV+,Subscriptions - Digital,subscriptions_digital
+2024-10-02,APPLE.COM/BILL TV+,,,−9.99,−1511.52,APPLE TV+,Subscriptions - Digital,subscriptions_digital
+2024-10-03,AMAZON PRIME 866-216-1072,,,−14.99,−1526.51,AMAZON PRIME,Subscriptions - Digital,subscriptions_digital
+2024-10-03,AMAZON PRIME MEMBERSHIP,,,−14.99,−1541.50,AMAZON PRIME,Subscriptions - Digital,subscriptions_digital
+2024-10-04,AMZN PRIME WASHINGTON DC,,,−14.99,−1556.49,AMAZON PRIME,Subscriptions - Digital,subscriptions_digital
+2024-10-04,YOUTUBE TV,,,−72.99,−1629.48,YOUTUBE TV,Subscriptions - Digital,subscriptions_digital
+2024-10-05,YOUTUBETV.COM,,,−72.99,−1702.47,YOUTUBE TV,Subscriptions - Digital,subscriptions_digital
+2024-10-05,GOOGLE *YOUTUBE TV,,,−72.99,−1775.46,YOUTUBE TV,Subscriptions - Digital,subscriptions_digital
+2024-10-06,SPOTIFY P1234567890,,,−9.99,−1785.45,SPOTIFY,Subscriptions - Music,subscriptions_music
+2024-10-06,SPOTIFY.COM,,,−9.99,−1795.44,SPOTIFY,Subscriptions - Music,subscriptions_music
+2024-10-07,SPOTIFY USA,,,−9.99,−1805.43,SPOTIFY,Subscriptions - Music,subscriptions_music
+2024-10-07,SPOTIFY PREMIUM,,,−9.99,−1815.42,SPOTIFY,Subscriptions - Music,subscriptions_music
+2024-10-08,APPLE MUSIC,,,−10.99,−1826.41,APPLE MUSIC,Subscriptions - Music,subscriptions_music
+2024-10-08,APPLE.COM/BILL MUSIC,,,−10.99,−1837.40,APPLE MUSIC,Subscriptions - Music,subscriptions_music
+2024-10-09,ITUNES.COM MUSIC,,,−10.99,−1848.39,APPLE MUSIC,Subscriptions - Music,subscriptions_music
+2024-10-09,AMAZON MUSIC UNLIMITED,,,−9.99,−1858.38,AMAZON MUSIC,Subscriptions - Music,subscriptions_music
+2024-10-10,AMAZON.COM MUSIC,,,−9.99,−1868.37,AMAZON MUSIC,Subscriptions - Music,subscriptions_music
+2024-10-10,AMZN MUSIC,,,−9.99,−1878.36,AMAZON MUSIC,Subscriptions - Music,subscriptions_music
+2024-10-11,PANDORA PLUS,,,−4.99,−1883.35,PANDORA,Subscriptions - Music,subscriptions_music
+2024-10-11,PANDORA.COM,,,−4.99,−1888.34,PANDORA,Subscriptions - Music,subscriptions_music
+2024-10-12,YOUTUBE MUSIC,,,−10.99,−1899.33,YOUTUBE MUSIC,Subscriptions - Music,subscriptions_music
+2024-10-12,GOOGLE *YOUTUBE MUSIC,,,−10.99,−1910.32,YOUTUBE MUSIC,Subscriptions - Music,subscriptions_music
+2024-10-13,TIDAL MUSIC,,,−9.99,−1920.31,TIDAL,Subscriptions - Music,subscriptions_music
+2024-10-13,TIDAL.COM,,,−9.99,−1930.30,TIDAL,Subscriptions - Music,subscriptions_music
+2024-10-14,MICROSOFT 365 PERSONAL,,,−6.99,−1937.29,MICROSOFT 365,Subscriptions - Software,subscriptions_software
+2024-10-14,MICROSOFT*365,,,−6.99,−1944.28,MICROSOFT 365,Subscriptions - Software,subscriptions_software
+2024-10-15,MSFT *OFFICE 365,,,−6.99,−1951.27,MICROSOFT 365,Subscriptions - Software,subscriptions_software
+2024-10-15,ADOBE CREATIVE CLOUD,,,−54.99,−2006.26,ADOBE,Subscriptions - Software,subscriptions_software
+2024-10-16,ADOBE SYSTEMS,,,−54.99,−2061.25,ADOBE,Subscriptions - Software,subscriptions_software
+2024-10-16,ADOBE *CREATIVE CLOUD,,,−54.99,−2116.24,ADOBE,Subscriptions - Software,subscriptions_software
+2024-10-17,GITHUB PRO,,,−4.00,−2120.24,GITHUB,Subscriptions - Software,subscriptions_software
+2024-10-17,GITHUB.COM,,,−4.00,−2124.24,GITHUB,Subscriptions - Software,subscriptions_software
+2024-10-18,GITHUB INC,,,−4.00,−2128.24,GITHUB,Subscriptions - Software,subscriptions_software
+2024-10-18,DROPBOX*1234567890,,,−11.99,−2140.23,DROPBOX,Subscriptions - Software,subscriptions_software
+2024-10-19,DROPBOX PLUS,,,−11.99,−2152.22,DROPBOX,Subscriptions - Software,subscriptions_software
+2024-10-19,DROPBOX.COM,,,−11.99,−2164.21,DROPBOX,Subscriptions - Software,subscriptions_software
+2024-10-20,GOOGLE STORAGE,,,−1.99,−2166.20,GOOGLE STORAGE,Subscriptions - Software,subscriptions_software
+2024-10-20,GOOGLE *STORAGE,,,−1.99,−2168.19,GOOGLE STORAGE,Subscriptions - Software,subscriptions_software
+2024-10-21,GOOGLE CLOUD PLATFORM,,,−10.45,−2178.64,GOOGLE CLOUD,Subscriptions - Software,subscriptions_software
+2024-10-21,GOOGLE *CLOUD,,,−10.45,−2189.09,GOOGLE CLOUD,Subscriptions - Software,subscriptions_software
+2024-10-22,NOTION LABS INC,,,−10.00,−2199.09,NOTION,Subscriptions - Software,subscriptions_software
+2024-10-22,NOTION.SO,,,−10.00,−2209.09,NOTION,Subscriptions - Software,subscriptions_software
+2024-10-23,CANVA PRO,,,−12.99,−2222.08,CANVA,Subscriptions - Software,subscriptions_software
+2024-10-23,CANVA.COM,,,−12.99,−2235.07,CANVA,Subscriptions - Software,subscriptions_software
+2024-10-24,LINKEDIN PREMIUM,,,−59.99,−2295.06,LINKEDIN,Subscriptions - Professional,subscriptions_professional
+2024-10-24,LINKEDIN.COM PREMIUM,,,−59.99,−2355.05,LINKEDIN,Subscriptions - Professional,subscriptions_professional
+2024-10-25,LINKEDIN *PREMIUM,,,−59.99,−2415.04,LINKEDIN,Subscriptions - Professional,subscriptions_professional
+2024-10-25,COURSERA PLUS,,,−49.00,−2464.04,COURSERA,Subscriptions - Professional,subscriptions_professional
+2024-10-26,COURSERA.ORG,,,−49.00,−2513.04,COURSERA,Subscriptions - Professional,subscriptions_professional
+2024-10-26,UDEMY COURSE,,,−14.99,−2528.03,UDEMY,Subscriptions - Professional,subscriptions_professional
+2024-10-27,UDEMY.COM,,,−19.99,−2548.02,UDEMY,Subscriptions - Professional,subscriptions_professional
+2024-10-27,MASTERCLASS ANNUAL,,,−180.00,−2728.02,MASTERCLASS,Subscriptions - Professional,subscriptions_professional
+2024-10-28,MASTERCLASS.COM,,,−15.00,−2743.02,MASTERCLASS,Subscriptions - Professional,subscriptions_professional
+2024-10-28,PLURALSIGHT,,,−29.00,−2772.02,PLURALSIGHT,Subscriptions - Professional,subscriptions_professional
+2024-10-29,PLURALSIGHT.COM,,,−29.00,−2801.02,PLURALSIGHT,Subscriptions - Professional,subscriptions_professional
+2024-10-29,STEAM PURCHASE 123456,,,−59.99,−2861.01,STEAM,Games,games
+2024-10-30,STEAM GAMES,,,−29.99,−2891.00,STEAM,Games,games
+2024-10-30,STEAMGAMES.COM,,,−19.99,−2910.99,STEAM,Games,games
+2024-10-31,STEAM WALLET,,,−20.00,−2930.99,STEAM,Games,games
+2024-10-31,VALVE CORPORATION,,,−39.99,−2970.98,STEAM,Games,games
+2024-11-01,PLAYSTATION STORE,,,−69.99,−3040.97,PLAYSTATION,Games,games
+2024-11-01,PLAYSTATION NETWORK,,,−59.99,−3100.96,PLAYSTATION,Games,games
+2024-11-02,PSN *PLAYSTATION,,,−49.99,−3150.95,PLAYSTATION,Games,games
+2024-11-02,SONY PLAYSTATION,,,−39.99,−3190.94,PLAYSTATION,Games,games
+2024-11-03,PLAYSTATION PLUS,,,−11.99,−3202.93,PLAYSTATION,Games,games
+2024-11-03,XBOX LIVE GOLD,,,−9.99,−3212.92,XBOX,Games,games
+2024-11-04,MICROSOFT XBOX,,,−59.99,−3272.91,XBOX,Games,games
+2024-11-04,XBOX GAMEPASS,,,−14.99,−3287.90,XBOX,Games,games
+2024-11-05,XBOX.COM,,,−39.99,−3327.89,XBOX,Games,games
+2024-11-05,MICROSOFT*XBOX LIVE,,,−9.99,−3337.88,XBOX,Games,games
+2024-11-06,NINTENDO ESHOP,,,−59.99,−3397.87,NINTENDO,Games,games
+2024-11-06,NINTENDO DIGITAL,,,−39.99,−3437.86,NINTENDO,Games,games
+2024-11-07,NINTENDO.COM,,,−19.99,−3457.85,NINTENDO,Games,games
+2024-11-07,NINTENDO SWITCH ONLINE,,,−3.99,−3461.84,NINTENDO,Games,games
+2024-11-08,EPIC GAMES STORE,,,−29.99,−3491.83,EPIC GAMES,Games,games
+2024-11-08,EPICGAMES.COM,,,−39.99,−3531.82,EPIC GAMES,Games,games
+2024-11-09,EPIC GAMES,,,−19.99,−3551.81,EPIC GAMES,Games,games
+2024-11-09,BATTLE.NET,,,−39.99,−3591.80,BATTLE.NET,Games,games
+2024-11-10,BLIZZARD ENTERTAINMENT,,,−14.99,−3606.79,BATTLE.NET,Games,games
+2024-11-10,ORIGIN.COM,,,−29.99,−3636.78,ORIGIN,Games,games
+2024-11-11,EA PLAY,,,−4.99,−3641.77,EA PLAY,Games,games
+2024-11-11,EA.COM,,,−59.99,−3701.76,EA PLAY,Games,games
+2024-11-12,ROBLOX CORPORATION,,,−9.99,−3711.75,ROBLOX,Games,games
+2024-11-12,ROBLOX.COM,,,−19.99,−3731.74,ROBLOX,Games,games
+2024-11-13,AMAZON.COM AMZN.COM/BILL,,,−124.56,−3856.30,AMAZON,Shopping - Online,shopping_online
+2024-11-13,AMAZON.COM,,,−67.89,−3924.19,AMAZON,Shopping - Online,shopping_online
+2024-11-14,AMZN MKTP US,,,−45.23,−3969.42,AMAZON,Shopping - Online,shopping_online
+2024-11-14,AMAZON MARKETPLACE,,,−89.91,−4059.33,AMAZON,Shopping - Online,shopping_online
+2024-11-15,AMAZON.COM*AB1234567,,,−34.56,−4093.89,AMAZON,Shopping - Online,shopping_online
+2024-11-15,EBAY O*12-34567-89012,,,−78.91,−4172.80,EBAY,Shopping - Online,shopping_online
+2024-11-16,EBAY.COM,,,−45.67,−4218.47,EBAY,Shopping - Online,shopping_online
+2024-11-16,PAYPAL *EBAY,,,−123.45,−4341.92,EBAY,Shopping - Online,shopping_online
+2024-11-17,ETSY.COM,,,−34.56,−4376.48,ETSY,Shopping - Online,shopping_online
+2024-11-17,ETSY INC,,,−67.89,−4444.37,ETSY,Shopping - Online,shopping_online
+2024-11-18,WWW.ETSY.COM,,,−23.45,−4467.82,ETSY,Shopping - Online,shopping_online
+2024-11-18,WAYFAIR.COM,,,−234.56,−4702.38,WAYFAIR,Shopping - Online,shopping_online
+2024-11-19,WAYFAIR 877-929-3247,,,−167.89,−4870.27,WAYFAIR,Shopping - Online,shopping_online
+2024-11-19,OVERSTOCK.COM,,,−145.67,−5015.94,OVERSTOCK,Shopping - Online,shopping_online
+2024-11-20,OVERSTOCK 800-843-2446,,,−89.91,−5105.85,OVERSTOCK,Shopping - Online,shopping_online
+2024-11-20,BESTBUY.COM,,,−567.89,−5673.74,BEST BUY,Shopping - Online,shopping_online
+2024-11-21,BEST BUY 888-237-8289,,,−234.56,−5908.30,BEST BUY,Shopping - Online,shopping_online
+2024-11-21,BBY*BESTBUY.COM,,,−123.45,−6031.75,BEST BUY,Shopping - Online,shopping_online
+2024-11-22,NEWEGG.COM,,,−345.67,−6377.42,NEWEGG,Shopping - Online,shopping_online
+2024-11-22,NEWEGG INC,,,−234.56,−6611.98,NEWEGG,Shopping - Online,shopping_online
+2024-11-23,B&H PHOTO 800-606-6969,,,−678.91,−7290.89,B&H PHOTO,Shopping - Online,shopping_online
+2024-11-23,BHPHOTOVIDEO.COM,,,−456.78,−7747.67,B&H PHOTO,Shopping - Online,shopping_online
+2024-11-24,VENMO PAYMENT @JOHNDOE,,,−25.00,−7772.67,VENMO,Transfers - P2P,transfer_p2p
+2024-11-24,VENMO *PAYMENT,,,−50.00,−7822.67,VENMO,Transfers - P2P,transfer_p2p
+2024-11-25,VENMO CASHOUT,,,−100.00,−7922.67,VENMO,Transfers - P2P,transfer_p2p
+2024-11-25,VENMO @JANEDOE,,,−35.00,−7957.67,VENMO,Transfers - P2P,transfer_p2p
+2024-11-26,Zelle To JOHN SMITH,,,−150.00,−8107.67,ZELLE,Transfers - P2P,transfer_p2p
+2024-11-26,Zelle Payment,,,−75.00,−8182.67,ZELLE,Transfers - P2P,transfer_p2p
+2024-11-27,Zelle To JANE DOE,,,−200.00,−8382.67,ZELLE,Transfers - P2P,transfer_p2p
+2024-11-27,Zelle Transfer,,,−50.00,−8432.67,ZELLE,Transfers - P2P,transfer_p2p
+2024-11-28,CASH APP*PAYMENT 800-123-4567,,,−45.00,−8477.67,CASH APP,Transfers - P2P,transfer_p2p
+2024-11-28,CASH APP*JOHN DOE,,,−30.00,−8507.67,CASH APP,Transfers - P2P,transfer_p2p
+2024-11-29,SQ *CASH APP,,,−60.00,−8567.67,CASH APP,Transfers - P2P,transfer_p2p
+2024-11-29,CASH APP TRANSFER,,,−80.00,−8647.67,CASH APP,Transfers - P2P,transfer_p2p
+2024-11-30,PAYPAL *TRANSFER,,,−125.00,−8772.67,PAYPAL,Transfers - P2P,transfer_p2p
+2024-11-30,PAYPAL TRANSFER TO BANK,,,−200.00,−8972.67,PAYPAL,Transfers - P2P,transfer_p2p
+2024-12-01,PP*PAYPAL INSTANT,,,−50.00,−9022.67,PAYPAL,Transfers - P2P,transfer_p2p
+2024-12-01,PAYPAL ECHECK,,,−75.00,−9097.67,PAYPAL,Transfers - P2P,transfer_p2p
+2024-12-02,ONLINE PAYMENT - THANK YOU,,,−456.78,−9554.45,CREDIT CARD PAYMENT,Credit Card Payment,credit_card_payment
+2024-12-02,AUTOPAY PAYMENT RECEIVED,,,−234.56,−9788.01,CREDIT CARD PAYMENT,Credit Card Payment,credit_card_payment
+2024-12-03,CHASE CREDIT CARD PAYMENT,,,−567.89,−10355.90,CHASE,Credit Card Payment,credit_card_payment
+2024-12-03,CAPITAL ONE PAYMENT,,,−345.67,−10701.57,CAPITAL ONE,Credit Card Payment,credit_card_payment
+2024-12-04,AMEX PAYMENT RECEIVED,,,−890.12,−11591.69,AMERICAN EXPRESS,Credit Card Payment,credit_card_payment
+2024-12-04,AMERICAN EXPRESS PAYMENT,,,−456.78,−12048.47,AMERICAN EXPRESS,Credit Card Payment,credit_card_payment
+2024-12-05,DISCOVER PAYMENT,,,−234.56,−12283.03,DISCOVER,Credit Card Payment,credit_card_payment
+2024-12-05,CITI CARD PAYMENT,,,−567.89,−12850.92,CITI,Credit Card Payment,credit_card_payment
+2024-12-06,UBER *TRIP HELP.UBER.COM,,,−23.45,−12874.37,UBER,Ride Share,ride_share
+2024-12-06,UBER *RIDE,,,−18.76,−12893.13,UBER,Ride Share,ride_share
+2024-12-07,UBER TECHNOLOGIES,,,−34.56,−12927.69,UBER,Ride Share,ride_share
+2024-12-07,UBER TRIP,,,−28.91,−12956.60,UBER,Ride Share,ride_share
+2024-12-08,LYFT *RIDE,,,−21.34,−12977.94,LYFT,Ride Share,ride_share
+2024-12-08,LYFT RIDE FRI 2PM,,,−19.87,−12997.81,LYFT,Ride Share,ride_share
+2024-12-09,LYFT *1 RIDE,,,−26.45,−13024.26,LYFT,Ride Share,ride_share
+2024-12-09,LYFT.COM,,,−31.23,−13055.49,LYFT,Ride Share,ride_share
+2024-12-10,COLUMBIA GAS,,,−67.89,−13123.38,COLUMBIA GAS,Utilities - Gas,utilities_gas
+2024-12-10,COL GAS OF VA,,,−45.67,−13169.05,COLUMBIA GAS,Utilities - Gas,utilities_gas
+2024-12-11,WASHINGTON GAS,,,−89.12,−13258.17,WASHINGTON GAS,Utilities - Gas,utilities_gas
+2024-12-11,WASH GAS LIGHT CO,,,−76.54,−13334.71,WASHINGTON GAS,Utilities - Gas,utilities_gas
+2024-12-12,DOMINION ENERGY,,,−123.45,−13458.16,DOMINION ENERGY,Utilities - Gas,utilities_gas
+2024-12-12,DOMINION VA POWER,,,−145.67,−13603.83,DOMINION ENERGY,Utilities - Gas,utilities_gas
+2024-12-13,PG&E PAYMENT,,,−167.89,−13771.72,PG&E,Utilities - Gas,utilities_gas
+2024-12-13,PACIFIC GAS & ELECTRIC,,,−134.56,−13906.28,PG&E,Utilities - Gas,utilities_gas
+2024-12-14,COMCAST XFINITY,,,−89.99,−13996.27,COMCAST,Utilities - Internet,utilities_internet
+2024-12-14,XFINITY MOBILE,,,−45.00,−14041.27,COMCAST,Utilities - Internet,utilities_internet
+2024-12-15,VERIZON FIOS,,,−79.99,−14121.26,VERIZON,Utilities - Internet,utilities_internet
+2024-12-15,VERIZON WIRELESS,,,−125.00,−14246.26,VERIZON,Utilities - Internet,utilities_internet
+2024-12-16,AT&T INTERNET,,,−55.00,−14301.26,AT&T,Utilities - Internet,utilities_internet
+2024-12-16,AT&T MOBILITY,,,−85.00,−14386.26,AT&T,Utilities - Internet,utilities_internet
+2024-12-17,T-MOBILE,,,−70.00,−14456.26,T-MOBILE,Utilities - Internet,utilities_internet
+2024-12-17,TMOBILE *AUTO PAY,,,−90.00,−14546.26,T-MOBILE,Utilities - Internet,utilities_internet
+2024-12-18,CHATGPT PLUS,,,−20.00,−14566.26,OPENAI,SaaS - AI,saas_ai
+2024-12-18,OPENAI CHATGPT,,,−20.00,−14586.26,OPENAI,SaaS - AI,saas_ai
+2024-12-19,CLAUDE.AI PRO,,,−20.00,−14606.26,ANTHROPIC,SaaS - AI,saas_ai
+2024-12-19,ANTHROPIC CLAUDE,,,−20.00,−14626.26,ANTHROPIC,SaaS - AI,saas_ai
+2024-12-20,MIDJOURNEY SUBSCRIPTION,,,−30.00,−14656.26,MIDJOURNEY,SaaS - AI,saas_ai
+2024-12-20,MIDJOURNEY.COM,,,−30.00,−14686.26,MIDJOURNEY,SaaS - AI,saas_ai
+2024-12-21,RUNWAY ML,,,−35.00,−14721.26,RUNWAY,SaaS - AI,saas_ai
+2024-12-21,RUNWAYML.COM,,,−35.00,−14756.26,RUNWAY,SaaS - AI,saas_ai
+2024-12-22,COPILOT GITHUB,,,−10.00,−14766.26,GITHUB COPILOT,SaaS - AI,saas_ai
+2024-12-22,GITHUB COPILOT,,,−10.00,−14776.26,GITHUB COPILOT,SaaS - AI,saas_ai
+2024-12-23,AWS CHARGES,,,−234.56,−15010.82,AWS,SaaS - Infrastructure,saas_infra
+2024-12-23,AMAZON WEB SERVICES,,,−145.67,−15156.49,AWS,SaaS - Infrastructure,saas_infra
+2024-12-24,GOOGLE CLOUD PLATFORM,,,−89.12,−15245.61,GOOGLE CLOUD,SaaS - Infrastructure,saas_infra
+2024-12-24,GCP CHARGES,,,−67.89,−15313.50,GOOGLE CLOUD,SaaS - Infrastructure,saas_infra
+2024-12-25,MICROSOFT AZURE,,,−156.78,−15470.28,AZURE,SaaS - Infrastructure,saas_infra
+2024-12-25,AZURE CHARGES,,,−123.45,−15593.73,AZURE,SaaS - Infrastructure,saas_infra
+2024-12-26,DIGITALOCEAN.COM,,,−45.00,−15638.73,DIGITALOCEAN,SaaS - Infrastructure,saas_infra
+2024-12-26,DIGITALOCEAN DROPLET,,,−25.00,−15663.73,DIGITALOCEAN,SaaS - Infrastructure,saas_infra
+2024-12-27,CLOUDFLARE INC,,,−20.00,−15683.73,CLOUDFLARE,SaaS - Infrastructure,saas_infra
+2024-12-27,CLOUDFLARE.COM,,,−20.00,−15703.73,CLOUDFLARE,SaaS - Infrastructure,saas_infra
+2024-12-28,VERCEL INC,,,−20.00,−15723.73,VERCEL,SaaS - Infrastructure,saas_infra
+2024-12-28,VERCEL.COM,,,−20.00,−15743.73,VERCEL,SaaS - Infrastructure,saas_infra
+2024-12-29,HEROKU MONTHLY,,,−25.00,−15768.73,HEROKU,SaaS - Infrastructure,saas_infra
+2024-12-29,HEROKU.COM,,,−7.00,−15775.73,HEROKU,SaaS - Infrastructure,saas_infra
+2024-12-30,NETLIFY TEAM,,,−19.00,−15794.73,NETLIFY,SaaS - Infrastructure,saas_infra
+2024-12-30,NETLIFY.COM,,,−19.00,−15813.73,NETLIFY,SaaS - Infrastructure,saas_infra
+2024-12-31,ATM WITHDRAWAL 12345,,,−100.00,−15913.73,ATM,Cash Withdrawal,cash_withdrawal
+2024-12-31,CHASE ATM WITHDRAWAL,,,−60.00,−15973.73,CHASE ATM,Cash Withdrawal,cash_withdrawal
+2025-01-01,WELLS FARGO ATM,,,−80.00,−16053.73,WELLS FARGO ATM,Cash Withdrawal,cash_withdrawal
+2025-01-01,BANK OF AMERICA ATM,,,−120.00,−16173.73,BANK OF AMERICA ATM,Cash Withdrawal,cash_withdrawal
+2025-01-02,ATM FEE,,,−3.00,−16176.73,ATM FEE,Cash Withdrawal,cash_withdrawal
+2025-01-02,FOREIGN ATM FEE,,,−5.00,−16181.73,ATM FEE,Cash Withdrawal,cash_withdrawal
+2025-01-03,DIRECT DEPOSIT,,,2500.00,−13681.73,DIRECT DEPOSIT,Transfer - Incoming,transfer_in
+2025-01-03,PAYROLL DEPOSIT,,,3000.00,−10681.73,PAYROLL,Transfer - Incoming,transfer_in
+2025-01-04,ACH DEPOSIT,,,1500.00,−9181.73,ACH DEPOSIT,Transfer - Incoming,transfer_in
+2025-01-04,WIRE TRANSFER IN,,,5000.00,−4181.73,WIRE TRANSFER,Transfer - Incoming,transfer_in
+2025-01-05,REFUND AMAZON,,,45.67,−4136.06,AMAZON REFUND,Transfer - Incoming,transfer_in
+2025-01-05,TAX REFUND,,,1234.56,−2901.50,TAX REFUND,Transfer - Incoming,transfer_in
+2025-01-06,CVS PHARMACY #12345,,,−23.45,−2924.95,CVS,Medical,medical
+2025-01-06,CVS/PHARMACY,,,−45.67,−2970.62,CVS,Medical,medical
+2025-01-07,WALGREENS #4567,,,−34.56,−3005.18,WALGREENS,Medical,medical
+2025-01-07,WALGREENS PHARMACY,,,−67.89,−3073.07,WALGREENS,Medical,medical
+2025-01-08,KAISER PERMANENTE,,,−250.00,−3323.07,KAISER PERMANENTE,Medical,medical
+2025-01-08,KAISER MEDICAL,,,−150.00,−3473.07,KAISER PERMANENTE,Medical,medical
+2025-01-09,UNITED HEALTHCARE,,,−185.00,−3658.07,UNITED HEALTHCARE,Medical,medical
+2025-01-09,UHC PAYMENT,,,−75.00,−3733.07,UNITED HEALTHCARE,Medical,medical
+2025-01-10,AETNA HEALTH,,,−195.00,−3928.07,AETNA,Medical,medical
+2025-01-10,AETNA INSURANCE,,,−125.00,−4053.07,AETNA,Medical,medical
