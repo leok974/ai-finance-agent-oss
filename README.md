@@ -1018,6 +1018,16 @@ Tips
 - The model selection (Advanced) is saved per tab; leave blank to use the backend default.
 - Clearing the chat resets the persisted stream (synced across this browserΓÇÖs tabs).
 
+## Agents
+
+This repo uses specialist agents for Copilot / ChatGPT / tooling.
+
+See [AGENTS.md](./AGENTS.md) for the agent system overview and
+[agents/](./agents/) for role-specific instructions
+(api, tests, docs, dev-deploy, security).
+
+---
+
 ## Quickstart
 
 ### Prereqs
