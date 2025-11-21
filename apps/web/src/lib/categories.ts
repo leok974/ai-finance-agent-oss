@@ -12,8 +12,10 @@ export type CategoryKind =
   | 'restaurants'
   | 'coffee'
   | 'health'
+  | 'medical'
   | 'subscriptions'
   | 'shopping'
+  | 'games'
   | 'finance'
   | 'travel';
 
@@ -72,6 +74,11 @@ export const CATEGORY_DEFS: Record<string, CategoryDef> = {
     label: 'Health',
     color: '#ec4899', // pink-500
   },
+  medical: {
+    slug: 'medical',
+    label: 'Medical',
+    color: '#dc2626', // red-600
+  },
   subscriptions: {
     slug: 'subscriptions',
     label: 'Subscriptions',
@@ -81,6 +88,11 @@ export const CATEGORY_DEFS: Record<string, CategoryDef> = {
     slug: 'shopping',
     label: 'Shopping',
     color: '#14b8a6', // teal-500
+  },
+  games: {
+    slug: 'games',
+    label: 'Games',
+    color: '#7c3aed', // violet-600
   },
   finance: {
     slug: 'finance',
