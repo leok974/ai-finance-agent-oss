@@ -1,18 +1,27 @@
 # LedgerMind Tunnel Stabilization – Complete ✅
 
-**Date:** 2025-01-21
+**Date:** 2025-11-21
 **Objective:** Eliminate random 502 errors caused by duplicate cloudflared connectors
 
 ## Summary
 
-Successfully disabled the local (redundant) cloudflared container that was racing with the remote Cloudflare Tunnel, causing intermittent 502 Bad Gateway errors.
+Successfully stabilized LedgerMind tunnel by:
+1. Disabled local `ai-finance-agent-oss-clean-cloudflared-1` (redundant, on this machine)
+2. Stopped `applylens-cloudflared-prod` (only on ApplyLens network, couldn't reach LedgerMind)
+3. Using only `cfd-a` connector (on both `infra_net` and `applylens_applylens-prod` networks)
+
+This eliminates random 502 errors that occurred when requests hit connectors that couldn't reach LedgerMind containers.
 
 ## What Was Done
 
 ### 1. Identified the Problem
-- **Local cloudflared**: `ai-finance-agent-oss-clean-cloudflared-1` (running on this machine)
-- **Remote tunnel**: `cfd-a` (the authoritative tunnel with HA connections)
-- **Issue**: Both were trying to serve `app.ledger-mind.org` and `api.ledger-mind.org`, causing race conditions
+- **Phase 1 - Local cloudflared**: `ai-finance-agent-oss-clean-cloudflared-1` was running locally, racing with remote tunnel
+- **Phase 2 - ApplyLens connector**: `applylens-cloudflared-prod` was only on `applylens_applylens-prod` network
+  - ✅ Could reach ApplyLens containers (`applylens-web-prod`, `applylens-api-prod`)
+  - ❌ Could NOT reach LedgerMind containers (`ledgermind-web.int`, `ledgermind-api.int`)
+- **Solution**: Use only `cfd-a` connector which is on BOTH networks:
+  - `infra_net` (can reach LedgerMind containers)
+  - `applylens_applylens-prod` (can reach ApplyLens containers)
 
 ### 2. Verified Network Configuration
 Confirmed that nginx and backend already have the correct Docker network aliases:
@@ -74,82 +83,114 @@ docker rm ai-finance-agent-oss-clean-cloudflared-1
 docker rm ai-finance-agent-oss-clean-cf-health-1
 ```
 
+### 4. Disabled Redundant Connectors
+
+**Phase 1 - Disabled Local LedgerMind cloudflared (2025-11-21 13:44 UTC):**
+```bash
+# Commented out in docker-compose.prod.yml
+# - cloudflared service (lines 277-300)
+# - cf-health service (lines 302-314)
+# Removed stopped containers
+docker rm ai-finance-agent-oss-clean-cloudflared-1
+docker rm ai-finance-agent-oss-clean-cf-health-1
+```
+
+**Phase 2 - Stopped ApplyLens-only connector (2025-11-21 13:49 UTC):**
+```bash
+# This connector could reach ApplyLens but NOT LedgerMind
+docker stop applylens-cloudflared-prod
+```
+
+**Result:**
+- Only `cfd-a` is now serving tunnel traffic
+- `cfd-a` is on both `infra_net` AND `applylens_applylens-prod` networks
+- Can reach ALL containers: LedgerMind + ApplyLens + SiteAgents + Portfolio
+
 ## Current Status
 
-### ✅ Infrastructure Fixed
-- Local cloudflared container: **DISABLED**
-- Remote tunnel (cfd-a): **RUNNING** with 4 HA connections
+### ✅ Infrastructure Fixed (2025-11-21 13:50 UTC)
+- Local cloudflared container: **DISABLED** (ai-finance-agent-oss-clean-cloudflared-1)
+- ApplyLens-only connector: **STOPPED** (applylens-cloudflared-prod)
+- Active tunnel connector: **cfd-a ONLY** with 4 HA connections
 - Network aliases: **CONFIGURED CORRECTLY**
 - Ingress rules: **VERIFIED**
+- External access: **✅ WORKING** (all assets return 200 OK)
 
-### ⚠️ Cloudflare Cache Issue (External)
-The site still returns 502 when accessed externally because Cloudflare is caching the old 502 responses from when the tunnel was having issues.
-
-**Evidence:**
+### ✅ Verification Results
 ```bash
+# Test 1: Origin health (from infra_net)
+$ docker run --rm --network infra_net alpine sh -c "curl -I http://ledgermind-web.int:80/"
+HTTP/1.1 200 OK  ✅
+
+# Test 2: External access
 $ curl -I https://app.ledger-mind.org
-HTTP/1.1 502 Bad Gateway
+HTTP/1.1 200 OK  ✅
+
+# Test 3: Assets (previously returned 502)
+$ curl -I https://app.ledger-mind.org/assets/preload-helper-2LWRYvkK.js
+HTTP/1.1 200 OK  ✅ (5/5 requests successful)
+
+# Test 4: Tunnel connections
+$ docker logs cfd-a | grep "Registered tunnel connection"
+4 active HA connections  ✅
 ```
 
-**Why This Happens:**
-- Cloudflare caches error responses (including 502s) for a short period
-- Even though the tunnel is now stable, the cached 502s are still being served
-- The tunnel itself is working (4 HA connections, correct routing)
+### ⚠️ Previous Issue (RESOLVED)
+~~The site was returning random 502 errors because:~~
+1. ~~Cloudflare was load-balancing between multiple connectors~~
+2. ~~Some connectors (applylens-cloudflared-prod) couldn't reach LedgerMind containers~~
+3. ~~Requests that hit the bad connector → 502 Bad Gateway~~
 
-## Next Steps
+**Status:** ✅ FIXED - Now using only `cfd-a` which can reach all containers
 
-### Option 1: Wait for Cache to Expire (Passive)
-Cloudflare's default cache TTL for 502 errors is typically **0-10 seconds**, but in some cases it can be longer due to:
-- Cloudflare's "Always Online" feature caching error pages
-- Custom cache rules in Cloudflare dashboard
-- Edge node cache persistence
+## Maintenance Tasks
 
-**Timeline:** Should clear within **5-30 minutes** under normal circumstances.
+### To Prevent ApplyLens Connector from Restarting
+The `applylens-cloudflared-prod` service should be disabled in its docker-compose file:
 
-### Option 2: Purge Cache Manually (Active) – RECOMMENDED
-Use Cloudflare API to purge the cache immediately.
+**Location:** `D:\ApplyLens\docker-compose.prod.yml`
 
-**Script:** `c:\ai-finance-agent-oss-clean\scripts\purge-cf-cache.ps1`
+**Action:** Comment out the `cloudflared` service (or rename it to `cloudflared-disabled`):
 
-**Requirements:**
-- Cloudflare API token with "Zone.Cache Purge" permission
-- Zone ID for ledger-mind.org
+```yaml
+# cloudflared:  # DISABLED - use shared cfd-a instead (on infra_net)
+#   image: cloudflare/cloudflared:latest
+#   container_name: applylens-cloudflared-prod
+#   command: tunnel run
+#   environment:
+#     - TUNNEL_TOKEN=${APPLYLENS_TUNNEL_TOKEN}
+#   networks:
+#     - applylens_applylens-prod
+#   restart: unless-stopped
+```
 
-**Command:**
+**Reason:** This connector is only on the `applylens_applylens-prod` network and cannot reach LedgerMind containers on `infra_net`.
+
+### Verification Commands
+
+**Check Active Connectors:**
 ```powershell
-cd c:\ai-finance-agent-oss-clean
-.\scripts\purge-cf-cache.ps1 -ZoneId "YOUR_ZONE_ID" -ApiToken "YOUR_API_TOKEN"
+# Should show ONLY cfd-a (not applylens-cloudflared-prod)
+docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Networks}}" | Select-String "cloudflared|cfd"
 ```
 
-Alternatively, purge via Cloudflare Dashboard:
-1. Log into Cloudflare dashboard
-2. Select `ledger-mind.org` zone
-3. Go to **Caching** → **Configuration**
-4. Click **Purge Everything**
-
-### Option 3: Test with Cache Bypass
-To verify the tunnel is working RIGHT NOW (bypassing cache):
-
-**Using curl with cache-bypass header:**
-```bash
-curl -I https://app.ledger-mind.org -H "Cache-Control: no-cache"
+**Expected Output:**
+```
+cfd-a    Up X minutes    applylens_applylens-prod,infra_net
 ```
 
-**Or access via Cloudflare's orange cloud bypass:**
-```bash
-# Get origin IP from Cloudflare dashboard DNS settings
-curl -I http://ORIGIN_IP:80 -H "Host: app.ledger-mind.org"
-```
-
-## Verification Commands
-
-### Check Tunnel Status
+**Check Tunnel Connections:**
 ```powershell
-# View active connections
-docker logs cfd-a 2>&1 | Select-String "Registered tunnel connection" | Select-Object -Last 4
+# Should show 4 active HA connections
+docker logs cfd-a --tail 20 | Select-String "Registered tunnel connection"
+```
 
-# View ingress config
-docker logs cfd-a 2>&1 | Select-String "ledger-mind" -Context 2
+**Test LedgerMind Assets:**
+```powershell
+# All should return 200 OK (no 502s)
+curl.exe -I https://app.ledger-mind.org/assets/preload-helper-2LWRYvkK.js
+curl.exe -I https://app.ledger-mind.org/assets/vendor-radix-BA32w1ww.js
+curl.exe https://api.ledger-mind.org/ready
 ```
 
 ### Check Network Connectivity
