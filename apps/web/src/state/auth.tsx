@@ -14,6 +14,7 @@ export type CurrentUser = {
   initial?: string; // Server-provided initial to prevent flicker
   roles: string[];
   is_active?: boolean;
+  is_demo?: boolean; // Demo user flag
   dev_unlocked?: boolean;
   env?: string;
   // Legacy field for backwards compatibility

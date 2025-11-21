@@ -12,6 +12,7 @@ import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { ExplainSuggestionButton } from './ExplainSuggestionButton';
 import { SuggestionsInfoModal } from './SuggestionsInfoModal';
+import { getSuggestionConfidencePercent } from '../lib/suggestions';
 
 type Transaction = {
   id: number;
@@ -249,7 +250,7 @@ export function TransactionRowWithSuggestions({
                   </span>
                   {suggestions.length > 0 && (
                     <span className="px-2 py-0.5 rounded-full bg-slate-800 text-[10px] text-slate-100">
-                      {Math.round(suggestions[0].confidence * 100)}% confident
+                      {getSuggestionConfidencePercent(suggestions[0])}% confident
                     </span>
                   )}
                   <SuggestionsInfoModal

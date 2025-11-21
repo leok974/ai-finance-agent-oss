@@ -60,7 +60,9 @@ class Transaction(Base):
     raw_category: Mapped[str | None] = mapped_column(String(128))
     account: Mapped[str | None] = mapped_column(String(128), index=True)
     month: Mapped[str] = mapped_column(String(7), index=True)  # YYYY-MM
-    pending: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=sa_false())
+    pending: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=sa_false()
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

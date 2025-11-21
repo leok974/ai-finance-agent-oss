@@ -1,4 +1,5 @@
 """Demo login endpoint - quick access with pre-seeded data."""
+
 import logging
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse
@@ -17,7 +18,7 @@ router = APIRouter(tags=["auth"])
 async def auth_demo_login(db: Session = Depends(get_db)):
     """
     Demo login endpoint.
-    
+
     Creates/retrieves demo user and issues session tokens.
     No password required - demo account is public.
     """
@@ -46,7 +47,7 @@ async def auth_demo_login(db: Session = Depends(get_db)):
 
     # Extract user roles for token generation
     roles = [ur.role.name for ur in user.roles] if user.roles else []
-    
+
     # Create session tokens
     tokens = create_tokens(user.email, roles)
 

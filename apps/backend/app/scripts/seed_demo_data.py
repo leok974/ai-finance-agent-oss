@@ -1,12 +1,11 @@
 """Seed demo account with 6 months of realistic transaction data."""
-import asyncio
-import random
-from datetime import date, datetime, timedelta
 
-from sqlalchemy import select
+import random
+from datetime import date, datetime
+
 from sqlalchemy.orm import Session
 
-from app.db import get_db, SessionLocal
+from app.db import SessionLocal
 from app.orm_models import User, Transaction
 from app.config import settings
 
@@ -45,7 +44,7 @@ def get_or_create_demo_user(db: Session) -> User:
 def gen_month_transactions(year: int, month: int, base_seed: int):
     """
     Generate deterministic realistic transactions for a month.
-    
+
     Includes:
     - Rent (1x)
     - Groceries (4x)

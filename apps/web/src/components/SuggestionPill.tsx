@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { categorizeTxn } from '@/api';
 import clsx from 'clsx';
+import { getSuggestionConfidencePercent } from '../lib/suggestions';
 
 type SuggestionPillProps = {
   txn: { id: number; merchant: string; description: string; amount: number };
@@ -78,7 +79,7 @@ export default function SuggestionPill({
       onClick={handleClick}
     >
       <span className="font-medium">{s.label}</span>
-      <span className="opacity-70">{Math.round(s.score * 100)}%</span>
+      <span className="opacity-70">{getSuggestionConfidencePercent(s)}%</span>
 
       {/* Learning indicator bar */}
       {isLearning && (

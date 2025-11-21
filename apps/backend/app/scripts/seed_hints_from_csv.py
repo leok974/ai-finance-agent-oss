@@ -14,17 +14,19 @@ CSV Format (supports two schemas):
 
 2. Training schema:
     Date,Description,merchant_canonical,Amount,category_slug
-    2024-08-15,TRADER JOE'S #456,Trader Joe's,-45.82,groceries
-    2024-08-16,WHOLE FOODS MARKET,Whole Foods,-112.45,groceries
+    2024-08-15,TRADER JOE'S #456,trader joes,-45.82,groceries
+    2024-08-16,WHOLE FOODS MARKET,whole foods,-112.45,groceries
     ...
 
 This script:
 1. Reads the CSV and auto-detects the schema
-2. Counts (merchant, category) pairs
-3. Calculates confidence based on:
+2. For simple schema: canonicalizes the 'description' field (real noisy merchant names)
+3. For training schema: uses provided 'merchant_canonical' field
+4. Counts (merchant_canonical, category) pairs
+5. Calculates confidence based on:
    - Ratio of category for that merchant (consistency)
    - Volume of occurrences (more data = higher confidence)
-4. Upserts into merchant_category_hints table
+6. Upserts into merchant_category_hints table
 """
 
 import csv
@@ -34,6 +36,7 @@ from pathlib import Path
 
 from sqlalchemy import text
 from app.db import SessionLocal
+from app.utils.text import canonicalize_merchant
 
 CSV_PATH = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("/app/data/seed_hints.csv")
 
@@ -57,31 +60,49 @@ def main() -> None:
 
         if "merchant" in fieldnames and "category" in fieldnames:
             # Old simple schema: merchant, category
-            merchant_key = "merchant"
+            # Use 'description' for canonicalization (real noisy data), fall back to 'merchant'
+            merchant_key = "description"  # Changed from "merchant"
+            merchant_fallback = "merchant"
             category_key = "category"
-            print("[seed_hints] Using simple schema (merchant, category)")
+            print(
+                "[seed_hints] Using simple schema (description → canonical, category)"
+            )
         elif "merchant_canonical" in fieldnames and "category_slug" in fieldnames:
             # New training schema: merchant_canonical, category_slug
             merchant_key = "merchant_canonical"
+            merchant_fallback = None
             category_key = "category_slug"
             print(
                 "[seed_hints] Using training schema (merchant_canonical, category_slug)"
             )
         else:
             print("[seed_hints] ERROR: Unsupported CSV schema. Expected either:")
-            print("  - Simple: 'merchant' and 'category' columns")
+            print("  - Simple: 'description', 'merchant', and 'category' columns")
             print("  - Training: 'merchant_canonical' and 'category_slug' columns")
             print(f"  - Found: {', '.join(fieldnames)}")
             sys.exit(1)
 
         for row in reader:
-            merchant = (row.get(merchant_key) or row.get("description") or "").strip()
+            # Get merchant name from appropriate column
+            merchant_raw = row.get(merchant_key) or ""
+            if not merchant_raw and merchant_fallback:
+                merchant_raw = row.get(merchant_fallback) or ""
+            merchant_raw = merchant_raw.strip()
+
+            # Canonicalize merchant name for simple schema, use as-is for training schema
+            if merchant_fallback:  # Simple schema
+                merchant_canonical = canonicalize_merchant(merchant_raw)
+            else:  # Training schema - assume already canonical
+                merchant_canonical = merchant_raw.lower().strip()
+
             category = (row.get(category_key) or "").strip().lower()
-            if not merchant or not category:
+
+            if not merchant_canonical or not category:
                 continue
-            key = (merchant.lower(), category)
+
+            key = (merchant_canonical, category)
             counts[key] += 1
-            totals[merchant.lower()] += 1
+            totals[merchant_canonical] += 1
 
     print(f"[seed_hints] Found {len(counts)} unique (merchant, category) pairs")
 
@@ -107,7 +128,7 @@ def main() -> None:
                         (:merchant, :category, :source, :confidence)
                     ON CONFLICT (merchant_canonical, category_slug) DO UPDATE
                     SET
-                        confidence = GREATEST(merchant_category_hints.confidence, EXCLUDED.confidence),
+                        confidence = MAX(merchant_category_hints.confidence, EXCLUDED.confidence),
                         source = COALESCE(merchant_category_hints.source, EXCLUDED.source)
                     """
                 ),

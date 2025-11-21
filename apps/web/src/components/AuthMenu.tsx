@@ -1,5 +1,6 @@
 import { logout } from "@/lib/authClient";
 import { useAuth } from "@/state/auth";
+import { fetchJSON } from "@/lib/http";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -19,7 +20,7 @@ import {
   AvatarFallback,
   AvatarImage,
 } from "@/components/ui/avatar";
-import { LogOut, User2, Copy, Check, Settings } from "lucide-react";
+import { LogOut, User2, Copy, Check, Settings, Sparkles } from "lucide-react";
 import { useState } from "react";
 
 interface AuthMenuProps {
@@ -28,12 +29,13 @@ interface AuthMenuProps {
 
 /**
  * AuthMenu for production:
- * - Unauthenticated: Google OAuth button with logo
+ * - Unauthenticated: Demo button + Google OAuth button with logo
  * - Authenticated: User avatar/icon button with dropdown menu
  */
 export default function AuthMenu({ onOpenSettings }: AuthMenuProps = {}) {
   const { user } = useAuth();
   const [emailCopied, setEmailCopied] = useState(false);
+  const [demoLoading, setDemoLoading] = useState(false);
   const googleHref = "/api/auth/google/login";
 
   const handleCopyEmail = async () => {
@@ -48,10 +50,52 @@ export default function AuthMenu({ onOpenSettings }: AuthMenuProps = {}) {
     }
   };
 
-  // If not logged in, show the Google sign-in button
+  const handleDemoLogin = async () => {
+    setDemoLoading(true);
+    try {
+      await fetchJSON('/auth/demo', { method: 'POST' });
+      // Reload to bootstrap auth state with demo user
+      window.location.href = '/';
+    } catch (err) {
+      console.error('Demo login failed:', err);
+      setDemoLoading(false);
+    }
+  };
+
+  // If not logged in, show demo + Google sign-in buttons
   if (!user) {
     return (
-      <div className="flex items-center justify-center">
+      <div className="flex flex-col items-center justify-center gap-3">
+        {/* Demo Login Button */}
+        <button
+          onClick={handleDemoLogin}
+          disabled={demoLoading}
+          data-testid="btn-demo"
+          aria-label="Try demo with sample data"
+          className="
+            inline-flex items-center gap-2.5
+            rounded-full border border-amber-400/30
+            px-6 py-3
+            text-base font-medium text-amber-100
+            bg-amber-500/10
+            hover:bg-amber-500/20 hover:border-amber-400/50
+            disabled:opacity-50 disabled:cursor-not-allowed
+            transition-all
+            focus:outline-none focus:ring-2 focus:ring-amber-400/40
+          "
+        >
+          <Sparkles className="h-4 w-4" aria-hidden="true" />
+          <span>{demoLoading ? 'Loading demo...' : 'Try Demo'}</span>
+        </button>
+
+        {/* Divider */}
+        <div className="flex items-center gap-3 w-full max-w-xs">
+          <div className="flex-1 h-px bg-white/10" />
+          <span className="text-xs text-white/40 uppercase tracking-wide">or</span>
+          <div className="flex-1 h-px bg-white/10" />
+        </div>
+
+        {/* Google Sign-in Button */}
         <a
           href={googleHref}
           data-testid="btn-google"
