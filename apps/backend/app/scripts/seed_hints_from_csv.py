@@ -4,18 +4,27 @@ Seed merchant_category_hints from a labeled CSV file.
 Usage:
     python -m app.scripts.seed_hints_from_csv /path/to/sample.csv
 
-CSV Format:
+CSV Format (supports two schemas):
+
+1. Simple schema:
     date,description,merchant,amount,category
     2025-10-01,NETFLIX.COM,NETFLIX,-15.99,subscriptions
     2025-10-02,STEAM PURCHASE,STEAM GAMES,-59.99,games
     ...
 
+2. Training schema:
+    Date,Description,merchant_canonical,Amount,category_slug
+    2024-08-15,TRADER JOE'S #456,Trader Joe's,-45.82,groceries
+    2024-08-16,WHOLE FOODS MARKET,Whole Foods,-112.45,groceries
+    ...
+
 This script:
-1. Reads the CSV and counts (merchant, category) pairs
-2. Calculates confidence based on:
+1. Reads the CSV and auto-detects the schema
+2. Counts (merchant, category) pairs
+3. Calculates confidence based on:
    - Ratio of category for that merchant (consistency)
    - Volume of occurrences (more data = higher confidence)
-3. Upserts into merchant_category_hints table
+4. Upserts into merchant_category_hints table
 """
 
 import csv
@@ -42,9 +51,32 @@ def main() -> None:
 
     with CSV_PATH.open("r", encoding="utf-8") as f:
         reader = csv.DictReader(f)
+
+        # Detect CSV schema - support both simple and training schemas
+        fieldnames = reader.fieldnames or []
+
+        if "merchant" in fieldnames and "category" in fieldnames:
+            # Old simple schema: merchant, category
+            merchant_key = "merchant"
+            category_key = "category"
+            print("[seed_hints] Using simple schema (merchant, category)")
+        elif "merchant_canonical" in fieldnames and "category_slug" in fieldnames:
+            # New training schema: merchant_canonical, category_slug
+            merchant_key = "merchant_canonical"
+            category_key = "category_slug"
+            print(
+                "[seed_hints] Using training schema (merchant_canonical, category_slug)"
+            )
+        else:
+            print("[seed_hints] ERROR: Unsupported CSV schema. Expected either:")
+            print("  - Simple: 'merchant' and 'category' columns")
+            print("  - Training: 'merchant_canonical' and 'category_slug' columns")
+            print(f"  - Found: {', '.join(fieldnames)}")
+            sys.exit(1)
+
         for row in reader:
-            merchant = (row.get("merchant") or row.get("description") or "").strip()
-            category = (row.get("category") or "").strip().lower()
+            merchant = (row.get(merchant_key) or row.get("description") or "").strip()
+            category = (row.get(category_key) or "").strip().lower()
             if not merchant or not category:
                 continue
             key = (merchant.lower(), category)
