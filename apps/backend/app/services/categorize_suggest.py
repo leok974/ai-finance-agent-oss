@@ -11,6 +11,11 @@ from app.db import SessionLocal
 
 # Import ML scorer (optional, may not be enabled)
 from app.services import ml_scorer
+from app.services.ml_scorer import (
+    ml as _ml_inst,
+    featurize as _featurize,
+    ENABLED as ML_ENABLED,
+)
 
 # ML Feedback scoring
 ML_FEEDBACK_SCORES_ENABLED = os.getenv("ML_FEEDBACK_SCORES_ENABLED", "1") == "1"
@@ -21,6 +26,7 @@ try:
         load_feedback_stats_map,
         adjust_score_with_feedback,
     )
+
     ML_FEEDBACK_AVAILABLE = True
 except ImportError:
     ML_FEEDBACK_AVAILABLE = False
@@ -153,13 +159,6 @@ def from_amount(amount: float, text: str) -> List[Dict]:
     return out
 
 
-from app.services.ml_scorer import (
-    ml as _ml_inst,
-    featurize as _featurize,
-    ENABLED as ML_ENABLED,
-)
-
-
 def from_ml(txn: Dict, all_categories: List[str]) -> List[Dict]:
     """Get category suggestions from ML model (optional)."""
     if not ML_ENABLED or not ml_scorer.HAS_SKLEARN or not all_categories:
@@ -258,10 +257,13 @@ def suggest_categories_for_txn(txn: dict, db: Session | None = None) -> List[Dic
         ranked = dedupe_and_rank(cands)
 
         # Apply ML feedback scoring if enabled
+        stats_map = {}  # Keep stats for later use in final output
         if ML_FEEDBACK_SCORES_ENABLED and ML_FEEDBACK_AVAILABLE and merchant_canonical:
             # Collect feedback keys for all candidates
             keys = [
-                FeedbackKey(merchant_normalized=merchant_canonical, category=r["category_slug"])
+                FeedbackKey(
+                    merchant_normalized=merchant_canonical, category=r["category_slug"]
+                )
                 for r in ranked
                 if r.get("category_slug")
             ]
@@ -275,10 +277,12 @@ def suggest_categories_for_txn(txn: dict, db: Session | None = None) -> List[Dic
                     cat = r.get("category_slug")
                     if not cat:
                         continue
-                    
-                    key = FeedbackKey(merchant_normalized=merchant_canonical, category=cat)
+
+                    key = FeedbackKey(
+                        merchant_normalized=merchant_canonical, category=cat
+                    )
                     stats = stats_map.get(key)
-                    
+
                     # Adjust score with feedback
                     original_score = r["score"]
                     adjusted_score = adjust_score_with_feedback(
@@ -287,11 +291,13 @@ def suggest_categories_for_txn(txn: dict, db: Session | None = None) -> List[Dic
                         category=cat,
                         stats=stats,
                     )
-                    
+
                     # Update score and track adjustment
                     if adjusted_score != original_score:
                         r["score"] = adjusted_score
-                        r["why"].append(f"ml_feedback_adjusted({original_score:.3f}→{adjusted_score:.3f})")
+                        r["why"].append(
+                            f"ml_feedback_adjusted({original_score:.3f}→{adjusted_score:.3f})"
+                        )
 
                 # Re-sort by adjusted scores
                 ranked.sort(key=lambda x: x["score"], reverse=True)
@@ -327,14 +333,27 @@ def suggest_categories_for_txn(txn: dict, db: Session | None = None) -> List[Dic
         for r in ranked[:3]:
             slug = r["category_slug"]
             label = labels_map.get(slug) or _prettify_slug(slug)
-            out.append(
-                {
-                    "category_slug": slug,
-                    "label": label,
-                    "score": r["score"],
-                    "why": r["why"],
-                }
-            )
+            item = {
+                "category_slug": slug,
+                "label": label,
+                "score": r["score"],
+                "why": r["why"],
+            }
+
+            # Add feedback stats if available (only when there's actual feedback)
+            if merchant_canonical and stats_map:
+                key = FeedbackKey(merchant_normalized=merchant_canonical, category=slug)
+                stats = stats_map.get(key)
+                if stats:
+                    accepts = stats.accept_count
+                    rejects = stats.reject_count
+                    total = accepts + rejects
+                    if total > 0:
+                        item["feedback_accepts"] = accepts
+                        item["feedback_rejects"] = rejects
+                        item["feedback_ratio"] = accepts / total if total > 0 else None
+
+            out.append(item)
         return out
     finally:
         if close:
