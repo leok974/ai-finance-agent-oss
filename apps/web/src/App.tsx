@@ -49,6 +49,7 @@ import DevMenu from "@/features/dev/DevMenu";
 import logoPng from "@/assets/ledgermind-lockup-1024.png";
 import { useLlmStore } from '@/state/llmStore';
 import { Switch } from "@/components/ui/switch";
+import { SettingsDrawer } from "@/components/SettingsDrawer";
 import { Label } from "@/components/ui/label";
 import LandingHero from "@/components/LandingHero";
 import PrivacyPage from "@/pages/legal/PrivacyPage";
@@ -123,6 +124,7 @@ const App: React.FC = () => {
   const [empty, setEmpty] = useState<boolean>(false)
   const [bannerDismissed, setBannerDismissed] = useState<boolean>(false)
   const [txPanelOpen, setTxPanelOpen] = useState<boolean>(false)
+  const [settingsOpen, setSettingsOpen] = useState<boolean>(false)
   const [adminRulesOpen, setAdminRulesOpen] = useState<boolean>(false)
   const [adminKnowledgeOpen, setAdminKnowledgeOpen] = useState<boolean>(false)
   const [includePending, setIncludePending] = useState<boolean>(false)
@@ -347,7 +349,7 @@ const App: React.FC = () => {
                 }}
               />
             )}
-            <AuthMenu />
+            <AuthMenu onOpenSettings={() => setSettingsOpen(true)} />
           </div>
         </header>
   {/* Global mount of RuleTesterPanel (portal overlay) gated by dev flag */}
@@ -454,6 +456,7 @@ const App: React.FC = () => {
       </div>
   </div>
       <TransactionsDrawer open={txPanelOpen} onClose={() => setTxPanelOpen(false)} />
+      <SettingsDrawer open={settingsOpen} onClose={() => setSettingsOpen(false)} />
       <ChatDock />
         </RuleSeedProvider>
   </ChatDockProvider>

@@ -133,8 +133,11 @@ function RulesPanelImpl({ month, refreshKey }: Props) {
       });
       setForm({ name: '', enabled: true, when: { description_like: '' }, then: { category: '' } });
       load();
-      // Use raw toast so we can attach actions
-  emitToastSuccess(t('ui.toast.rule_created_title'), { description: t('ui.toast.rule_created_description', { name: (res as any)?.display_name || name }) });
+      // Enhanced success toast with category information
+      const categoryLabel = (res as any)?.category_label || category;
+      emitToastSuccess('Rule created', {
+        description: `We'll now auto-categorize matching transactions as "${categoryLabel}".`,
+      });
     } catch (e: any) {
       const message = e?.message || 'Failed to create rule';
   err(message, { description: 'Create failed' });
