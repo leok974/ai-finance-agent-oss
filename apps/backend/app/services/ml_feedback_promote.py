@@ -7,12 +7,14 @@ and promotes them to hints that power future suggestions.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from math import log1p
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 from sqlalchemy.orm import Session
-from sqlalchemy import text
+from sqlalchemy import text, select, update, insert
+
+from app.models.ml_feedback_stats import MlFeedbackMerchantCategoryStats
 
 
 # --- Tuning knobs ------------------------------------------------------------
@@ -110,9 +112,10 @@ def promote_feedback_to_hints(
         now = datetime.utcnow()
 
     # 1) Load candidate stats
-    rows = db.execute(
-        text(
-            """
+    rows = (
+        db.execute(
+            text(
+                """
             SELECT
                 merchant_normalized,
                 category,
@@ -122,9 +125,12 @@ def promote_feedback_to_hints(
             FROM ml_feedback_merchant_category_stats
             WHERE (accept_count + reject_count) >= :min_total
             """
-        ),
-        {"min_total": MIN_TOTAL_FEEDBACK},
-    ).mappings().all()
+            ),
+            {"min_total": MIN_TOTAL_FEEDBACK},
+        )
+        .mappings()
+        .all()
+    )
 
     promoted: List[PromotionCandidate] = []
     skipped: List[Dict[str, Any]] = []
@@ -247,3 +253,74 @@ def promote_feedback_to_hints(
         db.commit()
 
     return PromotionResult(promoted=promoted, skipped=skipped)
+
+
+# --- Rule feedback logging ---------------------------------------------------
+
+RuleFeedbackAction = Literal["accept", "reject"]
+
+
+def log_rule_feedback_to_stats(
+    db: Session,
+    merchant_normalized: str,
+    category: str,
+    action: RuleFeedbackAction,
+    weight: int = 1,
+) -> None:
+    """
+    Log rule-level feedback into ml_feedback_merchant_category_stats.
+
+    This does NOT create an event row; it directly adjusts the aggregate stats
+    so scoring sees rule changes as soft accept/reject signals.
+
+    - enable rule  -> action="accept"
+    - disable rule -> action="reject"
+    - delete rule  -> action="reject", typically with higher weight
+    """
+    if not merchant_normalized or not category:
+        return
+
+    now = datetime.now(timezone.utc)
+
+    stmt = select(MlFeedbackMerchantCategoryStats).where(
+        MlFeedbackMerchantCategoryStats.merchant_normalized == merchant_normalized,
+        MlFeedbackMerchantCategoryStats.category == category,
+    )
+    existing = db.execute(stmt).scalar_one_or_none()
+
+    if existing:
+        accept = existing.accept_count or 0
+        reject = existing.reject_count or 0
+        if action == "accept":
+            accept += max(1, weight)
+        else:
+            reject += max(1, weight)
+
+        db.execute(
+            update(MlFeedbackMerchantCategoryStats)
+            .where(
+                MlFeedbackMerchantCategoryStats.merchant_normalized
+                == merchant_normalized,
+                MlFeedbackMerchantCategoryStats.category == category,
+            )
+            .values(
+                accept_count=accept,
+                reject_count=reject,
+                last_feedback_at=now,
+            )
+        )
+    else:
+        accept = max(1, weight) if action == "accept" else 0
+        reject = max(1, weight) if action == "reject" else 0
+
+        db.execute(
+            insert(MlFeedbackMerchantCategoryStats).values(
+                merchant_normalized=merchant_normalized,
+                category=category,
+                accept_count=accept,
+                reject_count=reject,
+                last_feedback_at=now,
+            )
+        )
+
+    db.commit()
