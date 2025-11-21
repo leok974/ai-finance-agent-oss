@@ -9,6 +9,7 @@ import { getPortalRoot } from '@/lib/portal';
 import { buildDeterministicExplain } from '@/lib/explainFallback'
 import Pill from '@/components/ui/pill'
 import { useSafePortalReady } from '@/hooks/useSafePortal'
+import { getSuggestionConfidencePercent } from '../lib/suggestions';
 import { emitToastSuccess, emitToastError } from '@/lib/toast-helpers'
 import { t } from '@/lib/i18n'
 
@@ -209,7 +210,7 @@ export default function ExplainSignalDrawer({ txnId, open, onOpenChange, txn, su
                       </span>
                       <div className="flex items-center gap-2">
                         <span className="text-xs text-slate-400">
-                          {Math.round(sug.score * 100)}%
+                          {getSuggestionConfidencePercent(sug)}%
                         </span>
                         <span className="text-[10px] px-2 py-0.5 rounded-full border border-current bg-accent/10 text-slate-400 uppercase tracking-wide">
                           Model
@@ -225,7 +226,7 @@ export default function ExplainSignalDrawer({ txnId, open, onOpenChange, txn, su
                     {/* Footer: confidence + feedback action */}
                     <div className="flex items-center justify-between pt-1 text-[11px] border-t border-white/5">
                       <span className="text-slate-500">
-                        Suggestion confidence: {Math.round(sug.score * 100)}%
+                        Suggestion confidence: {getSuggestionConfidencePercent(sug)}%
                       </span>
 
                       {!isRejected ? (

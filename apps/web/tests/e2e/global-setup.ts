@@ -94,5 +94,15 @@ export default async function globalSetup(config: FullConfig) {
     return;
   }
 
+  // Check if prod-state.json already exists
+  try {
+    await fs.access(PROD_STATE);
+    console.log('[global-setup] Found existing prod-state.json - skipping session mint');
+    console.log('[global-setup] (Delete it to force re-authentication)');
+    return;
+  } catch {
+    // File doesn't exist, need to mint session
+  }
+
   await createProdSession(BASE_URL);
 }

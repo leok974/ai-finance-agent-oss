@@ -355,6 +355,21 @@ const App: React.FC = () => {
   {/* Global mount of RuleTesterPanel (portal overlay) gated by dev flag */}
   {devUI && <RuleTesterPanel />}
 
+        {/* Demo mode banner */}
+        {user?.is_demo && (
+          <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 flex items-center gap-3" data-testid="demo-banner">
+            <div className="flex items-center gap-2 text-amber-200">
+              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <span className="text-sm font-medium">Demo Mode</span>
+            </div>
+            <p className="text-sm text-amber-100/90 flex-1">
+              You're viewing sample data. Sign in with Google to connect your real accounts.
+            </p>
+          </div>
+        )}
+
         {!bannerDismissed && empty && (
           <TopEmptyBanner dbRev={dbRev ?? undefined} inSync={inSync} onDismiss={() => setBannerDismissed(true)} />
         )}

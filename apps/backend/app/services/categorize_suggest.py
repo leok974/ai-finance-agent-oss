@@ -8,6 +8,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 from app.orm_models import CategoryRule, MerchantCategoryHint
 from app.db import SessionLocal
+from app.utils.text import canonicalize_merchant as _canonicalize
 
 # Import ML scorer (optional, may not be enabled)
 from app.services import ml_scorer
@@ -17,8 +18,12 @@ from app.services.ml_scorer import (
     ENABLED as ML_ENABLED,
 )
 
+
 # ML Feedback scoring
-ML_FEEDBACK_SCORES_ENABLED = os.getenv("ML_FEEDBACK_SCORES_ENABLED", "1") == "1"
+def _ml_feedback_enabled() -> bool:
+    """Check if ML feedback scoring is enabled (runtime check for test flexibility)."""
+    return os.getenv("ML_FEEDBACK_SCORES_ENABLED", "1") == "1"
+
 
 try:
     from app.services.ml_feedback_scores import (
@@ -48,13 +53,6 @@ def _combine_scores(scores: List[float]) -> float:
     return 1.0 - prod
 
 
-def _canonicalize(merchant: str) -> str:
-    """Normalize merchant name for matching."""
-    m = (merchant or "").lower()
-    m = re.sub(r"[^a-z0-9]+", " ", m).strip()
-    return re.sub(r"\s+", " ", m)
-
-
 def _blocked_for(db: Session, merchant_canonical: str) -> set[str]:
     """Return set of category slugs blocked by user feedback for merchant."""
     blocked: set[str] = set()
@@ -69,7 +67,12 @@ def _blocked_for(db: Session, merchant_canonical: str) -> set[str]:
 
 
 def from_hints(db: Session, merchant_canonical: str) -> List[Dict]:
-    """Get category suggestions from learned merchant hints."""
+    """
+    Get category suggestions from learned merchant hints.
+
+    High-confidence hints (>=0.7) get boosted scores to ensure they dominate
+    over prior fallback suggestions (0.35).
+    """
     out = []
     for h in (
         db.query(MerchantCategoryHint)
@@ -79,10 +82,22 @@ def from_hints(db: Session, merchant_canonical: str) -> List[Dict]:
         if (h.source or "") == "user_block":
             # Do not suggest blocked categories
             continue
+
+        # Boost high-confidence hints to dominate priors
+        # For hints with confidence >= 0.7, use confidence directly (capped at 0.99)
+        # For lower confidence hints, apply weight
+        confidence = float(h.confidence)
+        if confidence >= 0.7:
+            # High-confidence hints: use confidence directly (0.7-0.99 range)
+            score = min(0.99, confidence)
+        else:
+            # Low-confidence hints: apply standard weight
+            score = WEIGHTS["hints"] * confidence
+
         out.append(
             {
                 "category_slug": h.category_slug,
-                "score": WEIGHTS["hints"] * float(h.confidence),
+                "score": score,
                 "why": [f"user/history hint ({h.source})"],
             }
         )
@@ -234,7 +249,16 @@ def suggest_categories_for_txn(txn: dict, db: Session | None = None) -> List[Dic
         desc = txn.get("description", "") or ""
         amount = float(txn.get("amount", 0) or 0)
         cadence_days = txn.get("cadence_days")
-        merchant_canonical = txn.get("merchant_canonical") or _canonicalize(merchant)
+
+        # Get or compute canonical merchant name
+        # Prefer: 1) provided merchant_canonical, 2) canonicalize description (has store #s),
+        # 3) canonicalize merchant field
+        merchant_canonical = txn.get("merchant_canonical")
+        if not merchant_canonical:
+            # Try description first (it has more detail like store numbers)
+            merchant_canonical = (
+                _canonicalize(desc) if desc else _canonicalize(merchant)
+            )
 
         blocked = _blocked_for(db, merchant_canonical)
 
@@ -258,7 +282,7 @@ def suggest_categories_for_txn(txn: dict, db: Session | None = None) -> List[Dic
 
         # Apply ML feedback scoring if enabled
         stats_map = {}  # Keep stats for later use in final output
-        if ML_FEEDBACK_SCORES_ENABLED and ML_FEEDBACK_AVAILABLE and merchant_canonical:
+        if _ml_feedback_enabled() and ML_FEEDBACK_AVAILABLE and merchant_canonical:
             # Collect feedback keys for all candidates
             keys = [
                 FeedbackKey(
