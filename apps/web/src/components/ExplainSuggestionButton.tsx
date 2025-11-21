@@ -14,19 +14,25 @@ export function ExplainSuggestionButton({ txnId, categorySlug, className }: Prop
   const [error, setError] = useState<string | null>(null);
 
   const handleClick = async () => {
-    setOpen(true);
+    setOpen((prev) => !prev);
+
+    // If we already loaded text once, don't refetch
     if (text || loading) return;
+
     setLoading(true);
     setError(null);
     try {
       const res = await getExplain(txnId);
-      setText(res.reply || res.rationale || res.llm_rationale || 'No explanation available yet.');
+      // Extract explanation text from response (same as ExplainSignalDrawer)
+      const explanation = res.llm_rationale || res.rationale || res.reply || 'No explanation available yet.';
+      setText(explanation);
     } catch (e) {
       const is404 = String(e).includes('404') || (e as any)?.status === 404;
       if (is404) {
         setText('Explanation feature not available yet.');
       } else {
-        setError('Could not load explanation');
+        console.error('Explain failed', e);
+        setError('Could not load explanation.');
       }
     } finally {
       setLoading(false);
@@ -47,7 +53,7 @@ export function ExplainSuggestionButton({ txnId, categorySlug, className }: Prop
         <div className="mt-1 max-w-sm rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-xs shadow-lg">
           {loading && <span className="text-slate-400">Loading explanation…</span>}
           {error && <span className="text-red-400">{error}</span>}
-          {text && <p className="whitespace-pre-wrap text-slate-300">{text}</p>}
+          {text && !loading && !error && <p className="whitespace-pre-wrap text-slate-300">{text}</p>}
         </div>
       )}
     </div>

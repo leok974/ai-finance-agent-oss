@@ -228,7 +228,7 @@ export function TransactionRowWithSuggestions({
       {showSuggestions && (
         <tr className="bg-gradient-to-r from-blue-50/50 to-transparent border-l-2 border-l-blue-300">
           <td colSpan={2} className="px-2 py-2"></td>
-          <td colSpan={4} className="px-2 py-2">
+          <td colSpan={4} className="px-2 py-2 align-top">
             {applying ? (
               <div className="flex items-center gap-2 text-sm text-gray-600">
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -240,11 +240,19 @@ export function TransactionRowWithSuggestions({
                 <span>Loading suggestions...</span>
               </div>
             ) : (
-              <div className="space-y-1">
+              <div className="min-h-[40px] flex flex-col gap-1">
                 <div className="flex items-center gap-2">
-                  <span className="text-xs text-gray-500 font-medium">
-                    Suggested:
+                  <span className="rounded-full bg-slate-900/70 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-200/90">
+                    Suggested
                   </span>
+                  {suggestions.length > 0 && (
+                    <span className="text-[11px] text-slate-400/90">
+                      {Math.round(suggestions[0].confidence * 100)}% confident
+                    </span>
+                  )}
+                </div>
+
+                <div className="flex flex-wrap gap-1">
                   <SuggestionList
                     candidates={categoryCandidates}
                     onAccept={handleAccept}
@@ -252,12 +260,12 @@ export function TransactionRowWithSuggestions({
                     maxVisible={3}
                   />
                 </div>
+
                 {/* Show explain button if we have a primary suggestion */}
                 {suggestions.length > 0 && (
                   <ExplainSuggestionButton
                     txnId={transaction.id}
                     categorySlug={suggestions[0].label}
-                    className="pl-0"
                   />
                 )}
               </div>
