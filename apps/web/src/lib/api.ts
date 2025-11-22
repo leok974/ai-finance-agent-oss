@@ -17,7 +17,10 @@ import type {
 
 // Resolve API base from env, with a dev fallback when running Vite on port 5173
 const rawApiBase = (import.meta as { env?: Record<string, string> }).env?.VITE_API_BASE;
-export const API_BASE = ((rawApiBase ?? '/api') as string).replace(/\/+$/, '') || '/api';
+// Allow empty string for production (where nginx handles /api/ routing)
+export const API_BASE = rawApiBase !== undefined
+  ? (rawApiBase as string).replace(/\/+$/, '')
+  : '/api';
 
 // ============================================================================
 // Runtime guards (keeps UI stable with malformed backend responses)
@@ -378,8 +381,16 @@ export const downloadReportCsv = (month: string) => window.open(`${apiUrl('/repo
 // ---------- Charts ----------
 // Normalized UI types (isolate backend drift to mappers below)
 export type UIMerchant = {
+  // New canonical fields (preferred)
+  merchant_canonical?: string;  // Canonical grouping key (lowercase, normalized)
+  merchant_display?: string;    // User-facing display name (title case)
+  sample_description?: string;  // Raw transaction example
+
+  // Legacy fields (backward compatibility)
   merchant_key: string;
   label: string;  // Normalized display name
+
+  // Aggregation data
   total: number;  // Total spend amount
   count: number;  // Transaction count
   statement_examples?: string[];
@@ -433,8 +444,16 @@ export async function getMonthMerchants(month?: string): Promise<UIMerchant[]> {
       body: JSON.stringify({ month })
     });
     return arr<Record<string, unknown>>(r?.items).map((m) => ({
+      // New canonical fields
+      merchant_canonical: m.merchant_canonical ? String(m.merchant_canonical) : undefined,
+      merchant_display: m.merchant_display ? String(m.merchant_display) : undefined,
+      sample_description: m.sample_description ? String(m.sample_description) : undefined,
+
+      // Legacy fields (for backward compatibility)
       merchant_key: String(m.merchant_key ?? m.merchant ?? 'unknown'),
       label: String(m.label ?? m.merchant ?? 'Unknown'),
+
+      // Aggregation data
       total: num(m.total ?? m.spend),
       count: num(m.count ?? m.txns),
       statement_examples: arr<string>(m.statement_examples),

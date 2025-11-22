@@ -37,6 +37,7 @@ import {
   type MerchantChartRow,
   type MerchantChartRowGrouped,
 } from "@/lib/merchant-normalizer";
+import { getMerchantAliasName } from "@/lib/formatters/merchants";
 import { getCategoryColor } from "@/lib/categories";
 
 // Cast so TS treats them as FCs (safe for now)
@@ -152,11 +153,11 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
         typeof row.amount === 'number' ? row.amount :
         0;
 
-      // Get raw merchant name from multiple sources
+      // Prefer canonical fields from backend, fall back to legacy
+      // Use getMerchantAliasName for clean display
       const merchantRaw =
+        getMerchantAliasName(row) ||
         (row.merchant && String(row.merchant).trim()) ||
-        (row.label && String(row.label).trim()) ||
-        (row.name && String(row.name).trim()) ||
         'Unknown';
 
       return {

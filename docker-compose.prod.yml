@@ -195,6 +195,7 @@ services:
         WEB_BUILD_ID: ${WEB_BUILD_ID:-not_set}
         VITE_SUGGESTIONS_ENABLED: ${VITE_SUGGESTIONS_ENABLED:-1}
         VITE_ANALYTICS_ENABLED: ${VITE_ANALYTICS_ENABLED:-0}
+        # Empty string to use root paths (nginx proxies /api/* separately)
         VITE_API_BASE: ""
         VITE_GIT_BRANCH: ${VITE_GIT_BRANCH:-unknown}
         VITE_GIT_COMMIT: ${VITE_GIT_COMMIT:-unknown}
