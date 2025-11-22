@@ -15,8 +15,9 @@ import { useMonth } from "../context/MonthContext";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
-import { Upload } from "lucide-react";
+import { Upload, Sparkles } from "lucide-react";
 import { isExcelFile, normalizeExcelToCsvFile } from "../lib/excel";
+import { toast } from "sonner";
 
 // Max file size: 50MB (configurable for future)
 const MAX_FILE_SIZE_MB = 50;
@@ -393,7 +394,54 @@ const UploadCsv: React.FC<UploadCsvProps> = ({ onUploaded, defaultReplace = true
     } finally {
       setBusy(false);
     }
-  }, [file, replace, onUploaded, handleUploadSuccess]);  const disabled = busy || !file;
+  }, [file, replace, onUploaded, handleUploadSuccess]);
+
+  const handleUseSampleData = useCallback(async () => {
+    setBusy(true);
+    setResult(null);
+    try {
+      const res = await fetch("/demo-sample.csv");
+      if (!res.ok) throw new Error(`Sample CSV fetch failed: ${res.status}`);
+
+      const blob = await res.blob();
+      const sampleFile = new File([blob], "ledgermind-demo.csv", { type: "text/csv" });
+
+      // Reuse existing upload logic
+      const data = await uploadCsv(sampleFile, replace, 'csv');
+
+      const responseOk = (data as { ok?: boolean }).ok;
+      const added = (data as { added?: number }).added ?? 0;
+      const backendMessage = (data as { message?: string }).message;
+
+      if (responseOk === false || added === 0) {
+        const errorMsg = backendMessage || "No transactions were imported from sample data.";
+        const errorData: IngestResult = {
+          ...(data as Partial<IngestResult>),
+          ok: false,
+          added: 0,
+          count: 0,
+          message: errorMsg,
+        };
+        const r: UploadResult = { ok: false, data: errorData, message: errorMsg };
+        setResult(r);
+        toast.error("Import Failed", { description: errorMsg });
+        return;
+      }
+
+      const r: UploadResult = { ok: true, data, message: `Sample data imported. ${added} transaction${added !== 1 ? 's' : ''} added.` };
+      setResult(r);
+      onUploaded?.(r);
+      void handleUploadSuccess(data as Record<string, unknown>);
+      toast.success("Sample data imported for this month.");
+    } catch (err) {
+      console.error(err);
+      toast.error("Could not load sample data. Please try again.");
+    } finally {
+      setBusy(false);
+    }
+  }, [replace, onUploaded, handleUploadSuccess]);
+
+  const disabled = busy || !file;
 
   return (
     <div className={`w-full ${className ?? ""}`}>
@@ -456,7 +504,17 @@ const UploadCsv: React.FC<UploadCsvProps> = ({ onUploaded, defaultReplace = true
           </div>
         </label>
 
-        <div className="mt-4 flex items-center justify-end">
+        <div className="mt-4 flex items-center justify-end gap-2">
+          <Button
+            data-testid="use-sample-data"
+            variant="pill-outline"
+            onClick={handleUseSampleData}
+            disabled={busy}
+            className="gap-2 px-3.5 h-9"
+          >
+            <Sparkles className="h-4 w-4" />
+            Use sample data
+          </Button>
           <Button
             data-testid="uploadcsv-submit"
             variant="pill"
