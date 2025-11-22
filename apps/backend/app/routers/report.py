@@ -16,7 +16,11 @@ from app.services.charts_data import (
     get_month_flows,
     get_spending_trends,
 )
-from app.services.report_export import build_excel_bytes, build_pdf_bytes
+from app.services.report_export import (
+    build_excel_bytes,
+    build_pdf_bytes,
+    ReportMode as ExportMode,
+)
 from app.transactions import Transaction
 
 router = APIRouter()
@@ -89,60 +93,63 @@ def report_excel(
     flows = get_month_flows(db, user_id, month_hint)
     trends = get_spending_trends(db, user_id, months=6)
 
-    txns_df = None
+    # Fetch transactions as list of dicts for structured workbook
+    transactions_list = []
+    unknown_transactions_list = []
     include_transactions_flag = mode in (ReportMode.full, ReportMode.unknowns)
     only_unknowns = mode == ReportMode.unknowns
 
     if include_transactions_flag:
-        try:
-            import pandas as pd  # local import to avoid test/env issues if pandas optional
+        query = db.query(
+            Transaction.date,
+            Transaction.merchant,
+            Transaction.description,
+            Transaction.category,
+            Transaction.amount,
+        ).filter(
+            Transaction.user_id == user_id,
+            Transaction.date >= start_d,
+            Transaction.date <= end_d,
+        )
 
-            query = db.query(
-                Transaction.date,
-                Transaction.merchant,
-                Transaction.description,
-                Transaction.category,
-                Transaction.amount,
-            ).filter(
-                Transaction.user_id == user_id,
-                Transaction.date >= start_d,
-                Transaction.date <= end_d,
+        # Fetch all transactions for full mode or unknowns for unknowns mode
+        if only_unknowns:
+            query = query.filter(
+                (Transaction.category.is_(None)) | (Transaction.category == "unknown")
             )
 
-            # Filter for unknowns mode: only uncategorized transactions
-            if only_unknowns:
-                query = query.filter(
-                    (Transaction.category.is_(None))
-                    | (Transaction.category == "unknown")
-                )
+        rows = query.order_by(Transaction.date.asc()).all()
 
-            rows = query.order_by(Transaction.date.asc()).all()
-            txns_df = pd.DataFrame(
-                [
-                    {
-                        "date": (
-                            r[0].isoformat()
-                            if getattr(r[0], "isoformat", None)
-                            else str(r[0])
-                        ),
-                        "merchant": r[1],
-                        "description": r[2],
-                        "category": r[3],
-                        "amount": float(r[4] or 0.0),
-                    }
-                    for r in rows
-                ]
-            )
-        except Exception:
-            txns_df = None
+        # Convert to list of dicts
+        for r in rows:
+            txn_dict = {
+                "date": (
+                    r[0].isoformat() if getattr(r[0], "isoformat", None) else str(r[0])
+                ),
+                "merchant": r[1] or "",
+                "description": r[2] or "",
+                "amount": float(r[4] or 0.0),
+                "category_label": r[3] or "Unknown",
+                "category_slug": r[3] or "unknown",
+            }
+            transactions_list.append(txn_dict)
 
+            # Track unknowns separately
+            if not r[3] or r[3].lower() == "unknown":
+                unknown_transactions_list.append(txn_dict)
+
+    # Build Excel with structured sheets
     data = build_excel_bytes(
         summary=summary,
         merchants=merchants,
         categories=categories,
         flows=flows,
         trends=trends,
-        txns_df=txns_df,
+        mode=ExportMode(mode.value),  # Convert router enum to export enum
+        transactions=transactions_list if mode == ReportMode.full else None,
+        unknown_transactions=(
+            unknown_transactions_list if mode == ReportMode.unknowns else None
+        ),
         split_txns_alpha=split_transactions_alpha,
     )
     # Filename reflects month or custom range
