@@ -15,6 +15,13 @@ from app.main import app
 client = TestClient(app)
 
 
+def _load_wb(content: bytes):
+    """Helper to load workbook from bytes."""
+    if not OPENPYXL_AVAILABLE:
+        raise RuntimeError("openpyxl not available")
+    return load_workbook(io.BytesIO(content), read_only=True, data_only=True)
+
+
 class TestReportExcelStructure:
     """Test suite for Excel workbook structure based on mode."""
 
@@ -214,3 +221,133 @@ class TestReportExcelStructure:
             names = self._get_sheetnames(resp.content)
             # Should map to summary mode
             assert names == ["Summary"]
+
+    def test_full_mode_summary_contains_core_metrics(self):
+        """Verify Summary sheet contains expected metric labels."""
+        resp = client.get("/report/excel", params={"month": "2025-11", "mode": "full"})
+        if resp.status_code != 200:
+            # Skip if no auth or no data
+            return
+
+        if not OPENPYXL_AVAILABLE:
+            return
+
+        wb = _load_wb(resp.content)
+        ws = wb["Summary"]
+
+        # Find the 'Metric'/'Value' header row (should be row 4) and read metrics
+        headers = [cell.value for cell in ws[4]]
+        assert headers[:2] == [
+            "Metric",
+            "Value",
+        ], f"Expected Metric/Value headers, got: {headers[:2]}"
+
+        # Collect all metric names from column A starting at row 5
+        metrics = {}
+        for row in ws.iter_rows(min_row=5, max_col=2, values_only=True):
+            key, val = row
+            if key:
+                metrics[key] = val
+
+        # Assert core metrics exist (don't check exact values, just presence)
+        expected_keys = [
+            "Total income",
+            "Total spend",
+            "Net",
+            "Unknown spend",
+            "Unknown txns",
+        ]
+        for key in expected_keys:
+            assert key in metrics, f"Missing metric '{key}' in Summary sheet"
+
+    def test_unknowns_mode_has_only_unknowns_sheet_and_rows(self):
+        """Verify unknowns mode has only Unknowns sheet with correct structure."""
+        resp = client.get(
+            "/report/excel", params={"month": "2025-11", "mode": "unknowns"}
+        )
+        if resp.status_code != 200:
+            return
+
+        if not OPENPYXL_AVAILABLE:
+            return
+
+        wb = _load_wb(resp.content)
+        assert wb.sheetnames == [
+            "Unknowns"
+        ], f"Expected only Unknowns sheet, got: {wb.sheetnames}"
+
+        ws = wb["Unknowns"]
+
+        # Headers are in row 3 (row 1 is title)
+        header = [c for c in next(ws.iter_rows(min_row=3, max_row=3, values_only=True))]
+        expected_header = [
+            "date",
+            "merchant",
+            "description",
+            "amount",
+            "category_label",
+            "category_slug",
+        ]
+        assert (
+            header == expected_header
+        ), f"Expected headers {expected_header}, got: {header}"
+
+        # Check that all data rows have category_slug as None or "unknown"
+        for row in ws.iter_rows(min_row=4, values_only=True):
+            if all(cell is None for cell in row):
+                # Skip empty rows
+                continue
+            # Last column is category_slug
+            _, _, _, _, _, slug = row[:6]
+            # Allow None or "unknown" (or empty string)
+            assert slug in (
+                None,
+                "unknown",
+                "",
+            ), f"Expected unknown category_slug, got: {slug}"
+
+    def test_categories_sheet_pct_of_spend_sums_to_approx_1(self):
+        """Verify Categories sheet percentages sum to approximately 1.0."""
+        resp = client.get("/report/excel", params={"month": "2025-11", "mode": "full"})
+        if resp.status_code != 200:
+            return
+
+        if not OPENPYXL_AVAILABLE:
+            return
+
+        wb = _load_wb(resp.content)
+        if "Categories" not in wb.sheetnames:
+            # No categories data
+            return
+
+        ws = wb["Categories"]
+
+        # Verify header row
+        header = [c for c in next(ws.iter_rows(min_row=1, max_row=1, values_only=True))]
+        expected_header = [
+            "category_slug",
+            "category_label",
+            "txn_count",
+            "total_amount",
+            "pct_of_spend",
+        ]
+        assert (
+            header == expected_header
+        ), f"Expected headers {expected_header}, got: {header}"
+
+        # Collect all pct_of_spend values
+        pct_values = []
+        for row in ws.iter_rows(min_row=2, values_only=True):
+            if all(cell is None for cell in row):
+                # Skip empty rows
+                continue
+            slug, label, count, total, pct = row[:5]
+            if pct is not None:
+                pct_values.append(float(pct))
+
+        # If we have percentages, they should sum to approximately 1.0
+        if pct_values:
+            total_pct = sum(pct_values)
+            assert (
+                0.95 <= total_pct <= 1.05
+            ), f"Expected pct_of_spend to sum to ~1.0, got: {total_pct}"
