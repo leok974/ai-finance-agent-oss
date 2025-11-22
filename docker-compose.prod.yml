@@ -66,12 +66,7 @@ services:
 
   backend:
     container_name: ai-finance-backend
-    build:
-      context: ./apps/backend
-      args:
-        GIT_BRANCH: ${GIT_BRANCH:-unknown}
-        GIT_COMMIT: ${GIT_COMMIT:-unknown}
-        BUILD_TIME: ${BUILD_TIME:-unknown}
+    image: ledgermind-backend:main-9c70e5db
     restart: unless-stopped
     env_file:
       - ./secrets/backend.env
@@ -210,19 +205,18 @@ services:
         VITE_BUILD_BRANCH: ${VITE_BUILD_BRANCH:-local}
         VITE_BUILD_COMMIT: ${VITE_BUILD_COMMIT:-dev}
         VITE_BUILD_TIME: ${VITE_BUILD_TIME:-unknown}
-    image: ai-finance-agent-oss-clean-nginx:latest
+    image: ledgermind-web:main-9c70e5db
     depends_on:
       backend:
         condition: service_healthy
       agui:
         condition: service_healthy
     volumes:
-      - ./deploy/nginx.conf:/etc/nginx/nginx.conf:ro
       - certbot_www:/var/www/certbot
       - letsencrypt:/etc/letsencrypt:ro
-    # Ports disabled for tunnel-based setup - Cloudflare tunnel connects directly to nginx:80 internally
+    # Ports disabled for tunnel-based setup - Cloudflare tunnel connects directly to nginx:8080 internally
     ports:
-      - "127.0.0.1:8083:80"  # Localhost-only for E2E testing bypass
+      - "127.0.0.1:8083:8080"  # Localhost-only for E2E testing bypass
     # Uncomment below for full local HTTPS:
     #   - "127.0.0.1:80:80"
     #   - "127.0.0.1:443:443"
