@@ -11,6 +11,7 @@ import { listRules, updateRule, deleteRule, type Rule } from '@/lib/api';
 import { emitToastSuccess, emitToastError } from '@/lib/toast-helpers';
 import { X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { ManualCategorizeSettingsDrawer } from '@/components/ManualCategorizeSettingsDrawer';
 
 interface SettingsDrawerProps {
   open: boolean;
@@ -20,6 +21,7 @@ interface SettingsDrawerProps {
 export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({ open, onClose }) => {
   const [rules, setRules] = useState<Rule[]>([]);
   const [loading, setLoading] = useState(false);
+  const [manualDrawerOpen, setManualDrawerOpen] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -104,6 +106,7 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({ open, onClose })
   };
 
   return (
+    <>
     <Drawer open={open} onOpenChange={onClose}>
       <DrawerContent
         className="fixed inset-x-0 bottom-0 max-h-[85vh] flex flex-col rounded-t-2xl border-t border-slate-700/80 bg-slate-900/95 shadow-xl shadow-black/40"
@@ -132,10 +135,36 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({ open, onClose })
         </DrawerHeader>
 
         <div className="flex-1 overflow-y-auto px-4 py-3">
-          <p className="mb-3 text-xs text-slate-400">
-            Rules teach LedgerMind how to auto-label future transactions. Editing or disabling a
-            rule updates how the model behaves for matching merchants and descriptions.
-          </p>
+          {/* Manual categorization section */}
+          <div className="mb-6">
+            <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Data & categorization
+            </h3>
+            <button
+              type="button"
+              className="flex w-full items-center justify-between rounded-xl bg-slate-900/60 px-3 py-2 text-left text-sm text-slate-100 hover:bg-slate-900 transition-colors"
+              onClick={() => setManualDrawerOpen(true)}
+            >
+              <span>
+                <span className="block">Manual categorization</span>
+                <span className="block text-[11px] font-normal text-slate-400">
+                  Review and undo your last bulk category change.
+                </span>
+              </span>
+              <span className="text-xs text-slate-500">Open</span>
+            </button>
+          </div>
+
+          {/* Auto-categorization rules section */}
+          <div>
+            <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Auto-categorization rules
+            </h3>
+            <p className="mb-3 text-xs text-slate-400">
+              Rules teach LedgerMind how to auto-label future transactions. Editing or disabling a
+              rule updates how the model behaves for matching merchants and descriptions.
+            </p>
+          </div>
 
           {loading && <p className="text-xs text-slate-400">Loading rules…</p>}
 
@@ -198,5 +227,12 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({ open, onClose })
         </div>
       </DrawerContent>
     </Drawer>
+
+    {/* Manual categorization drawer */}
+    <ManualCategorizeSettingsDrawer
+      open={manualDrawerOpen}
+      onOpenChange={setManualDrawerOpen}
+    />
+    </>
   );
 };

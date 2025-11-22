@@ -2,8 +2,10 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import Optional  # noqa: F401 (kept for potential future query params)
 from enum import Enum
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import text
+from datetime import date
+from decimal import Decimal
 
 from app.db import get_db
 from app.transactions import Transaction
@@ -113,6 +115,17 @@ class ManualCategorizeRequest(BaseModel):
     scope: ManualCategorizeScope = ManualCategorizeScope.JUST_THIS
 
 
+class ManualCategorizeAffectedTxn(BaseModel):
+    """Transaction affected by manual categorization (for undo)."""
+
+    id: int
+    date: date
+    amount: Decimal
+    merchant: str
+    previous_category_slug: str
+    new_category_slug: str
+
+
 class ManualCategorizeResponse(BaseModel):
     """Response from manual categorization operation."""
 
@@ -122,6 +135,7 @@ class ManualCategorizeResponse(BaseModel):
     updated_count: int
     similar_updated: int
     hint_applied: bool
+    affected: list[ManualCategorizeAffectedTxn] = Field(default_factory=list)
 
 
 @router.post("/{txn_id}/categorize/manual", response_model=ManualCategorizeResponse)
@@ -151,56 +165,69 @@ def manual_categorize_transaction(
         )
 
     # Load target transaction and verify ownership
-    txn = (
+    anchor = (
         db.query(Transaction)
         .filter(Transaction.id == txn_id, Transaction.user_id == user_id)
         .first()
     )
-    if not txn:
+    if not anchor:
         raise HTTPException(status_code=404, detail="Transaction not found")
 
-    # Update this transaction
-    txn.category = payload.category_slug
-    # Note: We don't have category_source field, so we rely on category being set
-    db.add(txn)
-
-    updated_count = 1
-    similar_updated = 0
-
     # Compute canonical keys for scope matching
-    merchant_canonical = txn.merchant_canonical or canonicalize_merchant(
-        txn.merchant or ""
+    merchant_canonical = anchor.merchant_canonical or canonicalize_merchant(
+        anchor.merchant or ""
     )
 
-    # For description scope, we'd need a canonicalize_description helper
-    # For now, use simple lowercased description as proxy
+    # For description scope, use simple lowercased description
     description_key = (
-        (txn.description or "").lower().strip() if txn.description else None
+        (anchor.description or "").lower().strip() if anchor.description else None
     )
 
-    # Apply scope logic - only update UNKNOWNs
-    if payload.scope != ManualCategorizeScope.JUST_THIS:
-        query = db.query(Transaction).filter(
-            Transaction.user_id == user_id,
-            Transaction.id != txn_id,
-            Transaction.category == "unknown",
+    # Build query for transactions to update
+    query = db.query(Transaction).filter(
+        Transaction.user_id == user_id,
+        Transaction.category == "unknown",  # Only touch unknowns
+    )
+
+    if payload.scope == ManualCategorizeScope.JUST_THIS:
+        query = query.filter(Transaction.id == txn_id)
+    elif payload.scope == ManualCategorizeScope.SAME_MERCHANT:
+        query = query.filter(Transaction.merchant_canonical == merchant_canonical)
+    elif payload.scope == ManualCategorizeScope.SAME_DESCRIPTION and description_key:
+        query = query.filter(Transaction.description.ilike(f"%{description_key}%"))
+
+    # Snapshot BEFORE we update
+    to_update: list[Transaction] = query.all()
+    if not to_update:
+        return ManualCategorizeResponse(
+            txn_id=txn_id,
+            category_slug=payload.category_slug,
+            scope=payload.scope,
+            updated_count=0,
+            similar_updated=0,
+            hint_applied=False,
+            affected=[],
         )
 
-        if payload.scope == ManualCategorizeScope.SAME_MERCHANT:
-            query = query.filter(Transaction.merchant_canonical == merchant_canonical)
-        elif (
-            payload.scope == ManualCategorizeScope.SAME_DESCRIPTION and description_key
-        ):
-            # Simple description matching - match on lowercased description
-            # For production, use a proper canonicalize_description function
-            query = query.filter(Transaction.description.ilike(f"%{description_key}%"))
-
-        # Bulk update
-        similar_updated = query.update(
-            {"category": payload.category_slug},
-            synchronize_session=False,
+    # Build affected list from snapshots
+    affected = [
+        ManualCategorizeAffectedTxn(
+            id=t.id,
+            date=t.date,
+            amount=t.amount,
+            merchant=t.merchant or "",
+            previous_category_slug=t.category,
+            new_category_slug=payload.category_slug,
         )
-        updated_count += similar_updated
+        for t in to_update
+    ]
+
+    # Apply update
+    for t in to_update:
+        t.category = payload.category_slug
+
+    updated_count = len(to_update)
+    similar_updated = max(0, updated_count - 1)
 
     # Upsert hint when scope is not JUST_THIS
     hint_applied = False
@@ -252,4 +279,66 @@ def manual_categorize_transaction(
         updated_count=updated_count,
         similar_updated=similar_updated,
         hint_applied=hint_applied,
+        affected=affected,
     )
+
+
+class ManualCategorizeUndoRequest(BaseModel):
+    """Request to undo a manual categorization operation."""
+
+    affected: list[ManualCategorizeAffectedTxn]
+
+
+class ManualCategorizeUndoResponse(BaseModel):
+    """Response from undo operation."""
+
+    reverted_count: int
+
+
+@router.post("/categorize/manual/undo", response_model=ManualCategorizeUndoResponse)
+def manual_categorize_undo(
+    payload: ManualCategorizeUndoRequest,
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id),
+):
+    """
+    Undo a previous manual categorization by reverting affected transactions
+    back to their previous categories.
+
+    Only reverts transactions that:
+    - Belong to the current user
+    - Still have the new_category_slug (haven't been changed again)
+    """
+    if not payload.affected:
+        return ManualCategorizeUndoResponse(reverted_count=0)
+
+    ids = [a.id for a in payload.affected]
+
+    # Load transactions that belong to this user
+    txns = (
+        db.query(Transaction)
+        .filter(
+            Transaction.user_id == user_id,
+            Transaction.id.in_(ids),
+        )
+        .all()
+    )
+
+    # Index by id for quick lookup of the "before" snapshot
+    before_by_id = {a.id: a for a in payload.affected}
+
+    reverted = 0
+    for t in txns:
+        before = before_by_id.get(t.id)
+        if not before:
+            continue
+        # Only revert if category hasn't changed since the bulk operation
+        if t.category != before.new_category_slug:
+            continue
+        t.category = before.previous_category_slug
+        reverted += 1
+
+    if reverted:
+        db.commit()
+
+    return ManualCategorizeUndoResponse(reverted_count=reverted)
