@@ -1,6 +1,6 @@
 import { logout } from "@/lib/authClient";
 import { useAuth } from "@/state/auth";
-import { fetchAuth } from "@/lib/http";
+import { fetchJSON } from "@/lib/http";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -53,7 +53,7 @@ export default function AuthMenu({ onOpenSettings }: AuthMenuProps = {}) {
   const handleDemoLogin = async () => {
     setDemoLoading(true);
     try {
-      await fetchAuth('/auth/demo', { method: 'POST' });
+      await fetchJSON('auth/demo', { method: 'POST' });
       // Reload to bootstrap auth state with demo user
       window.location.href = '/';
     } catch (err) {
