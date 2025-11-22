@@ -129,6 +129,9 @@ class Settings(BaseSettings):
     )  # dev | prod | test (primary)
     ALLOW_DEV_ROUTES: int = int(os.getenv("ALLOW_DEV_ROUTES", "1"))
 
+    # Internal API base URL for mode handlers calling tool endpoints
+    INTERNAL_API_ROOT: str = os.getenv("INTERNAL_API_ROOT", "http://localhost:8000")
+
     # === Suggestions/ML ===
     SUGGEST_ENABLED: bool = _env_bool("SUGGEST_ENABLED", True)
     SUGGEST_MODE: str = os.getenv(
