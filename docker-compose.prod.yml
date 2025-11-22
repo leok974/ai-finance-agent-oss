@@ -212,11 +212,13 @@ services:
       agui:
         condition: service_healthy
     volumes:
+      - ./deploy/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./deploy/docker-entrypoint.d:/docker-entrypoint.d:ro
       - certbot_www:/var/www/certbot
       - letsencrypt:/etc/letsencrypt:ro
-    # Ports disabled for tunnel-based setup - Cloudflare tunnel connects directly to nginx:8080 internally
+    # Ports disabled for tunnel-based setup - Cloudflare tunnel connects directly to nginx:80 internally
     ports:
-      - "127.0.0.1:8083:8080"  # Localhost-only for E2E testing bypass
+      - "127.0.0.1:8083:80"  # Localhost-only for E2E testing bypass
     # Uncomment below for full local HTTPS:
     #   - "127.0.0.1:80:80"
     #   - "127.0.0.1:443:443"
