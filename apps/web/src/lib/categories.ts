@@ -284,3 +284,12 @@ export function getAllCategorySlugs(): string[] {
 export function categoryExists(slug: string): boolean {
   return slug in CATEGORY_DEFS;
 }
+
+/**
+ * Category options for dropdowns/selects (all categories flattened).
+ */
+export const CATEGORY_OPTIONS = Object.values(CATEGORY_DEFS).map((def) => ({
+  slug: def.slug,
+  label: def.label,
+  parent: def.parent,
+}));
