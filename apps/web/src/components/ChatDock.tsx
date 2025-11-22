@@ -722,6 +722,7 @@ export default function ChatDock() {
           {m.role === 'assistant' ? (() => {
             const model = Array.isArray(meta.suggestionsLLM) ? meta.suggestionsLLM : [];
             const gateway = Array.isArray(meta.suggestions) ? meta.suggestions : [];
+            const suggestedActions = Array.isArray(meta.suggested_actions) ? meta.suggested_actions : [];
             const raw = [...model, ...gateway];
             const seen = new Set<string>();
             const chips = raw.filter((c: any) => {
@@ -744,7 +745,7 @@ export default function ChatDock() {
             const showDeeperBreakdown = meta.showDeeperBreakdown === true;
             const showFinanceActions = meta.showFinanceActions === true;
 
-            if (!chips.length && !canSaveRule && !canShowWhy && !showDeeperBreakdown && !showFinanceActions) return null;
+            if (!chips.length && !suggestedActions.length && !canSaveRule && !canShowWhy && !showDeeperBreakdown && !showFinanceActions) return null;
             return (
               <div className="flex flex-wrap gap-2 mt-2 items-center">
                 {chips.map((chip: any) => (
@@ -758,6 +759,18 @@ export default function ChatDock() {
                     onKeyDown={(e)=>{ if (e.key==='Enter'||e.key===' ') { e.preventDefault(); handleSuggestionChip({ label: chip.label, action: chip.action || chip.label, source: chip.source }); } }}
                     onClick={()=>handleSuggestionChip({ label: chip.label, action: chip.action || chip.label, source: chip.source })}
                   >{chip.label}</button>
+                ))}
+                {suggestedActions.map((action: any) => (
+                  <button
+                    key={action.kind}
+                    type="button"
+                    data-testid={`suggested-action-${action.kind}`}
+                    aria-label={action.label}
+                    className="chip chip-suggest-gw"
+                    onClick={() => handleSuggestedAction(action)}
+                  >
+                    {action.label}
+                  </button>
                 ))}
                 {showDeeperBreakdown && (
                   <button
@@ -1267,6 +1280,15 @@ export default function ChatDock() {
             const thinking = (m as any).thinking || (m as any).meta?.thinking;
             return (i===cur.length-1 && m.role==='assistant' && thinking)
               ? { ...m, meta: { ...(m.meta||{}), suggestions: tagged, thinking: true } }
+              : m;
+          }));
+        },
+        onSuggestedActions(actions) {
+          aguiLog('agui.suggested_actions', { count: actions.length });
+          setUiMessages(cur => cur.map((m,i)=> {
+            const thinking = (m as any).thinking || (m as any).meta?.thinking;
+            return (i===cur.length-1 && m.role==='assistant' && thinking)
+              ? { ...m, meta: { ...(m.meta||{}), suggested_actions: actions, thinking: true } }
               : m;
           }));
         },
@@ -1938,6 +1960,15 @@ export default function ChatDock() {
             : m;
         }));
       },
+      onSuggestedActions(actions) {
+        aguiLog('agui.suggested_actions', { count: actions.length });
+        setUiMessages(cur => cur.map((m,i)=> {
+          const thinking = (m as any).thinking || (m as any).meta?.thinking;
+          return (i===cur.length-1 && m.role==='assistant' && thinking)
+            ? { ...m, meta: { ...(m.meta||{}), suggested_actions: actions, thinking: true } }
+            : m;
+        }));
+      },
       onFinish() {
         const snapshot = aguiToolsRef.current || aguiTools;
         const errors = snapshot.filter(t => t.status === 'error').map(t => t.name);
@@ -2015,6 +2046,35 @@ export default function ChatDock() {
   }, [appendAssistant, appendUser, callTransactionsNl, callInsightsExpanded, callBudgetSuggest, callRecurringTool, callFindSubscriptionsTool]);
 
   // Legacy inline submit removed; new SaveRuleModal handles validation + save
+  function handleSuggestedAction(action: { kind: string; label: string; scope?: string; category_slug?: string }) {
+    const currentMonth = month;
+
+    switch (action.kind) {
+      case 'manual_categorize_unknowns':
+        // Open Unknowns panel for current month
+        appendUser(`Categorize uncategorized transactions for ${currentMonth}`);
+        if (!startAguiRun('overview', `Show me all uncategorized transactions for ${currentMonth}`, currentMonth)) {
+          const summary = lastMonthSummaryRef.current;
+          if (summary) {
+            const reply = formatCategorizeUnknowns(summary);
+            appendAssistant(reply, { ctxMonth: currentMonth });
+          }
+        }
+        break;
+
+      case 'undo_last_bulk_categorize':
+        // For now, just inform the user. Full integration requires SettingsDrawer state access.
+        appendAssistant(
+          "To undo your last bulk categorization, go to Settings → Data & categorization → Manual categorization. " +
+          "You will see your last bulk change with the option to undo it."
+        );
+        break;
+
+      default:
+        console.warn('Unknown suggested action kind:', action.kind);
+    }
+  }
+
   function handleSuggestionChip(chip: { label: string; action: string; source?: string }) {
     const normLabel = chip.label.trim().toLowerCase();
     if (/^save\s+as\s+rule$/.test(normLabel) || /save\s+rule/.test(normLabel)) {

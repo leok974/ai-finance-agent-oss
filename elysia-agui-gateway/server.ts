@@ -11,7 +11,8 @@ type AguiEvent =
   | { type: 'TEXT_MESSAGE_CONTENT'; data: { text: string } }
   | { type: 'TOOL_CALL_START'; data: { name: string } }
   | { type: 'TOOL_CALL_END'; data: { name: string; ok: boolean; error?: string } }
-  | { type: 'SUGGESTIONS'; data: { chips: Array<{ label: string; action: string }> } };
+  | { type: 'SUGGESTIONS'; data: { chips: Array<{ label: string; action: string }> } }
+  | { type: 'SUGGESTED_ACTIONS'; data: { actions: Array<any> } };
 
 const enc = new TextEncoder();
 const sse = (evt: AguiEvent) =>
@@ -196,11 +197,17 @@ new Elysia()
             controller.enqueue(enc.encode(`event: META\ndata: ${JSON.stringify({ fallback: (reply as any).fallback })}\n\n`));
           }
 
+          // Forward suggested_actions from finance modes (manual categorization, undo, etc.)
+          const suggestedActions = (reply as any)?.suggested_actions;
+          if (suggestedActions && Array.isArray(suggestedActions) && suggestedActions.length > 0) {
+            push({ type: 'SUGGESTED_ACTIONS', data: { actions: suggestedActions } });
+          }
+
           const text: string =
             reply?.reply ??
             (intent === 'chat'
               ? "Hey! How can I help with your finances?"
-              : "Here’s what I found.");
+              : "Here's what I found.");
 
           const chunks = text.match(/.{1,120}(\s|$)/g) ?? [text];
           const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));

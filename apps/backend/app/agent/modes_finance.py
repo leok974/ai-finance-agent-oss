@@ -140,6 +140,24 @@ async def mode_finance_quick_recap(
         },
     ]
 
+    # Suggested actions for manual categorization
+    suggested_actions = []
+    if unknown_ct > 0:
+        suggested_actions.append(
+            {
+                "kind": "manual_categorize_unknowns",
+                "label": "Categorize uncategorized transactions",
+                "scope": "same_merchant",
+            }
+        )
+    # Always offer undo (frontend can hide if no snapshot exists)
+    suggested_actions.append(
+        {
+            "kind": "undo_last_bulk_categorize",
+            "label": "Undo last bulk categorization",
+        }
+    )
+
     return {
         "reply": "\n".join(reply_lines),
         "citations": [
@@ -152,6 +170,7 @@ async def mode_finance_quick_recap(
         "mode": "finance_quick_recap",
         "args": {"month": month},
         "suggestions": suggestions,
+        "suggested_actions": suggested_actions,
         "_router_fallback_active": True,  # still deterministic, no LLM
     }
 
@@ -229,6 +248,27 @@ async def mode_finance_deep_dive(
         "\nNext actions: ask me to *show only spikes*, *top merchants detail*, or *budget check*."
     )
 
+    # Suggested actions for manual categorization
+    unknown = expanded.get("unknown_spend") or {}
+    unknown_ct = int(unknown.get("count") or 0)
+
+    suggested_actions = []
+    if unknown_ct > 0:
+        suggested_actions.append(
+            {
+                "kind": "manual_categorize_unknowns",
+                "label": "Categorize uncategorized transactions",
+                "scope": "same_merchant",
+            }
+        )
+    # Always offer undo (frontend can hide if no snapshot exists)
+    suggested_actions.append(
+        {
+            "kind": "undo_last_bulk_categorize",
+            "label": "Undo last bulk categorization",
+        }
+    )
+
     return {
         "reply": "\n".join(reply_lines),
         "citations": [
@@ -237,6 +277,7 @@ async def mode_finance_deep_dive(
         "used_context": {"month": month},
         "tool_trace": ["insights.expanded"],
         "mode": "finance_deep_dive",
+        "suggested_actions": suggested_actions,
         "_router_fallback_active": True,
     }
 
