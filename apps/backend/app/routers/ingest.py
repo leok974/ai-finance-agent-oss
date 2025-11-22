@@ -8,7 +8,6 @@ from fastapi import (
     Request,
     HTTPException,
 )
-from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 from app.deps.auth_guard import get_current_user_id
 from sqlalchemy import select, update, delete
@@ -20,6 +19,7 @@ import re
 from decimal import Decimal, InvalidOperation
 from enum import Enum
 from typing import Iterator
+from uuid import uuid4
 from ..db import get_db
 from app.transactions import Transaction
 from app.services.ingest_utils import detect_positive_expense_format
@@ -396,6 +396,9 @@ async def ingest_csv(
     **Important**: When `replace=True`, only transaction data is deleted.
     ML training data (feedback, rules) is preserved for continuous learning.
     """
+    # Generate request ID for structured logging
+    request_id = uuid4().hex
+
     # Track all ingest requests for SLO monitoring
     phase = "replace" if replace else "append"
     INGEST_REQUESTS.labels(phase=phase).inc()
@@ -404,9 +407,21 @@ async def ingest_csv(
     file_format = format.lower() if format in ("csv", "xls", "xlsx") else "csv"
     INGEST_FILES.labels(format=file_format).inc()
 
+    # Log start of ingest operation
+    logger.info(
+        "ingest.start",
+        extra={
+            "request_id": request_id,
+            "user_id": user_id,
+            "uploaded_filename": file.filename,
+            "replace": replace,
+            "file_format": file_format,
+        },
+    )
+
     # Wrap main handler in try-catch for comprehensive error logging
     try:
-        return await _ingest_csv_impl(
+        result = await _ingest_csv_impl(
             user_id=user_id,
             file=file,
             replace=replace,
@@ -414,16 +429,35 @@ async def ingest_csv(
             db=db,
             phase=phase,
         )
+
+        # Log successful ingest
+        logger.info(
+            "ingest.success",
+            extra={
+                "request_id": request_id,
+                "user_id": user_id,
+                "added": result.get("added", 0),
+                "duplicates": result.get("duplicates", 0),
+            },
+        )
+
+        return result
+
     except Exception as exc:
         INGEST_ERRORS.labels(phase=phase).inc()
-        logger.exception(
-            "CSV ingest failed",
+
+        # Log unexpected error with request_id for traceability
+        logger.error(
+            "ingest.unexpected_error",
             extra={
+                "request_id": request_id,
                 "user_id": user_id,
-                "csv_filename": file.filename,  # Changed from 'filename' to avoid LogRecord conflict
+                "csv_filename": file.filename,
                 "replace": replace,
                 "error_type": type(exc).__name__,
+                "error_message": str(exc),
             },
+            exc_info=True,
         )
 
         # Build user-friendly error message
@@ -435,17 +469,18 @@ async def ingest_csv(
         elif "invalid literal" in error_str:
             friendly_message = "Some rows have invalid data. Please check that dates and amounts are correctly formatted."
         else:
-            # Keep technical error for unexpected issues
-            friendly_message = f"CSV upload failed: {error_str}"
+            # Generic error with request_id for support
+            friendly_message = f"Ingest failed – please check logs and try again (request_id: {request_id})"
 
-        # Return 500 with user-friendly error message
-        return JSONResponse(
+        # Return 500 with HTTPException
+        raise HTTPException(
             status_code=500,
-            content={
+            detail={
                 "ok": False,
                 "error": "ingest_failed",
                 "error_type": type(exc).__name__,
                 "message": friendly_message,
+                "request_id": request_id,
             },
         )
 
@@ -853,3 +888,68 @@ async def ingest_csv_put(
 async def ingest_head():
     """Health/lightweight check for ingest endpoint; no body returned."""
     return Response(status_code=204, headers={"Cache-Control": "no-store"})
+
+
+@router.delete("/dashboard/reset")
+async def dashboard_reset(
+    user_id: int = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
+    """Delete all transactions for the current user (dashboard reset).
+
+    This preserves ML training data (feedback, rules) for continuous learning.
+    """
+    request_id = uuid4().hex
+
+    logger.info(
+        "dashboard.reset.start",
+        extra={
+            "request_id": request_id,
+            "user_id": user_id,
+        },
+    )
+
+    try:
+        # Delete all user transactions
+        deleted_count = db.execute(
+            delete(Transaction).where(Transaction.user_id == user_id)
+        ).rowcount
+        db.commit()
+
+        # Clear legacy in-memory state if present
+        try:
+            from ..main import app
+
+            app.state.txns = []
+        except Exception:
+            pass
+
+        logger.info(
+            "dashboard.reset.success",
+            extra={
+                "request_id": request_id,
+                "user_id": user_id,
+                "deleted_count": deleted_count,
+            },
+        )
+
+        return {"ok": True, "deleted": deleted_count}
+
+    except Exception as exc:
+        db.rollback()
+
+        logger.error(
+            "dashboard.reset.error",
+            extra={
+                "request_id": request_id,
+                "user_id": user_id,
+                "error_type": type(exc).__name__,
+                "error_message": str(exc),
+            },
+            exc_info=True,
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail=f"Ingest failed – please check logs and try again (request_id: {request_id})",
+        )

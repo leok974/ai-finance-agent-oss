@@ -1776,12 +1776,9 @@ export async function uploadCsv(file: File | Blob, replace = true, format = 'csv
   });
 }
 
-// Delete all transactions by sending an empty CSV with replace=true
+// Delete all transactions using dedicated dashboard reset endpoint
 export async function deleteAllTransactions(): Promise<void> {
-  // The backend /ingest endpoint with replace=true deletes all transactions before ingesting
-  // Send an empty CSV to trigger the delete without adding new data
-  const emptyBlob = new Blob([''], { type: 'text/csv' });
-  await uploadCsv(emptyBlob, true);
+  await fetchJSON('/ingest/dashboard/reset', { method: 'DELETE' });
 }
 
 export async function fetchLatestMonth(): Promise<string | null> {

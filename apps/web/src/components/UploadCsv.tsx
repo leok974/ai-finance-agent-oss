@@ -9,6 +9,7 @@ import {
   chartsCategories,
   chartsFlows
 } from "../lib/api"; // uses your existing helpers
+import { fetchJSON } from "@/lib/fetchJSON";
 import { emitToastSuccess, emitToastError } from "@/lib/toast-helpers";
 import { t } from '@/lib/i18n';
 import { useMonth } from "../context/MonthContext";
@@ -228,8 +229,8 @@ const UploadCsv: React.FC<UploadCsvProps> = ({ onUploaded, defaultReplace = true
   const reset = useCallback(async () => {
     try {
       setBusy(true);
-      // Delete all transactions from the database
-      await deleteAllTransactions();
+      // Use new dedicated dashboard reset endpoint
+      await fetchJSON('/ingest/dashboard/reset', { method: 'DELETE' });
       // Clear UI state
       setFile(null);
       setResult(null);
@@ -262,7 +263,7 @@ const UploadCsv: React.FC<UploadCsvProps> = ({ onUploaded, defaultReplace = true
       const resolved = detectedMonth || month || latest;
       if (resolved) {
         // Fire-and-forget to avoid blocking UI
-        // Use new normalized chart functions for consistent data shape
+        // Refetch all key dashboard data: charts and suggestions
         void Promise.allSettled([
           chartsSummary(resolved),
           chartsMerchants(resolved, 10),
@@ -454,6 +455,7 @@ const UploadCsv: React.FC<UploadCsvProps> = ({ onUploaded, defaultReplace = true
                 className="h-4 w-4 rounded border-gray-600 bg-gray-800 text-indigo-500 focus:ring-indigo-500"
                 checked={replace}
                 onChange={(e) => setReplace(e.target.checked)}
+                disabled={busy}
               />
               Replace existing data
             </label>
@@ -462,8 +464,10 @@ const UploadCsv: React.FC<UploadCsvProps> = ({ onUploaded, defaultReplace = true
               type="button"
               variant="pill-outline"
               size="sm"
+              disabled={busy}
+              data-testid="reset-dashboard-button"
             >
-              Reset
+              {busy ? "Resetting..." : "Reset"}
             </Button>
           </div>
         </header>
