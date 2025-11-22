@@ -8,6 +8,7 @@ export type AguiHandlers = {
   onFinish?(): void;
   onError?(err: unknown): void;
   onSuggestions?(chips: Array<{ label: string; action: string }>): void;
+  onSuggestedActions?(actions: Array<any>): void;
 };
 
 export function wireAguiStream(
@@ -61,6 +62,12 @@ export function wireAguiStream(
     try {
       const d = JSON.parse(e.data || '{}');
       if (Array.isArray(d.chips) && d.chips.length) safe(h.onSuggestions, d.chips);
+    } catch { /* ignore */ }
+  });
+  es.addEventListener('SUGGESTED_ACTIONS', (e: MessageEvent) => {
+    try {
+      const d = JSON.parse(e.data || '{}');
+      if (Array.isArray(d.actions) && d.actions.length) safe(h.onSuggestedActions, d.actions);
     } catch { /* ignore */ }
   });
   es.onerror = (err) => { safe(h.onError, err); es.close(); };

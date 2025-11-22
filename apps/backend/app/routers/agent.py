@@ -1147,6 +1147,13 @@ def agent_chat(
                     except RuntimeError:
                         message = asyncio.run(call_mode_handler())
 
+                    # Extract suggested_actions if present (for manual categorization UX)
+                    suggested_actions = (
+                        message.get("suggested_actions")
+                        if isinstance(message, dict)
+                        else None
+                    )
+
                     resp = {
                         "ok": True,
                         "mode": effective_mode,
@@ -1163,6 +1170,10 @@ def agent_chat(
                         ],
                         "model": "deterministic",
                     }
+
+                    # Pass through suggested_actions if provided by mode handler
+                    if suggested_actions is not None:
+                        resp["suggested_actions"] = suggested_actions
                     if request is not None:
                         request.state.llm_path = "router"
                 except Exception as e:
