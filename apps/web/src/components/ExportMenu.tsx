@@ -1,11 +1,10 @@
 import { useState } from "react";
 import { downloadReportExcel, downloadReportPdf } from "@/lib/api";
 import { saveAs } from "@/utils/download";
-import { Download, Check } from "lucide-react";
+import { Download, FileSpreadsheet, FileText } from "lucide-react";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuCheckboxItem } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
-// Optional toast helper (if you have one). Otherwise we fallback to alert().
-// import { toastError } from "@/src/lib/toast-helpers";
+import { toast } from "sonner";
 import DateRangePicker from "@/components/DateRangePicker";
 
 type Props = { month?: string };
@@ -23,9 +22,11 @@ export default function ExportMenu({ month }: Props) {
       setBusy("excel");
       const { blob, filename } = await downloadReportExcel(month, includeTxns, { ...range, splitAlpha });
       saveAs(blob, filename);
+      toast.success(`Exported ${month || 'report'} to Excel`);
     } catch (err: any) {
       console.error("Excel export failed", err);
-      (window as any)?.toastError?.("Excel export failed") ?? alert("Excel export failed. Check console/logs.");
+      const message = err?.message || "Excel export failed";
+      toast.error(message);
     } finally {
       setBusy(null);
     }
@@ -36,9 +37,11 @@ export default function ExportMenu({ month }: Props) {
       setBusy("pdf");
       const { blob, filename } = await downloadReportPdf(month, range);
       saveAs(blob, filename);
+      toast.success(`Exported ${month || 'report'} to PDF`);
     } catch (err: any) {
       console.error("PDF export failed", err);
-      (window as any)?.toastError?.("PDF export failed") ?? alert("PDF export failed. Check console/logs.");
+      const message = err?.message || "PDF export failed";
+      toast.error(message);
     } finally {
       setBusy(null);
     }
@@ -47,7 +50,7 @@ export default function ExportMenu({ month }: Props) {
 
   return (
     <div className="flex items-center gap-2">
-      {/* Export dropdown */}
+      {/* Export dropdown with improved visual clarity */}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button
@@ -56,33 +59,71 @@ export default function ExportMenu({ month }: Props) {
             disabled={!!busy}
             className="gap-2 px-3.5 h-9"
             aria-label={rangeActive ? `Export (range ${rangeLabel})` : "Export"}
+            data-testid="export-menu-trigger"
           >
             <Download className="h-4 w-4" />
             <span>Export</span>
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="min-w-[240px]">
-        <DropdownMenuCheckboxItem
-          checked={includeTxns}
-          onCheckedChange={(v: boolean | "indeterminate") => setIncludeTxns(v === true)}
+        <DropdownMenuContent
+          align="end"
+          className="min-w-[240px] rounded-2xl border border-border/60 bg-background/95 shadow-lg backdrop-blur"
         >
-          Include transactions
-        </DropdownMenuCheckboxItem>
-        <DropdownMenuCheckboxItem
-          checked={splitAlpha}
-          onCheckedChange={(v: boolean | "indeterminate") => setSplitAlpha(v === true)}
-        >
-          Split transactions A–M / N–Z
-        </DropdownMenuCheckboxItem>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={doExcel} disabled={busy === "excel"}>
-          {busy === "excel" ? <Check className="mr-2 h-4 w-4" /> : <Download className="mr-2 h-4 w-4" />}
-          Excel (.xlsx)
-        </DropdownMenuItem>
-        <DropdownMenuItem onClick={doPdf} disabled={busy === "pdf"}>
-          {busy === "pdf" ? <Check className="mr-2 h-4 w-4" /> : <Download className="mr-2 h-4 w-4" />}
-          PDF (.pdf)
-        </DropdownMenuItem>
+          {/* Settings section */}
+          <div className="px-2 py-1.5">
+            <p className="text-xs font-medium text-muted-foreground mb-2">Export Options</p>
+            <DropdownMenuCheckboxItem
+              checked={includeTxns}
+              onCheckedChange={(v: boolean | "indeterminate") => setIncludeTxns(v === true)}
+              className="text-sm"
+            >
+              Include transactions
+            </DropdownMenuCheckboxItem>
+            <DropdownMenuCheckboxItem
+              checked={splitAlpha}
+              onCheckedChange={(v: boolean | "indeterminate") => setSplitAlpha(v === true)}
+              className="text-sm"
+            >
+              Split transactions A–M / N–Z
+            </DropdownMenuCheckboxItem>
+          </div>
+
+          <DropdownMenuSeparator />
+
+          {/* Export actions with improved labels */}
+          <div className="px-1 py-1">
+            <DropdownMenuItem
+              onClick={doExcel}
+              disabled={busy === "excel"}
+              className="flex flex-col items-start gap-0.5 py-2.5 cursor-pointer"
+              data-testid="export-excel"
+            >
+              <div className="flex items-center gap-2 w-full">
+                <FileSpreadsheet className="h-4 w-4 text-green-600 dark:text-green-400" />
+                <span className="text-sm font-medium">Excel (.xlsx)</span>
+              </div>
+              <span className="text-xs text-muted-foreground pl-6">
+                {busy === "excel" ? "Exporting..." :
+                 includeTxns ? `Full report for ${month || 'selected period'}` :
+                 "Summary only"}
+              </span>
+            </DropdownMenuItem>
+
+            <DropdownMenuItem
+              onClick={doPdf}
+              disabled={busy === "pdf"}
+              className="flex flex-col items-start gap-0.5 py-2.5 cursor-pointer"
+              data-testid="export-pdf"
+            >
+              <div className="flex items-center gap-2 w-full">
+                <FileText className="h-4 w-4 text-red-600 dark:text-red-400" />
+                <span className="text-sm font-medium">PDF (.pdf)</span>
+              </div>
+              <span className="text-xs text-muted-foreground pl-6">
+                {busy === "pdf" ? "Generating..." : "Summary view only"}
+              </span>
+            </DropdownMenuItem>
+          </div>
         </DropdownMenuContent>
       </DropdownMenu>
 

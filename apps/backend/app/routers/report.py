@@ -5,6 +5,7 @@ from typing import Dict
 from collections import defaultdict
 
 from app.db import get_db
+from app.deps.auth_guard import get_current_user_id
 from app.services.charts_data import (
     latest_month_str,
     get_month_summary,
@@ -15,7 +16,6 @@ from app.services.charts_data import (
     get_spending_trends,
 )
 from app.services.report_export import build_excel_bytes, build_pdf_bytes
-from app.utils.auth import require_roles
 from app.transactions import Transaction
 
 router = APIRouter()
@@ -37,8 +37,9 @@ def report(month: str) -> Dict:
     return {"month": month, "total": round(total, 2), "by_category": rows}
 
 
-@router.get("/report/excel", dependencies=[Depends(require_roles("admin", "analyst"))])
+@router.get("/report/excel")
 def report_excel(
+    user_id: int = Depends(get_current_user_id),
     month: str | None = Query(None, pattern=r"^\d{4}-\d{2}$"),
     start: str | None = Query(None, description="YYYY-MM-DD"),
     end: str | None = Query(None, description="YYYY-MM-DD"),
@@ -49,20 +50,20 @@ def report_excel(
     """Generate an Excel report for a month or custom date range."""
     # Resolve an inclusive window for transactions; also pick a month hint for aggregations
     try:
-        start_d, end_d = resolve_window(db, month, start, end)
+        start_d, end_d = resolve_window(db, user_id, month, start, end)
     except ValueError:
         raise HTTPException(status_code=404, detail="No data available for reporting")
-    month_hint = month or latest_month_str(db)
+    month_hint = month or latest_month_str(db, user_id)
     if not month_hint:
         raise HTTPException(status_code=404, detail="No data available for reporting")
 
     # Assemble data parts (month-based aggregations)
-    summary = get_month_summary(db, month_hint)
+    summary = get_month_summary(db, user_id, month_hint)
     summary["start"], summary["end"] = start_d.isoformat(), end_d.isoformat()
-    merchants = get_month_merchants(db, month_hint)["merchants"]
-    categories = get_month_categories(db, month_hint)
-    flows = get_month_flows(db, month_hint)
-    trends = get_spending_trends(db, months=6)
+    merchants = get_month_merchants(db, user_id, month_hint)["merchants"]
+    categories = get_month_categories(db, user_id, month_hint)
+    flows = get_month_flows(db, user_id, month_hint)
+    trends = get_spending_trends(db, user_id, months=6)
 
     txns_df = None
     if include_transactions:
@@ -78,6 +79,7 @@ def report_excel(
                     Transaction.amount,
                 )
                 .filter(
+                    Transaction.user_id == user_id,
                     Transaction.date >= start_d,
                     Transaction.date <= end_d,
                 )
@@ -125,8 +127,9 @@ def report_excel(
     )
 
 
-@router.get("/report/pdf", dependencies=[Depends(require_roles("admin", "analyst"))])
+@router.get("/report/pdf")
 def report_pdf(
+    user_id: int = Depends(get_current_user_id),
     month: str | None = Query(None, pattern=r"^\d{4}-\d{2}$"),
     start: str | None = Query(None, description="YYYY-MM-DD"),
     end: str | None = Query(None, description="YYYY-MM-DD"),
@@ -134,17 +137,17 @@ def report_pdf(
 ):
     """Generate a PDF report for a month or custom date range; returns 503 if PDF engine missing."""
     try:
-        start_d, end_d = resolve_window(db, month, start, end)
+        start_d, end_d = resolve_window(db, user_id, month, start, end)
     except ValueError:
         raise HTTPException(status_code=404, detail="No data available for reporting")
-    month_hint = month or latest_month_str(db)
+    month_hint = month or latest_month_str(db, user_id)
     if not month_hint:
         raise HTTPException(status_code=404, detail="No data available for reporting")
     try:
-        summary = get_month_summary(db, month_hint)
+        summary = get_month_summary(db, user_id, month_hint)
         summary["start"], summary["end"] = start_d.isoformat(), end_d.isoformat()
-        merchants = get_month_merchants(db, month_hint)["merchants"]
-        categories = get_month_categories(db, month_hint)
+        merchants = get_month_merchants(db, user_id, month_hint)["merchants"]
+        categories = get_month_categories(db, user_id, month_hint)
         data = build_pdf_bytes(summary, merchants, categories, None, None)
     except RuntimeError as e:
         # reportlab likely not installed in this environment
