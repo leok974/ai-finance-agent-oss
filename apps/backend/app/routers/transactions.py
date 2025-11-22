@@ -10,6 +10,7 @@ from app.transactions import Transaction
 from app.deps.auth_guard import get_current_user_id
 from app.utils.text import canonicalize_merchant
 from app.lib.categories import categoryExists
+from app.models.ml_feedback import MlFeedbackEvent
 
 router = APIRouter(prefix="/transactions", tags=["transactions"])
 
@@ -228,6 +229,19 @@ def manual_categorize_transaction(
             },
         )
         hint_applied = True
+
+        # Record ML feedback event for bulk categorizations
+        # This helps the model learn from manual bulk tagging patterns
+        feedback_event = MlFeedbackEvent(
+            txn_id=txn_id,
+            user_id=str(user_id),
+            category=payload.category_slug,
+            action="accept",
+            source="manual_bulk",
+            model=None,
+            score=None,
+        )
+        db.add(feedback_event)
 
     db.commit()
 

@@ -244,4 +244,104 @@ describe("ExplainSignalDrawer - Manual Categorization", () => {
     await user.click(descriptionRadio);
     expect(descriptionRadio).toBeChecked();
   });
+
+  it("shows loading state on Apply button while saving", async () => {
+    // Mock a delayed response
+    let resolvePromise: any;
+    const delayedPromise = new Promise<any>((resolve) => {
+      resolvePromise = resolve;
+    });
+    manualCategorizeSpy.mockReturnValue(delayedPromise as any);
+
+    const txn = {
+      id: 123,
+      category: "unknown",
+      merchant: "CVS Pharmacy",
+      description: "Groceries",
+      amount: -45.67,
+    };
+
+    render(
+      <ExplainSignalDrawer
+        txnId={123}
+        open={true}
+        onOpenChange={vi.fn()}
+        txn={txn}
+        onRefresh={vi.fn()}
+      />
+    );
+
+    const user = userEvent.setup();
+
+    // Select category and click Apply
+    await user.selectOptions(screen.getByLabelText("Category"), "groceries");
+    const applyButton = screen.getByRole("button", { name: /apply/i });
+    await user.click(applyButton);
+
+    // Button should show loading state
+    await waitFor(() => {
+      expect(screen.getByText("Saving…")).toBeInTheDocument();
+      expect(applyButton).toBeDisabled();
+    });
+
+    // Resolve the promise
+    resolvePromise({
+      txn_id: 123,
+      category_slug: "groceries",
+      scope: "same_merchant",
+      updated_count: 1,
+      similar_updated: 0,
+      hint_applied: false,
+    });
+
+    // Button should re-enable after success
+    await waitFor(() => {
+      expect(screen.queryByText("Saving…")).not.toBeInTheDocument();
+    });
+  });
+
+  it("calls onRefresh once after successful categorization", async () => {
+    const mockResponse = {
+      txn_id: 123,
+      category_slug: "groceries",
+      scope: "just_this",
+      updated_count: 1,
+      similar_updated: 0,
+      hint_applied: false,
+    };
+
+    manualCategorizeSpy.mockResolvedValue(mockResponse as any);
+
+    const onRefresh = vi.fn();
+    const onOpenChange = vi.fn();
+
+    const txn = {
+      id: 123,
+      category: "unknown",
+      merchant: "CVS Pharmacy",
+      description: "Groceries",
+      amount: -45.67,
+    };
+
+    render(
+      <ExplainSignalDrawer
+        txnId={123}
+        open={true}
+        onOpenChange={onOpenChange}
+        txn={txn}
+        onRefresh={onRefresh}
+      />
+    );
+
+    const user = userEvent.setup();
+
+    // Select category and apply
+    await user.selectOptions(screen.getByLabelText("Category"), "groceries");
+    await user.click(screen.getByRole("button", { name: /apply/i }));
+
+    await waitFor(() => {
+      expect(onRefresh).toHaveBeenCalledTimes(1);
+      expect(onOpenChange).toHaveBeenCalledWith(false); // Drawer should close
+    });
+  });
 });
