@@ -10,6 +10,10 @@ import time
 import logging
 
 from app.transactions import Transaction
+from app.agent.prompts import (
+    FINANCE_RECURRING_PROMPT,
+    FINANCE_FIND_SUBSCRIPTIONS_PROMPT,
+)
 
 try:  # avoid importing heavy stack (pandas/statsmodels) during hermetic test startup
     from .analytics_forecast import sarimax_cashflow_forecast, sarimax_forecast  # type: ignore
@@ -427,6 +431,136 @@ def find_subscriptions(
         if (kw and r["strength"] >= 0.5) or (monthlyish and r["strength"] >= 0.7):
             out.append({**r, "tag": "keyword" if kw else "cadence"})
     return {"items": out}
+
+
+def build_recurring_response(
+    db: Session, month: Optional[str] = None, lookback: int = 6
+) -> Dict:
+    """
+    Mode: 'recurring' — broad recurring patterns.
+    Returns both subscription-like AND other recurring charges.
+    """
+    with _Timed("recurring_response"):
+        lookback = max(1, min(24, int(lookback or 6)))
+        rec = detect_recurring(db, month, lookback)["items"]
+
+    subscriptions = []
+    other_recurring = []
+
+    for r in rec:
+        name = (r["merchant"] or "").lower()
+        kw = any(k in name for k in SUB_KEYWORDS)
+        monthlyish = (
+            r.get("median_gap_days") and 25 <= (r.get("median_gap_days") or 0) <= 35
+        )
+
+        # Classify as subscription or other recurring
+        is_subscription = (kw and r["strength"] >= 0.5) or (
+            monthlyish and r["strength"] >= 0.7
+        )
+
+        item = {
+            "merchant": r["merchant"],
+            "count": r["count"],
+            "avg_amount": r["avg_amount"],
+            "median_gap_days": r["median_gap_days"],
+            "strength": r["strength"],
+            "is_subscription": is_subscription,
+            "tag": "keyword" if kw else ("cadence" if monthlyish else "pattern"),
+        }
+
+        if is_subscription:
+            subscriptions.append(item)
+        else:
+            other_recurring.append(item)
+
+    return {
+        "mode": "recurring",
+        "month": month,
+        "window_months": lookback,
+        "subscriptions": subscriptions,
+        "other_recurring": other_recurring,
+        "llm_prompt": FINANCE_RECURRING_PROMPT,
+    }
+
+
+def build_subscriptions_response(
+    db: Session, month: Optional[str] = None, lookback: int = 6
+) -> Dict:
+    """
+    Mode: 'subscriptions' — narrower, cancel/downgrade focus.
+    Returns only subscription-like charges with cancel candidates flagged.
+    """
+    with _Timed("subscriptions_response"):
+        lookback = max(1, min(24, int(lookback or 6)))
+        rec = detect_recurring(db, month, lookback)["items"]
+
+    subscriptions = []
+    cancel_candidates = []
+
+    # Simple heuristic for cancel threshold (can be refined)
+    CANCEL_THRESHOLD = 10.0  # $10/month minimum to suggest cancellation
+
+    # Essential keywords (utilities, essential services)
+    ESSENTIAL_KEYWORDS = [
+        "electric",
+        "power",
+        "utility",
+        "water",
+        "gas",
+        "internet",
+        "phone",
+        "insurance",
+        "rent",
+        "mortgage",
+        "loan",
+    ]
+
+    for r in rec:
+        name = (r["merchant"] or "").lower()
+        kw = any(k in name for k in SUB_KEYWORDS)
+        monthlyish = (
+            r.get("median_gap_days") and 25 <= (r.get("median_gap_days") or 0) <= 35
+        )
+
+        # Only include subscription-like charges
+        if not ((kw and r["strength"] >= 0.5) or (monthlyish and r["strength"] >= 0.7)):
+            continue
+
+        # Check if essential
+        is_essential = any(ek in name for ek in ESSENTIAL_KEYWORDS)
+
+        # Determine if cancel candidate
+        is_cancel_candidate = (
+            not is_essential
+            and r["avg_amount"] >= CANCEL_THRESHOLD
+            and r["strength"] >= 0.7  # High confidence it's recurring
+        )
+
+        item = {
+            "merchant": r["merchant"],
+            "count": r["count"],
+            "avg_amount": r["avg_amount"],
+            "median_gap_days": r["median_gap_days"],
+            "strength": r["strength"],
+            "is_subscription": True,
+            "is_essential": is_essential,
+            "cancel_candidate": is_cancel_candidate,
+            "tag": "keyword" if kw else "cadence",
+        }
+
+        subscriptions.append(item)
+        if is_cancel_candidate:
+            cancel_candidates.append(item)
+
+    return {
+        "mode": "subscriptions",
+        "month": month,
+        "window_months": lookback,
+        "subscriptions": subscriptions,
+        "cancel_candidates": cancel_candidates,
+        "llm_prompt": FINANCE_FIND_SUBSCRIPTIONS_PROMPT,
+    }
 
 
 def budget_suggest(db: Session, month: Optional[str] = None, lookback: int = 6) -> Dict:

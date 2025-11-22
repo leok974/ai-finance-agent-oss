@@ -372,7 +372,7 @@ export async function getLlmHealth(): Promise<LlmHealth> {
 export const getInsights = (month?: string) =>
   fetchJSON(`insights`, { query: month ? { month } : undefined })
 export const getAlerts = (month?: string) =>
-  fetchJSON(`alerts`, { query: month ? { month } : undefined })
+  fetchJSON(`alerts`, { method: 'POST', body: JSON.stringify({ month }) })
 export const downloadReportCsv = (month: string) => window.open(`${apiUrl('/report_csv')}${q({ month })}`,'_blank')
 
 // ---------- Charts ----------
@@ -533,19 +533,24 @@ export const analytics = {
       body: JSON.stringify({ month, lookback_months }),
     }),
   recurring: (month?: string, lookback_months = 6) =>
-    fetchJSON(`agent/tools/analytics/recurring`, {
+    fetchJSON(`agent/tools/analytics/subscriptions`, {
       method: 'POST',
-      body: JSON.stringify({ month, lookback_months }),
+      body: JSON.stringify({ month, lookback_months, mode: 'recurring' }),
     }),
   subscriptions: (month?: string, lookback_months = 6) =>
     fetchJSON(`agent/tools/analytics/subscriptions`, {
       method: 'POST',
-      body: JSON.stringify({ month, lookback_months }),
+      body: JSON.stringify({ month, lookback_months, mode: 'subscriptions' }),
     }),
   budgetSuggest: (month?: string, lookback_months = 6) =>
     fetchJSON(`agent/tools/analytics/budget/suggest`, {
       method: 'POST',
       body: JSON.stringify({ month, lookback_months }),
+    }),
+  alerts: (month?: string) =>
+    fetchJSON(`agent/tools/analytics/alerts`, {
+      method: 'POST',
+      body: JSON.stringify({ month }),
     }),
   whatif: (payload: WhatIfParams): Promise<WhatIfResult> =>
     fetchJSON<WhatIfResult>(`agent/tools/analytics/whatif`, {
@@ -1057,6 +1062,7 @@ export type InsightsExpandedRequest = {
   month?: string | null;
   large_limit?: number;
   status?: 'all' | 'posted' | 'pending';
+  view?: 'insights' | 'deep_dive';
 };
 
 export type InsightsExpandedResponse = {
@@ -1083,6 +1089,7 @@ export type InsightsExpandedResponse = {
     categories: Array<{ key: string; curr: number; prev: number; delta: number; pct: number | null }>;
     merchants: Array<{ key: string; curr: number; prev: number; delta: number; pct: number | null }>;
   };
+  llm_prompt?: string;
 };
 
 export const insightsExpanded = async (
@@ -1091,7 +1098,17 @@ export const insightsExpanded = async (
 ): Promise<InsightsExpandedResponse> => {
   return fetchJSON<InsightsExpandedResponse>('agent/tools/insights/expanded', {
     method: 'POST',
-    body: JSON.stringify({ month, large_limit: largeLimit, status: 'posted' }),
+    body: JSON.stringify({ month, large_limit: largeLimit, status: 'posted', view: 'insights' }),
+  });
+};
+
+export const financeDeepDive = async (
+  month?: string | null,
+  largeLimit: number = 10
+): Promise<InsightsExpandedResponse> => {
+  return fetchJSON<InsightsExpandedResponse>('agent/tools/insights/expanded', {
+    method: 'POST',
+    body: JSON.stringify({ month, large_limit: largeLimit, status: 'posted', view: 'deep_dive' }),
   });
 };
 
@@ -1601,7 +1618,8 @@ export const agentTools = {
   // Suggestions (returns { items, meta? })
   suggestionsWithMeta: (body: Record<string, unknown>, signal?: AbortSignal) => fetchJSON('agent/tools/suggestions', { method: 'POST', body: JSON.stringify(body), signal }),
   // Insights
-  insightsExpanded: (body: Record<string, unknown>, signal?: AbortSignal) => fetchJSON('agent/tools/insights/expanded', { method: 'POST', body: JSON.stringify(body), signal }),
+  insightsExpanded: (body: Record<string, unknown>, signal?: AbortSignal) => fetchJSON('agent/tools/insights/expanded', { method: 'POST', body: JSON.stringify({ ...body, view: 'insights' }), signal }),
+  financeDeepDive: (body: Record<string, unknown>, signal?: AbortSignal) => fetchJSON('agent/tools/insights/expanded', { method: 'POST', body: JSON.stringify({ ...body, view: 'deep_dive' }), signal }),
   // Transactions
   searchTransactions: (body: Record<string, unknown>, signal?: AbortSignal) => fetchJSON('agent/tools/transactions/search', { method: 'POST', body: JSON.stringify(body), signal }),
   categorizeTransactions: (body: Record<string, unknown>, signal?: AbortSignal) => fetchJSON('agent/tools/transactions/categorize', { method: 'POST', body: JSON.stringify(body), signal }),

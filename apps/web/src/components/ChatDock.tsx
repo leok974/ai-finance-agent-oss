@@ -91,7 +91,8 @@ const TOOL_GROUPS: Array<{ label: string; items: ToolSpec[] }> = [
   {
     label: "Insights",
     items: [
-      { key: "insights.expanded", label: "Insights: Expanded (MoM + anomalies)", path: "/agent/tools/insights/expanded", examplePayload: { month: undefined, large_limit: 10 } },
+      { key: "insights.expanded", label: "Insights: Expanded (MoM + anomalies)", path: "/agent/tools/insights/expanded", examplePayload: { month: undefined, large_limit: 10, view: "insights" } },
+      { key: "finance.deep_dive", label: "Finance: Deep Dive (categories + merchants)", path: "/agent/tools/insights/expanded", examplePayload: { month: undefined, large_limit: 10, view: "deep_dive" } },
     ],
   },
   {
@@ -1117,6 +1118,7 @@ export default function ChatDock() {
         case "budget.summary":            data = await agentTools.budgetSummary(body, ctrl.signal); break;
         case "budget.check":              data = await agentTools.budgetCheck(body, ctrl.signal); break;
         case "insights.expanded":         data = await agentTools.insightsExpanded(body, ctrl.signal); break;
+        case "finance.deep_dive":         data = await agentTools.financeDeepDive(body, ctrl.signal); break;
         case "charts.summary":            data = await agentTools.chartsSummary(body, ctrl.signal); break;
         case "charts.merchants":          data = await agentTools.chartsMerchants(body, ctrl.signal); break;
         case "charts.flows":              data = await agentTools.chartsFlows(body, ctrl.signal); break;
@@ -1369,7 +1371,7 @@ export default function ChatDock() {
   if (startAguiRun('subscriptions', AGUI_ACTIONS['subscriptions'].prompt, month)) return;
     setBusy(true);
     try {
-      appendUser('Identify recurring subscriptions this month and suggest which I could cancel.');
+      appendUser('Find subscriptions to review and suggest which I could cancel or downgrade.');
       await runToolWithRephrase(
         'analytics.subscriptions',
         () => analytics.subscriptions(month) as Promise<AnalyticsSubscriptionsResponse>,
@@ -1561,11 +1563,11 @@ export default function ChatDock() {
   if (startAguiRun('subscriptions', AGUI_ACTIONS['recurring'].prompt, month)) return;
     setBusy(true);
     try {
-      appendUser('Detect recurring charges.');
+      appendUser('Show all recurring charges (including subscriptions and other patterns).');
       await runToolWithRephrase(
         'analytics.recurring',
         () => analytics.recurring(month),
-        (raw: any) => `Summarize recurring charges for ${month}, with likely subscriptions highlighted:\n\n${JSON.stringify(raw)}`,
+        (raw: any) => formatSubscriptionsReply(raw),
         (msg, meta) => appendAssistant(msg, { ...meta, ctxMonth: month }),
         (on) => setBusy(on),
         () => ({ context: getContext() })
@@ -2376,7 +2378,7 @@ export default function ChatDock() {
                 disabled={busy}
               >
                 <Repeat className="lm-chat-tool-icon" />
-                <span>Recurring</span>
+                <span>Recurring (all)</span>
               </Button>
               <Button
                 variant="pill-outline"
@@ -2387,7 +2389,7 @@ export default function ChatDock() {
                 data-testid="agent-tool-find-subscriptions"
               >
                 <Search className="lm-chat-tool-icon" />
-                <span>Find subscriptions</span>
+                <span>Subscriptions</span>
               </Button>
             </div>
           </section>

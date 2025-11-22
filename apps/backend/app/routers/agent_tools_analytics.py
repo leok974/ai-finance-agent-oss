@@ -7,6 +7,11 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.utils.auth import get_current_user
+from app.agent.prompts import (
+    BUDGET_SUGGEST_PROMPT,
+    FINANCE_RECURRING_PROMPT,
+    FINANCE_FIND_SUBSCRIPTIONS_PROMPT,
+)
 
 router = APIRouter(
     prefix="/agent/tools/analytics",
@@ -27,11 +32,11 @@ class BudgetCategorySuggestion(BaseModel):
 
 
 class BudgetSuggestToolResponse(BaseModel):
-    reply: str
     month: str
     total_spend: float
     suggested_budget: float
     categories: List[BudgetCategorySuggestion]
+    llm_prompt: str
 
 
 class RecurringToolRequest(BaseModel):
@@ -47,9 +52,9 @@ class RecurringItem(BaseModel):
 
 
 class RecurringToolResponse(BaseModel):
-    reply: str
     month: str
     recurring: List[RecurringItem]
+    llm_prompt: str
 
 
 class FindSubscriptionsToolRequest(BaseModel):
@@ -66,9 +71,9 @@ class SubscriptionItem(BaseModel):
 
 
 class FindSubscriptionsToolResponse(BaseModel):
-    reply: str
     month: str
     subscriptions: List[SubscriptionItem]
+    llm_prompt: str
 
 
 @router.post("/budget/suggest", response_model=BudgetSuggestToolResponse)
@@ -146,31 +151,12 @@ def budget_suggest_tool(
 
     suggested_budget = round(total_spend * 1.1, 2)
 
-    # Build reply text
-    lines: List[str] = []
-    lines.append(
-        f"Here's a suggested budget for {target_month} based on your recent spending:\n"
-    )
-
-    lines.append(f"- Average monthly spend: ${total_spend:.2f}")
-    lines.append(f"- Suggested budget (with 10% buffer): ${suggested_budget:.2f}\n")
-
-    top_cats = categories[:5]
-    if top_cats:
-        lines.append("Top categories and suggested monthly budgets:")
-        for cat in top_cats:
-            lines.append(
-                f"  • {cat.category_label}: avg ${cat.spend:.2f}, suggested ${cat.suggested:.2f}"
-            )
-
-    reply = "\n".join(lines)
-
     return BudgetSuggestToolResponse(
-        reply=reply,
         month=target_month,
         total_spend=round(total_spend, 2),
         suggested_budget=suggested_budget,
         categories=categories,
+        llm_prompt=BUDGET_SUGGEST_PROMPT,
     )
 
 
@@ -245,29 +231,10 @@ def recurring_tool(
             )
         )
 
-    # Build reply
-    lines: List[str] = []
-    lines.append(f"Here are your recurring merchants for {target_month}:\n")
-
-    if not recurring_items:
-        lines.append("- I didn't detect any recurring merchants in this period.")
-    else:
-        for item in recurring_items[:5]:
-            interval_text = (
-                f"every ~{item.average_interval_days} days"
-                if item.average_interval_days
-                else "recurring"
-            )
-            lines.append(
-                f"• {item.merchant}: about ${item.amount:.2f} per cycle ({interval_text})"
-            )
-
-    reply = "\n".join(lines)
-
     return RecurringToolResponse(
-        reply=reply,
         month=target_month,
         recurring=recurring_items,
+        llm_prompt=FINANCE_RECURRING_PROMPT,
     )
 
 
@@ -349,23 +316,37 @@ def find_subscriptions_tool(
             )
         )
 
-    # Build reply
-    lines: List[str] = []
-    lines.append(f"Here are subscriptions I found for {target_month}:\n")
-
-    if not subscription_items:
-        lines.append("- I couldn't find any clear subscriptions in this period.")
-    else:
-        for item in subscription_items[:5]:
-            lines.append(
-                f"• {item.merchant}: ${item.amount:.2f} "
-                f"({item.txn_count} txn, last seen {item.last_seen or 'N/A'})"
-            )
-
-    reply = "\n".join(lines)
-
     return FindSubscriptionsToolResponse(
-        reply=reply,
         month=target_month,
         subscriptions=subscription_items,
+        llm_prompt=FINANCE_FIND_SUBSCRIPTIONS_PROMPT,
     )
+
+
+@router.post("/alerts")
+def analytics_alerts_tool(
+    payload: BudgetSuggestToolRequest,  # Reuse - just needs month
+    current_user: int = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Compute actionable alerts for a given month.
+    Uses existing analytics to detect unknown spend, spending spikes, new subscriptions.
+    """
+    from app.services.analytics_alerts import compute_alerts_for_month
+    from datetime import datetime
+
+    # Resolve month
+    month = payload.month
+    if not month:
+        from sqlalchemy import func
+        from app.transactions import Transaction
+
+        latest = db.query(func.max(Transaction.booked_at)).scalar()
+        if latest:
+            month = latest.strftime("%Y-%m")
+        else:
+            month = datetime.now().strftime("%Y-%m")
+
+    result = compute_alerts_for_month(db=db, month=month)
+    return result.dict()

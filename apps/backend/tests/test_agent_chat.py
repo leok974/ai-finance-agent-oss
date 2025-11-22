@@ -6,8 +6,6 @@ Tests are hermetic and don't make real LLM calls.
 import pytest
 import uuid
 from datetime import date
-from fastapi.testclient import TestClient
-from app.main import app
 from app.orm_models import Transaction
 
 
@@ -41,15 +39,16 @@ def seeded_txn_id(_SessionLocal):
         db.close()
 
 
-def test_agent_chat_auto_context(monkeypatch):
+def test_agent_chat_auto_context(monkeypatch, client):
     """Test that the chat endpoint auto-enriches context when not provided."""
     from app.utils import llm as llm_mod
 
     monkeypatch.setattr(llm_mod, "call_local_llm", _fake_llm)
 
-    client = TestClient(app)
     r = client.post(
-        "/agent/chat", json={"messages": [{"role": "user", "content": "hi"}]}
+        "/agent/chat",
+        json={"messages": [{"role": "user", "content": "hi"}]},
+        headers={"X-Test-Mode": "stub"},
     )
     assert r.status_code == 200
     j = r.json()
@@ -60,13 +59,12 @@ def test_agent_chat_auto_context(monkeypatch):
     assert isinstance(j["tool_trace"], list)
 
 
-def test_agent_chat_explain_txn_fallback(monkeypatch, seeded_txn_id):
+def test_agent_chat_explain_txn_fallback(monkeypatch, seeded_txn_id, client):
     """Test transaction explanation fallback when txn_id is missing."""
     from app.utils import llm as llm_mod
 
     monkeypatch.setattr(llm_mod, "call_local_llm", _fake_llm)
 
-    client = TestClient(app)
     # Test with natural language that should trigger fallback
     r = client.post(
         "/agent/chat",
@@ -89,13 +87,12 @@ def test_agent_chat_explain_txn_fallback(monkeypatch, seeded_txn_id):
     assert any(c["type"] == "txn" for c in j["citations"])
 
 
-def test_agent_chat_model_normalization(monkeypatch):
+def test_agent_chat_model_normalization(monkeypatch, client):
     """Test that model names are normalized correctly."""
     from app.utils import llm as llm_mod
 
     monkeypatch.setattr(llm_mod, "call_local_llm", _fake_llm)
 
-    client = TestClient(app)
     # Test with colon version
     r = client.post(
         "/agent/chat",
@@ -121,13 +118,12 @@ def test_agent_chat_model_normalization(monkeypatch):
     assert j["model"] == "gpt-oss:20b"  # Should normalize dash -> colon
 
 
-def test_agent_chat_comprehensive_citations(monkeypatch, seeded_txn_id):
+def test_agent_chat_comprehensive_citations(monkeypatch, seeded_txn_id, client):
     """Test that citations include all available context types."""
     from app.utils import llm as llm_mod
 
     monkeypatch.setattr(llm_mod, "call_local_llm", _fake_llm)
 
-    client = TestClient(app)
     r = client.post(
         "/agent/chat",
         json={
@@ -147,13 +143,12 @@ def test_agent_chat_comprehensive_citations(monkeypatch, seeded_txn_id):
     assert expected_types.issubset(citation_types) or len(citation_types) > 0
 
 
-def test_agent_chat_explain_txn(monkeypatch, seeded_txn_id):
+def test_agent_chat_explain_txn(monkeypatch, seeded_txn_id, client):
     """Test transaction explanation with intent and txn_id."""
     from app.utils import llm as llm_mod
 
     monkeypatch.setattr(llm_mod, "call_local_llm", _fake_llm)
 
-    client = TestClient(app)
     r = client.post(
         "/agent/chat",
         json={
@@ -170,13 +165,12 @@ def test_agent_chat_explain_txn(monkeypatch, seeded_txn_id):
     assert any(c["type"] == "txn" for c in j["citations"])
 
 
-def test_agent_chat_pydantic_validation(monkeypatch):
+def test_agent_chat_pydantic_validation(monkeypatch, client):
     """Test request validation with Pydantic models."""
     from app.utils import llm as llm_mod
 
     monkeypatch.setattr(llm_mod, "call_local_llm", _fake_llm)
 
-    client = TestClient(app)
     # Valid request
     r = client.post(
         "/agent/chat",
@@ -203,13 +197,12 @@ def test_agent_chat_pydantic_validation(monkeypatch):
     assert r.status_code == 422  # Validation error
 
 
-def test_agent_chat_intent_hints(monkeypatch):
+def test_agent_chat_intent_hints(monkeypatch, client):
     """Test different intent types for specialized behavior."""
     from app.utils import llm as llm_mod
 
     monkeypatch.setattr(llm_mod, "call_local_llm", _fake_llm)
 
-    client = TestClient(app)
     intents = ["general", "explain_txn", "budget_help", "rule_seed"]
 
     for intent in intents:
@@ -226,13 +219,12 @@ def test_agent_chat_intent_hints(monkeypatch):
         assert "model" in j
 
 
-def test_agent_chat_context_trimming(monkeypatch):
+def test_agent_chat_context_trimming(monkeypatch, client):
     """Test that large context gets trimmed appropriately."""
     from app.utils import llm as llm_mod
 
     monkeypatch.setattr(llm_mod, "call_local_llm", _fake_llm)
 
-    client = TestClient(app)
     # Create a request with a very large message to trigger trimming
     large_content = "x" * 10000  # Large message content
 
@@ -245,13 +237,12 @@ def test_agent_chat_context_trimming(monkeypatch):
     # Should still process successfully even with large input
 
 
-def test_agent_chat_legacy_redirects(monkeypatch):
+def test_agent_chat_legacy_redirects(monkeypatch, client):
     """Test that legacy endpoints redirect properly."""
     from app.utils import llm as llm_mod
 
     monkeypatch.setattr(llm_mod, "call_local_llm", _fake_llm)
 
-    client = TestClient(app)
     # Test /agent/gpt redirect (follow_redirects=False for TestClient)
     r = client.post(
         "/agent/gpt",
@@ -270,13 +261,12 @@ def test_agent_chat_legacy_redirects(monkeypatch):
     assert "reply" in j
 
 
-def test_agent_chat_response_structure(monkeypatch):
+def test_agent_chat_response_structure(monkeypatch, client):
     """Test that response has expected structure."""
     from app.utils import llm as llm_mod
 
     monkeypatch.setattr(llm_mod, "call_local_llm", _fake_llm)
 
-    client = TestClient(app)
     r = client.post(
         "/agent/chat",
         json={"messages": [{"role": "user", "content": "what is my spending?"}]},
@@ -301,13 +291,12 @@ def test_agent_chat_response_structure(monkeypatch):
     assert isinstance(j["used_context"], dict)
 
 
-def test_agent_chat_model_parameter(monkeypatch):
+def test_agent_chat_model_parameter(monkeypatch, client):
     """Test that model parameter is respected."""
     from app.utils import llm as llm_mod
 
     monkeypatch.setattr(llm_mod, "call_local_llm", _fake_llm)
 
-    client = TestClient(app)
     r = client.post(
         "/agent/chat",
         json={
@@ -320,13 +309,12 @@ def test_agent_chat_model_parameter(monkeypatch):
     assert j["model"] == "custom-model"
 
 
-def test_agent_chat_empty_context_handling(monkeypatch):
+def test_agent_chat_empty_context_handling(monkeypatch, client):
     """Test behavior when context is explicitly empty."""
     from app.utils import llm as llm_mod
 
     monkeypatch.setattr(llm_mod, "call_local_llm", _fake_llm)
 
-    client = TestClient(app)
     r = client.post(
         "/agent/chat",
         json={"messages": [{"role": "user", "content": "test"}], "context": {}},
@@ -337,9 +325,9 @@ def test_agent_chat_empty_context_handling(monkeypatch):
     # Should still work with empty context
 
 
-def test_agent_chat_invalid_json():
+def test_agent_chat_invalid_json(client):
     """Test handling of malformed JSON."""
-    client = TestClient(app)
+
     # Send invalid JSON
     r = client.post(
         "/agent/chat",
@@ -349,9 +337,9 @@ def test_agent_chat_invalid_json():
     assert r.status_code == 422  # Unprocessable Entity
 
 
-def test_agent_chat_missing_messages():
+def test_agent_chat_missing_messages(client):
     """Test validation when required messages field is missing."""
-    client = TestClient(app)
+
     r = client.post(
         "/agent/chat",
         json={
@@ -362,13 +350,12 @@ def test_agent_chat_missing_messages():
     assert r.status_code == 422  # Validation error
 
 
-def test_agent_chat_system_prompt_enhancement(monkeypatch):
+def test_agent_chat_system_prompt_enhancement(monkeypatch, client):
     """Test that intent-specific system prompts are working."""
     from app.utils import llm as llm_mod
 
     monkeypatch.setattr(llm_mod, "call_local_llm", _fake_llm)
 
-    client = TestClient(app)
     # Test explain_txn intent should include transaction-specific guidance
     r = client.post(
         "/agent/chat",
