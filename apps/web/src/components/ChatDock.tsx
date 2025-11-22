@@ -1334,18 +1334,36 @@ export default function ChatDock() {
   }, [handleSend]);
 
   // --- ONE-CLICK TOOL RUNNERS (top bar) ---
+  // Helper to check if agent is available (not in fallback mode)
+  function canUseAgent(status: AgentStatusResponse | null) {
+    return !!status?.ok && status?.llm_ok !== false;
+  }
+
   const runMonthSummary = React.useCallback(async (_ev?: React.MouseEvent) => {
     if (busy) return;
-    if (startAguiRun('overview', AGUI_ACTIONS['overview'].prompt, month)) return;
+
+    const currentMonth = month || '';
+
+    // Try AGUI with finance_quick_recap mode if agent is available
+    if (canUseAgent(llmStatus)) {
+      const success = startAguiRun(
+        'finance_quick_recap',
+        `Give me a month summary for ${currentMonth}. Focus on income, spend, net, unknowns, and top merchants.`,
+        currentMonth
+      );
+      if (success) return;
+    }
+
+    // Fallback: deterministic local summary using insightsExpanded
     setBusy(true);
     try {
       appendUser('Summarize my spending this month');
 
       // Fetch insightsExpanded for richer data (includes unknowns, categories, anomalies)
-      const data = await agentTools.insightsExpanded({ month: month || '', large_limit: 10, status: 'posted' });
+      const data = await agentTools.insightsExpanded({ month: currentMonth, large_limit: 10, status: 'posted' });
 
       // Transform to MonthSummary format using the richer adapter
-      const summary = adaptInsightsExpandedToMonthSummary(data, month || '');
+      const summary = adaptInsightsExpandedToMonthSummary(data, currentMonth);
       lastMonthSummaryRef.current = summary;
 
       // Render quick recap
@@ -1353,7 +1371,7 @@ export default function ChatDock() {
 
       // Add with special meta to show "Deeper breakdown" chip
       appendAssistant(quickRecap, {
-        ctxMonth: month,
+        ctxMonth: currentMonth,
         mode: 'finance_quick_recap',
         showDeeperBreakdown: true,
         monthSummary: summary, // Store for smart export
@@ -1365,7 +1383,7 @@ export default function ChatDock() {
     } finally {
       setBusy(false);
     }
-  }, [busy, month, appendAssistant]);
+  }, [busy, month, llmStatus, appendAssistant]);
 
   const runFindSubscriptions = React.useCallback(async (_ev?: React.MouseEvent) => {
     if (busy) return;
@@ -2009,7 +2027,17 @@ export default function ChatDock() {
 
     switch (chip.action) {
       case 'deeper_breakdown':
-        // Show deep dive for last month summary
+        // Try AGUI with finance_deep_dive mode if agent is available
+        if (canUseAgent(llmStatus)) {
+          const success = startAguiRun(
+            'finance_deep_dive',
+            `Do a deep dive on my finances in ${currentMonth}. Include categories, merchants, and any spikes or anomalies.`,
+            currentMonth
+          );
+          if (success) break;
+        }
+
+        // Fallback: Show deep dive using local formatters
         if (summary) {
           appendUser('Show deeper breakdown');
           const deepDive = renderDeep(summary);

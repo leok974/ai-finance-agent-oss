@@ -6,6 +6,17 @@ from httpx import AsyncClient
 from app.agent.finance_utils import detect_empty_month
 from app.config import settings
 
+# Import LLM-powered handlers
+try:
+    from app.agent.modes_finance_llm import (
+        mode_finance_quick_recap_llm,
+        mode_finance_deep_dive_llm,
+    )
+
+    _HAS_LLM_MODES = True
+except ImportError:
+    _HAS_LLM_MODES = False
+
 
 async def mode_finance_quick_recap(
     month: str,
@@ -284,8 +295,48 @@ async def mode_analytics_spikes_only(
 
 
 # Mode dispatcher
+# Wrapper functions that try LLM first, fall back to deterministic
+async def finance_quick_recap_with_fallback(
+    month: str,
+    http: AsyncClient,
+    user_context: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Try LLM-powered quick recap, fall back to deterministic on error."""
+    if _HAS_LLM_MODES:
+        try:
+            # Check if LLM is available
+            from app.services.llm_health import is_llm_available
+
+            if await is_llm_available():
+                return await mode_finance_quick_recap_llm(month, http, user_context)
+        except Exception:
+            pass  # Fall through to deterministic
+
+    # Deterministic fallback
+    return await mode_finance_quick_recap(month, http, user_context)
+
+
+async def finance_deep_dive_with_fallback(
+    month: str,
+    http: AsyncClient,
+    user_context: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Try LLM-powered deep dive, fall back to deterministic on error."""
+    if _HAS_LLM_MODES:
+        try:
+            from app.services.llm_health import is_llm_available
+
+            if await is_llm_available():
+                return await mode_finance_deep_dive_llm(month, http, user_context)
+        except Exception:
+            pass  # Fall through to deterministic
+
+    # Deterministic fallback
+    return await mode_finance_deep_dive(month, http, user_context)
+
+
 MODE_HANDLERS = {
-    "finance_quick_recap": mode_finance_quick_recap,
-    "finance_deep_dive": mode_finance_deep_dive,
+    "finance_quick_recap": finance_quick_recap_with_fallback,
+    "finance_deep_dive": finance_deep_dive_with_fallback,
     "analytics.spikes_only": mode_analytics_spikes_only,
 }
