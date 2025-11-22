@@ -391,75 +391,183 @@ def build_pdf_bytes(
     categories: list[dict] | None = None,
     flows=None,
     trends=None,
+    mode: ReportMode = ReportMode.summary,
+    unknown_transactions: list[dict] | None = None,
 ) -> bytes:
+    """Build a PDF report with structured layout matching Excel mental model.
+
+    Args:
+        summary: Month summary dict with total_income, total_spend, net
+        merchants: List of merchant dicts with canonical grouping
+        categories: List of category dicts
+        flows: Optional flows dict (unused)
+        trends: Optional trends data (unused)
+        mode: Export mode (full/summary, unknowns not supported)
+        unknown_transactions: List of unknown transaction dicts
+
+    Returns:
+        PDF as bytes
+    """
     if not REPORTLAB_AVAILABLE:
         raise RuntimeError("reportlab is not installed in this environment")
 
+    from reportlab.lib.units import inch
+
     buf = BytesIO()
-    doc = SimpleDocTemplate(buf, pagesize=LETTER, title="Monthly Finance Report")
+    doc = SimpleDocTemplate(buf, pagesize=LETTER, title="LedgerMind Monthly Report")
     styles = getSampleStyleSheet()
     story = []
 
-    title = f"Monthly Finance Report — {summary.get('month') or (summary.get('start') or '')}→{summary.get('end') or ''}"
-    story.append(Paragraph(title, styles["Title"]))
-    story.append(Spacer(1, 12))
-
-    # Summary stats
-    story.append(
-        Paragraph(
-            f"Total Spend: ${summary.get('total_spend', 0):.2f}", styles["Normal"]
-        )
+    # Title and month header
+    month_str = (
+        summary.get("month") or f"{summary.get('start', '')}→{summary.get('end', '')}"
     )
-    story.append(
-        Paragraph(
-            f"Total Income: ${summary.get('total_income', 0):.2f}", styles["Normal"]
-        )
+    story.append(Paragraph("LedgerMind — Monthly Report", styles["Title"]))
+    story.append(Paragraph(f"Month: {month_str}", styles["Heading2"]))
+    story.append(Spacer(1, 0.3 * inch))
+
+    # Calculate unknown stats
+    unknown_count = len(unknown_transactions) if unknown_transactions else 0
+    unknown_amount = (
+        sum(float(t.get("amount", 0)) for t in unknown_transactions)
+        if unknown_transactions
+        else 0.0
     )
-    story.append(Paragraph(f"Net: ${summary.get('net', 0):.2f}", styles["Normal"]))
-    story.append(Spacer(1, 12))
 
-    # Merchants table
-    if merchants:
-        story.append(Paragraph("Top Merchants (by spend)", styles["Heading2"]))
-        m_rows = [["Merchant", "Spend", "Txns"]] + [
-            [m.get("merchant"), f"${m.get('amount', 0):.2f}", str(m.get("n", 0))]
-            for m in merchants[:15]
-        ]
-        mt = Table(m_rows, hAlign="LEFT", colWidths=[280, 90, 60])
-        mt.setStyle(
-            TableStyle(
-                [
-                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#F0F0F0")),
-                    ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
-                    ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                ]
-            )
-        )
-        story.append(mt)
-        story.append(Spacer(1, 12))
-
-    # Categories table
-    if categories:
-        story.append(Paragraph("Top Categories (by spend)", styles["Heading2"]))
-        c_rows = [["Category", "Spend"]] + [
+    # Summary metrics table
+    summary_data = [
+        ["Metric", "Value"],
+        ["Total income", f"${summary.get('total_income', 0):,.2f}"],
+        ["Total spend", f"${summary.get('total_spend', 0):,.2f}"],
+        ["Net", f"${summary.get('net', 0):,.2f}"],
+        ["Unknown spend", f"${unknown_amount:,.2f}"],
+        ["Unknown txns", str(unknown_count)],
+    ]
+    summary_table = Table(summary_data, hAlign="LEFT", colWidths=[2.5 * inch, 2 * inch])
+    summary_table.setStyle(
+        TableStyle(
             [
-                c.get("category") or c.get("name"),
-                f"${c.get('spend', c.get('amount', 0)):.2f}",
+                ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
+                ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("ALIGN", (1, 1), (-1, -1), "RIGHT"),
             ]
-            for c in categories[:15]
+        )
+    )
+    story.append(summary_table)
+    story.append(Spacer(1, 0.3 * inch))
+
+    # Top categories (top 5)
+    if categories:
+        story.append(Paragraph("Top Categories", styles["Heading3"]))
+        # Sort by amount/spend descending
+        sorted_cats = sorted(
+            categories,
+            key=lambda c: float(c.get("amount", c.get("spend", 0))),
+            reverse=True,
+        )[:5]
+        cat_data = [["Category", "Amount", "Share"]] + [
+            [
+                c.get("label", c.get("name", c.get("category", ""))),
+                f"${float(c.get('amount', c.get('spend', 0))):,.2f}",
+                (
+                    f"{float(c.get('pct_of_spend', 0)) * 100:.1f}%"
+                    if c.get("pct_of_spend")
+                    else ""
+                ),
+            ]
+            for c in sorted_cats
         ]
-        ct = Table(c_rows, hAlign="LEFT", colWidths=[280, 90])
-        ct.setStyle(
+        cat_table = Table(
+            cat_data, hAlign="LEFT", colWidths=[2.5 * inch, 1.5 * inch, 1 * inch]
+        )
+        cat_table.setStyle(
             TableStyle(
                 [
-                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#F0F0F0")),
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
                     ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
                     ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                    ("ALIGN", (1, 1), (-1, -1), "RIGHT"),
                 ]
             )
         )
-        story.append(ct)
-        story.append(Spacer(1, 12))
+        story.append(cat_table)
+        story.append(Spacer(1, 0.3 * inch))
+
+    # Top merchants (top 5, using canonical names)
+    if merchants:
+        story.append(Paragraph("Top Merchants", styles["Heading3"]))
+        # Sort by amount descending
+        sorted_merchants = sorted(
+            merchants, key=lambda m: float(m.get("amount", 0)), reverse=True
+        )[:5]
+        merch_data = [["Merchant", "Amount", "Category"]] + [
+            [
+                m.get("merchant_display", m.get("merchant", "")),
+                f"${float(m.get('amount', 0)):,.2f}",
+                m.get("top_category_label", m.get("category", "")),
+            ]
+            for m in sorted_merchants
+        ]
+        merch_table = Table(
+            merch_data, hAlign="LEFT", colWidths=[2.5 * inch, 1.5 * inch, 1.5 * inch]
+        )
+        merch_table.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
+                    ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
+                    ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                    ("ALIGN", (1, 1), (-1, -1), "RIGHT"),
+                ]
+            )
+        )
+        story.append(merch_table)
+        story.append(Spacer(1, 0.3 * inch))
+
+    # Optional unknowns section (if mode=full and unknowns exist)
+    if (
+        mode == ReportMode.full
+        and unknown_transactions
+        and len(unknown_transactions) > 0
+    ):
+        story.append(Spacer(1, 0.2 * inch))
+        story.append(Paragraph("Uncategorized Transactions", styles["Heading3"]))
+        story.append(Spacer(1, 0.1 * inch))
+
+        # Summary text
+        summary_text = f"{unknown_count} transactions totaling ${unknown_amount:,.2f}"
+        story.append(Paragraph(summary_text, styles["Normal"]))
+        story.append(Spacer(1, 0.1 * inch))
+
+        # Top 10 unknowns by absolute amount
+        top_unknowns = sorted(
+            unknown_transactions,
+            key=lambda t: abs(float(t.get("amount", 0))),
+            reverse=True,
+        )[:10]
+        unknown_data = [["Date", "Merchant", "Amount"]] + [
+            [
+                t.get("date", ""),
+                t.get("merchant", "")[:30],  # Truncate long merchant names
+                f"${float(t.get('amount', 0)):,.2f}",
+            ]
+            for t in top_unknowns
+        ]
+        unknown_table = Table(
+            unknown_data, hAlign="LEFT", colWidths=[1.2 * inch, 3 * inch, 1.3 * inch]
+        )
+        unknown_table.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
+                    ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
+                    ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                    ("ALIGN", (2, 1), (-1, -1), "RIGHT"),
+                ]
+            )
+        )
+        story.append(unknown_table)
 
     doc.build(story)
     return buf.getvalue()

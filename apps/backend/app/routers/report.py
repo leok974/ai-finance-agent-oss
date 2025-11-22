@@ -202,7 +202,47 @@ def report_pdf(
         summary["start"], summary["end"] = start_d.isoformat(), end_d.isoformat()
         merchants = get_month_merchants(db, user_id, month_hint)["merchants"]
         categories = get_month_categories(db, user_id, month_hint)
-        data = build_pdf_bytes(summary, merchants, categories, None, None)
+
+        # For full mode, fetch unknown transactions
+        unknown_transactions_list = []
+        if mode == ReportMode.full:
+            # Query unknown transactions (category is None or "unknown")
+            rows = (
+                db.query(Transaction)
+                .filter(
+                    Transaction.user_id == user_id,
+                    Transaction.date >= start_d,
+                    Transaction.date <= end_d,
+                )
+                .filter(
+                    (Transaction.category.is_(None))
+                    | (Transaction.category == "unknown")
+                )
+                .all()
+            )
+            unknown_transactions_list = [
+                {
+                    "date": r.date.isoformat(),
+                    "merchant": r.merchant or "",
+                    "description": r.description or "",
+                    "amount": float(r.amount or 0.0),
+                    "category_label": r.category or "Unknown",
+                    "category_slug": r.category or "unknown",
+                }
+                for r in rows
+            ]
+
+        data = build_pdf_bytes(
+            summary,
+            merchants,
+            categories,
+            None,
+            None,
+            mode=ExportMode(mode.value),
+            unknown_transactions=(
+                unknown_transactions_list if mode == ReportMode.full else None
+            ),
+        )
     except RuntimeError as e:
         # reportlab likely not installed in this environment
         raise HTTPException(status_code=503, detail=str(e))
