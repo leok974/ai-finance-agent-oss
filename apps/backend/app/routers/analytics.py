@@ -1,6 +1,8 @@
 from __future__ import annotations
 import logging
+from typing import Literal
 from fastapi import APIRouter, Depends, Body
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from app.db import get_db
 from app.services import analytics as svc
@@ -8,6 +10,14 @@ from app.deps.auth_guard import get_current_user_id
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/agent/tools/analytics", tags=["analytics"])
+
+
+class SubscriptionsRequest(BaseModel):
+    """Request model for subscriptions endpoint with mode-based branching."""
+
+    month: str | None = None
+    lookback_months: int = 6
+    mode: Literal["recurring", "subscriptions"] = "subscriptions"
 
 
 @router.post("/kpis")
@@ -81,15 +91,20 @@ def recurring(
 
 @router.post("/subscriptions")
 def subscriptions(
-    payload: dict = Body(default={}),
+    payload: SubscriptionsRequest = Body(default=SubscriptionsRequest()),
     db: Session = Depends(get_db),
     user_id: int = Depends(get_current_user_id),
 ):
-    month = payload.get("month") if isinstance(payload, dict) else None
-    lookback_months = (
-        int(payload.get("lookback_months", 6)) if isinstance(payload, dict) else 6
-    )
-    return svc.find_subscriptions(db, month=month, lookback=lookback_months)
+    month = payload.month
+    lookback_months = max(1, min(24, payload.lookback_months))
+    mode = payload.mode
+
+    if mode == "recurring":
+        return svc.build_recurring_response(db, month=month, lookback=lookback_months)
+    else:
+        return svc.build_subscriptions_response(
+            db, month=month, lookback=lookback_months
+        )
 
 
 @router.post("/budget/suggest")

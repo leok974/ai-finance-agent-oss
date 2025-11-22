@@ -6,6 +6,10 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.transactions import Transaction
+from app.agent.prompts import (
+    FINANCE_QUICK_RECAP_PROMPT,
+    ANALYTICS_TRENDS_PROMPT,
+)
 
 router = APIRouter(prefix="/agent/tools/charts", tags=["agent-tools:charts"])
 
@@ -33,6 +37,7 @@ class SummaryResp(BaseModel):
     total_outflows: float
     net: float
     daily: List[SummaryPoint]
+    llm_prompt: Optional[str] = None
 
 
 class MerchantsBody(MonthParam):
@@ -87,6 +92,7 @@ class TrendPoint(BaseModel):
 class TrendsResp(BaseModel):
     months: List[str]
     series: List[TrendPoint]
+    llm_prompt: Optional[str] = None
 
 
 # ---------- Helpers ----------
@@ -158,6 +164,7 @@ def charts_summary(body: SummaryBody, db: Session = Depends(get_db)) -> SummaryR
         total_outflows=total_out,
         net=net,
         daily=daily,
+        llm_prompt=FINANCE_QUICK_RECAP_PROMPT,
     )
 
 
@@ -345,7 +352,7 @@ async def spending_trends_post(
         for m in ordered
     ]
 
-    return TrendsResp(months=ordered, series=series)
+    return TrendsResp(months=ordered, series=series, llm_prompt=ANALYTICS_TRENDS_PROMPT)
 
 
 @router.get("/spending_trends", include_in_schema=False, response_model=TrendsResp)

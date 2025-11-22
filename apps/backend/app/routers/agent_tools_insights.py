@@ -9,6 +9,10 @@ from app.db import get_db
 from app.transactions import Transaction
 from app.services.insights_expanded import build_expanded_insights
 from app.utils.auth import get_current_user
+from app.agent.prompts import (
+    INSIGHTS_EXPANDED_PROMPT,
+    FINANCE_DEEP_DIVE_PROMPT,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/agent/tools/insights", tags=["agent-tools:insights"])
@@ -79,6 +83,7 @@ class ExpandedIn(BaseModel):
     month: Optional[str] = None
     large_limit: Optional[int] = 10
     status: Literal["all", "posted", "pending"] = "posted"
+    view: Literal["insights", "deep_dive"] = "insights"
 
 
 @router.post("/expanded")
@@ -169,6 +174,12 @@ def insights_expanded(
 
         reply = "\n".join(reply_lines)
 
+        # Choose prompt based on view parameter
+        if body.view == "deep_dive":
+            llm_prompt = FINANCE_DEEP_DIVE_PROMPT
+        else:
+            llm_prompt = INSIGHTS_EXPANDED_PROMPT
+
         return {
             "reply": reply,
             "month": data["month"],
@@ -179,6 +190,7 @@ def insights_expanded(
             "top_merchants": data.get("top_merchants", []),
             "large_transactions": data.get("large_transactions", []),
             "anomalies": data.get("anomalies", {"categories": [], "merchants": []}),
+            "llm_prompt": llm_prompt,
         }
     except Exception:
         logger.exception("insights_expanded failed for month=%s", body.month)

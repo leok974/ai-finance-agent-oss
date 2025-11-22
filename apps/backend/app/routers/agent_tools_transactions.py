@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.db import get_db
 from app.transactions import Transaction
 from app.deps.auth_guard import get_current_user_id
+from app.agent.prompts import SEARCH_TRANSACTIONS_PROMPT
 
 router = APIRouter(
     prefix="/agent/tools/transactions", tags=["agent-tools:transactions"]
@@ -171,11 +172,11 @@ class SearchTransactionsResultItem(BaseModel):
 
 
 class SearchTransactionsResult(BaseModel):
-    reply: str
     query: str
     total_count: int
     total_amount: float
     items: List[SearchTransactionsResultItem]
+    llm_prompt: str
 
 
 # ---------- Helpers ----------
@@ -357,20 +358,12 @@ def search_transactions_nl(
         for t in rows
     ]
 
-    # Build reply
-    if total_count == 0:
-        reply = f"No transactions found matching '{q}'."
-    elif total_count == 1:
-        reply = f"Found 1 transaction matching '{q}' (${total_amount:.2f})."
-    else:
-        reply = f"Found {total_count} transactions matching '{q}' (${total_amount:.2f} total)."
-
     return SearchTransactionsResult(
-        reply=reply,
         query=q,
         total_count=total_count,
         total_amount=total_amount,
         items=items,
+        llm_prompt=SEARCH_TRANSACTIONS_PROMPT,
     )
 
 

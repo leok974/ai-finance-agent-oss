@@ -5,6 +5,9 @@ This module was removed in Phase 1 cleanup (legacy table removal).
 Keeping minimal stubs for backward compatibility with existing imports.
 """
 
+# Legacy constants
+WINDOW_DAYS = 90
+
 
 def get_config():
     """Legacy stub"""
@@ -33,4 +36,9 @@ def canonicalize_merchant(merchant):
 
 def evaluate_candidate(db, merchant_norm, category):
     """Legacy stub: no suggestion created"""
+    return None
+
+
+def compute_metrics(db, merchant_norm, category):
+    """Legacy stub: return placeholder metrics"""
     return None

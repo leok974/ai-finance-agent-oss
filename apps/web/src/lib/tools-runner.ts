@@ -10,55 +10,89 @@ export type SubscriptionItem = {
   avg_amount: number;
   median_gap_days: number;
   strength: number;
+  is_subscription?: boolean;
+  is_essential?: boolean;
+  cancel_candidate?: boolean;
+  tag?: string;
 };
 
 export type AnalyticsSubscriptionsResponse = {
-  items: SubscriptionItem[];
+  mode?: 'recurring' | 'subscriptions';
+  month?: string;
+  window_months?: number;
+  subscriptions?: SubscriptionItem[];
+  other_recurring?: SubscriptionItem[];
+  cancel_candidates?: SubscriptionItem[];
+  llm_prompt?: string;  // Backend provides the structured prompt template
+  // Legacy format support
+  items?: SubscriptionItem[];
 };
 
 // ============================================================================
 // Formatters for Tool Results
 // ============================================================================
 
-function humanCadence(days: number): string {
-  if (!isFinite(days) || days <= 0) return 'irregular timing';
-
-  if (Math.abs(days - 0.5) < 0.25) return 'multiple times per day';
-  if (Math.abs(days - 1) < 0.5) return 'about once a day';
-  if (Math.abs(days - 7) < 1.5) return 'about once a week';
-  if (Math.abs(days - 14) < 2) return 'about every two weeks';
-  if (Math.abs(days - 30) < 3) return 'about once a month';
-
-  return `every ~${days.toFixed(1)} days`;
-}
-
 export function formatSubscriptionsReply(res: AnalyticsSubscriptionsResponse): string {
-  const items = res.items ?? [];
+  // The backend provides llm_prompt with detailed instructions for the LLM.
+  // We build a concise JSON summary of the data and let the LLM format it
+  // according to the prompt template.
 
-  if (!items.length) {
-    return "I didn't find any clear recurring subscriptions in your recent transactions.";
+  const mode = res.mode || 'subscriptions';
+  const month = res.month || 'current month';
+  const windowMonths = res.window_months || 6;
+
+  // Build a JSON summary for the LLM to process
+  const data: Record<string, any> = {
+    mode,
+    month,
+    window_months: windowMonths,
+  };
+
+  if (mode === 'recurring') {
+    data.subscriptions = (res.subscriptions || []).map(item => ({
+      merchant: item.merchant,
+      avg_amount: item.avg_amount,
+      count: item.count,
+      median_gap_days: item.median_gap_days,
+      strength: item.strength,
+      is_subscription: true,
+    }));
+
+    data.other_recurring = (res.other_recurring || []).map(item => ({
+      merchant: item.merchant,
+      avg_amount: item.avg_amount,
+      count: item.count,
+      median_gap_days: item.median_gap_days,
+      strength: item.strength,
+      is_subscription: false,
+    }));
+  } else {
+    // Subscriptions mode
+    data.subscriptions = (res.subscriptions || res.items || []).map(item => ({
+      merchant: item.merchant,
+      avg_amount: item.avg_amount,
+      count: item.count,
+      median_gap_days: item.median_gap_days,
+      strength: item.strength,
+      is_subscription: true,
+      is_essential: item.is_essential || false,
+      cancel_candidate: item.cancel_candidate || false,
+    }));
+
+    data.cancel_candidates = (res.cancel_candidates || []).map(item => ({
+      merchant: item.merchant,
+      avg_amount: item.avg_amount,
+      count: item.count,
+      cancel_candidate: true,
+    }));
   }
 
-  const lines: string[] = [];
-  lines.push("Here are some merchants that look like recurring subscriptions:\n");
+  // If backend provided a prompt template, use it as a system message prefix
+  const promptPrefix = res.llm_prompt
+    ? `${res.llm_prompt}\n\nHere is the data:\n`
+    : `Analyze the following ${mode} data for ${month}:\n`;
 
-  for (const item of items.slice(0, 8)) {
-    const cadence = humanCadence(item.median_gap_days);
-    // strength is 0–1; show as % with 0 decimals
-    const strengthPct = Math.round(item.strength * 100);
-
-    lines.push(
-      `• **${item.merchant}** — ` +
-      `${item.count} charges, avg $${item.avg_amount.toFixed(2)}, ${cadence} ` +
-      `(recurring score ~${strengthPct}%).`
-    );
-  }
-
-  lines.push(
-    "\n💡 The recurring score is between 0–100%. Higher means it looks more like a stable subscription pattern."
-  );
-
-  return lines.join("\n");
+  return promptPrefix + JSON.stringify(data, null, 2);
 }
 
 // ============================================================================
