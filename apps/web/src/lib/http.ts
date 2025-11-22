@@ -132,6 +132,15 @@ export interface ManualCategorizeRequest {
   scope: ManualCategorizeScope;
 }
 
+export interface ManualCategorizeAffectedTxn {
+  id: number;
+  date: string;  // ISO date from backend
+  amount: number;
+  merchant: string;
+  previous_category_slug: string;
+  new_category_slug: string;
+}
+
 export interface ManualCategorizeResponse {
   txn_id: number;
   category_slug: string;
@@ -139,6 +148,7 @@ export interface ManualCategorizeResponse {
   updated_count: number;
   similar_updated: number;
   hint_applied: boolean;
+  affected: ManualCategorizeAffectedTxn[];
 }
 
 export async function manualCategorizeTransaction(
@@ -150,6 +160,22 @@ export async function manualCategorizeTransaction(
     {
       method: 'POST',
       body: JSON.stringify({ category_slug: categorySlug, scope }),
+    }
+  );
+}
+
+export interface ManualCategorizeUndoResponse {
+  reverted_count: number;
+}
+
+export async function manualCategorizeUndo(
+  affected: ManualCategorizeAffectedTxn[]
+): Promise<ManualCategorizeUndoResponse> {
+  return fetchJSON<ManualCategorizeUndoResponse>(
+    'transactions/categorize/manual/undo',
+    {
+      method: 'POST',
+      body: JSON.stringify({ affected }),
     }
   );
 }

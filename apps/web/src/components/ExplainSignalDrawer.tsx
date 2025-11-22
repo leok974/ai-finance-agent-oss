@@ -12,7 +12,12 @@ import { useSafePortalReady } from '@/hooks/useSafePortal'
 import { getSuggestionConfidencePercent } from '../lib/suggestions';
 import { emitToastSuccess, emitToastError } from '@/lib/toast-helpers'
 import { t } from '@/lib/i18n'
-import { manualCategorizeTransaction, type ManualCategorizeScope } from '@/lib/http'
+import {
+  manualCategorizeTransaction,
+  manualCategorizeUndo,
+  type ManualCategorizeScope,
+  type ManualCategorizeResponse,
+} from '@/lib/http'
 import { CATEGORY_OPTIONS, CATEGORY_DEFS } from '@/lib/categories'
 import { Button } from '@/components/ui/button'
 import type { UnknownTxn } from '@/hooks/useUnknowns'
@@ -90,6 +95,8 @@ export default function ExplainSignalDrawer({ txnId, open, onOpenChange, txn, su
   const [categorySlug, setCategorySlug] = React.useState<string | undefined>()
   const [scope, setScope] = React.useState<ManualCategorizeScope>('same_merchant')
   const [saving, setSaving] = React.useState(false)
+  const [lastChange, setLastChange] = React.useState<ManualCategorizeResponse | null>(null)
+  const [isUndoing, setIsUndoing] = React.useState(false)
 
   // Compute how many unknowns would be affected by current scope
   const affectedCount = React.useMemo(() => {
@@ -391,6 +398,15 @@ export default function ExplainSignalDrawer({ txnId, open, onOpenChange, txn, su
                       setSaving(true);
                       try {
                         const res = await manualCategorizeTransaction(txnId, { categorySlug, scope });
+                        setLastChange(res); // Store for undo
+
+                        // Save to localStorage for Settings drawer access
+                        try {
+                          window.localStorage.setItem('lm:lastManualCategorize', JSON.stringify(res));
+                        } catch {
+                          // ignore storage errors
+                        }
+
                         const categoryLabel = CATEGORY_DEFS[categorySlug]?.label || categorySlug;
 
                         emitToastSuccess(
@@ -427,6 +443,59 @@ export default function ExplainSignalDrawer({ txnId, open, onOpenChange, txn, su
                 </p>
               </div>
             </div>
+          )}
+
+          {/* Undo last bulk change */}
+          {lastChange && lastChange.affected && lastChange.affected.length > 0 && (
+            <section className="mt-6 rounded-2xl border border-slate-800 bg-slate-900/50 p-4">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-semibold text-slate-200">Last bulk change</h3>
+                <Button
+                  size="sm"
+                  variant="default"
+                  disabled={isUndoing}
+                  onClick={async () => {
+                    setIsUndoing(true);
+                    try {
+                      const res = await manualCategorizeUndo(lastChange.affected);
+                      emitToastSuccess(`Reverted ${res.reverted_count} transaction${res.reverted_count !== 1 ? 's' : ''}.`);
+                      setLastChange(null);
+                      onRefresh?.();
+                    } catch (err: any) {
+                      emitToastError(err?.message ?? 'Undo failed. Please try again.');
+                    } finally {
+                      setIsUndoing(false);
+                    }
+                  }}
+                >
+                  {isUndoing ? 'Undoing…' : 'Undo this change'}
+                </Button>
+              </div>
+
+              <p className="text-xs text-slate-400 mb-3">
+                {lastChange.similar_updated + 1} transaction{lastChange.similar_updated > 0 ? 's' : ''} categorized
+              </p>
+
+              <div className="max-h-40 overflow-y-auto space-y-2 rounded-lg bg-slate-950/50 p-2">
+                {lastChange.affected.map((txn) => (
+                  <div
+                    key={txn.id}
+                    className="flex items-center justify-between text-xs px-2 py-1 rounded bg-slate-900/50"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="text-slate-300 truncate">{txn.merchant}</div>
+                      <div className="text-slate-500">{new Date(txn.date).toLocaleDateString()}</div>
+                    </div>
+                    <div className="text-right ml-2">
+                      <div className="text-slate-300 font-mono">${Math.abs(Number(txn.amount)).toFixed(2)}</div>
+                      <div className="text-slate-500 text-[10px]">
+                        {CATEGORY_DEFS[txn.previous_category_slug]?.label || txn.previous_category_slug} → {CATEGORY_DEFS[txn.new_category_slug]?.label || txn.new_category_slug}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
           )}
         </main>
       </aside>
