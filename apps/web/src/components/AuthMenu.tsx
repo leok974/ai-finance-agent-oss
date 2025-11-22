@@ -54,6 +54,15 @@ export default function AuthMenu({ onOpenSettings }: AuthMenuProps = {}) {
     setDemoLoading(true);
     try {
       await fetchJSON('auth/demo', { method: 'POST' });
+
+      // Bootstrap demo data (idempotent - only seeds if no transactions exist)
+      try {
+        await fetchJSON('demo/bootstrap', { method: 'POST' });
+      } catch (bootstrapErr) {
+        // Log but don't block - user can still proceed if bootstrap fails
+        console.warn('Demo bootstrap failed:', bootstrapErr);
+      }
+
       // Reload to bootstrap auth state with demo user
       window.location.href = '/';
     } catch (err) {

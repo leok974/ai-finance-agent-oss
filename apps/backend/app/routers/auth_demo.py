@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.db import get_db
 from app.orm_models import User
-from app.utils.auth import create_tokens, set_auth_cookies
+from app.utils.auth import create_tokens, set_auth_cookies, get_current_user
 
 logger = logging.getLogger("auth.demo")
 router = APIRouter(tags=["auth"])
@@ -71,3 +71,24 @@ async def auth_demo_login(db: Session = Depends(get_db)):
 
     logger.info(f"Demo login successful for {user.email}")
     return response
+
+
+@router.post("/demo/bootstrap")
+async def demo_bootstrap(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Bootstrap demo account with transaction data.
+
+    Idempotent - only seeds data if user has no existing transactions.
+    Returns whether data was created.
+    """
+    from app.scripts.seed_demo_data import seed_demo_data_for_user
+
+    created = seed_demo_data_for_user(db, user_id=current_user.id)
+
+    return {
+        "created": created,
+        "message": "Demo data seeded" if created else "User already has transactions",
+    }

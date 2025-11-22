@@ -1,254 +1,167 @@
-"""Seed demo account with 6 months of realistic transaction data."""
+"""
+Seed demo data for LedgerMind demo users.
 
-import random
-from datetime import date, datetime
+This script provides an idempotent way to populate a user's account with
+realistic transaction data from a CSV file for demonstration purposes.
+"""
 
+import csv
+import datetime as dt
+from pathlib import Path
+from typing import Optional
+
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db import SessionLocal
-from app.orm_models import User, Transaction
-from app.config import settings
+from app.orm_models import Transaction
+from app.utils.text import canonicalize_merchant
+
+DEMO_CSV_PATH = Path(__file__).parent.parent / "sample_data" / "demo_transactions.csv"
 
 
-def month_iter(end: date, months_back: int):
-    """Iterate backwards through months from end date."""
-    year = end.year
-    month = end.month
-    for _ in range(months_back):
-        yield year, month
-        month -= 1
-        if month == 0:
-            month = 12
-            year -= 1
+INCOME_HINTS = (
+    "payroll",
+    "paycheck",
+    "salary",
+    "employer",
+    "bonus",
+    "refund",
+    "reimbursement",
+    "interest",
+    "dividend",
+    "income",
+    "deposit",
+    "transfer in",
+)
 
 
-def get_or_create_demo_user(db: Session) -> User:
-    """Get or create demo user."""
-    user = db.query(User).filter(User.email == settings.DEMO_USER_EMAIL).first()
-    if user:
-        return user
-
-    user = User(
-        email=settings.DEMO_USER_EMAIL,
-        name=settings.DEMO_USER_NAME,
-        is_demo=True,
-        is_active=True,
-        password_hash="",  # No password for demo
-        created_at=datetime.now(),  # SQLite doesn't support func.now()
-    )
-    db.add(user)
-    db.flush()
-    return user
-
-
-def gen_month_transactions(year: int, month: int, base_seed: int):
-    """
-    Generate deterministic realistic transactions for a month.
-
-    Includes:
-    - Rent (1x)
-    - Groceries (4x)
-    - Restaurants (4x)
-    - Gas (2x)
-    - Utilities (2x)
-    - Subscriptions (Netflix, Spotify, Adobe, AWS)
-    - Ride shares (3x)
-    - Income (2x paychecks)
-    - One anomaly spike
-    """
-    rnd = random.Random(base_seed + year * 100 + month)
-
-    def d(day: int):
-        """Helper to create date, clamping to valid day."""
-        return date(year, month, min(day, 28))
-
-    txns = []
-
-    # Rent
-    txns.append(
-        dict(
-            date=d(1),
-            merchant="SUNNYVIEW APARTMENTS",
-            description=f"RENT {month:02d}/{year}",
-            amount=-1850.00,
-            category="rent",
-        )
-    )
-
-    # Groceries (4 weekends)
-    for week in [3, 10, 17, 24]:
-        amt = rnd.uniform(80, 140)
-        store = rnd.choice(["HARRIS TEETER #123", "WHOLEFDS MARKET", "TARGET #4432"])
-        txns.append(
-            dict(
-                date=d(week),
-                merchant=store,
-                description="GROCERY PURCHASE",
-                amount=-round(amt, 2),
-                category="groceries",
-            )
-        )
-
-    # Restaurants (varied)
-    for week in [5, 12, 19, 26]:
-        amt = rnd.uniform(18, 45)
-        spot = rnd.choice(["STARBUCKS", "CHIPOTLE", "TACO BELL", "PANDA EXPRESS"])
-        txns.append(
-            dict(
-                date=d(week),
-                merchant=spot,
-                description="DINING",
-                amount=-round(amt, 2),
-                category="restaurant",
-            )
-        )
-
-    # Gas (2x per month)
-    for week in [7, 21]:
-        amt = rnd.uniform(35, 70)
-        txns.append(
-            dict(
-                date=d(week),
-                merchant="SHELL OIL #5678",
-                description="FUEL",
-                amount=-round(amt, 2),
-                category="transport_gas",
-            )
-        )
-
-    # Utilities
-    txns.append(
-        dict(
-            date=d(9),
-            merchant="CITY POWER & LIGHT",
-            description="ELECTRIC BILL",
-            amount=-round(rnd.uniform(75, 140), 2),
-            category="utilities_electric",
-        )
-    )
-    txns.append(
-        dict(
-            date=d(15),
-            merchant="XFINITY INTERNET",
-            description="INTERNET",
-            amount=-79.99,
-            category="utilities_internet",
-        )
-    )
-
-    # Subscriptions (recurring monthly)
-    txns.extend(
-        [
-            dict(
-                date=d(13),
-                merchant="NETFLIX.COM",
-                description="NETFLIX SUBSCRIPTION",
-                amount=-15.99,
-                category="subscriptions_digital",
-            ),
-            dict(
-                date=d(14),
-                merchant="SPOTIFY",
-                description="SPOTIFY PREMIUM",
-                amount=-10.99,
-                category="subscriptions_music",
-            ),
-            dict(
-                date=d(16),
-                merchant="ADOBE CREATIVE CLOUD",
-                description="ADOBE CC",
-                amount=-54.99,
-                category="subscriptions_software",
-            ),
-            dict(
-                date=d(20),
-                merchant="AWS CLOUD",
-                description="AWS BILLING",
-                amount=-round(rnd.uniform(30, 80), 2),
-                category="saas_infra",
-            ),
-        ]
-    )
-
-    # Ride shares (3x per month)
-    for _ in range(3):
-        amt = rnd.uniform(12, 28)
-        txns.append(
-            dict(
-                date=d(rnd.randint(2, 27)),
-                merchant=rnd.choice(["UBER TRIP", "LYFT RIDE"]),
-                description="RIDE SHARE",
-                amount=-round(amt, 2),
-                category="ride_share",
-            )
-        )
-
-    # Income (2 paychecks per month)
-    for day in [1, 15]:
-        txns.append(
-            dict(
-                date=d(day),
-                merchant="ACME CORP PAYROLL",
-                description="DIRECT DEP",
-                amount=1750.00,
-                category="income_salary",
-            )
-        )
-
-    # One anomaly spike each month
-    txns.append(
-        dict(
-            date=d(23),
-            merchant="BEST BUY #334",
-            description="ELECTRONICS PURCHASE",
-            amount=-round(rnd.uniform(400, 900), 2),
-            category="shopping_electronics",
-        )
-    )
-
-    return txns
-
-
-def seed_demo_data():
-    """Main seeding function."""
-    today = date.today()
-    db = SessionLocal()
-
+def _parse_date(s: str | None) -> dt.date | None:
+    """Parse date string to Python date object."""
+    if not s:
+        return None
+    s = s.strip()
+    # Try ISO first
     try:
-        user = get_or_create_demo_user(db)
+        return dt.date.fromisoformat(s[:10])
+    except Exception:
+        pass
+    # Try common formats
+    for fmt in ("%m/%d/%Y", "%m/%d/%y", "%d/%m/%Y", "%Y/%m/%d"):
+        try:
+            return dt.datetime.strptime(s[:10], fmt).date()
+        except Exception:
+            continue
+    return None
 
-        # Wipe old demo transactions for idempotency
-        db.query(Transaction).filter(Transaction.user_id == user.id).delete()
 
-        all_txns = []
-        for i, (y, m) in enumerate(month_iter(today, months_back=6)):
-            all_txns.extend(gen_month_transactions(y, m, base_seed=42 + i))
+def seed_demo_data_for_user(db: Session, user_id: int) -> bool:
+    """
+    Ensure the given user has demo data.
 
-        # Add all transactions
-        for t in all_txns:
+    Args:
+        db: Database session
+        user_id: User ID to seed data for
+
+    Returns:
+        True if data was created, False if it was already present.
+    """
+    # Check if user already has any transactions
+    existing = db.execute(
+        select(Transaction)
+        .where(Transaction.user_id == user_id)
+        .where(Transaction.deleted_at.is_(None))
+        .limit(1)
+    ).first()
+
+    if existing:
+        return False
+
+    # Read and ingest demo CSV
+    if not DEMO_CSV_PATH.exists():
+        raise FileNotFoundError(
+            f"Demo CSV not found at {DEMO_CSV_PATH}. "
+            "Ensure sample_data/demo_transactions.csv exists."
+        )
+
+    with open(DEMO_CSV_PATH, "r", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+
+        rows_added = 0
+        for row in reader:
+            # Parse date
+            date_str = (row.get("date") or row.get("Date") or "").strip()
+            date_obj = _parse_date(date_str)
+            if not date_obj:
+                continue
+
+            month = date_obj.strftime("%Y-%m")
+
+            # Parse merchant and description
+            merchant = (
+                row.get("merchant") or row.get("Merchant") or ""
+            ).strip() or None
+            description = (
+                row.get("description") or row.get("Description") or ""
+            ).strip() or None
+            category = (
+                row.get("category") or row.get("Category") or ""
+            ).strip() or None
+
+            # Parse amount
+            amt_raw = (
+                (row.get("amount") or row.get("Amount") or "0").replace(",", "").strip()
+            )
+            try:
+                amount = float(amt_raw or 0)
+            except Exception:
+                amount = 0.0
+
+            # Calculate canonical merchant for indexing
+            merchant_canonical = canonicalize_merchant(merchant) if merchant else None
+
+            # Create transaction
             txn = Transaction(
-                user_id=user.id,
-                date=t["date"],
-                merchant=t["merchant"],
-                description=t["description"],
-                amount=t["amount"],
-                category=t["category"],
+                user_id=user_id,
+                date=date_obj,
+                month=month,
+                merchant=merchant,
+                merchant_canonical=merchant_canonical,
+                description=description,
+                amount=amount,
+                category=category,
+                raw_category=category,  # Keep original category
                 pending=False,
             )
             db.add(txn)
+            rows_added += 1
 
-        db.commit()
-        print(
-            f"✅ Seeded demo data: {len(all_txns)} transactions for {settings.DEMO_USER_EMAIL}"
+    db.commit()
+    print(f"✓ Seeded {rows_added} demo transactions for user {user_id}")
+    return True
+
+
+def main(user_id: Optional[int] = None) -> None:
+    """CLI entry point for seeding demo data."""
+    if user_id is None:
+        raise SystemExit(
+            "Usage: python -m app.scripts.seed_demo_data <user_id>\n"
+            "Example: python -m app.scripts.seed_demo_data 6"
         )
 
-    except Exception as e:
-        db.rollback()
-        print(f"❌ Error seeding demo data: {e}")
-        raise
+    db = SessionLocal()
+    try:
+        created = seed_demo_data_for_user(db, user_id=user_id)
+        if created:
+            print(f"✓ Demo data successfully seeded for user {user_id}")
+        else:
+            print(f"ℹ User {user_id} already has transactions. No data added.")
     finally:
         db.close()
 
 
 if __name__ == "__main__":
-    seed_demo_data()
+    import sys
+
+    uid = int(sys.argv[1]) if len(sys.argv) > 1 else None
+    main(uid)
