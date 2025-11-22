@@ -13,6 +13,7 @@ export type MonthSummary = {
   topMerchant?: { name: string; amount: number };
   unknown?: { amount: number; count: number; top?: string[] };
   categories?: Array<{ name: string; amount: number; note?: string }>;
+  merchants?: Array<{ name: string; amount: number; category?: string }>;
   spikes?: Array<{ date: string; merchant: string; amount: number; note?: string }>;
 };
 
@@ -57,15 +58,18 @@ ${
 }
 
 ${
-  (s.spikes?.length ?? 0)
-    ? `**Spikes & notes**\n` +
-      s.spikes!
-        .map(
-          (x) =>
-            `- ${x.date}: ${x.merchant} — **${fmt(x.amount)}**${x.note ? ` (${x.note})` : ""}`
-        )
-        .join("\n")
-    : ""
+  (() => {
+    const validSpikes = (s.spikes ?? []).filter(x => x.amount > 0 && x.merchant !== 'Unknown');
+    return validSpikes.length > 0
+      ? `**Spikes & notes**\n` +
+        validSpikes
+          .map(
+            (x) =>
+              `- ${x.date}: ${x.merchant} — **${fmt(x.amount)}**${x.note ? ` (${x.note})` : ""}`
+          )
+          .join("\n")
+      : `**Spikes & notes**\nNo notable spikes this month based on your baseline.`;
+  })()
 }
 
 **Next actions**

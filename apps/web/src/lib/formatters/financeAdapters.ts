@@ -97,6 +97,13 @@ export function adaptInsightsExpandedToMonthSummary(
     note: c?.note ?? undefined
   }));
 
+  // Extract top merchants
+  const merchants = topMerchants.map((m: any) => ({
+    name: m?.merchant ?? 'Unknown',
+    amount: Math.abs(m?.amount ?? 0),
+    category: m?.category ?? undefined
+  }));
+
   // Extract anomalies from both categories and merchants
   const catAnomalies = raw?.anomalies?.categories ?? [];
   const merchAnomalies = raw?.anomalies?.merchants ?? [];
@@ -121,6 +128,7 @@ export function adaptInsightsExpandedToMonthSummary(
     } : { name: 'N/A', amount: 0 },
     unknown,
     categories,
+    merchants,
     spikes: spikes.length > 0 ? spikes : undefined
   };
 }
