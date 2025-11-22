@@ -993,16 +993,18 @@ function parseDispositionFilename(disposition: string | null) {
   return m?.[1] ?? null;
 }
 
+export type ExportMode = 'full' | 'summary' | 'unknowns';
+
 export async function downloadReportExcel(
   month?: string,
-  includeTransactions: boolean = true,
+  mode: ExportMode = 'full',
   opts?: { start?: string; end?: string; splitAlpha?: boolean }
 ) {
   const params = new URLSearchParams();
   if (month) params.set('month', month);
   if (opts?.start) params.set('start', opts.start);
   if (opts?.end) params.set('end', opts.end);
-  params.set('include_transactions', String(includeTransactions));
+  params.set('mode', mode);
   if (opts?.splitAlpha) params.set('split_transactions_alpha', String(!!opts.splitAlpha));
   const url = apiUrl(`/report/excel${params.toString() ? `?${params.toString()}` : ''}`);
   const res = await fetch(url, withCreds({ method: 'GET', headers: withAuthHeaders() }));
@@ -1012,11 +1014,16 @@ export async function downloadReportExcel(
   return { blob, filename };
 }
 
-export async function downloadReportPdf(month?: string, opts?: { start?: string; end?: string }) {
+export async function downloadReportPdf(
+  month?: string,
+  mode: 'full' | 'summary' = 'summary',
+  opts?: { start?: string; end?: string }
+) {
   const params = new URLSearchParams();
   if (month) params.set('month', month);
   if (opts?.start) params.set('start', opts.start);
   if (opts?.end) params.set('end', opts.end);
+  params.set('mode', mode);
   const url = apiUrl(`/report/pdf${params.toString() ? `?${params.toString()}` : ''}`);
   const res = await fetch(url, withCreds({ method: 'GET', headers: withAuthHeaders() }));
   if (!res.ok) throw new Error(`PDF export failed: ${res.status}`);
