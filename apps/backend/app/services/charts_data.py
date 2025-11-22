@@ -283,6 +283,12 @@ def get_month_merchants(
 
     Uses merchant memory cache to learn and remember merchants over time.
     Default limit reduced to 8 for better chart readability.
+
+    Returns merchant data with explicit fields:
+    - merchant_canonical: str - canonical key used for grouping (lowercase, normalized)
+    - merchant_display: str - user-facing display name (title case)
+    - sample_description: str - example raw transaction description
+    - category: str | None - learned category from merchant cache
     """
     from app.redis_client import redis
     from app.services.merchant_cache import learn_merchant
@@ -304,7 +310,7 @@ def get_month_merchants(
     # Aggregate using brand-aware normalization with cache
     buckets: Dict[str, Dict[str, Any]] = defaultdict(
         lambda: {
-            "label": "",
+            "display": "",
             "total": 0.0,
             "count": 0,
             "statement_examples": set(),
@@ -321,15 +327,15 @@ def get_month_merchants(
                 redis_client, db, raw, description=description, amount=amount
             )
             key = hint.normalized_name
-            label = hint.display_name
+            display = hint.display_name
             category = hint.category
         else:
             # Fallback to direct normalization if Redis unavailable
-            key, label = canonical_and_label(raw)
+            key, display = canonical_and_label(raw)
             category = None
 
         b = buckets[key]
-        b["label"] = label
+        b["display"] = display
         b["category"] = category
         b["total"] = float(b["total"]) + abs(float(amount or 0.0))
         b["count"] = int(b["count"]) + 1
@@ -338,14 +344,22 @@ def get_month_merchants(
     # Convert to list and sort by total spend
     items = []
     for key, b in buckets.items():
+        # Pick first statement example as sample
+        examples = sorted(b["statement_examples"])
+        sample_desc = examples[0] if examples else key
+
         items.append(
             {
-                "merchant_key": key,
-                "label": b["label"],
+                "merchant_canonical": key,
+                "merchant_display": b["display"],
+                "sample_description": sample_desc,
                 "total": b["total"],
                 "count": b["count"],
-                "statement_examples": sorted(b["statement_examples"])[:3],
-                "category": b["category"],  # Include learned category
+                "statement_examples": examples[:3],
+                "category": b["category"],
+                # Legacy fields for backward compatibility
+                "merchant_key": key,
+                "label": b["display"],
             }
         )
 
