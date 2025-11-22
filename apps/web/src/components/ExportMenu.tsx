@@ -1,26 +1,24 @@
 import { useState } from "react";
-import { downloadReportExcel, downloadReportPdf } from "@/lib/api";
+import { downloadReportExcel, downloadReportPdf, type ExportMode } from "@/lib/api";
 import { saveAs } from "@/utils/download";
 import { Download, FileSpreadsheet, FileText } from "lucide-react";
-import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuCheckboxItem } from "@/components/ui/dropdown-menu";
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuLabel, DropdownMenuCheckboxItem } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import DateRangePicker from "@/components/DateRangePicker";
 
-type Props = { month?: string };
+type Props = { month?: string; hasUnknowns?: boolean };
 
-export default function ExportMenu({ month }: Props) {
+export default function ExportMenu({ month, hasUnknowns = true }: Props) {
   const [busy, setBusy] = useState<"excel" | "pdf" | null>(null);
-  const [includeTxns, setIncludeTxns] = useState(true);
   const [splitAlpha, setSplitAlpha] = useState(false);
   const [range, setRange] = useState<{ start?: string; end?: string }>({});
   const rangeActive = !!(range.start && range.end);
-  const rangeLabel = rangeActive ? `${range.start} → ${range.end}` : null;
 
-  async function doExcel() {
+  async function handleExcelExport(mode: ExportMode) {
     try {
       setBusy("excel");
-      const { blob, filename } = await downloadReportExcel(month, includeTxns, { ...range, splitAlpha });
+      const { blob, filename } = await downloadReportExcel(month, mode, { ...range, splitAlpha });
       saveAs(blob, filename);
       toast.success(`Exported ${month || 'report'} to Excel`);
     } catch (err: any) {
@@ -32,10 +30,10 @@ export default function ExportMenu({ month }: Props) {
     }
   }
 
-  async function doPdf() {
+  async function handlePdfExport(mode: 'full' | 'summary' = 'summary') {
     try {
       setBusy("pdf");
-      const { blob, filename } = await downloadReportPdf(month, range);
+      const { blob, filename } = await downloadReportPdf(month, mode, range);
       saveAs(blob, filename);
       toast.success(`Exported ${month || 'report'} to PDF`);
     } catch (err: any) {
@@ -50,7 +48,7 @@ export default function ExportMenu({ month }: Props) {
 
   return (
     <div className="flex items-center gap-2">
-      {/* Export dropdown with improved visual clarity */}
+      {/* Export dropdown with preset modes */}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button
@@ -58,7 +56,7 @@ export default function ExportMenu({ month }: Props) {
             size="sm"
             disabled={!!busy}
             className="gap-2 px-3.5 h-9"
-            aria-label={rangeActive ? `Export (range ${rangeLabel})` : "Export"}
+            aria-label="Export"
             data-testid="export-menu-trigger"
           >
             <Download className="h-4 w-4" />
@@ -67,18 +65,87 @@ export default function ExportMenu({ month }: Props) {
         </DropdownMenuTrigger>
         <DropdownMenuContent
           align="end"
-          className="min-w-[240px] rounded-2xl border border-border/60 bg-background/95 shadow-lg backdrop-blur"
+          className="min-w-[260px] rounded-2xl border border-border/60 bg-background/95 shadow-lg backdrop-blur"
         >
-          {/* Settings section */}
-          <div className="px-2 py-1.5">
-            <p className="text-xs font-medium text-muted-foreground mb-2">Export Options</p>
-            <DropdownMenuCheckboxItem
-              checked={includeTxns}
-              onCheckedChange={(v: boolean | "indeterminate") => setIncludeTxns(v === true)}
-              className="text-sm"
+          {/* Excel presets */}
+          <DropdownMenuLabel className="text-xs font-medium text-muted-foreground">
+            Excel
+          </DropdownMenuLabel>
+          <div className="px-1 py-1">
+            <DropdownMenuItem
+              onClick={() => handleExcelExport('summary')}
+              disabled={busy === "excel"}
+              className="flex items-start gap-2 py-2.5 cursor-pointer"
+              data-testid="export-excel-summary"
             >
-              Include transactions
-            </DropdownMenuCheckboxItem>
+              <FileSpreadsheet className="h-4 w-4 text-green-600 dark:text-green-400 mt-0.5" />
+              <div className="flex flex-col gap-0.5">
+                <span className="text-sm font-medium">Summary only</span>
+                <span className="text-xs text-muted-foreground">
+                  1 sheet, good for sharing
+                </span>
+              </div>
+            </DropdownMenuItem>
+
+            <DropdownMenuItem
+              onClick={() => handleExcelExport('full')}
+              disabled={busy === "excel"}
+              className="flex items-start gap-2 py-2.5 cursor-pointer"
+              data-testid="export-excel-full"
+            >
+              <FileSpreadsheet className="h-4 w-4 text-green-600 dark:text-green-400 mt-0.5" />
+              <div className="flex flex-col gap-0.5">
+                <span className="text-sm font-medium">Full details</span>
+                <span className="text-xs text-muted-foreground">
+                  Includes all transactions
+                </span>
+              </div>
+            </DropdownMenuItem>
+
+            <DropdownMenuItem
+              onClick={() => handleExcelExport('unknowns')}
+              disabled={busy === "excel" || !hasUnknowns}
+              className="flex items-start gap-2 py-2.5 cursor-pointer"
+              data-testid="export-excel-unknowns"
+            >
+              <FileSpreadsheet className="h-4 w-4 text-green-600 dark:text-green-400 mt-0.5" />
+              <div className="flex flex-col gap-0.5">
+                <span className="text-sm font-medium">Unknowns only</span>
+                <span className="text-xs text-muted-foreground">
+                  Uncategorised transactions
+                </span>
+              </div>
+            </DropdownMenuItem>
+          </div>
+
+          <DropdownMenuSeparator />
+
+          {/* PDF presets */}
+          <DropdownMenuLabel className="text-xs font-medium text-muted-foreground">
+            PDF
+          </DropdownMenuLabel>
+          <div className="px-1 py-1">
+            <DropdownMenuItem
+              onClick={() => handlePdfExport('summary')}
+              disabled={busy === "pdf"}
+              className="flex items-start gap-2 py-2.5 cursor-pointer"
+              data-testid="export-pdf-summary"
+            >
+              <FileText className="h-4 w-4 text-red-600 dark:text-red-400 mt-0.5" />
+              <div className="flex flex-col gap-0.5">
+                <span className="text-sm font-medium">Summary PDF</span>
+                <span className="text-xs text-muted-foreground">
+                  Summary view only
+                </span>
+              </div>
+            </DropdownMenuItem>
+          </div>
+
+          <DropdownMenuSeparator />
+
+          {/* Export options */}
+          <div className="px-2 py-1.5">
+            <p className="text-xs font-medium text-muted-foreground mb-2">Options</p>
             <DropdownMenuCheckboxItem
               checked={splitAlpha}
               onCheckedChange={(v: boolean | "indeterminate") => setSplitAlpha(v === true)}
@@ -86,43 +153,6 @@ export default function ExportMenu({ month }: Props) {
             >
               Split transactions A–M / N–Z
             </DropdownMenuCheckboxItem>
-          </div>
-
-          <DropdownMenuSeparator />
-
-          {/* Export actions with improved labels */}
-          <div className="px-1 py-1">
-            <DropdownMenuItem
-              onClick={doExcel}
-              disabled={busy === "excel"}
-              className="flex flex-col items-start gap-0.5 py-2.5 cursor-pointer"
-              data-testid="export-excel"
-            >
-              <div className="flex items-center gap-2 w-full">
-                <FileSpreadsheet className="h-4 w-4 text-green-600 dark:text-green-400" />
-                <span className="text-sm font-medium">Excel (.xlsx)</span>
-              </div>
-              <span className="text-xs text-muted-foreground pl-6">
-                {busy === "excel" ? "Exporting..." :
-                 includeTxns ? `Full report for ${month || 'selected period'}` :
-                 "Summary only"}
-              </span>
-            </DropdownMenuItem>
-
-            <DropdownMenuItem
-              onClick={doPdf}
-              disabled={busy === "pdf"}
-              className="flex flex-col items-start gap-0.5 py-2.5 cursor-pointer"
-              data-testid="export-pdf"
-            >
-              <div className="flex items-center gap-2 w-full">
-                <FileText className="h-4 w-4 text-red-600 dark:text-red-400" />
-                <span className="text-sm font-medium">PDF (.pdf)</span>
-              </div>
-              <span className="text-xs text-muted-foreground pl-6">
-                {busy === "pdf" ? "Generating..." : "Summary view only"}
-              </span>
-            </DropdownMenuItem>
           </div>
         </DropdownMenuContent>
       </DropdownMenu>

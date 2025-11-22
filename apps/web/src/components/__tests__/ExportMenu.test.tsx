@@ -30,7 +30,7 @@ describe("ExportMenu", () => {
     expect(trigger).toHaveTextContent("Export");
   });
 
-  it("calls Excel export endpoint when clicking menu item", async () => {
+  it("calls Excel export endpoint when clicking summary preset", async () => {
     const user = userEvent.setup();
     const mockBlob = new Blob(["test"], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
     const spy = vi.spyOn(api, "downloadReportExcel").mockResolvedValue({
@@ -43,12 +43,12 @@ describe("ExportMenu", () => {
     // Open dropdown
     await user.click(screen.getByTestId("export-menu-trigger"));
 
-    // Click Excel export
-    const excelButton = await screen.findByTestId("export-excel");
-    await user.click(excelButton);
+    // Click Excel summary preset
+    const summaryButton = await screen.findByTestId("export-excel-summary");
+    await user.click(summaryButton);
 
     await waitFor(() => {
-      expect(spy).toHaveBeenCalledWith("2025-11", true, {
+      expect(spy).toHaveBeenCalledWith("2025-11", "summary", {
         start: undefined,
         end: undefined,
         splitAlpha: false,
@@ -56,6 +56,62 @@ describe("ExportMenu", () => {
     });
 
     // Should show success toast
+    expect(toast.success).toHaveBeenCalledWith("Exported 2025-11 to Excel");
+  });
+
+  it("calls Excel export with full mode preset", async () => {
+    const user = userEvent.setup();
+    const mockBlob = new Blob(["test"], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+    const spy = vi.spyOn(api, "downloadReportExcel").mockResolvedValue({
+      blob: mockBlob,
+      filename: "report-2025-11.xlsx",
+    });
+
+    render(<ExportMenu month="2025-11" />);
+
+    // Open dropdown
+    await user.click(screen.getByTestId("export-menu-trigger"));
+
+    // Click Excel full preset
+    const fullButton = await screen.findByTestId("export-excel-full");
+    await user.click(fullButton);
+
+    await waitFor(() => {
+      expect(spy).toHaveBeenCalledWith("2025-11", "full", {
+        start: undefined,
+        end: undefined,
+        splitAlpha: false,
+      });
+    });
+
+    expect(toast.success).toHaveBeenCalledWith("Exported 2025-11 to Excel");
+  });
+
+  it("calls Excel export with unknowns mode preset", async () => {
+    const user = userEvent.setup();
+    const mockBlob = new Blob(["test"], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+    const spy = vi.spyOn(api, "downloadReportExcel").mockResolvedValue({
+      blob: mockBlob,
+      filename: "report-2025-11.xlsx",
+    });
+
+    render(<ExportMenu month="2025-11" hasUnknowns={true} />);
+
+    // Open dropdown
+    await user.click(screen.getByTestId("export-menu-trigger"));
+
+    // Click Excel unknowns preset
+    const unknownsButton = await screen.findByTestId("export-excel-unknowns");
+    await user.click(unknownsButton);
+
+    await waitFor(() => {
+      expect(spy).toHaveBeenCalledWith("2025-11", "unknowns", {
+        start: undefined,
+        end: undefined,
+        splitAlpha: false,
+      });
+    });
+
     expect(toast.success).toHaveBeenCalledWith("Exported 2025-11 to Excel");
   });
 
@@ -73,11 +129,11 @@ describe("ExportMenu", () => {
     await user.click(screen.getByTestId("export-menu-trigger"));
 
     // Click PDF export
-    const pdfButton = await screen.findByTestId("export-pdf");
+    const pdfButton = await screen.findByTestId("export-pdf-summary");
     await user.click(pdfButton);
 
     await waitFor(() => {
-      expect(spy).toHaveBeenCalledWith("2025-11", {
+      expect(spy).toHaveBeenCalledWith("2025-11", "summary", {
         start: undefined,
         end: undefined,
       });
@@ -99,7 +155,7 @@ describe("ExportMenu", () => {
     await user.click(screen.getByTestId("export-menu-trigger"));
 
     // Click Excel export
-    const excelButton = await screen.findByTestId("export-excel");
+    const excelButton = await screen.findByTestId("export-excel-summary");
     await user.click(excelButton);
 
     await waitFor(() => {
@@ -122,7 +178,7 @@ describe("ExportMenu", () => {
     await user.click(screen.getByTestId("export-menu-trigger"));
 
     // Click PDF export
-    const pdfButton = await screen.findByTestId("export-pdf");
+    const pdfButton = await screen.findByTestId("export-pdf-summary");
     await user.click(pdfButton);
 
     await waitFor(() => {
@@ -133,37 +189,16 @@ describe("ExportMenu", () => {
     expect(toast.error).toHaveBeenCalledWith("PDF export failed: 503");
   });
 
-  it("includes transactions option toggles correctly", async () => {
+  it("disables unknowns preset when hasUnknowns is false", async () => {
     const user = userEvent.setup();
-    const mockBlob = new Blob(["test"], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
-    const spy = vi.spyOn(api, "downloadReportExcel").mockResolvedValue({
-      blob: mockBlob,
-      filename: "report-2025-11.xlsx",
-    });
-
-    render(<ExportMenu month="2025-11" />);
+    render(<ExportMenu month="2025-11" hasUnknowns={false} />);
 
     // Open dropdown
     await user.click(screen.getByTestId("export-menu-trigger"));
 
-    // Find and uncheck "Include transactions"
-    const includeTxnsCheckbox = await screen.findByRole("menuitemcheckbox", { name: /include transactions/i });
-    await user.click(includeTxnsCheckbox);
-
-    // Re-open dropdown (clicking checkbox closes it)
-    await user.click(screen.getByTestId("export-menu-trigger"));
-
-    // Click Excel export
-    const excelButton = await screen.findByTestId("export-excel");
-    await user.click(excelButton);
-
-    await waitFor(() => {
-      expect(spy).toHaveBeenCalledWith("2025-11", false, {
-        start: undefined,
-        end: undefined,
-        splitAlpha: false,
-      });
-    });
+    // Unknowns button should be disabled
+    const unknownsButton = await screen.findByTestId("export-excel-unknowns");
+    expect(unknownsButton).toHaveAttribute("aria-disabled", "true");
   });
 
   it("split alpha option toggles correctly", async () => {
@@ -186,12 +221,12 @@ describe("ExportMenu", () => {
     // Re-open dropdown (clicking checkbox closes it)
     await user.click(screen.getByTestId("export-menu-trigger"));
 
-    // Click Excel export
-    const excelButton = await screen.findByTestId("export-excel");
+    // Click Excel full preset
+    const excelButton = await screen.findByTestId("export-excel-full");
     await user.click(excelButton);
 
     await waitFor(() => {
-      expect(spy).toHaveBeenCalledWith("2025-11", true, {
+      expect(spy).toHaveBeenCalledWith("2025-11", "full", {
         start: undefined,
         end: undefined,
         splitAlpha: true,
@@ -215,7 +250,7 @@ describe("ExportMenu", () => {
     await user.click(screen.getByTestId("export-menu-trigger"));
 
     // Click Excel export
-    const excelButton = await screen.findByTestId("export-excel");
+    const excelButton = await screen.findByTestId("export-excel-summary");
     await user.click(excelButton);
 
     // Main trigger button should be disabled while exporting
@@ -233,19 +268,19 @@ describe("ExportMenu", () => {
     });
   });
 
-  it("displays proper labels and icons for Excel and PDF", async () => {
+  it("displays proper labels and icons for Excel presets", async () => {
     const user = userEvent.setup();
     render(<ExportMenu month="2025-11" />);
 
     // Open dropdown
     await user.click(screen.getByTestId("export-menu-trigger"));
 
-    // Check for Excel label
-    const excelButton = await screen.findByTestId("export-excel");
-    expect(excelButton).toHaveTextContent("Excel (.xlsx)");
+    // Check for Excel preset labels
+    expect(screen.getByText("Summary only")).toBeInTheDocument();
+    expect(screen.getByText("Full details")).toBeInTheDocument();
+    expect(screen.getByText("Unknowns only")).toBeInTheDocument();
 
     // Check for PDF label
-    const pdfButton = await screen.findByTestId("export-pdf");
-    expect(pdfButton).toHaveTextContent("PDF (.pdf)");
+    expect(screen.getByText("Summary PDF")).toBeInTheDocument();
   });
 });

@@ -3,6 +3,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from typing import Dict
 from collections import defaultdict
+from enum import Enum
 
 from app.db import get_db
 from app.deps.auth_guard import get_current_user_id
@@ -19,6 +20,14 @@ from app.services.report_export import build_excel_bytes, build_pdf_bytes
 from app.transactions import Transaction
 
 router = APIRouter()
+
+
+class ReportMode(str, Enum):
+    """Export mode for reports: full (summary + all txns), summary (summary only), unknowns (only uncategorized)"""
+
+    full = "full"
+    summary = "summary"
+    unknowns = "unknowns"
 
 
 @router.get("/report")
@@ -43,11 +52,26 @@ def report_excel(
     month: str | None = Query(None, pattern=r"^\d{4}-\d{2}$"),
     start: str | None = Query(None, description="YYYY-MM-DD"),
     end: str | None = Query(None, description="YYYY-MM-DD"),
-    include_transactions: bool = Query(True),
+    mode: ReportMode = Query(
+        ReportMode.full,
+        description="Export mode: full (summary + all txns), summary (summary only), unknowns (uncategorized txns)",
+    ),
+    include_transactions: bool | None = Query(
+        None, description="Deprecated: use mode parameter instead"
+    ),
     split_transactions_alpha: bool = Query(False),
     db: Session = Depends(get_db),
 ):
-    """Generate an Excel report for a month or custom date range."""
+    """Generate an Excel report for a month or custom date range.
+
+    mode:
+      - full: summary + all transactions (default)
+      - summary: summary only, no transactions sheet
+      - unknowns: only unknown/uncategorized transactions + summary
+    """
+    # Backwards compatibility: if include_transactions is explicitly set, map to mode
+    if include_transactions is not None:
+        mode = ReportMode.full if include_transactions else ReportMode.summary
     # Resolve an inclusive window for transactions; also pick a month hint for aggregations
     try:
         start_d, end_d = resolve_window(db, user_id, month, start, end)
@@ -66,26 +90,33 @@ def report_excel(
     trends = get_spending_trends(db, user_id, months=6)
 
     txns_df = None
-    if include_transactions:
+    include_transactions_flag = mode in (ReportMode.full, ReportMode.unknowns)
+    only_unknowns = mode == ReportMode.unknowns
+
+    if include_transactions_flag:
         try:
             import pandas as pd  # local import to avoid test/env issues if pandas optional
 
-            rows = (
-                db.query(
-                    Transaction.date,
-                    Transaction.merchant,
-                    Transaction.description,
-                    Transaction.category,
-                    Transaction.amount,
-                )
-                .filter(
-                    Transaction.user_id == user_id,
-                    Transaction.date >= start_d,
-                    Transaction.date <= end_d,
-                )
-                .order_by(Transaction.date.asc())
-                .all()
+            query = db.query(
+                Transaction.date,
+                Transaction.merchant,
+                Transaction.description,
+                Transaction.category,
+                Transaction.amount,
+            ).filter(
+                Transaction.user_id == user_id,
+                Transaction.date >= start_d,
+                Transaction.date <= end_d,
             )
+
+            # Filter for unknowns mode: only uncategorized transactions
+            if only_unknowns:
+                query = query.filter(
+                    (Transaction.category.is_(None))
+                    | (Transaction.category == "unknown")
+                )
+
+            rows = query.order_by(Transaction.date.asc()).all()
             txns_df = pd.DataFrame(
                 [
                     {
@@ -129,13 +160,29 @@ def report_excel(
 
 @router.get("/report/pdf")
 def report_pdf(
-    user_id: int = Depends(get_current_user_id),
     month: str | None = Query(None, pattern=r"^\d{4}-\d{2}$"),
     start: str | None = Query(None, description="YYYY-MM-DD"),
     end: str | None = Query(None, description="YYYY-MM-DD"),
+    mode: ReportMode = Query(
+        ReportMode.summary,
+        description="Export mode: full or summary (unknowns not supported for PDF)",
+    ),
+    user_id: int = Depends(get_current_user_id),
     db: Session = Depends(get_db),
 ):
-    """Generate a PDF report for a month or custom date range; returns 503 if PDF engine missing."""
+    """Generate a PDF report for a month or custom date range; returns 503 if PDF engine missing.
+
+    mode:
+      - full: detailed summary (currently same as summary for PDF)
+      - summary: summary view only (default)
+      - unknowns: not supported for PDF (returns 400)
+    """
+    # Validate mode for PDF
+    if mode == ReportMode.unknowns:
+        raise HTTPException(
+            status_code=400,
+            detail="PDF export does not support 'unknowns' mode. Use Excel export for unknowns-only reports.",
+        )
     try:
         start_d, end_d = resolve_window(db, user_id, month, start, end)
     except ValueError:
