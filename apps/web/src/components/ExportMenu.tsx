@@ -1,9 +1,16 @@
 import { useState } from "react";
 import { downloadExcelReport, downloadPdfReport, type ExportFilters } from "@/lib/api";
 import { saveAs } from "@/utils/download";
-import { Download, Loader2 } from "lucide-react";
-import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuLabel } from "@/components/ui/dropdown-menu";
+import { ChevronDown, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
@@ -109,34 +116,44 @@ export default function ExportMenu({
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button
-          variant="pill-outline"
+          type="button"
           size="sm"
-          className={cn("inline-flex items-center gap-1", className)}
-          disabled={!canUseAnyExport || !!loadingId}
           data-testid="export-menu-trigger"
+          disabled={!canUseAnyExport || !!loadingId}
+          className={cn(
+            "h-8 rounded-full border-border/60 bg-surface-elevated/70 px-3 text-xs font-medium",
+            "text-muted-foreground shadow-sm hover:bg-surface-elevated/90 hover:text-foreground",
+            "flex items-center gap-1 border",
+            className
+          )}
         >
           {loadingId ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
+            <>
+              <Loader2 className="h-3 w-3 animate-spin opacity-70" aria-hidden="true" />
+              <span>Exporting...</span>
+            </>
           ) : (
-            <Download className="h-4 w-4" />
+            <>
+              <span>Export</span>
+              <ChevronDown className="h-3 w-3 opacity-70" aria-hidden="true" />
+            </>
           )}
-          <span className="hidden sm:inline">Export</span>
         </Button>
       </DropdownMenuTrigger>
+
       <DropdownMenuContent
-        className="w-72"
         align="end"
-        sideOffset={4}
-        data-testid="export-menu"
+        sideOffset={8}
+        className="z-50 w-72 rounded-2xl border border-border/60 bg-popover/95 p-1 shadow-lg backdrop-blur"
       >
-        <DropdownMenuLabel className="text-xs font-medium text-muted-foreground">
+        <DropdownMenuLabel className="px-3 pt-2 pb-1 text-[11px] font-semibold text-muted-foreground">
           Export for {month}
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
+
         {!canUseAnyExport ? (
-          <div className="px-2 py-2 text-xs text-muted-foreground">
-            No data available for {month}. Upload a statement or choose a month
-            with transactions to enable exports.
+          <div className="px-3 py-3 text-[11px] text-muted-foreground">
+            No transactions yet for {month}. Add data to enable exports.
           </div>
         ) : (
           EXPORT_OPTIONS.map((opt) => {
@@ -146,19 +163,12 @@ export default function ExportMenu({
               (isUnknowns && !canUseUnknowns) ||
               !!loadingId;
 
-            const tooltip =
-              !canUseAnyExport
-                ? "No data for this month."
-                : isUnknowns && !hasUnknowns
-                ? "No uncategorized transactions for this month."
-                : undefined;
-
             return (
               <DropdownMenuItem
                 key={opt.id}
                 disabled={disabled}
                 className={cn(
-                  "flex flex-col items-start gap-0.5 py-2 text-xs leading-snug",
+                  "flex flex-col items-start gap-0.5 px-3 py-2 text-xs leading-snug",
                   disabled && "opacity-60"
                 )}
                 onSelect={(e) => {
@@ -169,15 +179,8 @@ export default function ExportMenu({
                 }}
                 data-testid={`export-option-${opt.id}`}
               >
-                <span className="font-medium">
-                  {opt.label}
-                  {tooltip && (
-                    <span className="ml-1 text-[10px] uppercase tracking-wide text-muted-foreground">
-                      ({tooltip})
-                    </span>
-                  )}
-                </span>
-                <span className="text-muted-foreground">
+                <span className="font-medium text-foreground">{opt.label}</span>
+                <span className="text-[11px] text-muted-foreground">
                   {opt.description}
                 </span>
               </DropdownMenuItem>

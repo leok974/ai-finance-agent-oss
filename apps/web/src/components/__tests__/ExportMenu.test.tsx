@@ -42,7 +42,7 @@ describe("ExportMenu", () => {
     );
     await openMenu();
     expect(
-      screen.getByText(/no data available for 2025-11/i)
+      screen.getByText(/no transactions yet for 2025-11/i)
     ).toBeInTheDocument();
   });
 
