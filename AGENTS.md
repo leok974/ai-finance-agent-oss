@@ -103,6 +103,35 @@ See: `agents/security-agent.md`
 
 ---
 
+## Key Features & Endpoints
+
+### Manual Categorization with Undo
+
+**Backend Endpoints:**
+- `POST /transactions/{txn_id}/categorize/manual` — Manually categorize a transaction with scope options
+  - Scopes: `just_this`, `same_merchant`, `same_description`
+  - Returns `ManualCategorizeResponse` with `affected` array (transaction snapshots for undo)
+- `POST /transactions/categorize/manual/undo` — Safely revert a bulk categorization
+  - Accepts `affected` array from previous categorize response
+  - Safety rule: only reverts transactions that still have the bulk-applied category
+  - User-isolated: only touches the current user's transactions
+
+**Frontend Surfaces:**
+- **ExplainSignalDrawer** (`apps/web/src/components/ExplainSignalDrawer.tsx`)
+  - Manual categorization form for unknown transactions
+  - Saves last change to localStorage (`lm:lastManualCategorize`)
+- **ManualCategorizeSettingsDrawer** (`apps/web/src/components/ManualCategorizeSettingsDrawer.tsx`)
+  - Accessed via Settings → "Manual categorization"
+  - Shows last bulk change with affected transaction list
+  - "Undo this change" button for safe revert
+  - Clears localStorage after successful undo
+
+**Safety Pattern:**
+Undo only reverts rows where `current_category == new_category_slug` from the bulk operation.
+If a user has manually recategorized a transaction since the bulk change, it won't be touched.
+
+---
+
 ## Canonical commands
 
 These are the **baseline commands** agents should use unless the repo docs specify a better variant.

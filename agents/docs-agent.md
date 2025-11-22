@@ -29,6 +29,43 @@ You can **read** code and tests to understand behavior, and you can **write** or
 
 ---
 
+## Key Features to Document
+
+### Manual Categorization with Undo
+
+This feature allows users to manually categorize transactions with optional bulk scope and undo capability:
+
+**Backend Endpoints:**
+- `POST /transactions/{txn_id}/categorize/manual`
+  - Manually categorize a transaction with scope options: `just_this`, `same_merchant`, `same_description`
+  - Returns `ManualCategorizeResponse` with `affected` array containing transaction snapshots
+- `POST /transactions/categorize/manual/undo`
+  - Safely reverts a bulk categorization operation
+  - Accepts `affected` array from the previous categorize response
+  - Safety rule: only reverts transactions that still have the bulk-applied category (unchanged since operation)
+  - User-isolated: only touches current user's transactions
+
+**Frontend Surfaces:**
+- **ExplainSignalDrawer** (`apps/web/src/components/ExplainSignalDrawer.tsx`)
+  - Manual categorization form for unknown transactions
+  - Saves last change to localStorage key `lm:lastManualCategorize`
+- **ManualCategorizeSettingsDrawer** (`apps/web/src/components/ManualCategorizeSettingsDrawer.tsx`)
+  - Accessed via Settings → "Manual categorization"
+  - Displays last bulk change with affected transaction list
+  - "Undo this change" button for safe revert
+  - Clears localStorage after successful undo
+
+**Implementation Files:**
+- Backend: `apps/backend/app/routers/transactions.py`
+- Frontend API: `apps/web/src/lib/http.ts`
+- Frontend UI: `apps/web/src/components/ExplainSignalDrawer.tsx`, `ManualCategorizeSettingsDrawer.tsx`, `SettingsDrawer.tsx`
+- Tests: `apps/backend/app/tests/test_manual_categorize_undo.py`, `apps/web/src/lib/__tests__/http-undo.test.ts`
+
+**Safety Pattern:**
+The undo operation only reverts transactions where `current_category == new_category_slug` from the bulk operation. If a user manually recategorized a transaction after the bulk change, it won't be touched by undo.
+
+---
+
 ## Commands you can run
 
 Docs work is mostly editing, but you may run:
