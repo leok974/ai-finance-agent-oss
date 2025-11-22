@@ -13,8 +13,9 @@ import { getSuggestionConfidencePercent } from '../lib/suggestions';
 import { emitToastSuccess, emitToastError } from '@/lib/toast-helpers'
 import { t } from '@/lib/i18n'
 import { manualCategorizeTransaction, type ManualCategorizeScope } from '@/lib/http'
-import { CATEGORY_OPTIONS } from '@/lib/categories'
+import { CATEGORY_OPTIONS, CATEGORY_DEFS } from '@/lib/categories'
 import { Button } from '@/components/ui/button'
+import type { UnknownTxn } from '@/hooks/useUnknowns'
 
 function GroundedBadge() {
   return (
@@ -68,13 +69,14 @@ function formatSuggestionReason(reasons?: string[]): string {
   return "Suggested as a possible fit. Treat this as a hint, not a final answer.";
 }
 
-export default function ExplainSignalDrawer({ txnId, open, onOpenChange, txn, suggestions, onRefresh }: {
+export default function ExplainSignalDrawer({ txnId, open, onOpenChange, txn, suggestions, onRefresh, unknowns }: {
   txnId: number | null
   open: boolean
   onOpenChange: (v: boolean) => void
   txn?: any
   suggestions?: SuggestionItem[]
   onRefresh?: () => void
+  unknowns?: UnknownTxn[]
 }) {
   const portalReady = useSafePortalReady();
   const [loading, setLoading] = React.useState(false)
@@ -88,6 +90,31 @@ export default function ExplainSignalDrawer({ txnId, open, onOpenChange, txn, su
   const [categorySlug, setCategorySlug] = React.useState<string | undefined>()
   const [scope, setScope] = React.useState<ManualCategorizeScope>('same_merchant')
   const [saving, setSaving] = React.useState(false)
+
+  // Compute how many unknowns would be affected by current scope
+  const affectedCount = React.useMemo(() => {
+    if (!txn || !unknowns || scope === 'just_this') return 0;
+
+    const merchant = (txn as any).merchant_canonical || txn.merchant;
+    const description = txn.description?.toLowerCase().trim();
+
+    return unknowns.filter((u: UnknownTxn) => {
+      if (u.id === txn.id) return false; // Exclude current txn
+      if (u.category !== 'unknown') return false; // Only unknowns
+
+      if (scope === 'same_merchant') {
+        const uMerchant = (u as any).merchant_canonical || u.merchant;
+        return uMerchant && merchant && uMerchant === merchant;
+      }
+
+      if (scope === 'same_description' && description) {
+        const uDesc = u.description?.toLowerCase().trim();
+        return uDesc && uDesc.includes(description);
+      }
+
+      return false;
+    }).length;
+  }, [txn, unknowns, scope]);
 
   React.useEffect(() => {
     if (!open || !txnId) return
@@ -353,32 +380,51 @@ export default function ExplainSignalDrawer({ txnId, open, onOpenChange, txn, su
                 </div>
               </div>
 
-              <div className="flex justify-end gap-2 pt-1">
-                <Button
-                  size="sm"
-                  variant="default"
-                  disabled={!categorySlug || saving}
-                  onClick={async () => {
-                    if (!categorySlug || !txnId) return;
-                    setSaving(true);
-                    try {
-                      const res = await manualCategorizeTransaction(txnId, { categorySlug, scope });
-                      emitToastSuccess(
-                        res.similar_updated > 0
-                          ? `Categorized 1 transaction (+${res.similar_updated} similar).`
-                          : 'Categorized this transaction.'
-                      );
-                      onRefresh?.(); // Trigger parent to refetch
-                      onOpenChange(false); // Close drawer
-                    } catch (err: any) {
-                      emitToastError(err?.message ?? 'Categorization failed. Please try again.');
-                    } finally {
-                      setSaving(false);
-                    }
-                  }}
-                >
-                  {saving ? 'Saving…' : 'Apply'}
-                </Button>
+              <div className="space-y-3">
+                <div className="flex justify-end gap-2">
+                  <Button
+                    size="sm"
+                    variant="default"
+                    disabled={!categorySlug || saving}
+                    onClick={async () => {
+                      if (!categorySlug || !txnId) return;
+                      setSaving(true);
+                      try {
+                        const res = await manualCategorizeTransaction(txnId, { categorySlug, scope });
+                        const categoryLabel = CATEGORY_DEFS[categorySlug]?.label || categorySlug;
+
+                        emitToastSuccess(
+                          res.similar_updated > 0
+                            ? `Categorized 1 transaction (+${res.similar_updated} similar) as ${categoryLabel}.`
+                            : `Categorized 1 transaction as ${categoryLabel}.`
+                        );
+                        onRefresh?.(); // Trigger parent to refetch
+                        onOpenChange(false); // Close drawer
+                      } catch (err: any) {
+                        emitToastError(err?.message ?? 'Categorization failed. Please try again.');
+                      } finally {
+                        setSaving(false);
+                      }
+                    }}
+                  >
+                    {saving ? 'Saving…' : 'Apply'}
+                  </Button>
+                </div>
+
+                {/* Scope summary */}
+                <p className="text-xs text-muted-foreground text-right">
+                  {scope === 'just_this' && 'Will update 1 transaction'}
+                  {scope === 'same_merchant' && (
+                    affectedCount > 0
+                      ? `Will update 1 transaction (+${affectedCount} unknowns from this merchant)`
+                      : 'Will update 1 transaction (+ all unknowns from this merchant)'
+                  )}
+                  {scope === 'same_description' && (
+                    affectedCount > 0
+                      ? `Will update 1 transaction (+${affectedCount} unknowns with similar description)`
+                      : 'Will update 1 transaction (+ all unknowns with similar description)'
+                  )}
+                </p>
               </div>
             </div>
           )}

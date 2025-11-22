@@ -62,3 +62,20 @@ def test_manual_categorize_accepts_valid_scopes(client):
             401,
             404,
         ), f"Unexpected status for scope '{scope}': {response.status_code}"
+
+
+# Note: The following tests verify critical business logic but require database fixtures.
+# They are documented here as test cases to implement when full integration test
+# infrastructure is available:
+#
+# test_manual_categorize_respects_user_isolation:
+#   - SAME_MERCHANT should not update transactions from different users
+#   - Create txn for user A and user B with same merchant
+#   - Categorize user A's txn with same_merchant scope
+#   - Verify only user A's transaction is updated
+#
+# test_manual_categorize_ignores_already_categorized:
+#   - SAME_MERCHANT should ignore transactions with category != 'unknown'
+#   - Create unknown txn and already-categorized txn with same merchant
+#   - Categorize unknown txn with same_merchant scope
+#   - Verify already-categorized txn remains unchanged

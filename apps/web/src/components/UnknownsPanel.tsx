@@ -187,7 +187,10 @@ export default function UnknownsPanel({ month, onSeedRule: _onSeedRule, onChange
           </Tooltip>
           <SuggestionsInfoModal source="unknowns" />
         </div>
-  <div className="text-xs opacity-70">{t('ui.unknowns.workflow_hint')}</div>
+  <div className="text-xs opacity-70">
+    {t('ui.unknowns.workflow_hint')}
+    {visibleUnknowns.length > 0 && <> • Tip: Use Categorize to bulk-tag unknowns from the same merchant.</>}
+  </div>
       </div>
   <ul className="space-y-2">
         {visibleUnknowns.map(tx => (
@@ -272,6 +275,7 @@ export default function UnknownsPanel({ month, onSeedRule: _onSeedRule, onChange
       refresh(); // Re-fetch unknowns after manual categorization
       onChanged?.(); // Notify parent
     }}
+    unknowns={visibleUnknowns}
   />
       </Card>
     </section>
