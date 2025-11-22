@@ -767,11 +767,26 @@ def agent_chat(
         is_dev = os.getenv("ENV", "dev") != "prod"
 
         if x_test_mode in ("echo", "stub") and (is_dev or allow_test_stubs):
+            # Enrich context for test modes to match normal flow
+            ctx = _enrich_context(db, req.context, req.txn_id)
+
             if x_test_mode == "echo":
                 text = req.messages[-1].content if req.messages else "ok"
-                return {"reply": f"[echo] {text}"}
+                return {
+                    "reply": f"[echo] {text}",
+                    "citations": [],
+                    "used_context": {"month": ctx.get("month")},
+                    "tool_trace": [{"tool": "test_echo", "status": "ok"}],
+                    "model": "test-echo",
+                }
             if x_test_mode == "stub":
-                return {"reply": "This is a deterministic test reply."}
+                return {
+                    "reply": "This is a deterministic test reply.",
+                    "citations": [],
+                    "used_context": {"month": ctx.get("month")},
+                    "tool_trace": [{"tool": "test_stub", "status": "ok"}],
+                    "model": "test-stub",
+                }
 
         # NOTE: LLM disable stub now applied only at actual LLM invocation points (bypass path
         # or final fallback) so deterministic analytics/router tooling still executes for tests.
