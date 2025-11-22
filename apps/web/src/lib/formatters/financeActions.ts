@@ -45,18 +45,23 @@ export function formatCategorizeUnknowns(summary: MonthSummary): string {
 export function formatShowSpikes(summary: MonthSummary): string {
   const { spikes, month } = summary;
 
-  if (!spikes || spikes.length === 0) {
-    return `**No unusual spikes detected for ${month}**\n\nSpending patterns look normal across categories and merchants.`;
+  // Filter out invalid/zero spikes
+  const validSpikes = (spikes ?? []).filter(s =>
+    s.amount > 0 && s.merchant !== 'Unknown'
+  );
+
+  if (validSpikes.length === 0) {
+    return `**Spending Spikes — ${month}**\n\nNo notable spikes this month based on your baseline.`;
   }
 
   const lines = [
     `**Spending Spikes — ${month}**`,
     '',
-    `Found **${spikes.length} notable anomal${spikes.length === 1 ? 'y' : 'ies'}:**`,
+    `Found **${validSpikes.length} notable anomal${validSpikes.length === 1 ? 'y' : 'ies'}:**`,
     ''
   ];
 
-  spikes.slice(0, 5).forEach((spike, i) => {
+  validSpikes.slice(0, 5).forEach((spike, i) => {
     const note = spike.note ? ` (${spike.note})` : '';
     lines.push(`${i + 1}. **${spike.merchant}** — ${fmt(spike.amount)}${note}`);
   });
@@ -68,12 +73,12 @@ export function formatShowSpikes(summary: MonthSummary): string {
  * Generate a reply for top_merchants action
  */
 export function formatTopMerchantsDetail(summary: MonthSummary): string {
-  const { month } = summary;
+  const { month, merchants } = summary;
 
-  // Use categories as a proxy for merchants if not available separately
-  const merchants = summary.categories || [];
+  // Use merchants array if available, otherwise fall back to categories
+  const items = merchants && merchants.length > 0 ? merchants : (summary.categories || []);
 
-  if (merchants.length === 0) {
+  if (items.length === 0) {
     return `**No merchant data available for ${month}**\n\nTry uploading transaction data for this period.`;
   }
 
@@ -82,10 +87,10 @@ export function formatTopMerchantsDetail(summary: MonthSummary): string {
     '',
   ];
 
-  const topFive = merchants.slice(0, 5);
-  topFive.forEach((merch, i) => {
-    const note = merch.note ? ` — ${merch.note}` : '';
-    lines.push(`${i + 1}. **${merch.name}** — ${fmt(merch.amount)}${note}`);
+  const topFive = items.slice(0, 5);
+  topFive.forEach((item, i) => {
+    const category = 'category' in item && item.category ? ` (${item.category})` : '';
+    lines.push(`${i + 1}. **${item.name}** — ${fmt(item.amount)}${category}`);
   });
 
   const total = topFive.reduce((sum, m) => sum + m.amount, 0);
