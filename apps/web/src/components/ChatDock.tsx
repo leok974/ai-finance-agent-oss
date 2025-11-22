@@ -20,7 +20,8 @@ import { Card, CardHeader, CardTitle, CardContent, CardFooter } from "@/componen
 import { agentTools, agentChat, type AgentChatRequest, type AgentChatResponse, type TxnQueryResult, explainTxnForChat, agentRephrase, analytics, transactionsNl, txnsQueryCsv, txnsQuery, agentStatus, type AgentStatusResponse, searchTransactionsNl, insightsExpanded, budgetSuggest, recurringTool, findSubscriptionsTool } from "../lib/api";
 import { fmtMonthSummary, fmtTopMerchants, fmtCashflow, fmtTrends } from "../lib/formatters";
 import { renderQuick, renderDeep, type MonthSummary as FinanceMonthSummary } from "../lib/formatters/finance";
-import { adaptChartsSummaryToMonthSummary } from "../lib/formatters/financeAdapters";
+import { adaptChartsSummaryToMonthSummary, adaptInsightsExpandedToMonthSummary } from "../lib/formatters/financeAdapters";
+import { formatCategorizeUnknowns, formatShowSpikes, formatTopMerchantsDetail, formatBudgetCheck } from "../lib/formatters/financeActions";
 import { runToolWithRephrase, formatSubscriptionsReply, type AnalyticsSubscriptionsResponse } from "../lib/tools-runner";
 import { MessageRenderer } from "@/features/chat/MessageRenderer";
 import { normalizeAssistantReply } from "@/features/chat/normalizeReply";
@@ -1340,11 +1341,11 @@ export default function ChatDock() {
     try {
       appendUser('Summarize my spending this month');
 
-      // Fetch data without LLM rephrase
-      const data = await agentTools.chartsSummary({ month: month || '', include_daily: false } as any);
+      // Fetch insightsExpanded for richer data (includes unknowns, categories, anomalies)
+      const data = await agentTools.insightsExpanded({ month: month || '', large_limit: 10, status: 'posted' });
 
-      // Transform to MonthSummary format
-      const summary = adaptChartsSummaryToMonthSummary(data, month || '');
+      // Transform to MonthSummary format using the richer adapter
+      const summary = adaptInsightsExpandedToMonthSummary(data, month || '');
       lastMonthSummaryRef.current = summary;
 
       // Render quick recap
@@ -2004,35 +2005,57 @@ export default function ChatDock() {
       return;
     }
     const currentMonth = month;
+    const summary = lastMonthSummaryRef.current;
+
     switch (chip.action) {
       case 'deeper_breakdown':
         // Show deep dive for last month summary
-        if (lastMonthSummaryRef.current) {
+        if (summary) {
           appendUser('Show deeper breakdown');
-          const deepDive = renderDeep(lastMonthSummaryRef.current);
+          const deepDive = renderDeep(summary);
           appendAssistant(deepDive, {
             ctxMonth: currentMonth,
             mode: 'finance_deep_dive',
             showFinanceActions: true,
-            monthSummary: lastMonthSummaryRef.current, // Store for smart export
+            monthSummary: summary, // Store for smart export
           });
         }
         break;
       case 'categorize_unknowns':
         appendUser(`Categorize unknowns for ${currentMonth}`);
-        startAguiRun('overview', `Show me all uncategorized transactions for ${currentMonth} and suggest categories`, currentMonth);
+        if (!startAguiRun('overview', `Show me all uncategorized transactions for ${currentMonth} and suggest categories`, currentMonth)) {
+          if (summary) {
+            const reply = formatCategorizeUnknowns(summary);
+            appendAssistant(reply, { ctxMonth: currentMonth });
+          }
+        }
         break;
       case 'show_spikes':
         appendUser(`Show only spikes for ${currentMonth}`);
-        startAguiRun('anomalies', `Show unusual spending spikes and large transactions for ${currentMonth}`, currentMonth);
+        if (!startAguiRun('anomalies', `Show unusual spending spikes and large transactions for ${currentMonth}`, currentMonth)) {
+          if (summary) {
+            const reply = formatShowSpikes(summary);
+            appendAssistant(reply, { ctxMonth: currentMonth });
+          }
+        }
         break;
       case 'top_merchants':
         appendUser(`Top merchants detail for ${currentMonth}`);
-        startAguiRun('merchants', `Show top merchants for ${currentMonth} with spending breakdown`, currentMonth);
+        if (!startAguiRun('merchants', `Show top merchants for ${currentMonth} with spending breakdown`, currentMonth)) {
+          if (summary) {
+            const reply = formatTopMerchantsDetail(summary);
+            appendAssistant(reply, { ctxMonth: currentMonth });
+          }
+        }
         break;
       case 'budget_check':
         appendUser(`Budget check for ${currentMonth}`);
-        startAguiRun('budget', `Check my budget status for ${currentMonth}`, currentMonth);
+        if (!startAguiRun('budget', `Check my budget status for ${currentMonth}`, currentMonth)) {
+          if (summary) {
+            const reply = formatBudgetCheck(summary);
+            appendAssistant(reply, { ctxMonth: currentMonth });
+          }
+        }
         break;
       case 'budget_from_forecast':
         startAguiRun('budget', 'Suggest a budget using the forecast', currentMonth);
