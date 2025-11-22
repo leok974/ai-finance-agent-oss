@@ -127,10 +127,11 @@ describe('Finance Formatters', () => {
       expect(result).toContain('New laptop');
     });
 
-    it('omits spikes section when not present', () => {
+    it('shows spikes section with fallback message when not present', () => {
       const noSpikes = { ...mockSummary, spikes: undefined };
       const result = renderDeep(noSpikes);
-      expect(result).not.toContain('Spikes & notes');
+      expect(result).toContain('Spikes & notes');
+      expect(result).toContain('No notable spikes');
     });
 
     it('includes follow-up prompt', () => {
