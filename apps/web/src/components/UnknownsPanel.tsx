@@ -234,7 +234,7 @@ export default function UnknownsPanel({ month, onSeedRule: _onSeedRule, onChange
                   setExplainOpen(true);
                 }}
               >
-                {t('ui.unknowns.explain')}
+                Categorize
               </Button>
               {([
                 // Fallback quick picks can remain, but prefer dynamic suggestions below
@@ -268,6 +268,10 @@ export default function UnknownsPanel({ month, onSeedRule: _onSeedRule, onChange
     suggestions={explainSuggestions}
     open={explainOpen}
     onOpenChange={(v)=>{ setExplainOpen(v); if(!v){ setExplainTxnId(null); setExplainTxn(null); setExplainSuggestions([]);} }}
+    onRefresh={() => {
+      refresh(); // Re-fetch unknowns after manual categorization
+      onChanged?.(); // Notify parent
+    }}
   />
       </Card>
     </section>

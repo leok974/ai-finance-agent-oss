@@ -12,6 +12,9 @@ import { useSafePortalReady } from '@/hooks/useSafePortal'
 import { getSuggestionConfidencePercent } from '../lib/suggestions';
 import { emitToastSuccess, emitToastError } from '@/lib/toast-helpers'
 import { t } from '@/lib/i18n'
+import { manualCategorizeTransaction, type ManualCategorizeScope } from '@/lib/http'
+import { CATEGORY_OPTIONS } from '@/lib/categories'
+import { Button } from '@/components/ui/button'
 
 function GroundedBadge() {
   return (
@@ -65,12 +68,13 @@ function formatSuggestionReason(reasons?: string[]): string {
   return "Suggested as a possible fit. Treat this as a hint, not a final answer.";
 }
 
-export default function ExplainSignalDrawer({ txnId, open, onOpenChange, txn, suggestions }: {
+export default function ExplainSignalDrawer({ txnId, open, onOpenChange, txn, suggestions, onRefresh }: {
   txnId: number | null
   open: boolean
   onOpenChange: (v: boolean) => void
   txn?: any
   suggestions?: SuggestionItem[]
+  onRefresh?: () => void
 }) {
   const portalReady = useSafePortalReady();
   const [loading, setLoading] = React.useState(false)
@@ -79,6 +83,11 @@ export default function ExplainSignalDrawer({ txnId, open, onOpenChange, txn, su
   const [data, setData] = React.useState<ExplainResponse | null>(null)
   const [rejectingId, setRejectingId] = React.useState<string | null>(null)
   const [rejectedIds, setRejectedIds] = React.useState<Set<string>>(new Set())
+
+  // Manual categorization state
+  const [categorySlug, setCategorySlug] = React.useState<string | undefined>()
+  const [scope, setScope] = React.useState<ManualCategorizeScope>('same_merchant')
+  const [saving, setSaving] = React.useState(false)
 
   React.useEffect(() => {
     if (!open || !txnId) return
@@ -276,6 +285,100 @@ export default function ExplainSignalDrawer({ txnId, open, onOpenChange, txn, su
                 {data.evidence?.merchant_norm && (
                   <Chip tone="muted" title="Canonical merchant">Merchant • {data.evidence.merchant_norm}</Chip>
                 )}
+              </div>
+            </div>
+          )}
+
+          {/* Manual Categorization Section (for unknown transactions) */}
+          {txn && txn.category === 'unknown' && (
+            <div className="mt-6 rounded-2xl border border-border/40 bg-muted/40 p-4 space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-medium">Categorize this transaction</h3>
+                <span className="text-xs text-muted-foreground">Manual override</span>
+              </div>
+
+              <div className="space-y-2">
+                <label htmlFor="category-select" className="text-xs font-medium">Category</label>
+                <select
+                  id="category-select"
+                  className="w-full h-9 rounded-md border border-border bg-background px-3 text-sm"
+                  value={categorySlug || ''}
+                  onChange={(e) => setCategorySlug(e.target.value || undefined)}
+                >
+                  <option value="">Choose a category</option>
+                  {CATEGORY_OPTIONS.map((cat) => (
+                    <option key={cat.slug} value={cat.slug}>
+                      {cat.parent ? `  ${cat.label}` : cat.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs font-medium">Apply to</label>
+                <div className="grid gap-2 text-xs">
+                  <label className="flex items-center space-x-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="scope"
+                      value="just_this"
+                      checked={scope === 'just_this'}
+                      onChange={(e) => setScope(e.target.value as ManualCategorizeScope)}
+                      className="w-4 h-4"
+                    />
+                    <span>Just this transaction</span>
+                  </label>
+                  <label className="flex items-center space-x-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="scope"
+                      value="same_merchant"
+                      checked={scope === 'same_merchant'}
+                      onChange={(e) => setScope(e.target.value as ManualCategorizeScope)}
+                      className="w-4 h-4"
+                    />
+                    <span>All unknowns from this merchant</span>
+                  </label>
+                  <label className="flex items-center space-x-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="scope"
+                      value="same_description"
+                      checked={scope === 'same_description'}
+                      onChange={(e) => setScope(e.target.value as ManualCategorizeScope)}
+                      className="w-4 h-4"
+                    />
+                    <span>All unknowns with similar description</span>
+                  </label>
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-1">
+                <Button
+                  size="sm"
+                  variant="default"
+                  disabled={!categorySlug || saving}
+                  onClick={async () => {
+                    if (!categorySlug || !txnId) return;
+                    setSaving(true);
+                    try {
+                      const res = await manualCategorizeTransaction(txnId, { categorySlug, scope });
+                      emitToastSuccess(
+                        res.similar_updated > 0
+                          ? `Categorized 1 transaction (+${res.similar_updated} similar).`
+                          : 'Categorized this transaction.'
+                      );
+                      onRefresh?.(); // Trigger parent to refetch
+                      onOpenChange(false); // Close drawer
+                    } catch (err: any) {
+                      emitToastError(err?.message ?? 'Categorization failed. Please try again.');
+                    } finally {
+                      setSaving(false);
+                    }
+                  }}
+                >
+                  {saving ? 'Saving…' : 'Apply'}
+                </Button>
               </div>
             </div>
           )}

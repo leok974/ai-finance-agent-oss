@@ -120,3 +120,36 @@ export async function http(path: string, opts: FetchOpts = {}): Promise<Response
   if (!r.ok) throw new Error(`HTTP ${r.status} ${r.statusText} ${url}`);
   return r;
 }
+
+// ============================================================
+// Manual Categorization API
+// ============================================================
+
+export type ManualCategorizeScope = 'just_this' | 'same_merchant' | 'same_description';
+
+export interface ManualCategorizeRequest {
+  categorySlug: string;
+  scope: ManualCategorizeScope;
+}
+
+export interface ManualCategorizeResponse {
+  txn_id: number;
+  category_slug: string;
+  scope: ManualCategorizeScope;
+  updated_count: number;
+  similar_updated: number;
+  hint_applied: boolean;
+}
+
+export async function manualCategorizeTransaction(
+  txnId: number,
+  { categorySlug, scope }: ManualCategorizeRequest
+): Promise<ManualCategorizeResponse> {
+  return fetchJSON<ManualCategorizeResponse>(
+    `transactions/${txnId}/categorize/manual`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ category_slug: categorySlug, scope }),
+    }
+  );
+}
