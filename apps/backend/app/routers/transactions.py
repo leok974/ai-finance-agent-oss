@@ -138,6 +138,67 @@ class ManualCategorizeResponse(BaseModel):
     affected: list[ManualCategorizeAffectedTxn] = Field(default_factory=list)
 
 
+class ManualCategorizeUndoRequest(BaseModel):
+    """Request to undo a manual categorization operation."""
+
+    affected: list[ManualCategorizeAffectedTxn]
+
+
+class ManualCategorizeUndoResponse(BaseModel):
+    """Response from undo operation."""
+
+    reverted_count: int
+
+
+@router.post("/categorize/manual/undo", response_model=ManualCategorizeUndoResponse)
+def manual_categorize_undo(
+    payload: ManualCategorizeUndoRequest,
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id),
+):
+    """
+    Undo a previous manual categorization by reverting affected transactions
+    back to their previous categories.
+
+    Only reverts transactions that:
+    - Belong to the current user
+    - Still have the new_category_slug (haven't been changed again)
+    """
+    if not payload.affected:
+        return ManualCategorizeUndoResponse(reverted_count=0)
+
+    ids = [a.id for a in payload.affected]
+
+    # Load transactions that belong to this user
+    txns = (
+        db.query(Transaction)
+        .filter(
+            Transaction.user_id == user_id,
+            Transaction.id.in_(ids),
+        )
+        .all()
+    )
+
+    # Index by id for quick lookup of the "before" snapshot
+    before_by_id = {a.id: a for a in payload.affected}
+
+    reverted = 0
+    for t in txns:
+        before = before_by_id.get(t.id)
+        if not before:
+            continue
+        # Only revert if category hasn't changed since the bulk operation
+        if t.category != before.new_category_slug:
+            continue
+        t.category = before.previous_category_slug
+        reverted += 1
+
+    if reverted:
+        db.commit()
+
+    return ManualCategorizeUndoResponse(reverted_count=reverted)
+
+
 @router.post("/{txn_id}/categorize/manual", response_model=ManualCategorizeResponse)
 def manual_categorize_transaction(
     txn_id: int,
@@ -281,64 +342,3 @@ def manual_categorize_transaction(
         hint_applied=hint_applied,
         affected=affected,
     )
-
-
-class ManualCategorizeUndoRequest(BaseModel):
-    """Request to undo a manual categorization operation."""
-
-    affected: list[ManualCategorizeAffectedTxn]
-
-
-class ManualCategorizeUndoResponse(BaseModel):
-    """Response from undo operation."""
-
-    reverted_count: int
-
-
-@router.post("/categorize/manual/undo", response_model=ManualCategorizeUndoResponse)
-def manual_categorize_undo(
-    payload: ManualCategorizeUndoRequest,
-    db: Session = Depends(get_db),
-    user_id: int = Depends(get_current_user_id),
-):
-    """
-    Undo a previous manual categorization by reverting affected transactions
-    back to their previous categories.
-
-    Only reverts transactions that:
-    - Belong to the current user
-    - Still have the new_category_slug (haven't been changed again)
-    """
-    if not payload.affected:
-        return ManualCategorizeUndoResponse(reverted_count=0)
-
-    ids = [a.id for a in payload.affected]
-
-    # Load transactions that belong to this user
-    txns = (
-        db.query(Transaction)
-        .filter(
-            Transaction.user_id == user_id,
-            Transaction.id.in_(ids),
-        )
-        .all()
-    )
-
-    # Index by id for quick lookup of the "before" snapshot
-    before_by_id = {a.id: a for a in payload.affected}
-
-    reverted = 0
-    for t in txns:
-        before = before_by_id.get(t.id)
-        if not before:
-            continue
-        # Only revert if category hasn't changed since the bulk operation
-        if t.category != before.new_category_slug:
-            continue
-        t.category = before.previous_category_slug
-        reverted += 1
-
-    if reverted:
-        db.commit()
-
-    return ManualCategorizeUndoResponse(reverted_count=reverted)
