@@ -49,7 +49,7 @@ export default function PlannerApplyPanel() {
 
   const download = useCallback(async (m?: string) => {
     try {
-      const { blob, filename } = await downloadReportExcel(m, true);
+      const { blob, filename } = await downloadReportExcel(m, 'full');
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url; a.download = filename; a.click();
@@ -105,7 +105,7 @@ async function handleApplyLocal(args: {
   if (reportUrl) {
     window.location.href = reportUrl;
   } else if (month) {
-    await downloadReportExcel(month, true, { splitAlpha: true });
+    await downloadReportExcel(month, 'full');
   } else {
     console.warn("[PlannerApplyPanel] export_report requested but no month resolved and no report_url from backend.");
   }

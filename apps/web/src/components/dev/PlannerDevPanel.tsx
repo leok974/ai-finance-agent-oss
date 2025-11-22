@@ -169,7 +169,7 @@ async function handleApply(args: {
       window.location.href = reportUrl;
     } else if (month) {
       // client-side fallback
-      await downloadReportExcel(month, true, { splitAlpha: true });
+      await downloadReportExcel(month, 'full');
     } else {
       // Explicit breadcrumb to help debug empty-month states
       console.warn(
