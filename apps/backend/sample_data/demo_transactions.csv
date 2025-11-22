@@ -1,117 +1,173 @@
 date,merchant,description,amount,category
-2025-06-01,Whole Foods Market,Grocery shopping,-127.45,Groceries
-2025-06-01,Shell Gas Station,Fuel,-52.30,Transportation
-2025-06-02,Starbucks,Coffee,-5.75,Eating Out
-2025-06-03,Netflix,Monthly subscription,-15.99,Subscriptions
-2025-06-03,Amazon Prime,Monthly subscription,-14.99,Subscriptions
-2025-06-05,Rent Payment,June rent,-2100.00,Housing
-2025-06-07,Target,Household supplies,-89.23,Shopping
-2025-06-08,Local Diner,Lunch,-18.50,Eating Out
-2025-06-10,Spotify,Monthly subscription,-9.99,Subscriptions
-2025-06-12,Whole Foods Market,Weekly groceries,-143.67,Groceries
-2025-06-14,MoviePlex,Movie tickets,-32.00,Entertainment
-2025-06-15,AT&T Wireless,Phone bill,-85.00,Utilities
-2025-06-16,Chipotle,Dinner,-23.40,Eating Out
-2025-06-18,Shell Gas Station,Fuel,-48.90,Transportation
-2025-06-19,Amazon,Books and supplies,-67.89,Shopping
-2025-06-20,Whole Foods Market,Weekly groceries,-134.22,Groceries
-2025-06-22,Joe's Pizza,Takeout,-28.75,Eating Out
-2025-06-24,REI,Hiking gear,-215.50,Shopping
-2025-06-25,Electric Company,Electric bill,-125.40,Utilities
-2025-06-26,Starbucks,Coffee,-6.25,Eating Out
-2025-06-28,Trader Joe's,Groceries,-98.45,Groceries
-2025-06-30,Uber,Ride to airport,-45.20,Transportation
-2025-07-01,Delta Airlines,Flight to NYC,-425.00,Travel
-2025-07-01,Hotel Reservation,3 nights Manhattan,-687.50,Travel
-2025-07-03,Broadway Show,Theater tickets,-180.00,Entertainment
-2025-07-04,Restaurant NYC,Dinner,-95.30,Eating Out
-2025-07-05,Rent Payment,July rent,-2100.00,Housing
-2025-07-06,Whole Foods Market,Grocery shopping,-156.78,Groceries
-2025-07-08,Shell Gas Station,Fuel,-54.10,Transportation
-2025-07-10,Netflix,Monthly subscription,-15.99,Subscriptions
-2025-07-10,Spotify,Monthly subscription,-9.99,Subscriptions
-2025-07-12,Target,Summer clothes,-178.90,Shopping
-2025-07-14,Starbucks,Coffee,-5.50,Eating Out
-2025-07-15,AT&T Wireless,Phone bill,-85.00,Utilities
-2025-07-16,Whole Foods Market,Weekly groceries,-142.35,Groceries
-2025-07-18,Sushi Restaurant,Dinner,-72.40,Eating Out
-2025-07-20,Amazon,Office supplies,-43.25,Shopping
-2025-07-22,MoviePlex,Movie night,-28.00,Entertainment
-2025-07-24,Shell Gas Station,Fuel,-51.20,Transportation
-2025-07-25,Electric Company,Electric bill,-138.75,Utilities
-2025-07-26,Whole Foods Market,Weekly groceries,-129.60,Groceries
-2025-07-28,Chipotle,Lunch,-19.85,Eating Out
-2025-07-30,Gym Membership,Monthly dues,-65.00,Health & Fitness
-2025-08-01,Amazon Prime,Monthly subscription,-14.99,Subscriptions
-2025-08-03,Whole Foods Market,Grocery shopping,-148.90,Groceries
-2025-08-05,Rent Payment,August rent,-2100.00,Housing
-2025-08-07,Shell Gas Station,Fuel,-49.80,Transportation
-2025-08-09,Starbucks,Coffee,-6.00,Eating Out
-2025-08-10,Netflix,Monthly subscription,-15.99,Subscriptions
-2025-08-10,Spotify,Monthly subscription,-9.99,Subscriptions
-2025-08-12,Dentist,Dental checkup,-175.00,Healthcare
-2025-08-14,Whole Foods Market,Weekly groceries,-136.45,Groceries
-2025-08-15,AT&T Wireless,Phone bill,-85.00,Utilities
-2025-08-16,Thai Restaurant,Dinner,-54.30,Eating Out
-2025-08-18,Target,Bathroom supplies,-67.88,Shopping
-2025-08-20,Shell Gas Station,Fuel,-52.75,Transportation
-2025-08-22,Concert Tickets,Live music,-125.00,Entertainment
-2025-08-24,Whole Foods Market,Weekly groceries,-144.20,Groceries
-2025-08-25,Electric Company,Electric bill,-142.30,Utilities
-2025-08-26,Italian Bistro,Date night,-98.60,Eating Out
-2025-08-28,Amazon,Kitchen gadgets,-85.40,Shopping
-2025-08-30,Gym Membership,Monthly dues,-65.00,Health & Fitness
-2025-09-01,Whole Foods Market,Grocery shopping,-152.35,Groceries
-2025-09-03,Coffee Shop,Coffee and pastry,-12.50,Eating Out
-2025-09-05,Rent Payment,September rent,-2100.00,Housing
-2025-09-07,Shell Gas Station,Fuel,-53.40,Transportation
-2025-09-09,Adobe Creative,Monthly subscription,-54.99,Subscriptions
-2025-09-10,Netflix,Monthly subscription,-15.99,Subscriptions
-2025-09-10,Spotify,Monthly subscription,-9.99,Subscriptions
-2025-09-12,Whole Foods Market,Weekly groceries,-139.70,Groceries
-2025-09-14,Pharmacy,Prescription refill,-35.00,Healthcare
-2025-09-15,AT&T Wireless,Phone bill,-85.00,Utilities
-2025-09-16,Mexican Restaurant,Dinner,-62.40,Eating Out
-2025-09-18,Target,Fall decorations,-92.15,Shopping
-2025-09-20,Shell Gas Station,Fuel,-48.65,Transportation
-2025-09-22,Whole Foods Market,Weekly groceries,-147.85,Groceries
-2025-09-24,Movie Theater,Movie tickets,-26.00,Entertainment
-2025-09-25,Electric Company,Electric bill,-118.90,Utilities
-2025-09-26,Starbucks,Coffee,-5.75,Eating Out
-2025-09-28,Amazon,New headphones,-89.99,Shopping
-2025-09-30,Gym Membership,Monthly dues,-65.00,Health & Fitness
-2025-10-01,Whole Foods Market,Grocery shopping,-158.45,Groceries
-2025-10-03,Shell Gas Station,Fuel,-51.20,Transportation
-2025-10-05,Rent Payment,October rent,-2100.00,Housing
-2025-10-07,Costco,Bulk shopping,-245.80,Groceries
-2025-10-09,Starbucks,Coffee,-6.25,Eating Out
-2025-10-10,Netflix,Monthly subscription,-15.99,Subscriptions
-2025-10-10,Spotify,Monthly subscription,-9.99,Subscriptions
-2025-10-10,Adobe Creative,Monthly subscription,-54.99,Subscriptions
-2025-10-12,Mechanic,Car maintenance,-325.00,Transportation
-2025-10-14,Whole Foods Market,Weekly groceries,-141.60,Groceries
-2025-10-15,AT&T Wireless,Phone bill,-85.00,Utilities
-2025-10-16,Steakhouse,Business dinner,-156.75,Eating Out
-2025-10-18,Best Buy,New monitor,-379.99,Shopping
-2025-10-20,Shell Gas Station,Fuel,-49.30,Transportation
-2025-10-22,Whole Foods Market,Weekly groceries,-133.90,Groceries
-2025-10-24,Concert Hall,Symphony tickets,-95.00,Entertainment
-2025-10-25,Electric Company,Electric bill,-132.45,Utilities
-2025-10-26,Chipotle,Lunch,-21.30,Eating Out
-2025-10-28,Amazon,Halloween decorations,-54.25,Shopping
-2025-10-30,Gym Membership,Monthly dues,-65.00,Health & Fitness
-2025-10-31,Party City,Halloween party supplies,-78.40,Shopping
-2025-11-01,Whole Foods Market,Grocery shopping,-162.70,Groceries
-2025-11-03,Shell Gas Station,Fuel,-52.80,Transportation
-2025-11-05,Rent Payment,November rent,-2100.00,Housing
-2025-11-07,Target,Winter clothes,-198.50,Shopping
-2025-11-09,Starbucks,Coffee,-5.90,Eating Out
-2025-11-10,Netflix,Monthly subscription,-15.99,Subscriptions
-2025-11-10,Spotify,Monthly subscription,-9.99,Subscriptions
-2025-11-10,Adobe Creative,Monthly subscription,-54.99,Subscriptions
-2025-11-12,Whole Foods Market,Weekly groceries,-145.35,Groceries
-2025-11-14,Dentist,Teeth cleaning,-85.00,Healthcare
-2025-11-15,AT&T Wireless,Phone bill,-85.00,Utilities
-2025-11-16,Sushi Place,Dinner,-68.90,Eating Out
-2025-11-18,Shell Gas Station,Fuel,-50.45,Transportation
-2025-11-20,Whole Foods Market,Weekly groceries,-151.20,Groceries
+2025-06-01,ACME PAYROLL,PAYROLL DEP,1850.00,income.salary
+2025-06-05,SUNRISE APARTMENTS,RENT JUNE 2025,-1200.00,housing.rent
+2025-06-07,DOMINION ENERGY,ELECTRIC BILL,-142.35,utilities
+2025-06-08,HARRIS TEETER,GROCERY SHOPPING,-87.42,groceries
+2025-06-10,CHIPOTLE,LUNCH,-12.45,restaurants
+2025-06-12,SHELL,GAS PURCHASE,-45.20,transportation.fuel
+2025-06-13,NETFLIX.COM,MONTHLY SUBSCRIPTION,-15.99,subscriptions.software
+2025-06-14,SPOTIFY,MONTHLY SUBSCRIPTION,-10.99,subscriptions.software
+2025-06-15,ACME PAYROLL,PAYROLL DEP,1850.00,income.salary
+2025-06-15,COMCAST,INTERNET SERVICE,-79.99,utilities
+2025-06-16,UBER,RIDE TO AIRPORT,-28.50,transportation.rideshare
+2025-06-17,COSTCO WHOLESALE,BULK SHOPPING,-156.78,groceries
+2025-06-18,STARBUCKS,COFFEE,-5.75,restaurants
+2025-06-19,ATM WITHDRAWAL #4521,CASH WITHDRAWAL,-80.00,
+2025-06-20,VENMO PAYMENT @SARAH,DINNER SPLIT,,
+2025-06-21,ADOBE CREATIVE CLOUD,MONTHLY SUBSCRIPTION,-54.99,subscriptions.software
+2025-06-22,CVS/PHARMACY #02006,PHARMACY & GROCERIES,-43.22,groceries
+2025-06-23,EXXONMOBIL,GAS PURCHASE,-48.90,transportation.fuel
+2025-06-24,AMAZON MKTPLACE,HOUSEHOLD ITEMS,-67.89,shopping.misc
+2025-06-25,LYFT,RIDE HOME,-18.30,transportation.rideshare
+2025-06-26,UBER EATS,DINNER DELIVERY,-35.40,restaurants
+2025-06-27,ZELLE TO JOHN SMITH,PAYMENT,,
+2025-06-28,TARGET,SHOPPING,-92.15,shopping.misc
+2025-06-29,WATER BILL CITY OF RICHMOND,WATER & SEWER,-34.50,utilities
+2025-06-30,LOCAL PIZZA,TAKEOUT,-28.75,restaurants
+2025-06-30,CAPCUT SINGAPORE,MONTHLY SUBSCRIPTION,-9.99,subscriptions.software
+2025-07-01,ACME PAYROLL,PAYROLL DEP,1850.00,income.salary
+2025-07-03,CASH APP*PAYMENT,TRANSFER,,
+2025-07-05,SUNRISE APARTMENTS,RENT JULY 2025,-1200.00,housing.rent
+2025-07-07,DOMINION ENERGY,ELECTRIC BILL,-158.40,utilities
+2025-07-08,HARRIS TEETER,GROCERY SHOPPING,-94.33,groceries
+2025-07-09,CHIPOTLE,LUNCH,-13.20,restaurants
+2025-07-10,SHELL,GAS PURCHASE,-52.30,transportation.fuel
+2025-07-11,ATM WITHDRAWAL #4598,CASH WITHDRAWAL,-100.00,
+2025-07-13,NETFLIX.COM,MONTHLY SUBSCRIPTION,-15.99,subscriptions.software
+2025-07-14,SPOTIFY,MONTHLY SUBSCRIPTION,-10.99,subscriptions.software
+2025-07-15,ACME PAYROLL,PAYROLL DEP,1850.00,income.salary
+2025-07-15,COMCAST,INTERNET SERVICE,-79.99,utilities
+2025-07-16,UBER,DOWNTOWN RIDE,-22.40,transportation.rideshare
+2025-07-17,COSTCO WHOLESALE,BULK SHOPPING,-168.90,groceries
+2025-07-18,STARBUCKS,COFFEE & PASTRY,-8.50,restaurants
+2025-07-19,VENMO PAYMENT @MIKE,CONCERT TICKETS,,
+2025-07-20,BEST BUY,NEW LAPTOP,-899.99,shopping.misc
+2025-07-21,ADOBE CREATIVE CLOUD,MONTHLY SUBSCRIPTION,-54.99,subscriptions.software
+2025-07-22,CVS/PHARMACY #02006,GROCERIES,-38.77,groceries
+2025-07-23,EXXONMOBIL,GAS PURCHASE,-46.15,transportation.fuel
+2025-07-24,AMAZON MKTPLACE,OFFICE SUPPLIES,-43.25,shopping.misc
+2025-07-25,LYFT,AIRPORT RIDE,-35.60,transportation.rideshare
+2025-07-26,UBER EATS,LUNCH DELIVERY,-28.90,restaurants
+2025-07-27,HARRIS TEETER,WEEKLY GROCERIES,-71.45,groceries
+2025-07-28,TARGET,SUMMER CLOTHES,-118.50,shopping.misc
+2025-07-29,WATER BILL CITY OF RICHMOND,WATER & SEWER,-36.20,utilities
+2025-07-30,LOCAL PIZZA,DINNER,-32.40,restaurants
+2025-07-30,CAPCUT SINGAPORE,MONTHLY SUBSCRIPTION,-9.99,subscriptions.software
+2025-07-31,ZELLE TRANSFER,PAYMENT TO LANDLORD,,
+2025-08-01,ACME PAYROLL,PAYROLL DEP,1850.00,income.salary
+2025-08-02,PLAYSTATION,GAME PURCHASE,,
+2025-08-05,SUNRISE APARTMENTS,RENT AUGUST 2025,-1200.00,housing.rent
+2025-08-07,DOMINION ENERGY,ELECTRIC BILL,-165.80,utilities
+2025-08-08,HARRIS TEETER,GROCERY SHOPPING,-102.56,groceries
+2025-08-09,CHIPOTLE,DINNER,-15.75,restaurants
+2025-08-10,SHELL,GAS PURCHASE,-49.70,transportation.fuel
+2025-08-11,ATM WITHDRAWAL #4673,CASH WITHDRAWAL,-60.00,
+2025-08-13,NETFLIX.COM,MONTHLY SUBSCRIPTION,-15.99,subscriptions.software
+2025-08-14,SPOTIFY,MONTHLY SUBSCRIPTION,-10.99,subscriptions.software
+2025-08-15,ACME PAYROLL,PAYROLL DEP,1850.00,income.salary
+2025-08-15,COMCAST,INTERNET SERVICE,-79.99,utilities
+2025-08-16,UBER,EVENING RIDE,-19.80,transportation.rideshare
+2025-08-17,COSTCO WHOLESALE,BULK SHOPPING,-145.22,groceries
+2025-08-18,STARBUCKS,MORNING COFFEE,-6.25,restaurants
+2025-08-19,VENMO PAYMENT @ALEX,BRUNCH SPLIT,,
+2025-08-20,ZELLE TO EMILY JONES,GIFT,,
+2025-08-21,ADOBE CREATIVE CLOUD,MONTHLY SUBSCRIPTION,-54.99,subscriptions.software
+2025-08-22,CVS/PHARMACY #02006,PHARMACY RX,-52.30,groceries
+2025-08-23,EXXONMOBIL,GAS PURCHASE,-51.40,transportation.fuel
+2025-08-24,AMAZON MKTPLACE,KITCHEN ITEMS,-85.67,shopping.misc
+2025-08-25,LYFT,RIDE TO WORK,-16.20,transportation.rideshare
+2025-08-26,UBER EATS,DINNER,-42.15,restaurants
+2025-08-27,HARRIS TEETER,GROCERIES,-88.90,groceries
+2025-08-28,TARGET,HOUSEHOLD GOODS,-76.35,shopping.misc
+2025-08-29,WATER BILL CITY OF RICHMOND,WATER & SEWER,-35.75,utilities
+2025-08-30,LOCAL PIZZA,FRIDAY NIGHT,-29.50,restaurants
+2025-08-30,CAPCUT SINGAPORE,MONTHLY SUBSCRIPTION,-9.99,subscriptions.software
+2025-08-31,CASH APP*TRANSFER,FRIEND REPAY,,
+2025-09-01,ACME PAYROLL,PAYROLL DEP,1850.00,income.salary
+2025-09-03,REFUND - AMAZON,RETURN CREDIT,45.00,income.refund
+2025-09-05,SUNRISE APARTMENTS,RENT SEPTEMBER 2025,-1200.00,housing.rent
+2025-09-07,DOMINION ENERGY,ELECTRIC BILL,-138.25,utilities
+2025-09-08,HARRIS TEETER,GROCERY SHOPPING,-96.44,groceries
+2025-09-09,CHIPOTLE,LUNCH,-14.30,restaurants
+2025-09-10,SHELL,GAS PURCHASE,-47.85,transportation.fuel
+2025-09-11,ATM WITHDRAWAL #4721,CASH WITHDRAWAL,-80.00,
+2025-09-12,DELTA AIR LINES,FLIGHT TO NYC,-450.00,travel
+2025-09-13,NETFLIX.COM,MONTHLY SUBSCRIPTION,-15.99,subscriptions.software
+2025-09-13,MARRIOTT,HOTEL 3 NIGHTS,-320.00,travel
+2025-09-14,SPOTIFY,MONTHLY SUBSCRIPTION,-10.99,subscriptions.software
+2025-09-15,ACME PAYROLL,PAYROLL DEP,1850.00,income.salary
+2025-09-15,COMCAST,INTERNET SERVICE,-79.99,utilities
+2025-09-16,UBER,NYC RIDE,-32.50,transportation.rideshare
+2025-09-17,COSTCO WHOLESALE,BULK SHOPPING,-152.67,groceries
+2025-09-18,STARBUCKS,COFFEE,-5.50,restaurants
+2025-09-19,VENMO PAYMENT @SARAH,GIFT,,
+2025-09-20,PLAYSTATION,SUBSCRIPTION RENEW,,
+2025-09-21,ADOBE CREATIVE CLOUD,MONTHLY SUBSCRIPTION,-54.99,subscriptions.software
+2025-09-22,CVS/PHARMACY #02006,TOILETRIES,-41.88,groceries
+2025-09-23,EXXONMOBIL,GAS PURCHASE,-53.20,transportation.fuel
+2025-09-24,AMAZON MKTPLACE,BOOKS,-34.99,shopping.misc
+2025-09-25,LYFT,RIDE HOME,-21.70,transportation.rideshare
+2025-09-26,UBER EATS,LUNCH,-25.80,restaurants
+2025-09-27,HARRIS TEETER,WEEKLY GROCERIES,-79.35,groceries
+2025-09-28,TARGET,FALL DECOR,-94.20,shopping.misc
+2025-09-29,WATER BILL CITY OF RICHMOND,WATER & SEWER,-37.40,utilities
+2025-09-30,LOCAL PIZZA,DINNER,-31.25,restaurants
+2025-09-30,CAPCUT SINGAPORE,MONTHLY SUBSCRIPTION,-9.99,subscriptions.software
+2025-10-01,ACME PAYROLL,PAYROLL DEP,1850.00,income.salary
+2025-10-02,ZELLE FROM FRIEND,CONCERT TICKET REFUND,75.00,income.refund
+2025-10-05,SUNRISE APARTMENTS,RENT OCTOBER 2025,-1200.00,housing.rent
+2025-10-07,DOMINION ENERGY,ELECTRIC BILL,-125.90,utilities
+2025-10-08,HARRIS TEETER,GROCERY SHOPPING,-89.22,groceries
+2025-10-09,CHIPOTLE,DINNER,-16.40,restaurants
+2025-10-10,SHELL,GAS PURCHASE,-51.30,transportation.fuel
+2025-10-11,ATM WITHDRAWAL #4789,CASH WITHDRAWAL,-100.00,
+2025-10-12,AMAZON MKTPLACE,ELECTRONICS & GADGETS,-300.00,shopping.misc
+2025-10-13,NETFLIX.COM,MONTHLY SUBSCRIPTION,-15.99,subscriptions.software
+2025-10-14,SPOTIFY,MONTHLY SUBSCRIPTION,-10.99,subscriptions.software
+2025-10-15,ACME PAYROLL,PAYROLL DEP,1850.00,income.salary
+2025-10-15,COMCAST,INTERNET SERVICE,-79.99,utilities
+2025-10-16,UBER,EVENING OUT,-24.30,transportation.rideshare
+2025-10-17,COSTCO WHOLESALE,BULK SHOPPING,-164.55,groceries
+2025-10-18,STARBUCKS,COFFEE & BAGEL,-7.80,restaurants
+2025-10-19,VENMO PAYMENT @MIKE,DINNER SPLIT,,
+2025-10-20,CASH APP*PAYMENT,TRANSFER,,
+2025-10-21,ADOBE CREATIVE CLOUD,MONTHLY SUBSCRIPTION,-54.99,subscriptions.software
+2025-10-22,CVS/PHARMACY #02006,GROCERIES & MEDS,-67.45,groceries
+2025-10-23,EXXONMOBIL,GAS PURCHASE,-48.60,transportation.fuel
+2025-10-24,AMAZON MKTPLACE,HALLOWEEN DECOR,-56.80,shopping.misc
+2025-10-25,LYFT,RIDE TO PARTY,-18.90,transportation.rideshare
+2025-10-26,UBER EATS,DINNER DELIVERY,-38.25,restaurants
+2025-10-27,HARRIS TEETER,WEEKLY GROCERIES,-92.67,groceries
+2025-10-28,TARGET,WINTER CLOTHES,-142.30,shopping.misc
+2025-10-29,WATER BILL CITY OF RICHMOND,WATER & SEWER,-38.90,utilities
+2025-10-30,LOCAL PIZZA,HALLOWEEN PARTY,-45.60,restaurants
+2025-10-30,CAPCUT SINGAPORE,MONTHLY SUBSCRIPTION,-9.99,subscriptions.software
+2025-10-31,ZELLE TRANSFER,COSTUME SPLIT,,
+2025-11-01,ACME PAYROLL,PAYROLL DEP,1850.00,income.salary
+2025-11-03,PLAYSTATION,GAME DOWNLOAD,,
+2025-11-05,SUNRISE APARTMENTS,RENT NOVEMBER 2025,-1200.00,housing.rent
+2025-11-07,DOMINION ENERGY,ELECTRIC BILL,-148.75,utilities
+2025-11-08,HARRIS TEETER,GROCERY SHOPPING,-98.33,groceries
+2025-11-09,CHIPOTLE,LUNCH,-13.85,restaurants
+2025-11-10,SHELL,GAS PURCHASE,-54.20,transportation.fuel
+2025-11-11,ATM WITHDRAWAL #4856,CASH WITHDRAWAL,-80.00,
+2025-11-13,NETFLIX.COM,MONTHLY SUBSCRIPTION,-15.99,subscriptions.software
+2025-11-14,SPOTIFY,MONTHLY SUBSCRIPTION,-10.99,subscriptions.software
+2025-11-15,ACME PAYROLL,PAYROLL DEP,1850.00,income.salary
+2025-11-15,COMCAST,INTERNET SERVICE,-79.99,utilities
+2025-11-16,UBER,WEEKEND RIDE,-26.70,transportation.rideshare
+2025-11-17,COSTCO WHOLESALE,THANKSGIVING PREP,-189.45,groceries
+2025-11-18,STARBUCKS,MORNING COFFEE,-6.50,restaurants
+2025-11-19,VENMO PAYMENT @ALEX,THANKSGIVING SPLIT,,
+2025-11-20,ZELLE TO FAMILY,GIFT CONTRIBUTION,,
+2025-11-21,ADOBE CREATIVE CLOUD,MONTHLY SUBSCRIPTION,-54.99,subscriptions.software
+2025-11-22,CVS/PHARMACY #02006,COLD MEDICINE,-28.90,groceries
+2025-11-23,EXXONMOBIL,GAS PURCHASE,-49.95,transportation.fuel
+2025-11-24,AMAZON MKTPLACE,GIFT SHOPPING,-124.56,shopping.misc
+2025-11-25,LYFT,AIRPORT PICKUP,-31.40,transportation.rideshare
+2025-11-26,UBER EATS,TAKEOUT,-33.70,restaurants
+2025-11-27,HARRIS TEETER,GROCERIES,-85.22,groceries
+2025-11-28,TARGET,BLACK FRIDAY DEAL,-167.80,shopping.misc
+2025-11-29,WATER BILL CITY OF RICHMOND,WATER & SEWER,-36.85,utilities
+2025-11-30,LOCAL PIZZA,DINNER,-27.95,restaurants
+2025-11-30,CAPCUT SINGAPORE,MONTHLY SUBSCRIPTION,-9.99,subscriptions.software
