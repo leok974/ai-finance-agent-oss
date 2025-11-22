@@ -995,23 +995,70 @@ function parseDispositionFilename(disposition: string | null) {
 
 export type ExportMode = 'full' | 'summary' | 'unknowns';
 
+export type ExportFilters = {
+  category?: string | null;
+  minAmount?: number | null;
+  maxAmount?: number | null;
+  search?: string | null;
+};
+
+// New implementation with filters support
+export async function downloadExcelReport(params: {
+  month: string;
+  mode: 'summary' | 'full' | 'unknowns';
+  filters?: ExportFilters;
+}) {
+  const url = new URL(apiUrl('/report/excel'), window.location.origin);
+  url.searchParams.set('month', params.month);
+  url.searchParams.set('mode', params.mode);
+
+  const f = params.filters;
+  if (f?.category) url.searchParams.set('category', f.category);
+  if (f?.minAmount != null) url.searchParams.set('min_amount', String(f.minAmount));
+  if (f?.maxAmount != null) url.searchParams.set('max_amount', String(f.maxAmount));
+  if (f?.search) url.searchParams.set('search', f.search);
+
+  const res = await fetch(url.toString(), withCreds({ method: 'GET', headers: withAuthHeaders() }));
+  if (!res.ok) {
+    const err: any = new Error(`Excel export failed: ${res.status}`);
+    err.status = res.status;
+    throw err;
+  }
+
+  const blob = await res.blob();
+  const suffix = params.mode === 'full' ? 'full' : params.mode === 'summary' ? 'summary' : 'unknowns';
+  const filename = parseDispositionFilename(res.headers.get('Content-Disposition')) || `ledgermind-${suffix}-${params.month}.xlsx`;
+  return { blob, filename };
+}
+
+export async function downloadPdfReport(params: {
+  month: string;
+  mode: 'summary' | 'full';
+}) {
+  const url = new URL(apiUrl('/report/pdf'), window.location.origin);
+  url.searchParams.set('month', params.month);
+  url.searchParams.set('mode', params.mode);
+
+  const res = await fetch(url.toString(), withCreds({ method: 'GET', headers: withAuthHeaders() }));
+  if (!res.ok) {
+    const err: any = new Error(`PDF export failed: ${res.status}`);
+    err.status = res.status;
+    throw err;
+  }
+
+  const blob = await res.blob();
+  const filename = parseDispositionFilename(res.headers.get('Content-Disposition')) || `ledgermind-report-${params.month}.pdf`;
+  return { blob, filename };
+}
+
+// Legacy functions for backward compatibility
 export async function downloadReportExcel(
   month?: string,
   mode: ExportMode = 'full',
   opts?: { start?: string; end?: string; splitAlpha?: boolean }
 ) {
-  const params = new URLSearchParams();
-  if (month) params.set('month', month);
-  if (opts?.start) params.set('start', opts.start);
-  if (opts?.end) params.set('end', opts.end);
-  params.set('mode', mode);
-  if (opts?.splitAlpha) params.set('split_transactions_alpha', String(!!opts.splitAlpha));
-  const url = apiUrl(`/report/excel${params.toString() ? `?${params.toString()}` : ''}`);
-  const res = await fetch(url, withCreds({ method: 'GET', headers: withAuthHeaders() }));
-  if (!res.ok) throw new Error(`Excel export failed: ${res.status}`);
-  const blob = await res.blob();
-  const filename = parseDispositionFilename(res.headers.get('Content-Disposition')) || 'finance_report.xlsx';
-  return { blob, filename };
+  if (!month) throw new Error('Month is required for Excel export');
+  return downloadExcelReport({ month, mode, filters: undefined });
 }
 
 export async function downloadReportPdf(
@@ -1019,17 +1066,8 @@ export async function downloadReportPdf(
   mode: 'full' | 'summary' = 'summary',
   opts?: { start?: string; end?: string }
 ) {
-  const params = new URLSearchParams();
-  if (month) params.set('month', month);
-  if (opts?.start) params.set('start', opts.start);
-  if (opts?.end) params.set('end', opts.end);
-  params.set('mode', mode);
-  const url = apiUrl(`/report/pdf${params.toString() ? `?${params.toString()}` : ''}`);
-  const res = await fetch(url, withCreds({ method: 'GET', headers: withAuthHeaders() }));
-  if (!res.ok) throw new Error(`PDF export failed: ${res.status}`);
-  const blob = await res.blob();
-  const filename = parseDispositionFilename(res.headers.get('Content-Disposition')) || 'finance_report.pdf';
-  return { blob, filename };
+  if (!month) throw new Error('Month is required for PDF export');
+  return downloadPdfReport({ month, mode });
 }
 
 // ---------- Natural-language Transactions Query ----------

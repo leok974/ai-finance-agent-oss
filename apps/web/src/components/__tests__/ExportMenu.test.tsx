@@ -2,25 +2,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import ExportMenu from "../ExportMenu";
+import * as api from "@/lib/api";
 
-// Mock the download helpers
-vi.mock("@/lib/api", () => ({
-  downloadReportExcel: vi.fn(async () => ({
-    blob: new Blob(["mock excel"], { type: "application/vnd.ms-excel" }),
-    filename: "ledgermind-full-2025-01.xlsx",
-  })),
-  downloadReportPdf: vi.fn(async () => ({
-    blob: new Blob(["mock pdf"], { type: "application/pdf" }),
-    filename: "ledgermind-report-2025-01.pdf",
-  })),
-}));
-
-// Mock saveAs
-vi.mock("@/utils/download", () => ({
-  saveAs: vi.fn(),
-}));
-
-// Mock sonner toast
 vi.mock("sonner", () => ({
   toast: {
     success: vi.fn(),
@@ -28,136 +11,150 @@ vi.mock("sonner", () => ({
   },
 }));
 
+vi.mock("@/utils/download", () => ({
+  saveAs: vi.fn(),
+}));
+
 describe("ExportMenu", () => {
+  const downloadExcelSpy = vi
+    .spyOn(api, "downloadExcelReport")
+    .mockResolvedValue({ blob: new Blob(), filename: "test.xlsx" } as any);
+  const downloadPdfSpy = vi
+    .spyOn(api, "downloadPdfReport")
+    .mockResolvedValue({ blob: new Blob(), filename: "test.pdf" } as any);
+
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it("disables the trigger button when hasAnyTransactions is false", () => {
-    render(<ExportMenu month="2025-01" hasAnyTransactions={false} />);
-
-    const trigger = screen.getByTestId("export-menu-trigger");
-    expect(trigger).toBeDisabled();
-  });
-
-  it("enables the trigger button when hasAnyTransactions is true", () => {
-    render(<ExportMenu month="2025-01" hasAnyTransactions={true} />);
-
-    const trigger = screen.getByTestId("export-menu-trigger");
-    expect(trigger).not.toBeDisabled();
-  });
-
-  it("disables the unknowns option when hasUnknowns is false", async () => {
+  const openMenu = async () => {
     const user = userEvent.setup();
+    await user.click(screen.getByTestId("export-menu-trigger"));
+  };
+
+  it("shows a 'no data' message when there are no transactions", async () => {
     render(
       <ExportMenu
-        month="2025-01"
+        month="2025-11"
+        hasAnyTransactions={false}
+        hasUnknowns={false}
+      />
+    );
+    await openMenu();
+    expect(
+      screen.getByText(/no data available for 2025-11/i)
+    ).toBeInTheDocument();
+  });
+
+  it("disables unknowns-only export when there are no unknowns", async () => {
+    render(
+      <ExportMenu
+        month="2025-11"
         hasAnyTransactions={true}
         hasUnknowns={false}
       />
     );
-
-    const trigger = screen.getByTestId("export-menu-trigger");
-    await user.click(trigger);
-
-    await waitFor(() => {
-      const unknownsOption = screen.getByTestId("export-option-excel-unknowns");
-      expect(unknownsOption).toHaveAttribute("data-disabled");
-    });
+    await openMenu();
+    const opt = screen.getByTestId("export-option-excel-unknowns");
+    expect(opt).toHaveAttribute("data-disabled");
   });
 
-  it("enables the unknowns option when hasUnknowns is true", async () => {
+  it("calls Excel full export when that option is clicked", async () => {
     const user = userEvent.setup();
     render(
       <ExportMenu
-        month="2025-01"
+        month="2025-11"
         hasAnyTransactions={true}
         hasUnknowns={true}
       />
     );
-
-    const trigger = screen.getByTestId("export-menu-trigger");
-    await user.click(trigger);
+    await openMenu();
+    const opt = screen.getByTestId("export-option-excel-full");
+    await user.click(opt);
 
     await waitFor(() => {
-      const unknownsOption = screen.getByTestId("export-option-excel-unknowns");
-      expect(unknownsOption).not.toHaveAttribute("data-disabled", "true");
+      expect(downloadExcelSpy).toHaveBeenCalledWith({
+        month: "2025-11",
+        mode: "full",
+        filters: undefined,
+      });
     });
   });
 
-  it("calls downloadReportExcel with correct parameters for summary", async () => {
-    const { downloadReportExcel } = await import("@/lib/api");
-    const { saveAs } = await import("@/utils/download");
+  it("calls PDF export when that option is clicked", async () => {
     const user = userEvent.setup();
-
     render(
       <ExportMenu
-        month="2025-01"
+        month="2025-11"
+        hasAnyTransactions={true}
+        hasUnknowns={true}
+      />
+    );
+    await openMenu();
+    const opt = screen.getByTestId("export-option-pdf-monthly");
+    await user.click(opt);
+
+    await waitFor(() => {
+      expect(downloadPdfSpy).toHaveBeenCalledWith({
+        month: "2025-11",
+        mode: "full",
+      });
+    });
+  });
+
+  it("disables trigger button when no transactions", () => {
+    render(
+      <ExportMenu
+        month="2025-11"
+        hasAnyTransactions={false}
+        hasUnknowns={false}
+      />
+    );
+    const trigger = screen.getByTestId("export-menu-trigger");
+    expect(trigger).toBeDisabled();
+  });
+
+  it("enables trigger button when has transactions", () => {
+    render(
+      <ExportMenu
+        month="2025-11"
         hasAnyTransactions={true}
         hasUnknowns={false}
       />
     );
-
     const trigger = screen.getByTestId("export-menu-trigger");
-    await user.click(trigger);
-
-    const summaryOption = await screen.findByTestId("export-option-excel-summary");
-    await user.click(summaryOption);
-
-    await waitFor(() => {
-      expect(downloadReportExcel).toHaveBeenCalledWith("2025-01", "summary");
-      expect(saveAs).toHaveBeenCalledWith(
-        expect.any(Blob),
-        "ledgermind-full-2025-01.xlsx"
-      );
-    });
+    expect(trigger).not.toBeDisabled();
   });
 
-  it("calls downloadReportPdf with correct parameters", async () => {
-    const { downloadReportPdf } = await import("@/lib/api");
-    const { saveAs } = await import("@/utils/download");
-    const user = userEvent.setup();
-
+  it("renders all export options when menu is opened", async () => {
     render(
       <ExportMenu
-        month="2025-01"
+        month="2025-11"
         hasAnyTransactions={true}
-        hasUnknowns={false}
+        hasUnknowns={true}
       />
     );
+    await openMenu();
 
-    const trigger = screen.getByTestId("export-menu-trigger");
-    await user.click(trigger);
-
-    const pdfOption = await screen.findByTestId("export-option-pdf-summary");
-    await user.click(pdfOption);
-
-    await waitFor(() => {
-      expect(downloadReportPdf).toHaveBeenCalledWith("2025-01", "summary");
-      expect(saveAs).toHaveBeenCalledWith(
-        expect.any(Blob),
-        "ledgermind-report-2025-01.pdf"
-      );
-    });
+    expect(screen.getByTestId("export-option-excel-summary")).toBeInTheDocument();
+    expect(screen.getByTestId("export-option-excel-full")).toBeInTheDocument();
+    expect(screen.getByTestId("export-option-excel-unknowns")).toBeInTheDocument();
+    expect(screen.getByTestId("export-option-pdf-monthly")).toBeInTheDocument();
   });
 
-  it("shows toast success message after successful export", async () => {
+  it("shows success toast after successful export", async () => {
     const { toast } = await import("sonner");
     const user = userEvent.setup();
-
     render(
       <ExportMenu
-        month="2025-01"
+        month="2025-11"
         hasAnyTransactions={true}
         hasUnknowns={false}
       />
     );
-
-    const trigger = screen.getByTestId("export-menu-trigger");
-    await user.click(trigger);
-
-    const summaryOption = await screen.findByTestId("export-option-excel-summary");
-    await user.click(summaryOption);
+    await openMenu();
+    const opt = screen.getByTestId("export-option-excel-summary");
+    await user.click(opt);
 
     await waitFor(() => {
       expect(toast.success).toHaveBeenCalledWith(
@@ -166,54 +163,26 @@ describe("ExportMenu", () => {
     });
   });
 
-  it("shows toast error message when export fails", async () => {
-    const { downloadReportExcel } = await import("@/lib/api");
+  it("shows error toast when export fails", async () => {
     const { toast } = await import("sonner");
     const user = userEvent.setup();
-
-    // Make the download fail
-    vi.mocked(downloadReportExcel).mockRejectedValueOnce(new Error("Network error"));
+    downloadExcelSpy.mockRejectedValueOnce({ status: 404 });
 
     render(
       <ExportMenu
-        month="2025-01"
+        month="2025-11"
         hasAnyTransactions={true}
         hasUnknowns={false}
       />
     );
-
-    const trigger = screen.getByTestId("export-menu-trigger");
-    await user.click(trigger);
-
-    const summaryOption = await screen.findByTestId("export-option-excel-summary");
-    await user.click(summaryOption);
+    await openMenu();
+    const opt = screen.getByTestId("export-option-excel-summary");
+    await user.click(opt);
 
     await waitFor(() => {
       expect(toast.error).toHaveBeenCalledWith(
-        expect.stringContaining("Export failed")
+        expect.stringContaining("No data to export")
       );
-    });
-  });
-
-  it("renders all export options", async () => {
-    const user = userEvent.setup();
-    render(
-      <ExportMenu
-        month="2025-01"
-        hasAnyTransactions={true}
-        hasUnknowns={true}
-      />
-    );
-
-    const trigger = screen.getByTestId("export-menu-trigger");
-    await user.click(trigger);
-
-    await waitFor(() => {
-      expect(screen.getByTestId("export-option-excel-summary")).toBeInTheDocument();
-      expect(screen.getByTestId("export-option-excel-full")).toBeInTheDocument();
-      expect(screen.getByTestId("export-option-excel-unknowns")).toBeInTheDocument();
-      expect(screen.getByTestId("export-option-pdf-summary")).toBeInTheDocument();
-      expect(screen.getByTestId("export-option-pdf-full")).toBeInTheDocument();
     });
   });
 });

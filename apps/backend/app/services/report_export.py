@@ -2,6 +2,10 @@ from __future__ import annotations
 
 from io import BytesIO
 from enum import Enum
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from app.services.transaction_filters import ExportFilters
 
 try:
     from openpyxl import Workbook
@@ -42,9 +46,14 @@ class ReportMode(str, Enum):
 
 
 def add_summary_sheet(
-    wb: "Workbook", month: str, summary: dict, unknown_count: int, unknown_amount: float
+    wb: "Workbook",
+    month: str,
+    summary: dict,
+    unknown_count: int,
+    unknown_amount: float,
+    filters: "ExportFilters | None" = None,
 ) -> None:
-    """Add Summary sheet with overview metrics."""
+    """Add Summary sheet with overview metrics and active filters."""
     ws = wb.create_sheet("Summary")
 
     # Title
@@ -55,11 +64,33 @@ def add_summary_sheet(
     ws["A2"] = "Month"
     ws["B2"] = month
 
-    # Table header (row 4)
-    ws["A4"] = "Metric"
-    ws["B4"] = "Value"
-    ws["A4"].font = Font(bold=True)
-    ws["B4"].font = Font(bold=True)
+    # Show active filters if any
+    current_row = 3
+    if filters and filters.is_active():
+        ws[f"A{current_row}"] = "Active Filters:"
+        ws[f"A{current_row}"].font = Font(bold=True, italic=True)
+        current_row += 1
+
+        if filters.category_slug:
+            ws[f"A{current_row}"] = f"  Category: {filters.category_slug}"
+            current_row += 1
+        if filters.min_amount is not None:
+            ws[f"A{current_row}"] = f"  Min amount: ${filters.min_amount}"
+            current_row += 1
+        if filters.max_amount is not None:
+            ws[f"A{current_row}"] = f"  Max amount: ${filters.max_amount}"
+            current_row += 1
+        if filters.search:
+            ws[f"A{current_row}"] = f"  Search: {filters.search}"
+            current_row += 1
+        current_row += 1  # Add spacing
+
+    # Table header
+    ws[f"A{current_row}"] = "Metric"
+    ws[f"B{current_row}"] = "Value"
+    ws[f"A{current_row}"].font = Font(bold=True)
+    ws[f"B{current_row}"].font = Font(bold=True)
+    current_row += 1
 
     # Metrics
     ws.append(["Total income", round(float(summary.get("total_income", 0.0)), 2)])
@@ -69,7 +100,7 @@ def add_summary_sheet(
     ws.append(["Unknown txns", unknown_count])
 
     # Set column widths
-    ws.column_dimensions["A"].width = 20
+    ws.column_dimensions["A"].width = 25
     ws.column_dimensions["B"].width = 15
 
 
@@ -249,6 +280,7 @@ def build_excel_bytes(
     mode: ReportMode = ReportMode.full,
     transactions: list[dict] | None = None,
     unknown_transactions: list[dict] | None = None,
+    filters: "ExportFilters | None" = None,
 ) -> bytes:
     """Build an Excel workbook with structured sheets based on mode.
 
@@ -263,6 +295,7 @@ def build_excel_bytes(
         mode: Export mode (full/summary/unknowns)
         transactions: List of transaction dicts for full mode
         unknown_transactions: List of unknown transaction dicts for unknowns mode
+        filters: Optional ExportFilters to display in summary
 
     Returns:
         Excel workbook as bytes
@@ -292,13 +325,17 @@ def build_excel_bytes(
 
     # Build sheets based on mode
     if mode == ReportMode.full:
-        add_summary_sheet(wb, month_str, summary, unknown_count, unknown_amount)
+        add_summary_sheet(
+            wb, month_str, summary, unknown_count, unknown_amount, filters
+        )
         add_categories_sheet(wb, categories)
         add_merchants_sheet(wb, merchants)
         if transactions:
             add_transactions_sheet(wb, transactions)
     elif mode == ReportMode.summary:
-        add_summary_sheet(wb, month_str, summary, unknown_count, unknown_amount)
+        add_summary_sheet(
+            wb, month_str, summary, unknown_count, unknown_amount, filters
+        )
     elif mode == ReportMode.unknowns:
         if unknown_transactions:
             add_unknowns_sheet(wb, month_str, unknown_transactions)
@@ -307,7 +344,9 @@ def build_excel_bytes(
             add_unknowns_sheet(wb, month_str, [])
     else:
         # Defensive fallback: summary mode
-        add_summary_sheet(wb, month_str, summary, unknown_count, unknown_amount)
+        add_summary_sheet(
+            wb, month_str, summary, unknown_count, unknown_amount, filters
+        )
 
     # Save to bytes
     buf = BytesIO()
@@ -393,6 +432,7 @@ def build_pdf_bytes(
     trends=None,
     mode: ReportMode = ReportMode.summary,
     unknown_transactions: list[dict] | None = None,
+    filters: "ExportFilters | None" = None,
 ) -> bytes:
     """Build a PDF report with structured layout matching Excel mental model.
 
@@ -404,6 +444,7 @@ def build_pdf_bytes(
         trends: Optional trends data (unused)
         mode: Export mode (full/summary, unknowns not supported)
         unknown_transactions: List of unknown transaction dicts
+        filters: Optional ExportFilters to display
 
     Returns:
         PDF as bytes
@@ -425,6 +466,23 @@ def build_pdf_bytes(
     story.append(Paragraph("LedgerMind — Monthly Report", styles["Title"]))
     story.append(Paragraph(f"Month: {month_str}", styles["Heading2"]))
     story.append(Spacer(1, 0.3 * inch))
+
+    # Show active filters if any
+    if filters and filters.is_active():
+        story.append(Paragraph("Filters Applied:", styles["Heading3"]))
+        filter_lines = []
+        if filters.category_slug:
+            filter_lines.append(f"Category: {filters.category_slug}")
+        if filters.min_amount is not None:
+            filter_lines.append(f"Min amount: ${filters.min_amount}")
+        if filters.max_amount is not None:
+            filter_lines.append(f"Max amount: ${filters.max_amount}")
+        if filters.search:
+            filter_lines.append(f"Search: {filters.search}")
+
+        for line in filter_lines:
+            story.append(Paragraph(line, styles["BodyText"]))
+        story.append(Spacer(1, 0.2 * inch))
 
     # Calculate unknown stats
     unknown_count = len(unknown_transactions) if unknown_transactions else 0

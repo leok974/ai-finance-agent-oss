@@ -114,3 +114,70 @@ class TestReportPdfStructure:
         if resp.status_code == 400:
             # Verify error message mentions unknowns not supported
             assert "unknowns" in resp.json().get("detail", "").lower()
+
+
+class TestReportPdfFilters:
+    """Test suite for PDF export filters."""
+
+    def test_pdf_export_accepts_category_filter(self):
+        """Verify category filter parameter is accepted."""
+        resp = client.get(
+            "/report/pdf",
+            params={"month": "2025-11", "mode": "summary", "category": "groceries"},
+        )
+        # Should succeed (200), not authenticated (401), no data (404), or reportlab missing (503)
+        # We're just verifying the filter param is accepted, not testing data
+        assert resp.status_code in (
+            200,
+            401,
+            404,
+            503,
+        ), f"Category filter should be accepted, got: {resp.status_code}"
+
+    def test_pdf_export_accepts_multiple_filters(self):
+        """Verify multiple filters can be combined."""
+        resp = client.get(
+            "/report/pdf",
+            params={
+                "month": "2025-11",
+                "mode": "summary",
+                "category": "groceries",
+                "min_amount": "50.00",
+                "max_amount": "100.00",
+                "search": "CVS",
+            },
+        )
+        assert resp.status_code in (
+            200,
+            401,
+            404,
+            503,
+        ), f"Combined filters should be accepted, got: {resp.status_code}"
+
+    def test_pdf_export_shows_filters_when_applied(self):
+        """Verify PDF shows 'Filters Applied' section when filters are active."""
+        resp = client.get(
+            "/report/pdf",
+            params={"month": "2025-11", "mode": "summary", "category": "groceries"},
+        )
+
+        if resp.status_code == 200 and PYPDF2_AVAILABLE:
+            reader = PdfReader(io.BytesIO(resp.content))
+            text = "".join(page.extract_text() or "" for page in reader.pages)
+
+            # Check for filters section
+            assert (
+                "Filters Applied" in text or "filters applied" in text.lower()
+            ), "PDF should show filters section when filters are active"
+            assert "groceries" in text.lower(), "PDF should show category filter value"
+
+    def test_pdf_export_filename_format(self):
+        """Verify PDF filename format."""
+        resp = client.get("/report/pdf", params={"month": "2025-11", "mode": "summary"})
+
+        if resp.status_code == 200:
+            content_disposition = resp.headers.get("content-disposition", "")
+            # Should be: ledgermind-report-2025-11.pdf
+            assert (
+                "ledgermind-report-2025-11.pdf" in content_disposition
+            ), f"Expected filename format, got: {content_disposition}"

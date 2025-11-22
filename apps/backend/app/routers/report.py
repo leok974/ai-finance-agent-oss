@@ -1,9 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
-from typing import Dict
+from typing import Dict, Optional
 from collections import defaultdict
 from enum import Enum
+from decimal import Decimal
 
 from app.db import get_db
 from app.deps.auth_guard import get_current_user_id
@@ -21,6 +22,7 @@ from app.services.report_export import (
     build_pdf_bytes,
     ReportMode as ExportMode,
 )
+from app.services.transaction_filters import ExportFilters, apply_export_filters
 from app.transactions import Transaction
 
 router = APIRouter()
@@ -60,6 +62,18 @@ def report_excel(
         ReportMode.full,
         description="Export mode: full (summary + all txns), summary (summary only), unknowns (uncategorized txns)",
     ),
+    # Filter parameters
+    category: Optional[str] = Query(None, description="Filter by category slug"),
+    min_amount: Optional[Decimal] = Query(
+        None, description="Minimum transaction amount"
+    ),
+    max_amount: Optional[Decimal] = Query(
+        None, description="Maximum transaction amount"
+    ),
+    search: Optional[str] = Query(
+        None, description="Text search in description/merchant"
+    ),
+    # Legacy/deprecated
     include_transactions: bool | None = Query(
         None, description="Deprecated: use mode parameter instead"
     ),
@@ -72,7 +86,19 @@ def report_excel(
       - full: summary + all transactions (default)
       - summary: summary only, no transactions sheet
       - unknowns: only unknown/uncategorized transactions + summary
+
+    Filters (optional):
+      - category: category slug (e.g. 'groceries')
+      - min_amount / max_amount: numeric bounds on transaction amount
+      - search: substring match on description/merchant
     """
+    # Build filters object
+    filters = ExportFilters(
+        category_slug=category,
+        min_amount=min_amount,
+        max_amount=max_amount,
+        search=search,
+    )
     # Backwards compatibility: if include_transactions is explicitly set, map to mode
     if include_transactions is not None:
         mode = ReportMode.full if include_transactions else ReportMode.summary
@@ -111,6 +137,9 @@ def report_excel(
             Transaction.date >= start_d,
             Transaction.date <= end_d,
         )
+
+        # Apply export filters BEFORE mode-specific filters
+        query = apply_export_filters(query, filters)
 
         # Fetch all transactions for full mode or unknowns for unknowns mode
         if only_unknowns:
@@ -151,13 +180,15 @@ def report_excel(
             unknown_transactions_list if mode == ReportMode.unknowns else None
         ),
         split_txns_alpha=split_transactions_alpha,
+        filters=filters,  # Pass filters to builder
     )
-    # Filename reflects month or custom range
+    # Filename reflects month or custom range and mode
+    safe_mode = mode.value
     if month:
-        filename = f"report-{month}.xlsx"
+        filename = f"ledgermind-{safe_mode}-{month}.xlsx"
     else:
-        filename = f"report-{summary['start']}_to_{summary['end']}.xlsx"
-    headers = {"Content-Disposition": f"attachment; filename={filename}"}
+        filename = f"ledgermind-{safe_mode}-{summary['start']}_to_{summary['end']}.xlsx"
+    headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
     return StreamingResponse(
         iter([data]),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -174,6 +205,17 @@ def report_pdf(
         ReportMode.summary,
         description="Export mode: full or summary (unknowns not supported for PDF)",
     ),
+    # Filter parameters
+    category: Optional[str] = Query(None, description="Filter by category slug"),
+    min_amount: Optional[Decimal] = Query(
+        None, description="Minimum transaction amount"
+    ),
+    max_amount: Optional[Decimal] = Query(
+        None, description="Maximum transaction amount"
+    ),
+    search: Optional[str] = Query(
+        None, description="Text search in description/merchant"
+    ),
     user_id: int = Depends(get_current_user_id),
     db: Session = Depends(get_db),
 ):
@@ -183,7 +225,19 @@ def report_pdf(
       - full: detailed summary (currently same as summary for PDF)
       - summary: summary view only (default)
       - unknowns: not supported for PDF (returns 400)
+
+    Filters (optional):
+      - category: category slug (e.g. 'groceries')
+      - min_amount / max_amount: numeric bounds on transaction amount
+      - search: substring match on description/merchant
     """
+    # Build filters object
+    filters = ExportFilters(
+        category_slug=category,
+        min_amount=min_amount,
+        max_amount=max_amount,
+        search=search,
+    )
     # Validate mode for PDF
     if mode == ReportMode.unknowns:
         raise HTTPException(
@@ -203,11 +257,11 @@ def report_pdf(
         merchants = get_month_merchants(db, user_id, month_hint)["merchants"]
         categories = get_month_categories(db, user_id, month_hint)
 
-        # For full mode, fetch unknown transactions
+        # For full mode, fetch unknown transactions with filters
         unknown_transactions_list = []
         if mode == ReportMode.full:
             # Query unknown transactions (category is None or "unknown")
-            rows = (
+            query = (
                 db.query(Transaction)
                 .filter(
                     Transaction.user_id == user_id,
@@ -218,8 +272,10 @@ def report_pdf(
                     (Transaction.category.is_(None))
                     | (Transaction.category == "unknown")
                 )
-                .all()
             )
+            # Apply export filters
+            query = apply_export_filters(query, filters)
+            rows = query.all()
             unknown_transactions_list = [
                 {
                     "date": r.date.isoformat(),
@@ -242,16 +298,17 @@ def report_pdf(
             unknown_transactions=(
                 unknown_transactions_list if mode == ReportMode.full else None
             ),
+            filters=filters,  # Pass filters to builder
         )
     except RuntimeError as e:
         # reportlab likely not installed in this environment
         raise HTTPException(status_code=503, detail=str(e))
     # Filename reflects month or custom range
     if month:
-        filename = f"report-{month}.pdf"
+        filename = f"ledgermind-report-{month}.pdf"
     else:
-        filename = f"report-{summary['start']}_to_{summary['end']}.pdf"
-    headers = {"Content-Disposition": f"attachment; filename={filename}"}
+        filename = f"ledgermind-report-{summary['start']}_to_{summary['end']}.pdf"
+    headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
     return StreamingResponse(
         iter([data]),
         media_type="application/pdf",
