@@ -235,7 +235,7 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
           month={resolvedMonth}
           helpCtx={{ summary, merchants, flows: daily }}
           helpBaseText={getHelpBaseText('cards.overview', { month: resolvedMonth })}
-          actions={<ExportMenu month={resolvedMonth} hasAnyTransactions={!!summary} />}
+          actions={<ExportMenu month={resolvedMonth} hasAnyTransactions={!!summary} hasUnknowns={false} />}
           className="mb-2"
         />
         {loading && (
