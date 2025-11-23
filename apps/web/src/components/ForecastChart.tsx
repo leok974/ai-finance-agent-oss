@@ -81,7 +81,27 @@ export default function ForecastChart({ data }: Props) {
           <CartesianGrid strokeDasharray="3 3" />
           <XAxis dataKey="x" />
           <YAxis tickFormatter={(v) => fmtUSD(v)} width={72} />
-          <Tooltip formatter={(val: any, name: string) => [fmtUSD(Number(val)), name]} labelFormatter={(l) => `Horizon ${l}`} />
+          <Tooltip
+            cursor={{ strokeOpacity: 0.25 }}
+            contentStyle={{
+              backgroundColor: "rgba(0, 0, 0, 0.9)",
+              borderRadius: 8,
+              border: "1px solid rgba(148, 163, 184, 0.4)",
+              padding: "8px 10px",
+              boxShadow: "0 10px 25px rgba(0,0,0,0.6)",
+            }}
+            labelStyle={{
+              color: "#e5e7eb",
+              fontSize: 12,
+              marginBottom: 4,
+            }}
+            itemStyle={{
+              color: "#e5e7eb",
+              fontSize: 12,
+            }}
+            formatter={(val: any, name: string) => [fmtUSD(Number(val)), name]}
+            labelFormatter={(l) => `Horizon ${l}`}
+          />
           <Legend content={<LegendMini />} />
 
           {hasCI && (

@@ -880,7 +880,7 @@ textarea.lm-input,
   background: transparent;
   pointer-events: auto;
   cursor: pointer;
-  
+
   /* CRITICAL: Allow page scrolling to work through the backdrop.
    * Without this, the backdrop intercepts scroll wheel events and blocks page scroll.
    * Setting overflow to visible/auto isn't enough because the backdrop has no content.
@@ -1303,3 +1303,13 @@ textarea.lm-input,
  * - Having it here caused cascade conflicts where this would override the main app's rule
  * - The chat iframe loads chat.css separately and doesn't need this global rule
  */
+
+/* ============================================
+   RECHARTS TOOLTIP STYLING
+   ============================================ */
+
+/* Global Recharts tooltip styling for consistent dark theme across all charts */
+.recharts-tooltip-wrapper {
+  /* Soften any default white text, making tooltips more readable on dark backgrounds */
+  color: #e5e7eb;
+}
