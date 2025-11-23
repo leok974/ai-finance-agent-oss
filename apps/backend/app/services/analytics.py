@@ -189,14 +189,48 @@ def forecast_cashflow(
     with _Timed("forecast_cashflow"):
         horizon = max(1, min(12, int(horizon or 3)))
         series, _ = _monthly_sums(db, lookback=36, ref_month=month)
+
+    MIN_MONTHS = 3
     months = sorted(series.keys())
-    if len(months) < 3:
+    history_months = len(months)
+
+    # Check for insufficient history
+    if history_months < MIN_MONTHS:
         return {
             "ok": False,
-            "reason": "not_enough_history",
+            "has_history": False,
+            "reason": (
+                f"Not enough history to forecast. Need at least {MIN_MONTHS} "
+                f"months with non-zero activity; found {history_months}."
+            ),
             "months": months,
             "series": series,
             "forecast": [],
+            "model": "none",
+        }
+
+    # Check if all months have near-zero activity (no meaningful data)
+    nets = [series[m]["net"] for m in months]
+    ins = [series[m]["in"] for m in months]
+    outs = [series[m]["out"] for m in months]
+    has_activity = (
+        any(abs(n) >= 1.0 for n in nets)
+        or any(abs(i) >= 1.0 for i in ins)
+        or any(abs(o) >= 1.0 for o in outs)
+    )
+
+    if not has_activity:
+        return {
+            "ok": False,
+            "has_history": False,
+            "reason": (
+                f"Not enough history to forecast. Found {history_months} months "
+                "but all have near-zero activity. Upload transactions with real amounts."
+            ),
+            "months": months,
+            "series": series,
+            "forecast": [],
+            "model": "none",
         }
 
     infl = [series[m]["in"] for m in months]
@@ -224,10 +258,12 @@ def forecast_cashflow(
         elif model == "sarimax":
             return {
                 "ok": False,
+                "has_history": True,
                 "reason": "sarimax_unavailable",
                 "months": months,
                 "series": series,
                 "forecast": [],
+                "model": "none",
             }
 
     ema_in, ema_out = _ema(infl), _ema(outf)
@@ -280,6 +316,8 @@ def forecast_cashflow(
         "forecast": forecast,
         "model": used_model,
         "ok": True,
+        "has_history": True,
+        "reason": None,
     }
     if used_model == "sarimax":
         resp["ci_alpha"] = ci_alpha

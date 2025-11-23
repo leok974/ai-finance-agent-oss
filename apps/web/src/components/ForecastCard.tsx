@@ -35,6 +35,18 @@ export default function ForecastCard({ className = "" }: { className?: string })
     }
   }
 
+  // Reset forecast data (e.g., after dashboard reset)
+  const resetForecast = React.useCallback(() => {
+    setData(null);
+    lastAutoRunMonth.current = null;
+  }, []);
+
+  // Expose reset function via a global hook (optional)
+  React.useEffect(() => {
+    // Listen for dashboard reset events if you have a context
+    // For now, this is just a placeholder for future integration
+  }, []);
+
   // Auto-run once when a valid month is available and no data yet
   React.useEffect(() => {
     if (!month || data || busy) return;
@@ -150,21 +162,34 @@ export default function ForecastCard({ className = "" }: { className?: string })
 
         {!busy && !data && (
           <div className="h-64 grid place-items-center rounded-lg border bg-muted/10">
-            <div className="text-sm text-muted-foreground">No forecast yet. Choose options and click Run.</div>
+            <div className="text-sm text-muted-foreground">
+              Upload at least 3 months of data and click <strong>Run</strong> to see a forecast.
+            </div>
           </div>
         )}
 
-        {!busy && data && data.ok === false && (
+        {!busy && data && data.has_history === false && (
+          <div className="h-64 grid place-items-center rounded-lg border bg-muted/10">
+            <div className="text-sm text-center px-4">
+              <div className="text-muted-foreground mb-2">Not enough history to forecast</div>
+              <div className="text-xs text-muted-foreground/80">
+                {data.reason || "Upload at least 3 months of transactions with real amounts to generate a forecast."}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {!busy && data && data.ok === false && data.has_history !== false && (
           <div className="h-64 grid place-items-center rounded-lg border bg-muted/10">
             <div className="text-sm">
-              {data.reason === "not_enough_history"
-                ? "Not enough history to forecast yet."
+              {data.reason === "sarimax_unavailable"
+                ? "SARIMAX model unavailable. Try Auto or EMA model."
                 : "Forecast unavailable."}
             </div>
           </div>
         )}
 
-        {!busy && data && data.ok !== false && (
+        {!busy && data && (data.ok === true || (data.has_history === true && data.forecast)) && (
           <div className="rounded-lg border p-2">
             <ForecastChart data={data} />
           </div>
