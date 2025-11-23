@@ -169,10 +169,16 @@ services:
       infra_net:
         aliases:
           - backend
-          - ledgermind-api.int   # <- TARGET FOR api.ledger-mind.org IN CF TUNNEL
+          - ai-finance-api.int
+          - ledgermind-api.int
       shared-ollama:
         aliases:
           - backend
+          - ai-finance-api.int
+          - ledgermind-api.int
+      applylens_applylens-prod:
+        aliases:
+          - ai-finance-api.int
           - ledgermind-api.int
 
   nginx:
@@ -243,10 +249,16 @@ services:
       infra_net:
         aliases:
           - nginx
-          - ledgermind-web.int   # <- TARGET FOR app.ledger-mind.org IN CF TUNNEL
+          - ai-finance.int
+          - ledgermind-web.int
       shared-ollama:
         aliases:
           - nginx
+          - ai-finance.int
+          - ledgermind-web.int
+      applylens_applylens-prod:
+        aliases:
+          - ai-finance.int
           - ledgermind-web.int
 
 
@@ -398,28 +410,30 @@ services:
 # -----------------------------------------------------------------------------------
 # LEDGERMIND / SHARED TUNNEL GUARDRAILS  (read this, Copilot 🤖)
 #
-# - This stack is behind a SINGLE shared Cloudflare Named Tunnel.
-# - The ONLY tunnel connectors should be cfd-a / cfd-b on `infra_net`.
-# - All public hostnames for LedgerMind are configured in the CF dashboard:
-#     app.ledger-mind.org  -> http://ledgermind-web.int:80  (nginx)
-#     api.ledger-mind.org  -> http://ledgermind-api.int:8000 (backend)
+# - This stack is behind a SINGLE shared Cloudflare Named Tunnel (ApplyLens tunnel).
+# - The tunnel connectors are on `infra_net` network.
+# - All public hostnames for LedgerMind are configured in the ApplyLens cloudflared config:
+#     app.ledger-mind.org  -> http://ai-finance.int:80  (nginx)
+#     api.ledger-mind.org  -> http://ai-finance-api.int:8000 (backend)
 #
 # RULES:
 # - DO NOT remove `infra_net` from nginx or backend.
-# - DO NOT rename or remove the aliases: `ledgermind-web.int`, `ledgermind-api.int`.
+# - DO NOT rename or remove the aliases: `ai-finance.int`, `ai-finance-api.int`.
 # - DO NOT introduce per-project cloudflared containers for LedgerMind.
 # - DO NOT add any `httpHostHeader` overrides to cloudflared config for this stack.
 # - Origin TLS is TERMINATED AT CLOUDFLARE. Inside Docker everything is plain HTTP.
 #
 # If you change service names, you MUST:
 #   1) Update aliases here.
-#   2) Update Cloudflare tunnel hostnames to match.
+#   2) Update ApplyLens cloudflared config to match.
 #   3) Run the health script in scripts/lm-health.ps1.
 # -----------------------------------------------------------------------------------
 networks:
   infra_net:
     external: true
   shared-ollama:
+    external: true
+  applylens_applylens-prod:
     external: true
 
 volumes:
