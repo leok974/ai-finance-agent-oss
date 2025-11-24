@@ -20,6 +20,12 @@ CATEGORY_LABEL_TO_SLUG = {
     "credit_card_payment": "finance",
     "games": "games",
     "transfer_p2p": "transfers",
+    # Demo CSV categories (generate_demo_csv.py)
+    "income_salary": "income.salary",
+    "income_other": "income.other",
+    "rent": "housing.rent",
+    "subscriptions_media": "subscriptions.streaming",
+    "entertainment_games": "games",
     # Additional common mappings
     "utilities": "housing.utilities",
     "utilities_mobile": "housing.utilities.mobile",

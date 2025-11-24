@@ -220,6 +220,30 @@ lm-chatdock-host.ready {
   --tooltip-bg:    #0b0b0d;
   --tooltip-br:    #2f3037;
   --tooltip-text:  #e6e6e7;
+
+  /* chart colors - series (income/spend/net) */
+  --lm-chart-spend:   #ef4444;   /* red-500 */
+  --lm-chart-income:  #22c55e;   /* green-500 */
+  --lm-chart-net:     #60a5fa;   /* blue-400 */
+
+  /* chart colors - categories */
+  --lm-chart-groceries:             #10b981; /* emerald-500 */
+  --lm-chart-restaurants:           #f59e0b; /* amber-500 */
+  --lm-chart-subscriptions:         #8b5cf6; /* violet-500 */
+  --lm-chart-transport:             #06b6d4; /* cyan-500 */
+  --lm-chart-transportation:        #06b6d4; /* cyan-500 alias */
+  --lm-chart-entertainment:         #ec4899; /* pink-500 */
+  --lm-chart-utilities:             #6366f1; /* indigo-500 */
+  --lm-chart-health:                #14b8a6; /* teal-500 */
+  --lm-chart-shopping:              #f97316; /* orange-500 */
+  --lm-chart-travel:                #3b82f6; /* blue-500 */
+  --lm-chart-housing:               #84cc16; /* lime-500 */
+  --lm-chart-finance:               #eab308; /* yellow-500 */
+  --lm-chart-transfers:             #a855f7; /* purple-500 */
+  --lm-chart-games:                 #d946ef; /* fuchsia-500 */
+  --lm-chart-coffee:                #78350f; /* brown - amber-900 */
+  --lm-chart-other:                 #64748b; /* slate-500 */
+  --lm-chart-unknown:               #6b7280; /* gray-500 */
 }
 
 body { @apply bg-neutral-950 text-neutral-100; }

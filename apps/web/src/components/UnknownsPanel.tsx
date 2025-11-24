@@ -276,6 +276,7 @@ export default function UnknownsPanel({ month, onSeedRule: _onSeedRule, onChange
       onChanged?.(); // Notify parent
     }}
     unknowns={visibleUnknowns}
+    entryPoint="unknowns"
   />
       </Card>
     </section>

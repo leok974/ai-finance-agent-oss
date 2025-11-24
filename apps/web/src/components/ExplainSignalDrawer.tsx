@@ -22,6 +22,8 @@ import { CATEGORY_OPTIONS, CATEGORY_DEFS } from '@/lib/categories'
 import { Button } from '@/components/ui/button'
 import type { UnknownTxn } from '@/hooks/useUnknowns'
 
+type ExplainSignalDrawerEntryPoint = 'transactions' | 'unknowns';
+
 function GroundedBadge() {
   return (
     <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full border border-border bg-accent/10">
@@ -74,7 +76,7 @@ function formatSuggestionReason(reasons?: string[]): string {
   return "Suggested as a possible fit. Treat this as a hint, not a final answer.";
 }
 
-export default function ExplainSignalDrawer({ txnId, open, onOpenChange, txn, suggestions, onRefresh, unknowns }: {
+export default function ExplainSignalDrawer({ txnId, open, onOpenChange, txn, suggestions, onRefresh, unknowns, entryPoint = 'transactions' }: {
   txnId: number | null
   open: boolean
   onOpenChange: (v: boolean) => void
@@ -82,6 +84,7 @@ export default function ExplainSignalDrawer({ txnId, open, onOpenChange, txn, su
   suggestions?: SuggestionItem[]
   onRefresh?: () => void
   unknowns?: UnknownTxn[]
+  entryPoint?: ExplainSignalDrawerEntryPoint
 }) {
   const portalReady = useSafePortalReady();
   const [loading, setLoading] = React.useState(false)
@@ -323,127 +326,57 @@ export default function ExplainSignalDrawer({ txnId, open, onOpenChange, txn, su
             </div>
           )}
 
-          {/* Manual Categorization Section (for unknown transactions) */}
-          {txn && txn.category === 'unknown' && (
-            <div className="mt-6 rounded-2xl border border-border/40 bg-muted/40 p-4 space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="text-sm font-medium">Categorize this transaction</h3>
-                <span className="text-xs text-muted-foreground">Manual override</span>
-              </div>
+          {/* Manual Categorization Section */}
+          {(() => {
+            const isUnknown =
+              txn?.category_slug === 'unknown' ||
+              txn?.category === 'unknown' ||
+              txn?.category === 'Unknown' ||
+              txn?.category_id == null;
 
-              <div className="space-y-2">
-                <label htmlFor="category-select" className="text-xs font-medium">Category</label>
-                <select
-                  id="category-select"
-                  className="w-full h-9 rounded-md border border-border bg-background px-3 text-sm"
-                  value={categorySlug || ''}
-                  onChange={(e) => setCategorySlug(e.target.value || undefined)}
-                >
-                  <option value="">Choose a category</option>
-                  {CATEGORY_OPTIONS.map((cat) => (
-                    <option key={cat.slug} value={cat.slug}>
-                      {cat.parent ? `  ${cat.label}` : cat.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
+            const showManualCategorize = !!txn && (entryPoint === 'unknowns' || isUnknown);
 
-              <div className="space-y-2">
-                <label className="text-xs font-medium">Apply to</label>
-                <div className="grid gap-2 text-xs">
-                  <label className="flex items-center space-x-2 cursor-pointer">
-                    <input
-                      type="radio"
-                      name="scope"
-                      value="just_this"
-                      checked={scope === 'just_this'}
-                      onChange={(e) => setScope(e.target.value as ManualCategorizeScope)}
-                      className="w-4 h-4"
-                    />
-                    <span>Just this transaction</span>
-                  </label>
-                  <label className="flex items-center space-x-2 cursor-pointer">
-                    <input
-                      type="radio"
-                      name="scope"
-                      value="same_merchant"
-                      checked={scope === 'same_merchant'}
-                      onChange={(e) => setScope(e.target.value as ManualCategorizeScope)}
-                      className="w-4 h-4"
-                    />
-                    <span>All unknowns from this merchant</span>
-                  </label>
-                  <label className="flex items-center space-x-2 cursor-pointer">
-                    <input
-                      type="radio"
-                      name="scope"
-                      value="same_description"
-                      checked={scope === 'same_description'}
-                      onChange={(e) => setScope(e.target.value as ManualCategorizeScope)}
-                      className="w-4 h-4"
-                    />
-                    <span>All unknowns with similar description</span>
-                  </label>
-                </div>
-              </div>
+            return showManualCategorize && (
+              <ManualCategorizeSection
+                transaction={txn}
+                transactionId={txnId}
+                isSubmitting={saving}
+                selectedCategory={categorySlug}
+                onCategoryChange={setCategorySlug}
+                scope={scope}
+                onScopeChange={setScope}
+                affectedCount={affectedCount}
+                onSubmit={async () => {
+                  if (!categorySlug || !txnId) return;
+                  setSaving(true);
+                  try {
+                    const res = await manualCategorizeTransaction(txnId, { categorySlug, scope });
+                    setLastChange(res);
 
-              <div className="space-y-3">
-                <div className="flex justify-end gap-2">
-                  <Button
-                    size="sm"
-                    variant="default"
-                    disabled={!categorySlug || saving}
-                    onClick={async () => {
-                      if (!categorySlug || !txnId) return;
-                      setSaving(true);
-                      try {
-                        const res = await manualCategorizeTransaction(txnId, { categorySlug, scope });
-                        setLastChange(res); // Store for undo
+                    try {
+                      window.localStorage.setItem('lm:lastManualCategorize', JSON.stringify(res));
+                    } catch {
+                      // ignore storage errors
+                    }
 
-                        // Save to localStorage for Settings drawer access
-                        try {
-                          window.localStorage.setItem('lm:lastManualCategorize', JSON.stringify(res));
-                        } catch {
-                          // ignore storage errors
-                        }
+                    const categoryLabel = CATEGORY_DEFS[categorySlug]?.label || categorySlug;
 
-                        const categoryLabel = CATEGORY_DEFS[categorySlug]?.label || categorySlug;
-
-                        emitToastSuccess(
-                          res.similar_updated > 0
-                            ? `Categorized 1 transaction (+${res.similar_updated} similar) as ${categoryLabel}.`
-                            : `Categorized 1 transaction as ${categoryLabel}.`
-                        );
-                        onRefresh?.(); // Trigger parent to refetch
-                        onOpenChange(false); // Close drawer
-                      } catch (err: any) {
-                        emitToastError(err?.message ?? 'Categorization failed. Please try again.');
-                      } finally {
-                        setSaving(false);
-                      }
-                    }}
-                  >
-                    {saving ? 'Saving…' : 'Apply'}
-                  </Button>
-                </div>
-
-                {/* Scope summary */}
-                <p className="text-xs text-muted-foreground text-right">
-                  {scope === 'just_this' && 'Will update 1 transaction'}
-                  {scope === 'same_merchant' && (
-                    affectedCount > 0
-                      ? `Will update 1 transaction (+${affectedCount} unknowns from this merchant)`
-                      : 'Will update 1 transaction (+ all unknowns from this merchant)'
-                  )}
-                  {scope === 'same_description' && (
-                    affectedCount > 0
-                      ? `Will update 1 transaction (+${affectedCount} unknowns with similar description)`
-                      : 'Will update 1 transaction (+ all unknowns with similar description)'
-                  )}
-                </p>
-              </div>
-            </div>
-          )}
+                    emitToastSuccess(
+                      res.similar_updated > 0
+                        ? `Categorized 1 transaction (+${res.similar_updated} similar) as ${categoryLabel}.`
+                        : `Categorized 1 transaction as ${categoryLabel}.`
+                    );
+                    onRefresh?.();
+                    onOpenChange(false);
+                  } catch (err: any) {
+                    emitToastError(err?.message ?? 'Categorization failed. Please try again.');
+                  } finally {
+                    setSaving(false);
+                  }
+                }}
+              />
+            );
+          })()}
 
           {/* Undo last bulk change */}
           {lastChange && lastChange.affected && lastChange.affected.length > 0 && (
@@ -502,4 +435,135 @@ export default function ExplainSignalDrawer({ txnId, open, onOpenChange, txn, su
     </div>,
     getPortalRoot()
   )
+}
+
+/**
+ * Extracted manual categorization UI section for reuse across entry points.
+ */
+type ManualCategorizeSectionProps = {
+  transaction: any;
+  transactionId: number | null;
+  isSubmitting: boolean;
+  selectedCategory: string | undefined;
+  onCategoryChange: (value: string | undefined) => void;
+  scope: ManualCategorizeScope;
+  onScopeChange: (value: ManualCategorizeScope) => void;
+  affectedCount: number;
+  onSubmit: () => void | Promise<void>;
+};
+
+function ManualCategorizeSection({
+  transaction,
+  transactionId,
+  isSubmitting,
+  selectedCategory,
+  onCategoryChange,
+  scope,
+  onScopeChange,
+  affectedCount,
+  onSubmit,
+}: ManualCategorizeSectionProps) {
+  if (!transaction) return null;
+
+  return (
+    <section
+      aria-label="Manual categorization"
+      className="mt-6 rounded-2xl border border-border/40 bg-muted/40 p-4 space-y-4"
+      data-testid="manual-categorize-section"
+    >
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-medium">Categorize this transaction</h3>
+        <span className="text-xs text-muted-foreground">Manual override</span>
+      </div>
+
+      <div className="space-y-2">
+        <label htmlFor="category-select" className="text-xs font-medium">Category</label>
+        <select
+          id="category-select"
+          className="w-full h-9 rounded-md border border-border bg-background px-3 text-sm"
+          value={selectedCategory || ''}
+          onChange={(e) => onCategoryChange(e.target.value || undefined)}
+          data-testid="category-select"
+        >
+          <option value="">Choose a category</option>
+          {CATEGORY_OPTIONS.map((cat) => (
+            <option key={cat.slug} value={cat.slug}>
+              {cat.parent ? `  ${cat.label}` : cat.label}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div className="space-y-2">
+        <label className="text-xs font-medium">Apply to</label>
+        <div className="grid gap-2 text-xs" data-testid="scope-radios">
+          <label className="flex items-center space-x-2 cursor-pointer">
+            <input
+              type="radio"
+              name="scope"
+              value="just_this"
+              checked={scope === 'just_this'}
+              onChange={(e) => onScopeChange(e.target.value as ManualCategorizeScope)}
+              className="w-4 h-4"
+              data-testid="scope-just-this"
+            />
+            <span>Just this transaction</span>
+          </label>
+          <label className="flex items-center space-x-2 cursor-pointer">
+            <input
+              type="radio"
+              name="scope"
+              value="same_merchant"
+              checked={scope === 'same_merchant'}
+              onChange={(e) => onScopeChange(e.target.value as ManualCategorizeScope)}
+              className="w-4 h-4"
+              data-testid="scope-same-merchant"
+            />
+            <span>Same merchant</span>
+          </label>
+          <label className="flex items-center space-x-2 cursor-pointer">
+            <input
+              type="radio"
+              name="scope"
+              value="same_description"
+              checked={scope === 'same_description'}
+              onChange={(e) => onScopeChange(e.target.value as ManualCategorizeScope)}
+              className="w-4 h-4"
+              data-testid="scope-same-description"
+            />
+            <span>Same description</span>
+          </label>
+        </div>
+      </div>
+
+      <div className="space-y-3">
+        <div className="flex justify-end gap-2">
+          <Button
+            size="sm"
+            variant="default"
+            disabled={!selectedCategory || isSubmitting}
+            onClick={onSubmit}
+            data-testid="apply-categorization-button"
+          >
+            {isSubmitting ? 'Saving…' : 'Apply'}
+          </Button>
+        </div>
+
+        {/* Scope summary */}
+        <p className="text-xs text-muted-foreground text-right">
+          {scope === 'just_this' && 'Will update 1 transaction'}
+          {scope === 'same_merchant' && (
+            affectedCount > 0
+              ? `Will update 1 transaction (+${affectedCount} similar from this merchant)`
+              : 'Will update 1 transaction (+ similar from this merchant)'
+          )}
+          {scope === 'same_description' && (
+            affectedCount > 0
+              ? `Will update 1 transaction (+${affectedCount} similar by description)`
+              : 'Will update 1 transaction (+ similar by description)'
+          )}
+        </p>
+      </div>
+    </section>
+  );
 }

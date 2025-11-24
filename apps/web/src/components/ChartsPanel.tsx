@@ -39,6 +39,7 @@ import {
 } from "@/lib/merchant-normalizer";
 import { getMerchantAliasName } from "@/lib/formatters/merchants";
 import { getCategoryColor } from "@/lib/categories";
+import { SERIES_COLORS, CATEGORY_COLORS, getCategoryColor as getChartCategoryColor } from "@/lib/charts/theme";
 
 // Cast so TS treats them as FCs (safe for now)
 const ResponsiveContainer = RC.ResponsiveContainer as unknown as React.FC<any>;
@@ -315,9 +316,13 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
                   formatter={(value: any) => [formatMoneyTick(Number(value)), 'Spend']}
                 />
                 <Bar dataKey="amount" name={t('ui.charts.legend_spend')} activeBar={{ fillOpacity: 1, stroke: "#fff", strokeWidth: 1 }} fillOpacity={0.9}>
-                  {categoriesData.map((d: any, i: number) => (
-                    <Cell key={i} fill={getCategoryColor(d?.name)} />
-                  ))}
+                  {categoriesData.map((d: any, i: number) => {
+                    const slug = (d?.category_slug ?? d?.category ?? d?.name ?? 'unknown')
+                      .toString()
+                      .trim()
+                      .toLowerCase();
+                    return <Cell key={i} fill={getChartCategoryColor(slug)} />;
+                  })}
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
@@ -399,11 +404,12 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
                   dataKey="spend"
                   radius={[8, 8, 0, 0]}
                   barSize={28}
+                  fill={SERIES_COLORS.spend}
                   activeBar={{ fillOpacity: 1, stroke: "#fff", strokeWidth: 1 }}
                   fillOpacity={0.9}
                 >
                   {topMerchantsData.map((d, i: number) => (
-                    <Cell key={i} fill={getCategoryColor(d.category || 'unknown')} />
+                    <Cell key={i} fill={SERIES_COLORS.spend} />
                   ))}
                 </Bar>
               </BarChart>
@@ -459,9 +465,9 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
                   wrapperStyle={legendTextStyle}
                   formatter={formatLegendLabel}
                 />
-                <Line type="monotone" dataKey="in"  name="in"  stroke="#22c55e" strokeWidth={2} dot={false} />
-                <Line type="monotone" dataKey="out" name="out" stroke="#ef4444" strokeWidth={2} dot={false} />
-                <Line type="monotone" dataKey="net" name="net" stroke="#60a5fa" strokeWidth={2} dot={false} />
+                <Line type="monotone" dataKey="in"  name="in"  stroke={SERIES_COLORS.income} strokeWidth={2} dot={false} />
+                <Line type="monotone" dataKey="out" name="out" stroke={SERIES_COLORS.spend} strokeWidth={2} dot={false} />
+                <Line type="monotone" dataKey="net" name="net" stroke={SERIES_COLORS.net} strokeWidth={2} dot={false} />
               </LineChart>
             </ResponsiveContainer>
           </div>
@@ -515,9 +521,9 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
                   ]}
                 />
                 <Legend wrapperStyle={legendTextStyle} />
-                <Line type="monotone" dataKey="spending" name="Spending" stroke="#ef4444" strokeWidth={2} dot={false} />
-                <Line type="monotone" dataKey="income" name="Income" stroke="#22c55e" strokeWidth={2} dot={false} />
-                <Line type="monotone" dataKey="net" name="Net" stroke="#60a5fa" strokeWidth={2} dot={false} />
+                <Line type="monotone" dataKey="spending" name="Spending" stroke={SERIES_COLORS.spend} strokeWidth={2} dot={false} />
+                <Line type="monotone" dataKey="income" name="Income" stroke={SERIES_COLORS.income} strokeWidth={2} dot={false} />
+                <Line type="monotone" dataKey="net" name="Net" stroke={SERIES_COLORS.net} strokeWidth={2} dot={false} />
               </LineChart>
             </ResponsiveContainer>
           </div>
