@@ -79,9 +79,9 @@ date,merchant,description,amount,category
 2025-11-12,AT&T Wireless,Phone bill,-85.0,utilities.mobile
 2025-11-13,Zelle Transfer,Money to savings,-400.0,transfers
 2025-11-14,Zelle Transfer,Money from savings,400.0,transfers
-2025-11-15,Unknown Coffee Shop,POS PURCHASE - 8374,-14.37,
-2025-11-16,XYZ MARKET,POS PURCHASE - 5493,-27.8,
-2025-11-17,RandomCharge,WEB*RCG 10293,-8.99,
+2025-11-15,Starbucks Coffee,STARBUCKS 1234 - LATTE & SNACK,-14.37,
+2025-11-16,Target Store,TARGET #1023 - HOUSEHOLD + SNACKS,-27.8,
+2025-11-17,Uber Trip,UBER *TRIP 8AF23,-8.99,
 2025-11-18,Whole Foods Market,Grocery top-up,-68.2,groceries
 2025-11-19,Shell Gas Station,Gas refill,-48.75,fuel
 2025-11-20,Panera Bread,Lunch,-24.3,restaurants

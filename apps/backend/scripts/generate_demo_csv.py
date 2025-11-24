@@ -270,9 +270,22 @@ def generate_demo_transactions():
             ("2025-11-13", "Zelle Transfer", "Money to savings", -400.00, "transfers"),
             ("2025-11-14", "Zelle Transfer", "Money from savings", 400.00, "transfers"),
             # Unknown transactions for ML categorization demo (blank category)
-            ("2025-11-15", "Unknown Coffee Shop", "POS PURCHASE - 8374", -14.37, ""),
-            ("2025-11-16", "XYZ MARKET", "POS PURCHASE - 5493", -27.80, ""),
-            ("2025-11-17", "RandomCharge", "WEB*RCG 10293", -8.99, ""),
+            # Using recognizable real-world merchants instead of placeholders
+            (
+                "2025-11-15",
+                "Starbucks Coffee",
+                "STARBUCKS 1234 - LATTE & SNACK",
+                -14.37,
+                "",
+            ),
+            (
+                "2025-11-16",
+                "Target Store",
+                "TARGET #1023 - HOUSEHOLD + SNACKS",
+                -27.80,
+                "",
+            ),
+            ("2025-11-17", "Uber Trip", "UBER *TRIP 8AF23", -8.99, ""),
             ("2025-11-18", "Whole Foods Market", "Grocery top-up", -68.20, "groceries"),
             ("2025-11-19", "Shell Gas Station", "Gas refill", -48.75, "fuel"),
             ("2025-11-20", "Panera Bread", "Lunch", -24.30, "restaurants"),
