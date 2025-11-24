@@ -1,132 +1,21 @@
 date,merchant,description,amount,category
-2025-06-01,ACME Corp,Biweekly paycheck,2450.00,Income
-2025-06-01,Whole Foods Market,Grocery shopping,-127.45,Groceries
-2025-06-01,Shell Gas Station,Fuel,-52.30,Transportation
-2025-06-02,Starbucks,Coffee,-5.75,Eating Out
-2025-06-03,Netflix,Monthly subscription,-15.99,Subscriptions
-2025-06-03,Amazon Prime,Monthly subscription,-14.99,Subscriptions
-2025-06-05,Rent Payment,June rent,-2100.00,Housing
-2025-06-07,Target,Household supplies,-89.23,Shopping
-2025-06-08,Local Diner,Lunch,-18.50,Eating Out
-2025-06-10,Spotify,Monthly subscription,-9.99,Subscriptions
-2025-06-12,Whole Foods Market,Weekly groceries,-143.67,Groceries
-2025-06-14,MoviePlex,Movie tickets,-32.00,Entertainment
-2025-06-15,ACME Corp,Biweekly paycheck,2450.00,Income
-2025-06-15,AT&T Wireless,Phone bill,-85.00,Utilities
-2025-06-16,Chipotle,Dinner,-23.40,Eating Out
-2025-06-18,Shell Gas Station,Fuel,-48.90,Transportation
-2025-06-19,Amazon,Books and supplies,-67.89,Shopping
-2025-06-20,Whole Foods Market,Weekly groceries,-134.22,Groceries
-2025-06-22,Joe's Pizza,Takeout,-28.75,Eating Out
-2025-06-24,REI,Hiking gear,-215.50,Shopping
-2025-06-25,Electric Company,Electric bill,-125.40,Utilities
-2025-06-26,Starbucks,Coffee,-6.25,Eating Out
-2025-06-28,Trader Joe's,Groceries,-98.45,Groceries
-2025-06-30,Uber,Ride to airport,-45.20,Transportation
-2025-07-01,ACME Corp,Biweekly paycheck,2450.00,Income
-2025-07-01,Delta Airlines,Flight to NYC,-425.00,Travel
-2025-07-01,Hotel Reservation,3 nights Manhattan,-687.50,Travel
-2025-07-03,Broadway Show,Theater tickets,-180.00,Entertainment
-2025-07-04,Restaurant NYC,Dinner,-95.30,Eating Out
-2025-07-05,Rent Payment,July rent,-2100.00,Housing
-2025-07-06,Whole Foods Market,Grocery shopping,-156.78,Groceries
-2025-07-08,Shell Gas Station,Fuel,-54.10,Transportation
-2025-07-10,Netflix,Monthly subscription,-15.99,Subscriptions
-2025-07-10,Spotify,Monthly subscription,-9.99,Subscriptions
-2025-07-12,Target,Summer clothes,-178.90,Shopping
-2025-07-14,Starbucks,Coffee,-5.50,Eating Out
-2025-07-15,ACME Corp,Biweekly paycheck,2450.00,Income
-2025-07-15,Freelance Web Design,Project payment,875.00,Income
-2025-07-15,AT&T Wireless,Phone bill,-85.00,Utilities
-2025-07-16,Whole Foods Market,Weekly groceries,-142.35,Groceries
-2025-07-18,Sushi Restaurant,Dinner,-72.40,Eating Out
-2025-07-20,Amazon,Office supplies,-43.25,Shopping
-2025-07-22,MoviePlex,Movie night,-28.00,Entertainment
-2025-07-24,Shell Gas Station,Fuel,-51.20,Transportation
-2025-07-25,Electric Company,Electric bill,-138.75,Utilities
-2025-07-26,Whole Foods Market,Weekly groceries,-129.60,Groceries
-2025-07-28,Chipotle,Lunch,-19.85,Eating Out
-2025-07-30,Gym Membership,Monthly dues,-65.00,Health & Fitness
-2025-08-01,ACME Corp,Biweekly paycheck,2450.00,Income
-2025-08-01,Amazon Prime,Monthly subscription,-14.99,Subscriptions
-2025-08-03,Whole Foods Market,Grocery shopping,-148.90,Groceries
-2025-08-05,Rent Payment,August rent,-2100.00,Housing
-2025-08-07,Shell Gas Station,Fuel,-49.80,Transportation
-2025-08-09,Starbucks,Coffee,-6.00,Eating Out
-2025-08-10,Netflix,Monthly subscription,-15.99,Subscriptions
-2025-08-10,Spotify,Monthly subscription,-9.99,Subscriptions
-2025-08-12,Dentist,Dental checkup,-175.00,Healthcare
-2025-08-14,Whole Foods Market,Weekly groceries,-136.45,Groceries
-2025-08-15,ACME Corp,Biweekly paycheck,2450.00,Income
-2025-08-15,AT&T Wireless,Phone bill,-85.00,Utilities
-2025-08-16,Thai Restaurant,Dinner,-54.30,Eating Out
-2025-08-18,Target,Bathroom supplies,-67.88,Shopping
-2025-08-20,Shell Gas Station,Fuel,-52.75,Transportation
-2025-08-22,Concert Tickets,Live music,-125.00,Entertainment
-2025-08-24,Whole Foods Market,Weekly groceries,-144.20,Groceries
-2025-08-25,Electric Company,Electric bill,-142.30,Utilities
-2025-08-26,Italian Bistro,Date night,-98.60,Eating Out
-2025-08-28,Amazon,Kitchen gadgets,-85.40,Shopping
-2025-08-30,Gym Membership,Monthly dues,-65.00,Health & Fitness
-2025-09-01,ACME Corp,Biweekly paycheck,2450.00,Income
-2025-09-01,Whole Foods Market,Grocery shopping,-152.35,Groceries
-2025-09-03,Coffee Shop,Coffee and pastry,-12.50,Eating Out
-2025-09-05,Rent Payment,September rent,-2100.00,Housing
-2025-09-07,Shell Gas Station,Fuel,-53.40,Transportation
-2025-09-09,Adobe Creative,Monthly subscription,-54.99,Subscriptions
-2025-09-10,Netflix,Monthly subscription,-15.99,Subscriptions
-2025-09-10,Spotify,Monthly subscription,-9.99,Subscriptions
-2025-09-12,Whole Foods Market,Weekly groceries,-139.70,Groceries
-2025-09-14,Pharmacy,Prescription refill,-35.00,Healthcare
-2025-09-15,ACME Corp,Biweekly paycheck,2450.00,Income
-2025-09-15,IRS Treasury,Tax refund,650.00,Income
-2025-09-15,AT&T Wireless,Phone bill,-85.00,Utilities
-2025-09-16,Mexican Restaurant,Dinner,-62.40,Eating Out
-2025-09-18,Target,Fall decorations,-92.15,Shopping
-2025-09-20,Shell Gas Station,Fuel,-48.65,Transportation
-2025-09-22,Whole Foods Market,Weekly groceries,-147.85,Groceries
-2025-09-24,Movie Theater,Movie tickets,-26.00,Entertainment
-2025-09-25,Electric Company,Electric bill,-118.90,Utilities
-2025-09-26,Starbucks,Coffee,-5.75,Eating Out
-2025-09-28,Amazon,New headphones,-89.99,Shopping
-2025-09-30,Gym Membership,Monthly dues,-65.00,Health & Fitness
-2025-10-01,ACME Corp,Biweekly paycheck,2450.00,Income
-2025-10-01,Whole Foods Market,Grocery shopping,-158.45,Groceries
-2025-10-03,Shell Gas Station,Fuel,-51.20,Transportation
-2025-10-05,Rent Payment,October rent,-2100.00,Housing
-2025-10-07,Costco,Bulk shopping,-245.80,Groceries
-2025-10-09,Starbucks,Coffee,-6.25,Eating Out
-2025-10-10,Netflix,Monthly subscription,-15.99,Subscriptions
-2025-10-10,Spotify,Monthly subscription,-9.99,Subscriptions
-2025-10-10,Adobe Creative,Monthly subscription,-54.99,Subscriptions
-2025-10-12,Mechanic,Car maintenance,-325.00,Transportation
-2025-10-14,Whole Foods Market,Weekly groceries,-141.60,Groceries
-2025-10-15,ACME Corp,Biweekly paycheck,2450.00,Income
-2025-10-15,Freelance Consulting,October project,1250.00,Income
-2025-10-15,AT&T Wireless,Phone bill,-85.00,Utilities
-2025-10-16,Steakhouse,Business dinner,-156.75,Eating Out
-2025-10-18,Best Buy,New monitor,-379.99,Shopping
-2025-10-20,Shell Gas Station,Fuel,-49.30,Transportation
-2025-10-22,Whole Foods Market,Weekly groceries,-133.90,Groceries
-2025-10-24,Concert Hall,Symphony tickets,-95.00,Entertainment
-2025-10-25,Electric Company,Electric bill,-132.45,Utilities
-2025-10-26,Chipotle,Lunch,-21.30,Eating Out
-2025-10-28,Amazon,Halloween decorations,-54.25,Shopping
-2025-10-30,Gym Membership,Monthly dues,-65.00,Health & Fitness
-2025-10-31,Party City,Halloween party supplies,-78.40,Shopping
-2025-11-01,ACME Corp,Biweekly paycheck,2450.00,Income
-2025-11-01,Whole Foods Market,Grocery shopping,-162.70,Groceries
-2025-11-03,Shell Gas Station,Fuel,-52.80,Transportation
-2025-11-05,Rent Payment,November rent,-2100.00,Housing
-2025-11-07,Target,Winter clothes,-198.50,Shopping
-2025-11-09,Starbucks,Coffee,-5.90,Eating Out
-2025-11-10,Netflix,Monthly subscription,-15.99,Subscriptions
-2025-11-10,Spotify,Monthly subscription,-9.99,Subscriptions
-2025-11-10,Adobe Creative,Monthly subscription,-54.99,Subscriptions
-2025-11-12,Whole Foods Market,Weekly groceries,-145.35,Groceries
-2025-11-14,Dentist,Teeth cleaning,-85.00,Healthcare
-2025-11-15,ACME Corp,Biweekly paycheck,2450.00,Income
-2025-11-15,AT&T Wireless,Phone bill,-85.00,Utilities
-2025-11-16,Sushi Place,Dinner,-68.90,Eating Out
-2025-11-18,Shell Gas Station,Fuel,-50.45,Transportation
-2025-11-20,Whole Foods Market,Weekly groceries,-151.20,Groceries
+2025-11-01,ACME Corp,Paycheck,3200.00,income.salary
+2025-11-02,Rent Payment,Monthly rent,-1200.00,transfers
+2025-11-03,Whole Foods Market,Grocery shopping,-162.70,groceries
+2025-11-04,Starbucks,Coffee with friends,-18.45,restaurants
+2025-11-05,Shell Gas Station,Gas for car,-52.80,fuel
+2025-11-06,GitHub,GitHub Copilot subscription,-10.00,subscriptions.software
+2025-11-07,Netflix,Streaming subscription,-15.99,subscriptions.entertainment
+2025-11-08,Amazon,Online shopping,-93.25,shopping.online
+2025-11-09,Target,Household + snacks,-86.40,shopping.retail
+2025-11-10,PlayStation Store,Game purchase,-79.99,entertainment.games
+2025-11-11,Uber,Airport ride,-34.15,transportation.rideshare
+2025-11-12,AT&T Wireless,Phone bill,-85.00,utilities.mobile
+2025-11-13,Zelle Transfer,Money to savings,-400.00,transfers
+2025-11-14,Zelle Transfer,Money from savings,400.00,transfers
+2025-11-15,Unknown Coffee Shop,POS PURCHASE - 8374,-14.37,
+2025-11-16,XYZ MARKET,POS PURCHASE - 5493,-27.80,
+2025-11-17,RandomCharge,WEB*RCG 10293,-8.99,
+2025-11-18,Whole Foods Market,Grocery top-up,-68.20,groceries
+2025-11-19,Shell Gas Station,Gas refill,-48.75,fuel
+2025-11-20,Netflix,Streaming subscription,-15.99,subscriptions.entertainment
