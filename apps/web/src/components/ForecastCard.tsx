@@ -162,8 +162,11 @@ export default function ForecastCard({ className = "" }: { className?: string })
 
         {!busy && !data && (
           <div className="h-64 grid place-items-center rounded-lg border bg-muted/10">
-            <div className="text-sm text-muted-foreground">
-              Upload at least 3 months of data and click <strong>Run</strong> to see a forecast.
+            <div className="text-sm text-center text-muted-foreground px-4">
+              <div className="mb-2">Click <strong>Run</strong> to generate a forecast</div>
+              <div className="text-xs opacity-70">
+                Requires at least 3 months of transaction history
+              </div>
             </div>
           </div>
         )}
@@ -171,9 +174,9 @@ export default function ForecastCard({ className = "" }: { className?: string })
         {!busy && data && data.has_history === false && (
           <div className="h-64 grid place-items-center rounded-lg border bg-muted/10">
             <div className="text-sm text-center px-4">
-              <div className="text-muted-foreground mb-2">Not enough history to forecast</div>
+              <div className="text-muted-foreground mb-2">Not enough transaction history</div>
               <div className="text-xs text-muted-foreground/80">
-                {data.reason || "Upload at least 3 months of transactions with real amounts to generate a forecast."}
+                {data.reason || "Need at least 3 months of transactions with non-zero amounts to forecast."}
               </div>
             </div>
           </div>
