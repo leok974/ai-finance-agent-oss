@@ -60,6 +60,22 @@ async def mode_finance_quick_recap_llm(
 
     top_categories = (expanded.get("categories") or [])[:5]
 
+    # Check if this is a demo user and get demo insights
+    demo_overview = None
+    user_email = user_context.get("email", "")
+    if user_email == settings.DEMO_USER_EMAIL:
+        try:
+            demo_resp = (
+                await http.post(
+                    f"{settings.INTERNAL_API_ROOT}/agent/tools/charts/demo-overview",
+                    json={"months": 6},
+                )
+            ).json()
+            demo_overview = demo_resp
+        except Exception:
+            # If demo overview fails, continue without it
+            pass
+
     # 2) Build structured data for LLM
     llm_data = {
         "month": month,
@@ -87,6 +103,16 @@ async def mode_finance_quick_recap_llm(
             else None
         ),
     }
+
+    # Add demo overview if available
+    if demo_overview and demo_overview.get("categories"):
+        llm_data["demo_averages"] = [
+            {
+                "category": cat["category_label"],
+                "monthly_avg": cat["monthly_avg"],
+            }
+            for cat in demo_overview["categories"][:5]  # Top 5 categories
+        ]
 
     # 3) Call LLM with prompt + data
     messages: List[Dict[str, str]] = [

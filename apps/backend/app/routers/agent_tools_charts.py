@@ -369,3 +369,91 @@ async def spending_trends_get_compat(
         order=order,
     )
     return await spending_trends_post(body, db)
+
+
+# ---------- Demo Finance Tool ----------
+
+
+class DemoOverviewBody(BaseModel):
+    """Request body for demo finance overview."""
+
+    months: int = Field(6, ge=1, le=12)
+    user_id: Optional[int] = None  # For internal use; normally from auth context
+
+
+class DemoCategoryItem(BaseModel):
+    """Category spending average for demo data."""
+
+    category_slug: str
+    category_label: str
+    monthly_avg: float
+    txn_count: int
+
+
+class DemoOverviewResp(BaseModel):
+    """Response for demo finance overview."""
+
+    categories: List[DemoCategoryItem]
+    months_analyzed: int
+    total_categories: int
+
+
+@router.post("/demo-overview", response_model=DemoOverviewResp)
+async def demo_overview_post(
+    body: DemoOverviewBody,
+    db: Session = Depends(get_db),
+) -> DemoOverviewResp:
+    """
+    Get category spending averages for demo data.
+
+    This endpoint is designed for demo users to get an overview of their
+    sample data spending patterns by category.
+
+    Returns monthly averages for each category over the specified time window.
+    """
+    from app.agent.finance_utils import get_demo_category_monthly_averages
+    from app.config import settings
+
+    # For now, use user_id from body if provided, otherwise try to get from context
+    # In production, this would come from authenticated user context
+    user_id = body.user_id
+    if user_id is None:
+        # Fallback: try to get demo user from database
+        from app.orm_models import User
+
+        demo_user = (
+            db.query(User).filter(User.email == settings.DEMO_USER_EMAIL).first()
+        )
+        if demo_user:
+            user_id = demo_user.id
+        else:
+            # No demo user found, return empty result
+            return DemoOverviewResp(
+                categories=[],
+                months_analyzed=body.months,
+                total_categories=0,
+            )
+
+    # Get category averages
+    averages = get_demo_category_monthly_averages(
+        db=db,
+        user_id=user_id,
+        months=body.months,
+    )
+
+    # Convert to response format
+    categories = [
+        DemoCategoryItem(
+            category_slug=avg.category_slug,
+            category_label=avg.category_label,
+            monthly_avg=avg.monthly_avg,
+            txn_count=avg.txn_count,
+        )
+        for avg in averages
+    ]
+
+    return DemoOverviewResp(
+        categories=categories,
+        months_analyzed=body.months,
+        total_categories=len(categories),
+    )
