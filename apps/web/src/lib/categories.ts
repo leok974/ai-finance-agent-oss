@@ -158,12 +158,6 @@ export const CATEGORY_DEFS: Record<string, CategoryDef> = {
     parent: 'transportation',
     color: '#f59e0b',
   },
-  'transportation.ride_hailing': {
-    slug: 'transportation.ride_hailing',
-    label: 'Ride Hailing',
-    parent: 'transportation',
-    color: '#f59e0b',
-  },
 
   // Sub-categories (health)
   'health.pharmacy': {
