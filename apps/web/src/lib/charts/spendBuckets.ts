@@ -3,12 +3,19 @@
 
 export type SpendBucket = "low" | "mid" | "high";
 
-export const getSpendBucket = (amount: number, max: number): SpendBucket => {
-  const ratio = max <= 0 ? 0 : amount / max;
+/**
+ * Determine spend bucket based on absolute amount thresholds.
+ *
+ * Thresholds:
+ * - High (red): >= $1000
+ * - Medium (yellow): $200 - $999
+ * - Low (green): < $200
+ */
+export const getSpendBucket = (amount: number, _max?: number): SpendBucket => {
+  const absAmount = Math.abs(amount);
 
-  // Thresholds match legend text (low / mid / high)
-  if (ratio >= 0.66) return "high";
-  if (ratio >= 0.33) return "mid";
+  if (absAmount >= 1000) return "high";
+  if (absAmount >= 200) return "mid";
   return "low";
 };
 

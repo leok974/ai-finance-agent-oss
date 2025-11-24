@@ -412,7 +412,7 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
                   fillOpacity={0.9}
                 >
                   {topMerchantsData.map((d, i: number) => {
-                    const bucket = getSpendBucket(d.spend, maxMerchant);
+                    const bucket = getSpendBucket(d.spend);
                     return (
                       <Cell
                         key={`merchant-bar-${d.merchant}-${i}`}
