@@ -364,3 +364,16 @@ html[data-help] [data-help-active="true"]::after {
   box-shadow: 0 0 0 3px rgba(251,191,36,.25), 0 6px 22px rgba(0,0,0,.55);
   pointer-events: none;
 }
+
+/* ---- Chat streaming cursor ---- */
+.lm-chat-cursor {
+  display: inline-block;
+  margin-left: 2px;
+  animation: lm-chat-cursor-blink 1s steps(1, start) infinite;
+}
+
+@keyframes lm-chat-cursor-blink {
+  50% {
+    opacity: 0;
+  }
+}

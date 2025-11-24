@@ -5,6 +5,8 @@ import SaveRuleModal from '@/components/SaveRuleModal';
 const { useEffect, useRef, useState, useMemo, useCallback } = React;
 import { cn } from "@/lib/utils";
 import { wireAguiStream } from "@/lib/aguiStream";
+import { CHAT_STREAMING_ENABLED } from "@/lib/streaming-config";
+import { formatToolStatus } from "@/lib/formatToolStatus";
 import RobotThinking from "@/components/ui/RobotThinking";
 import EnvAvatar from "@/components/EnvAvatar";
 import { useAuth, getUserInitial } from "@/state/auth";
@@ -75,7 +77,7 @@ const PANEL_H_GUESS = 420;
 
 // Local message types
 type MsgRole = 'user' | 'assistant';
-type Msg = { role: MsgRole; text: string; ts: number; meta?: any };
+type Msg = { role: MsgRole; text: string; ts: number; meta?: any; isStreaming?: boolean; };
 
 // Clamp right/bottom within viewport using element size
 function clampRB(next: { right: number; bottom: number }, w: number, h: number) {
@@ -317,6 +319,10 @@ export default function ChatDock() {
   const [aguiTools, setAguiTools] = useState<Array<{ name: string; status: 'pending'|'active'|'done'|'error'; startedAt?: number; endedAt?: number }>>([]);
   const aguiToolsRef = React.useRef<typeof aguiTools>(aguiTools);
   React.useEffect(()=>{ aguiToolsRef.current = aguiTools; }, [aguiTools]);
+
+  // NEW: Streaming status state for live tool tracking above launcher
+  const [isStreamingStatus, setIsStreamingStatus] = useState(false);
+  const [streamingToolNames, setStreamingToolNames] = useState<string[]>([]);
 
   // Poll agent status every 30 seconds
   React.useEffect(() => {
@@ -677,7 +683,14 @@ export default function ChatDock() {
               <div className="py-1"><span className="sr-only">Thinking.</span><RobotThinking size={32} /></div>
             ) : (
               <>
-                {m.role === 'assistant' ? <MessageRenderer text={m.text} /> : <>{m.text}</>}
+                {m.role === 'assistant' ? (
+                  <>
+                    <MessageRenderer text={m.text} />
+                    {(m as any).isStreaming && <span className="lm-chat-cursor">▌</span>}
+                  </>
+                ) : (
+                  <>{m.text}</>
+                )}
                 {m.role === 'assistant' && meta?.toolId === 'search_transactions' && meta?.items ? (
                   <SearchTransactionsInlineTable items={meta.items.slice(0, 5)} />
                 ) : null}
@@ -1295,7 +1308,28 @@ export default function ChatDock() {
       const currentReqRef = reqRef.current;
 
       aguiLog('agui.run', { from: 'text', month, q: text });
+
+      // Create a unique message ID for streaming
+      const streamingMsgId = CHAT_STREAMING_ENABLED ? crypto.randomUUID() : undefined;
+
+      // If streaming enabled, create placeholder assistant message in store
+      if (CHAT_STREAMING_ENABLED && streamingMsgId) {
+        const { messages } = useChatSession.getState();
+        useChatSession.setState({
+          messages: [
+            ...messages,
+            { id: streamingMsgId, role: 'assistant', text: '', at: Date.now(), isStreaming: true }
+          ],
+          version: useChatSession.getState().version + 1,
+        });
+      }
+
+      // NEW: Start streaming status tracking
+      setIsStreamingStatus(true);
+      setStreamingToolNames([]);
+
       wireAguiStream({ q: text, month }, {
+        streamingMessageId: streamingMsgId,
         onStart(meta) { appendAssistant('...', { thinking: true }); if (meta?.intent) setIntentBadge(meta.intent); },
         onIntent(intent) { setIntentBadge(intent); },
         onToolStart(name) {
@@ -1305,6 +1339,8 @@ export default function ChatDock() {
             if (exists) return cur.map(t => t.name === name ? { ...t, status: 'active', startedAt: t.startedAt || Date.now() } : t);
             return [...cur, { name, status: 'active', startedAt: Date.now() }];
           });
+          // NEW: Track tool names for live status display
+          setStreamingToolNames(cur => cur.includes(name) ? cur : [...cur, name]);
         },
         onToolEnd(name, ok) {
           aguiLog('agui.tool', { name, status: 'end', ok });
@@ -1350,10 +1386,16 @@ export default function ChatDock() {
           }
           setBusy(false); setAguiRunActive(false); appendAssistant(aggregated || '(no content)');
           if (reqRef.current === currentReqRef) reqRef.current = null;
+          // NEW: Clear streaming status
+          setIsStreamingStatus(false);
+          setStreamingToolNames([]);
         },
         onError() {
           setBusy(false); setAguiRunActive(false); appendAssistant('(stream error ΓÇô fallback)');
           if (reqRef.current === currentReqRef) reqRef.current = null;
+          // NEW: Clear streaming status on error
+          setIsStreamingStatus(false);
+          setStreamingToolNames([]);
         }
       });
       return;
@@ -1972,6 +2014,11 @@ export default function ChatDock() {
     let aggregated = '';
   if (mode === 'what-if') { lastWhatIfScenarioRef.current = prompt; hadWhatIfRunRef.current = true; }
     aguiLog('agui.run', { from: 'button', mode, month: monthCtx, q: prompt });
+
+    // NEW: Start streaming status tracking
+    setIsStreamingStatus(true);
+    setStreamingToolNames([]);
+
     wireAguiStream({ q: prompt, month: monthCtx || undefined, mode }, {
       onStart(meta) { appendAssistant('...', { thinking: true }); if (meta?.intent) setIntentBadge(meta.intent); },
       onIntent(intent) { setIntentBadge(intent); },
@@ -1982,6 +2029,8 @@ export default function ChatDock() {
           if (exists) return cur.map(t => t.name === name ? { ...t, status: 'active', startedAt: t.startedAt || Date.now() } : t);
           return [...cur, { name, status: 'active', startedAt: Date.now() }];
         });
+        // NEW: Track tool names for live status display
+        setStreamingToolNames(cur => cur.includes(name) ? cur : [...cur, name]);
       },
       onToolEnd(name, ok) {
         aguiLog('agui.tool', { name, status: 'end', ok });
@@ -2047,8 +2096,16 @@ export default function ChatDock() {
           }
         } catch (err) { /* non-fatal */ }
         setBusy(false); setAguiRunActive(false); appendAssistant(aggregated || '(no content)');
+        // NEW: Clear streaming status
+        setIsStreamingStatus(false);
+        setStreamingToolNames([]);
       },
-  onError() { setBusy(false); setAguiRunActive(false); appendAssistant('(stream error ΓÇô fallback)'); }
+  onError() {
+    setBusy(false); setAguiRunActive(false); appendAssistant('(stream error ΓÇô fallback)');
+    // NEW: Clear streaming status on error
+    setIsStreamingStatus(false);
+    setStreamingToolNames([]);
+  }
     });
     return true;
   }
@@ -2635,10 +2692,21 @@ export default function ChatDock() {
       data-testid="lm-chat-launcher"
       className={cn(
         "lm-chat-launcher",
-        open && "lm-chat-launcher--open"
+        open && "lm-chat-launcher--open",
+        "flex flex-col items-end gap-1"
       )}
       data-state={open ? "open" : "closed"}
     >
+      {/* NEW: Streaming tool status above launcher */}
+      {isStreamingStatus && streamingToolNames.length > 0 && (
+        <div
+          className="rounded-full bg-black/80 text-xs text-white px-3 py-1 shadow-md max-w-[220px] text-right"
+          data-testid="lm-chat-tool-status"
+        >
+          {formatToolStatus(streamingToolNames)}
+        </div>
+      )}
+
       {/* Bubble */}
       <button
         type="button"

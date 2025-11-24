@@ -1,3 +1,6 @@
+import { CHAT_STREAMING_ENABLED } from "./streaming-config";
+import { useChatSession } from "@/state/chatSession";
+
 export type AguiHandlers = {
   onStart?(meta: { intent?: string; month?: string; ts?: number }): void;
   onIntent?(intent: string, meta: unknown): void;
@@ -9,6 +12,8 @@ export type AguiHandlers = {
   onError?(err: unknown): void;
   onSuggestions?(chips: Array<{ label: string; action: string }>): void;
   onSuggestedActions?(actions: Array<any>): void;
+  // NEW: optional message ID for streaming to store
+  streamingMessageId?: string;
 };
 
 export function wireAguiStream(
@@ -27,6 +32,16 @@ export function wireAguiStream(
     try { fn && fn(...a); } catch { /* swallow */ }
   };
 
+  // Get streaming store actions if feature is enabled and message ID provided
+  let streamingActions: ReturnType<typeof useChatSession.getState> | null = null;
+  if (CHAT_STREAMING_ENABLED && h.streamingMessageId) {
+    try {
+      streamingActions = useChatSession.getState();
+    } catch {
+      // Store may not be available
+    }
+  }
+
   es.addEventListener('INTENT_DETECTED', (e: MessageEvent) => {
     const meta = JSON.parse(e.data || '{}');
     safe(h.onIntent, meta.intent, meta);
@@ -35,6 +50,11 @@ export function wireAguiStream(
     const meta = JSON.parse(e.data || '{}');
     safe(h.onStart, meta);
     if (meta.intent) safe(h.onIntent, meta.intent, meta);
+
+    // NEW: Start streaming if enabled
+    if (streamingActions && h.streamingMessageId) {
+      streamingActions.startStreamingMessage(h.streamingMessageId);
+    }
   });
   es.addEventListener('TOOL_CALL_START', (e: MessageEvent) => {
     const name = JSON.parse(e.data || '{}')?.name;
@@ -46,10 +66,23 @@ export function wireAguiStream(
   });
   es.addEventListener('TEXT_MESSAGE_CONTENT', (e: MessageEvent) => {
     const text = JSON.parse(e.data || '{}')?.text ?? '';
-    if (text) safe(h.onChunk, text);
+    if (text) {
+      safe(h.onChunk, text);
+
+      // NEW: Append to streaming message if enabled
+      if (streamingActions && h.streamingMessageId) {
+        streamingActions.appendToMessage(h.streamingMessageId, text);
+      }
+    }
   });
   es.addEventListener('RUN_FINISHED', () => {
     safe(h.onFinish);
+
+    // NEW: Finish streaming if enabled
+    if (streamingActions && h.streamingMessageId) {
+      streamingActions.finishStreamingMessage(h.streamingMessageId);
+    }
+
     es.close();
   });
   es.addEventListener('META', (e: MessageEvent) => {
@@ -70,7 +103,16 @@ export function wireAguiStream(
       if (Array.isArray(d.actions) && d.actions.length) safe(h.onSuggestedActions, d.actions);
     } catch { /* ignore */ }
   });
-  es.onerror = (err) => { safe(h.onError, err); es.close(); };
+  es.onerror = (err) => {
+    safe(h.onError, err);
+
+    // NEW: Finish streaming on error if enabled
+    if (streamingActions && h.streamingMessageId) {
+      streamingActions.finishStreamingMessage(h.streamingMessageId);
+    }
+
+    es.close();
+  };
 
   return () => es.close();
 }

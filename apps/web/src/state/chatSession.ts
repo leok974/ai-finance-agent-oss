@@ -2,7 +2,15 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { chatStore } from "@/utils/chatStore";
 
-type Msg = { id: string; role: "user" | "assistant"; text: string; at: number; meta?: Record<string, any> };
+type Msg = {
+  id: string;
+  role: "user" | "assistant";
+  text: string;
+  at: number;
+  meta?: Record<string, any>;
+  // NEW: streaming status
+  isStreaming?: boolean;
+};
 
 type ChatState = {
   sessionId: string;
@@ -12,6 +20,10 @@ type ChatState = {
   clearedAt?: number; // Timestamp of last clear action
   clearChat: () => void; // Synchronous now
   resetSession: () => Promise<void>;
+  // NEW: streaming actions
+  startStreamingMessage: (id: string) => void;
+  appendToMessage: (id: string, chunk: string) => void;
+  finishStreamingMessage: (id: string) => void;
 };
 
 const newSession = () => crypto.randomUUID();
@@ -98,6 +110,34 @@ export const useChatSession = create<ChatState>()(
           set({ isBusy: false });
         }
       },
+
+      // NEW: streaming message actions
+      startStreamingMessage: (id: string) => {
+        set((state) => ({
+          messages: state.messages.map((m) =>
+            m.id === id ? { ...m, text: "", isStreaming: true } : m
+          ),
+          version: state.version + 1,
+        }));
+      },
+
+      appendToMessage: (id: string, chunk: string) => {
+        set((state) => ({
+          messages: state.messages.map((m) =>
+            m.id === id ? { ...m, text: (m.text ?? "") + chunk } : m
+          ),
+          version: state.version + 1,
+        }));
+      },
+
+      finishStreamingMessage: (id: string) => {
+        set((state) => ({
+          messages: state.messages.map((m) =>
+            m.id === id ? { ...m, isStreaming: false } : m
+          ),
+          version: state.version + 1,
+        }));
+      },
     }),
     { name: "lm:chat" }
   )
@@ -152,7 +192,7 @@ function _ensureBroadcastChannel() {
 // Call this once from App component to set up cross-tab sync
 export function initBroadcastChannelSync() {
   if (typeof window === "undefined") return;
-  
+
   // Initialize on first call
   _ensureBroadcastChannel();
 }
