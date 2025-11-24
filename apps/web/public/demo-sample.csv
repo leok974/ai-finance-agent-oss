@@ -1,4 +1,23 @@
 date,merchant,description,amount,category
+2025-09-01,ACME Corp,Paycheck,3200.00,income.salary
+2025-09-02,Rent Payment,Monthly rent,-1200.00,transfers
+2025-09-05,Whole Foods Market,Grocery shopping,-145.30,groceries
+2025-09-08,Shell Gas Station,Gas for car,-48.90,fuel
+2025-09-12,AT&T Wireless,Phone bill,-85.00,utilities.mobile
+2025-09-15,Amazon,Online shopping,-127.45,shopping.online
+2025-09-18,Target,Household items,-95.20,shopping.retail
+2025-09-22,Starbucks,Coffee,-22.80,restaurants
+2025-09-25,Netflix,Streaming,-15.99,subscriptions.entertainment
+2025-10-01,ACME Corp,Paycheck,3200.00,income.salary
+2025-10-02,Rent Payment,Monthly rent,-1200.00,transfers
+2025-10-06,Whole Foods Market,Grocery shopping,-168.55,groceries
+2025-10-09,Shell Gas Station,Gas for car,-51.30,fuel
+2025-10-12,AT&T Wireless,Phone bill,-85.00,utilities.mobile
+2025-10-15,PlayStation Store,Game purchase,-79.99,entertainment.games
+2025-10-18,Amazon,Online shopping,-143.60,shopping.online
+2025-10-20,Uber,Downtown ride,-28.40,transportation.rideshare
+2025-10-24,Starbucks,Coffee meetings,-31.25,restaurants
+2025-10-28,GitHub,GitHub Copilot,-10.00,subscriptions.software
 2025-11-01,ACME Corp,Paycheck,3200.00,income.salary
 2025-11-02,Rent Payment,Monthly rent,-1200.00,transfers
 2025-11-03,Whole Foods Market,Grocery shopping,-162.70,groceries
