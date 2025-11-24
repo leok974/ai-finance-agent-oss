@@ -178,7 +178,12 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
 
   const flowsData = useMemo(() => daily, [daily]);
   const trendsData = useMemo(
-    () => (trends?.trends ?? []).map((t: any) => ({ month: t.month, spent: t.spent ?? t.spending ?? 0 })),
+    () => (trends?.trends ?? []).map((t: any) => ({
+      month: t.month,
+      spending: t.spending ?? t.spent ?? 0,
+      income: t.income ?? 0,
+      net: t.net ?? 0
+    })),
     [trends]
   );
 
@@ -506,10 +511,15 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
                   contentStyle={tooltipStyle}
                   itemStyle={tooltipItemStyle}
                   labelStyle={tooltipLabelStyle}
-                  formatter={(value: any) => [formatMoneyTick(Number(value)), 'Spend']}
+                  formatter={(value: any, key: string) => [
+                    formatMoneyTick(Number(value)),
+                    key === 'income' ? 'Income' : key === 'spending' ? 'Spending' : 'Net'
+                  ]}
                 />
                 <Legend wrapperStyle={legendTextStyle} />
-                <Line type="monotone" dataKey="spent" name="Spent" stroke="#f59e0b" strokeWidth={2} dot={false} />
+                <Line type="monotone" dataKey="spending" name="Spending" stroke="#ef4444" strokeWidth={2} dot={false} />
+                <Line type="monotone" dataKey="income" name="Income" stroke="#22c55e" strokeWidth={2} dot={false} />
+                <Line type="monotone" dataKey="net" name="Net" stroke="#60a5fa" strokeWidth={2} dot={false} />
               </LineChart>
             </ResponsiveContainer>
           </div>

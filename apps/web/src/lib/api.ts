@@ -518,11 +518,22 @@ export async function loadSpendingTrends(monthsArr: string[]) {
   }
 }
 
-export async function getSpendingTrends(windowMonths = 6, anchorMonth?: string) {
-  const month = anchorMonth || await resolveMonth();
-  if (!month) return { trends: [] };
-  const monthsArr = monthsBack(month, windowMonths);
-  return loadSpendingTrends(monthsArr);
+// Dashboard-specific spending trends (uses /charts/* GET endpoint, not agent POST)
+export interface SpendingTrendPoint {
+  month: string;   // "2025-06"
+  spending: number;
+  income: number;
+  net: number;
+}
+
+export async function getSpendingTrends(windowMonths = 6): Promise<{ months: number; trends: SpendingTrendPoint[] }> {
+  try {
+    const result = await fetchJSON(`charts/spending_trends?months=${windowMonths}`, { method: 'GET' });
+    return result as { months: number; trends: SpendingTrendPoint[] };
+  } catch (err) {
+    console.error('Failed to load spending trends:', err);
+    return { months: windowMonths, trends: [] };
+  }
 }
 
 // ---------- Analytics (agent tools) ----------
