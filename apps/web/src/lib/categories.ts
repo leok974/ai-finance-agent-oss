@@ -104,6 +104,26 @@ export const CATEGORY_DEFS: Record<string, CategoryDef> = {
     label: 'Travel',
     color: '#0ea5e9', // sky-600
   },
+  entertainment: {
+    slug: 'entertainment',
+    label: 'Entertainment',
+    color: '#a855f7', // purple-500
+  },
+  utilities: {
+    slug: 'utilities',
+    label: 'Utilities',
+    color: '#8b5cf6', // violet-500
+  },
+  healthcare: {
+    slug: 'healthcare',
+    label: 'Healthcare',
+    color: '#ec4899', // pink-500
+  },
+  unknown: {
+    slug: 'unknown',
+    label: 'Unknown',
+    color: '#94a3b8', // slate-400
+  },
 
   // Sub-categories (housing)
   'housing.utilities': {

@@ -164,6 +164,7 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
         merchantRaw,
         spend: Math.abs(rawValue),
         txns: Number(row.count ?? row.txn_count ?? row.transactions ?? 0),
+        category: row.category ? String(row.category) : undefined,
       };
     });
 
@@ -187,17 +188,9 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
     [trends]
   );
 
-  // Max merchant spend for color coding
+  // Max merchant spend for reference
   const maxMerchant = useMemo(() => Math.max(1, ...topMerchantsData.map((d) => d.spend)), [topMerchantsData]);
 
-  // Color helpers for bars
-  function pickColor(v: number, max: number) {
-    if (!Number.isFinite(max) || max <= 0) return "#60a5fa"; // blue fallback
-    const pct = Math.abs(v) / max;
-    if (pct <= 0.33) return "#22c55e";   // green-500
-    if (pct <= 0.66) return "#f59e0b";   // amber-500
-    return "#ef4444";                    // red-500
-  }
   const maxCategory = useMemo(() => Math.max(1, ...categoriesData.map((d: any) => Math.abs(Number(d?.amount ?? 0)))), [categoriesData]);
 
   // Dark tooltip style
@@ -323,7 +316,7 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
                 />
                 <Bar dataKey="amount" name={t('ui.charts.legend_spend')} activeBar={{ fillOpacity: 1, stroke: "#fff", strokeWidth: 1 }} fillOpacity={0.9}>
                   {categoriesData.map((d: any, i: number) => (
-                    <Cell key={i} fill={pickColor(Number(d?.amount ?? 0), maxCategory)} />
+                    <Cell key={i} fill={getCategoryColor(d?.name)} />
                   ))}
                 </Bar>
               </BarChart>
@@ -410,7 +403,7 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
                   fillOpacity={0.9}
                 >
                   {topMerchantsData.map((d, i: number) => (
-                    <Cell key={i} fill={pickColor(d.spend, maxMerchant)} />
+                    <Cell key={i} fill={getCategoryColor(d.category || 'unknown')} />
                   ))}
                 </Bar>
               </BarChart>

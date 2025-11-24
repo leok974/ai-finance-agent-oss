@@ -205,6 +205,7 @@ export interface MerchantChartRow {
   merchantRaw: string; // backend field merchant / label / description
   spend: number; // positive amount
   txns: number; // transaction count
+  category?: string; // optional category slug from backend
 }
 
 /**
@@ -216,6 +217,7 @@ export interface MerchantChartRowGrouped {
   txns: number;
   kind?: MerchantKind;
   categoryHint?: MerchantCategoryHint;
+  category?: string; // optional category slug from backend
 }
 
 /**
@@ -245,6 +247,7 @@ export function normalizeAndGroupMerchantsForChart(
       txns: 0,
       kind: norm.kind,
       categoryHint: norm.categoryHint,
+      category: row.category, // preserve category from backend
     };
 
     existing.spend += amount;
@@ -254,6 +257,8 @@ export function normalizeAndGroupMerchantsForChart(
     if (!existing.kind && norm.kind) existing.kind = norm.kind;
     if (!existing.categoryHint && norm.categoryHint)
       existing.categoryHint = norm.categoryHint;
+    // Preserve category from first row if not set
+    if (!existing.category && row.category) existing.category = row.category;
 
     buckets.set(key, existing);
   }
