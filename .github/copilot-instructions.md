@@ -51,3 +51,25 @@ When touching legacy code:
 We are removing temporary Nginx shims (/api/rules → /rules). Aligning the SPA early reduces migration risk and allows security tightening.
 
 (Feel free to extend with path‑specific instructions by adding `src/api/.instructions.md` if needed.)
+
+---
+
+## Production Deployment
+
+**Environment:** Single Docker host, local builds only (no registry).
+
+**Quick Deploy Steps:**
+
+1. Get commit hash: `git rev-parse --short=8 HEAD` → `SHORT_SHA`
+2. Build backend: `cd apps/backend && docker build -t ledgermind-backend:main-SHORT_SHA .`
+3. Build web: `cd apps/web && docker build -t ledgermind-web:main-SHORT_SHA .`
+4. Update `docker-compose.prod.yml`:
+   - `backend.image = ledgermind-backend:main-SHORT_SHA`
+   - `nginx.image = ledgermind-web:main-SHORT_SHA`
+   - Keep `pull_policy: never`
+5. Deploy: `docker compose -f docker-compose.prod.yml up -d backend nginx`
+6. Verify: `curl http://localhost:8083/api/ready` (expect 200)
+
+**Full instructions:** See `DEPLOY_PROD.md` in repo root.
+
+**Important:** Cloudflare Tunnel routes `app.ledger-mind.org` → `localhost:8083`. Local changes deploy immediately when containers restart.
