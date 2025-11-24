@@ -270,7 +270,7 @@ def generate_demo_transactions():
             ("2025-11-13", "Zelle Transfer", "Money to savings", -400.00, "transfers"),
             ("2025-11-14", "Zelle Transfer", "Money from savings", 400.00, "transfers"),
             # Unknown transactions for ML categorization demo (blank category)
-            # Using recognizable real-world merchants instead of placeholders
+            # Using recognizable real-world merchants for better demo experience
             (
                 "2025-11-15",
                 "Starbucks Coffee",
@@ -292,9 +292,55 @@ def generate_demo_transactions():
                 -42.15,
                 "",
             ),
-            ("2025-11-18", "Whole Foods Market", "Grocery top-up", -68.20, "groceries"),
-            ("2025-11-19", "Shell Gas Station", "Gas refill", -48.75, "fuel"),
-            ("2025-11-20", "Panera Bread", "Lunch", -24.30, "restaurants"),
+            (
+                "2025-11-18",
+                "DoorDash",
+                "DOORDASH *LUNCH ORDER",
+                -28.45,
+                "",
+            ),
+            (
+                "2025-11-19",
+                "CVS Pharmacy",
+                "CVS #8923 - MEDICINE & SNACKS",
+                -31.22,
+                "",
+            ),
+            (
+                "2025-11-20",
+                "Panera Bread",
+                "PANERA #445 - BREAKFAST",
+                -16.85,
+                "",
+            ),
+            (
+                "2025-11-21",
+                "McDonald's",
+                "MCD #2341 - DRIVE THRU",
+                -12.47,
+                "",
+            ),
+            (
+                "2025-11-22",
+                "Costco",
+                "COSTCO WHOLESALE #123",
+                -156.38,
+                "",
+            ),
+            (
+                "2025-11-23",
+                "Apple Store",
+                "APPLE.COM/BILL - APP PURCHASE",
+                -4.99,
+                "",
+            ),
+            (
+                "2025-11-24",
+                "Walgreens",
+                "WALGREENS #5421 - TOILETRIES",
+                -22.67,
+                "",
+            ),
         ]
     )
 

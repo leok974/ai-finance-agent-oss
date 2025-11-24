@@ -246,12 +246,23 @@ export default function ExplainSignalDrawer({ txnId, open, onOpenChange, txn, su
                 const id = `${merchant}:${sug.category_slug}`
                 const isRejected = rejectedIds.has(id)
                 const isLoading = rejectingId === id
+                const isSelected = categorySlug === sug.category_slug
 
                 return (
-                  <div key={sug.category_slug} className="rounded-lg bg-slate-900/70 p-3 border border-white/5 space-y-2">
+                  <div
+                    key={sug.category_slug}
+                    className={`rounded-lg bg-slate-900/70 p-3 border space-y-2 cursor-pointer transition-all ${
+                      isSelected
+                        ? 'border-emerald-500/60 bg-emerald-500/10 ring-1 ring-emerald-500/30'
+                        : 'border-white/5 hover:border-white/20'
+                    }`}
+                    onClick={() => setCategorySlug(sug.category_slug)}
+                    data-testid="suggestion-card"
+                  >
                     {/* Header: category + confidence + MODEL pill */}
                     <div className="flex items-center justify-between text-sm">
-                      <span className="font-medium">
+                      <span className={`font-medium ${isSelected ? 'text-emerald-200' : ''}`}>
+                        {isSelected && <span className="mr-1">✓</span>}
                         {sug.label || sug.category_slug}
                       </span>
                       <div className="flex items-center gap-2">
