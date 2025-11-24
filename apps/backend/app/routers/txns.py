@@ -3,6 +3,7 @@ from typing import List, Optional, Dict, Any
 from sqlalchemy.orm import Session
 from sqlalchemy import select
 from app.db import get_db
+from app.deps.auth_guard import get_current_user_id
 from sqlalchemy import desc
 from sqlalchemy import text
 from sqlalchemy import func
@@ -40,21 +41,32 @@ def month_of(date_str: str) -> str:
 
 @router.get("/unknowns")
 def get_unknowns(
-    month: Optional[str] = None, db: Session = Depends(get_db)
+    month: Optional[str] = None,
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id),
 ) -> Dict[str, Any]:
     """
     Return unknown (uncategorized) transactions for the given month using DB ids.
     If `month` is omitted, try to default from DB; fall back to in-memory state.
-    Response shape matches the web client: {"month": "...", "unknowns": [Txn, ...]}.
+    Response shape matches the web client: {"month": "...", "unknowns": [Txn, ...], "total_count": int}.
     """
     # Prefer DB-backed unknowns to ensure real ids
     try:
         if not month:
-            # try to derive latest month from DB
-            m = latest_month_from_data(db)
+            # try to derive latest month from DB (user-scoped)
+            m = latest_month_from_data(db, user_id=user_id)
             if m:
                 month = m
         if month:
+            # Get total transaction count for this month (for empty-state logic)
+            total_count = (
+                db.query(Transaction)
+                .filter(Transaction.user_id == user_id)
+                .filter(Transaction.month == month)
+                .count()
+            )
+
+            # Get unknown transactions
             unlabeled = (
                 (Transaction.category.is_(None))
                 | (func.trim(Transaction.category) == "")
@@ -62,6 +74,7 @@ def get_unknowns(
             )
             rows = (
                 db.query(Transaction)
+                .filter(Transaction.user_id == user_id)
                 .filter(Transaction.month == month)
                 .filter(unlabeled)
                 .order_by(desc(Transaction.date), desc(Transaction.id))
@@ -82,7 +95,7 @@ def get_unknowns(
                     )
                 except Exception:
                     continue
-            return {"month": month, "unknowns": unknowns}
+            return {"month": month, "unknowns": unknowns, "total_count": total_count}
     except Exception:
         # fall through to in-memory fallback
         pass

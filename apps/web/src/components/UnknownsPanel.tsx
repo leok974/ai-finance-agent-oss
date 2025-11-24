@@ -31,7 +31,7 @@ export default function UnknownsPanel({ month, onSeedRule: _onSeedRule, onChange
   onChanged?: () => void
   refreshKey?: number
 }) {
-  const { items, loading, error, currentMonth, refresh } = useUnknowns(month)
+  const { items, totalCount, loading, error, currentMonth, refresh } = useUnknowns(month)
   const ok = emitToastSuccess; const err = emitToastError;
   const [learned, setLearned] = useState<Record<number, boolean>>({})
   const [explainOpen, setExplainOpen] = useState(false)
@@ -169,7 +169,17 @@ export default function UnknownsPanel({ month, onSeedRule: _onSeedRule, onChange
       )}
       {!loading && error && <div className="text-sm text-rose-300">{error}</div>}
       {!loading && !error && visibleUnknowns.length === 0 && (
-        <EmptyState title={t('ui.empty.no_transactions_title')} note={t('ui.empty.unknowns_note')} />
+        totalCount > 0 ? (
+          <EmptyState
+            title={t('ui.empty.unknowns_all_categorized_title')}
+            note={t('ui.empty.unknowns_all_categorized_note')}
+          />
+        ) : (
+          <EmptyState
+            title={t('ui.empty.unknowns_no_data_title')}
+            note={t('ui.empty.unknowns_no_data_note')}
+          />
+        )
       )}
       <div className="flex items-center justify-between mb-2 text-sm font-medium">
         <div className="flex items-center gap-2">

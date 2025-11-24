@@ -12,6 +12,7 @@ export type UnknownTxn = {
 
 export function useUnknowns(month?: string, limit = 25) {
   const [items, setItems] = useState<UnknownTxn[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [currentMonth, setCurrentMonth] = useState<string | null>(null);
@@ -19,8 +20,9 @@ export function useUnknowns(month?: string, limit = 25) {
 
   useEffect(() => {
     if (!month) {
-      // Guard: don’t fetch until we know the month
+      // Guard: don't fetch until we know the month
       setItems([]);
+      setTotalCount(0);
       setLoading(false);
       setError(null);
       return;
@@ -35,7 +37,9 @@ export function useUnknowns(month?: string, limit = 25) {
         const data = await getUnknowns(month);
         if (ac.signal.aborted) return;
         const rows = Array.isArray(data) ? data : (data as any)?.unknowns ?? [];
+        const count = (data as any)?.total_count ?? 0;
         setItems(rows as UnknownTxn[]);
+        setTotalCount(count);
         const m = (data as any)?.month;
         setCurrentMonth(typeof m === "string" ? m : month ?? null);
       } catch (e: any) {
@@ -48,5 +52,5 @@ export function useUnknowns(month?: string, limit = 25) {
     return () => ac.abort();
   }, [month, limit, nonce]);
 
-  return { items, loading, error, currentMonth, refresh: () => setNonce((n) => n + 1) };
+  return { items, totalCount, loading, error, currentMonth, refresh: () => setNonce((n) => n + 1) };
 }
