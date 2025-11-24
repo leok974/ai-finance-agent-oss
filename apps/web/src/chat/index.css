@@ -192,6 +192,18 @@
   cursor: default;
 }
 
+.chip-card-hint {
+  background: rgba(59, 130, 246, 0.15);
+  border-color: rgba(59, 130, 246, 0.3);
+  color: rgb(147, 197, 253);
+  font-weight: 500;
+}
+
+.chip-card-hint:hover:not(:disabled) {
+  background: rgba(59, 130, 246, 0.25);
+  border-color: rgba(59, 130, 246, 0.5);
+}
+
 /* ===== SCROLLABLE MESSAGES (ROW 2) - THE ONLY VERTICAL SCROLLER ===== */
 .lm-chat__scroll,
 .lm-thread {

@@ -129,7 +129,12 @@ async def mode_finance_quick_recap_llm(
         },
     ]
 
-    # 5) Return response (NOT deterministic - LLM-powered)
+    # 5) Build card hints (which dashboard cards to highlight)
+    card_hints = ["card-spending-trends"]
+    if unknown_ct > 0:
+        card_hints.append("unknowns-panel")
+
+    # 6) Return response (NOT deterministic - LLM-powered)
     return {
         "reply": reply,
         "citations": [
@@ -144,6 +149,7 @@ async def mode_finance_quick_recap_llm(
         "mode": "finance_quick_recap",
         "args": {"month": month},
         "suggestions": suggestions,
+        "card_hints": card_hints,
         "_router_fallback_active": False,  # LLM-powered, not deterministic
     }
 
@@ -275,7 +281,12 @@ async def mode_finance_deep_dive_llm(
         },
     ]
 
-    # 5) Return LLM-powered response
+    # 5) Build card hints (which dashboard cards to highlight)
+    card_hints = ["card-spending-trends"]
+    if unknown_ct > 0:
+        card_hints.append("unknowns-panel")
+
+    # 6) Return LLM-powered response
     return {
         "reply": reply,
         "citations": [
@@ -290,5 +301,6 @@ async def mode_finance_deep_dive_llm(
         "mode": "finance_deep_dive",
         "args": {"month": month},
         "suggestions": suggestions,
+        "card_hints": card_hints,
         "_router_fallback_active": False,  # LLM-powered
     }

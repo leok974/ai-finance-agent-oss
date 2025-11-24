@@ -823,6 +823,44 @@ export default function ChatDock() {
                     </button>
                   </>
                 )}
+                {/* Card pills - scroll to specific dashboard cards */}
+                {Array.isArray(meta.card_hints) && meta.card_hints.length > 0 && (() => {
+                  const CARD_HINTS: Record<string, { label: string; icon?: string }> = {
+                    'unknowns-panel': { label: 'Unknowns', icon: '❓' },
+                    'card-spending-trends': { label: 'Spending trends', icon: '📈' },
+                  };
+
+                  const scrollToCard = (cardId: string) => {
+                    const el = document.getElementById(cardId);
+                    if (el) {
+                      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                      // Highlight animation
+                      el.classList.add('ring-2', 'ring-primary/50', 'transition-all');
+                      setTimeout(() => {
+                        el.classList.remove('ring-2', 'ring-primary/50');
+                      }, 2000);
+                    }
+                  };
+
+                  return meta.card_hints.map((cardId: string) => {
+                    const hint = CARD_HINTS[cardId];
+                    if (!hint) return null;
+                    return (
+                      <button
+                        key={cardId}
+                        type="button"
+                        data-testid={`card-pill-${cardId}`}
+                        aria-label={`View ${hint.label} card`}
+                        className="chip chip-card-hint"
+                        onClick={() => scrollToCard(cardId)}
+                        title={`Scroll to ${hint.label} card`}
+                      >
+                        {hint.icon && <span className="mr-1">{hint.icon}</span>}
+                        {hint.label}
+                      </button>
+                    );
+                  });
+                })()}
                 {canShowWhy && (
                   <button
                     type="button"

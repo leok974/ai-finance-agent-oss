@@ -476,7 +476,12 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
   </Card>
   </div>
 
-  <div className="chart-card" data-explain-key="charts.spending_trends">
+  <div
+    id="card-spending-trends"
+    data-testid="card-spending-trends"
+    className="chart-card"
+    data-explain-key="charts.spending_trends"
+  >
   <Card className="border-0 bg-transparent shadow-none p-0">
         <div className="flex items-center justify-between mb-2">
           <h3 className="chart-title flex items-center">
