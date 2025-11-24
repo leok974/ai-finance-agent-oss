@@ -1,313 +1,338 @@
 #!/usr/bin/env python3
 """
-Generate a realistic 6-month demo CSV for LedgerMind.
+Generate canonical demo CSV for LedgerMind sample data.
 
-Features:
-- Income (paychecks + misc reimbursements)
-- Transfers (in + out pairs)
-- Core expenses across multiple categories
-- Intentional anomalies in latest month (November 2025)
-- Deterministic generation (fixed seed)
+Purpose:
+- Provides realistic 6-month transaction history for demo/testing
+- Ensures charts have visually interesting variety (not flat/all-unknown)
+- Creates deterministic data that matches backend category expectations
 
-Output: apps/backend/sample_hints_pass3_real_data.csv
+Usage:
+    python apps/backend/scripts/generate_demo_csv.py
+
+Output:
+    apps/web/public/demo-sample.csv (used by "Use sample data" button)
+
+Data characteristics:
+- 6 months of history (June 2025 - November 2025)
+- ~90 transactions total
+- Varied monthly spending (±20-40% variation for visual interest)
+- Multiple categories with realistic distributions
+- Small number of unknown transactions (3) for ML demo
+- Includes income, transfers, and diverse spending categories
 """
 
 import csv
-import random
-from datetime import date, timedelta
 from pathlib import Path
-from typing import List, Tuple
 
-# Deterministic seed for reproducible data
-random.seed(42)
-
-# Output path
-BACKEND_ROOT = Path(__file__).parent.parent
-OUTPUT_CSV = BACKEND_ROOT / "sample_hints_pass3_real_data.csv"
-
-# Date range: 6 months (June 1 to November 20, 2025)
-START_DATE = date(2025, 6, 1)
-END_DATE = date(2025, 11, 20)
+# Canonical output path (single source of truth for UI "Use sample data")
+REPO_ROOT = Path(__file__).parent.parent.parent.parent
+OUTPUT_CSV = REPO_ROOT / "apps" / "web" / "public" / "demo-sample.csv"
 
 
-def generate_transactions() -> List[Tuple[str, str, str, float, str]]:
-    """
-    Generate all transactions for 6 months.
+def generate_demo_transactions():
+    """Generate 6 months of realistic demo data with visual variety."""
 
-    Returns list of tuples: (date, merchant, description, amount, category)
-    """
+    # Returns list of tuples: (date, merchant, description, amount, category)
     transactions = []
 
-    # Iterate through each month
-    current_date = START_DATE
-    month_num = 0
-
-    while current_date <= END_DATE:
-        month_start = date(current_date.year, current_date.month, 1)
-
-        # Calculate next month for boundary
-        if current_date.month == 12:
-            next_month = date(current_date.year + 1, 1, 1)
-        else:
-            next_month = date(current_date.year, current_date.month + 1, 1)
-
-        is_november = current_date.month == 11  # Anomaly month        # --- INCOME ---
-
-        # Two paychecks per month (1st and 15th)
-        paycheck_dates = [month_start, month_start + timedelta(days=14)]
-
-        for paycheck_date in paycheck_dates:
-            if paycheck_date <= END_DATE:
-                transactions.append(
-                    (
-                        paycheck_date.isoformat(),
-                        "ACME CORP PAYROLL",
-                        "Paycheck - Direct Deposit",
-                        2200.00,
-                        "income_salary",
-                    )
-                )
-
-        # Misc income every 2 months (June, August, October)
-        if month_num % 2 == 0:
-            misc_date = month_start + timedelta(days=10)
-            if misc_date <= END_DATE:
-                transactions.append(
-                    (
-                        misc_date.isoformat(),
-                        "ZELLE",
-                        "Roommate reimbursement",
-                        400.00,
-                        "income_other",
-                    )
-                )
-
-        # --- TRANSFERS (paired in + out) ---
-
-        # Monthly savings transfer on 5th
-        transfer_date = month_start + timedelta(days=4)
-        if transfer_date <= END_DATE:
-            transactions.append(
-                (
-                    transfer_date.isoformat(),
-                    "SAVINGS TRANSFER OUT",
-                    "Transfer to savings account",
-                    -500.00,
-                    "transfers",
-                )
-            )
-            transactions.append(
-                (
-                    transfer_date.isoformat(),
-                    "SAVINGS TRANSFER IN",
-                    "Transfer from checking",
-                    500.00,
-                    "transfers",
-                )
-            )
-
-        # --- CORE EXPENSES ---
-
-        # Rent (1st of month)
-        if month_start <= END_DATE:
-            transactions.append(
-                (
-                    month_start.isoformat(),
-                    "RENT PAYMENT",
-                    "Monthly rent",
-                    -2100.00,
-                    "rent",
-                )
-            )
-
-        # Groceries (4× per month with variation)
-        grocery_base_amounts = [160.00, 120.00, 95.00, 180.00]
-        grocery_merchants = [
-            "WHOLE FOODS MARKET",
-            "WHOLE FOODS MARKET",
-            "TRADER JOES",
-            "WHOLE FOODS MARKET",
+    # June 2025 - Baseline month (~$1750 spend)
+    transactions.extend(
+        [
+            ("2025-06-01", "ACME Corp", "Paycheck", 3200.00, "income.salary"),
+            ("2025-06-02", "Rent Payment", "Monthly rent", -1200.00, "transfers"),
+            (
+                "2025-06-05",
+                "Whole Foods Market",
+                "Weekly groceries",
+                -145.30,
+                "groceries",
+            ),
+            ("2025-06-08", "Shell Gas Station", "Gas", -48.20, "fuel"),
+            ("2025-06-10", "Chipotle", "Lunch", -32.50, "restaurants"),
+            ("2025-06-12", "AT&T Wireless", "Phone bill", -85.00, "utilities.mobile"),
+            ("2025-06-14", "Amazon", "Books & supplies", -87.45, "shopping.online"),
+            ("2025-06-17", "Target", "Household", -76.30, "shopping.retail"),
+            ("2025-06-20", "Steam", "Game", -29.99, "entertainment.games"),
+            ("2025-06-22", "Uber", "Ride", -18.75, "transportation.rideshare"),
+            (
+                "2025-06-25",
+                "Netflix",
+                "Streaming",
+                -15.99,
+                "subscriptions.entertainment",
+            ),
+            ("2025-06-28", "GitHub", "Copilot", -10.00, "subscriptions.software"),
         ]
+    )
 
-        if is_november:
-            # ANOMALY: Double grocery spend in November
-            grocery_base_amounts = [amt * 1.8 for amt in grocery_base_amounts]
-
-        for i, base_amt in enumerate(grocery_base_amounts):
-            grocery_date = month_start + timedelta(days=5 + i * 7)
-            if grocery_date <= END_DATE:
-                # Add small random variance
-                amount = base_amt + random.uniform(-10, 10)
-                transactions.append(
-                    (
-                        grocery_date.isoformat(),
-                        grocery_merchants[i],
-                        "Grocery shopping",
-                        -round(amount, 2),
-                        "groceries",
-                    )
-                )
-
-        # Restaurants (3× per month)
-        restaurant_options = [
-            ("CHIPOTLE", "Lunch", 25.00),
-            ("SUSHI PLACE", "Dinner", 55.00),
-            ("PIZZA PALACE", "Takeout", 35.00),
+    # July 2025 - Moderate increase (~$2100 spend) + freelance income
+    transactions.extend(
+        [
+            ("2025-07-01", "ACME Corp", "Paycheck", 3200.00, "income.salary"),
+            ("2025-07-02", "Rent Payment", "Monthly rent", -1200.00, "transfers"),
+            ("2025-07-05", "Whole Foods Market", "Groceries", -178.50, "groceries"),
+            ("2025-07-08", "Shell Gas Station", "Gas", -55.40, "fuel"),
+            ("2025-07-10", "Starbucks", "Coffee meetings", -52.30, "restaurants"),
+            ("2025-07-12", "AT&T Wireless", "Phone bill", -85.00, "utilities.mobile"),
+            ("2025-07-14", "Amazon", "Electronics", -234.99, "shopping.online"),
+            (
+                "2025-07-15",
+                "Upwork Client",
+                "Freelance project",
+                800.00,
+                "income.freelance",
+            ),
+            ("2025-07-17", "Target", "Clothes & groceries", -143.20, "shopping.retail"),
+            ("2025-07-19", "PlayStation Store", "Game", -69.99, "entertainment.games"),
+            ("2025-07-22", "Lyft", "Airport", -45.80, "transportation.rideshare"),
+            (
+                "2025-07-25",
+                "Netflix",
+                "Streaming",
+                -15.99,
+                "subscriptions.entertainment",
+            ),
+            ("2025-07-27", "Spotify", "Premium", -10.99, "subscriptions.entertainment"),
+            ("2025-07-28", "GitHub", "Copilot", -10.00, "subscriptions.software"),
         ]
+    )
 
-        if is_november:
-            # ANOMALY: More dining out + higher amounts
-            restaurant_options = [
-                ("CHIPOTLE", "Lunch", 30.00),
-                ("SUSHI PLACE", "Dinner", 75.00),
-                ("PIZZA PALACE", "Takeout", 45.00),
-                ("STEAKHOUSE", "Date night", 120.00),
-            ]
-
-        for i, (merchant, desc, base_amt) in enumerate(restaurant_options):
-            rest_date = month_start + timedelta(days=8 + i * 8)
-            if rest_date <= END_DATE:
-                amount = base_amt + random.uniform(-5, 5)
-                transactions.append(
-                    (
-                        rest_date.isoformat(),
-                        merchant,
-                        desc,
-                        -round(amount, 2),
-                        "restaurants",
-                    )
-                )
-
-        # Subscriptions (consistent monthly)
-        subs = [
-            ("GITHUB, INC.", "GitHub Copilot", -19.00, "subscriptions_software"),
-            ("SPOTIFY", "Music streaming", -10.00, "subscriptions_media"),
+    # August 2025 - Big spike month (~$2800 spend) - dental + vacation prep
+    transactions.extend(
+        [
+            ("2025-08-01", "ACME Corp", "Paycheck", 3200.00, "income.salary"),
+            ("2025-08-02", "Rent Payment", "Monthly rent", -1200.00, "transfers"),
+            (
+                "2025-08-04",
+                "Bright Smiles Dental",
+                "Root canal",
+                -850.00,
+                "health.medical",
+            ),
+            ("2025-08-05", "Whole Foods Market", "Groceries", -198.75, "groceries"),
+            ("2025-08-08", "Shell Gas Station", "Gas", -72.30, "fuel"),
+            ("2025-08-10", "Olive Garden", "Dinner", -89.40, "restaurants"),
+            ("2025-08-12", "AT&T Wireless", "Phone bill", -85.00, "utilities.mobile"),
+            (
+                "2025-08-14",
+                "Amazon",
+                "Luggage + travel gear",
+                -387.50,
+                "shopping.online",
+            ),
+            ("2025-08-17", "Target", "Toiletries & snacks", -112.80, "shopping.retail"),
+            ("2025-08-19", "Steam", "Summer sale", -94.97, "entertainment.games"),
+            (
+                "2025-08-22",
+                "Uber",
+                "Multiple rides",
+                -67.50,
+                "transportation.rideshare",
+            ),
+            (
+                "2025-08-25",
+                "Netflix",
+                "Streaming",
+                -15.99,
+                "subscriptions.entertainment",
+            ),
+            ("2025-08-27", "Spotify", "Premium", -10.99, "subscriptions.entertainment"),
+            ("2025-08-28", "GitHub", "Copilot", -10.00, "subscriptions.software"),
+            ("2025-08-30", "Comcast", "Internet", -79.99, "utilities.internet"),
         ]
+    )
 
-        if is_november:
-            # ANOMALY: Add Netflix and HBO Max in November
-            subs.extend(
-                [
-                    ("NETFLIX", "Streaming", -15.99, "subscriptions_media"),
-                    ("HBOMAX", "Streaming", -15.99, "subscriptions_media"),
-                ]
-            )
-
-        for merchant, desc, amount, category in subs:
-            sub_date = month_start + timedelta(days=12)
-            if sub_date <= END_DATE:
-                transactions.append(
-                    (sub_date.isoformat(), merchant, desc, amount, category)
-                )
-
-        # Fuel (2× per month)
-        fuel_dates = [
-            month_start + timedelta(days=10),
-            month_start + timedelta(days=22),
+    # September 2025 - Back to baseline (~$2020 spend)
+    transactions.extend(
+        [
+            ("2025-09-01", "ACME Corp", "Paycheck", 3200.00, "income.salary"),
+            ("2025-09-02", "Rent Payment", "Monthly rent", -1200.00, "transfers"),
+            (
+                "2025-09-05",
+                "Whole Foods Market",
+                "Grocery shopping",
+                -187.45,
+                "groceries",
+            ),
+            ("2025-09-08", "Shell Gas Station", "Gas for car", -62.30, "fuel"),
+            ("2025-09-10", "Starbucks", "Coffee meetings", -45.80, "restaurants"),
+            ("2025-09-12", "AT&T Wireless", "Phone bill", -85.00, "utilities.mobile"),
+            ("2025-09-15", "Amazon", "Online shopping", -156.70, "shopping.online"),
+            ("2025-09-18", "Target", "Household items", -132.90, "shopping.retail"),
+            (
+                "2025-09-20",
+                "PlayStation Store",
+                "New game",
+                -79.99,
+                "entertainment.games",
+            ),
+            ("2025-09-22", "Uber", "Weekend rides", -42.50, "transportation.rideshare"),
+            (
+                "2025-09-25",
+                "Netflix",
+                "Streaming",
+                -15.99,
+                "subscriptions.entertainment",
+            ),
+            (
+                "2025-09-28",
+                "GitHub",
+                "Developer tools",
+                -10.00,
+                "subscriptions.software",
+            ),
         ]
+    )
 
-        for fuel_date in fuel_dates:
-            if fuel_date <= END_DATE:
-                amount = 45.00 + random.uniform(0, 25)
-                transactions.append(
-                    (
-                        fuel_date.isoformat(),
-                        "SHELL GAS STATION",
-                        "Gasoline",
-                        -round(amount, 2),
-                        "fuel",
-                    )
-                )
-
-        # Random extras (1-2 per month)
-        extras = [
-            ("AMAZON.COM", "Online shopping", -75.00, "shopping_online"),
+    # October 2025 - Moderate high (~$2350 spend) + health insurance
+    transactions.extend(
+        [
+            ("2025-10-01", "ACME Corp", "Paycheck", 3200.00, "income.salary"),
+            ("2025-10-02", "Rent Payment", "Monthly rent", -1200.00, "transfers"),
+            (
+                "2025-10-03",
+                "Blue Shield",
+                "Health insurance",
+                -450.00,
+                "health.insurance",
+            ),
+            (
+                "2025-10-04",
+                "Whole Foods Market",
+                "Weekly groceries",
+                -143.25,
+                "groceries",
+            ),
+            ("2025-10-07", "Shell Gas Station", "Gas refill", -58.90, "fuel"),
+            ("2025-10-09", "Chipotle", "Lunch meetings", -67.40, "restaurants"),
+            ("2025-10-12", "AT&T Wireless", "Phone bill", -85.00, "utilities.mobile"),
+            ("2025-10-14", "Amazon", "Electronics", -224.50, "shopping.online"),
+            ("2025-10-17", "Target", "Groceries + supplies", -98.65, "shopping.retail"),
+            ("2025-10-19", "Steam", "Game sale", -89.97, "entertainment.games"),
+            ("2025-10-22", "Lyft", "Airport ride", -38.75, "transportation.rideshare"),
+            (
+                "2025-10-25",
+                "Netflix",
+                "Streaming",
+                -15.99,
+                "subscriptions.entertainment",
+            ),
+            (
+                "2025-10-27",
+                "Spotify",
+                "Premium subscription",
+                -10.99,
+                "subscriptions.entertainment",
+            ),
         ]
+    )
 
-        if month_num % 2 == 0:  # Every other month
-            extras.append(
-                ("PLAYSTATION", "Game purchase", -59.99, "entertainment_games")
-            )
-
-        for merchant, desc, base_amt, category in extras:
-            extra_date = month_start + timedelta(days=18)
-            if extra_date <= END_DATE:
-                amount = base_amt + random.uniform(-10, 10)
-                transactions.append(
-                    (extra_date.isoformat(), merchant, desc, round(amount, 2), category)
-                )
-
-        # --- NOVEMBER ANOMALIES ---
-
-        if is_november:
-            # Big one-off dentist bill
-            dentist_date = date(2025, 11, 8)
-            transactions.append(
-                (
-                    dentist_date.isoformat(),
-                    "DENTAL CARE CENTER",
-                    "Root canal + crown",
-                    -850.00,
-                    "health",
-                )
-            )
-
-            # Extra large Amazon order (holiday shopping)
-            shopping_date = date(2025, 11, 15)
-            transactions.append(
-                (
-                    shopping_date.isoformat(),
-                    "AMAZON.COM",
-                    "Holiday gifts",
-                    -320.00,
-                    "shopping_online",
-                )
-            )
-
-        # Move to next month
-        current_date = next_month
-        month_num += 1
-
-    # Sort by date
-    transactions.sort(key=lambda x: x[0])
+    # November 2025 - Current month (~$2423 spend) + unknowns for ML demo
+    transactions.extend(
+        [
+            ("2025-11-01", "ACME Corp", "Paycheck", 3200.00, "income.salary"),
+            ("2025-11-02", "Rent Payment", "Monthly rent", -1200.00, "transfers"),
+            (
+                "2025-11-03",
+                "Whole Foods Market",
+                "Grocery shopping",
+                -162.70,
+                "groceries",
+            ),
+            ("2025-11-04", "Starbucks", "Coffee with friends", -18.45, "restaurants"),
+            ("2025-11-05", "Shell Gas Station", "Gas for car", -52.80, "fuel"),
+            (
+                "2025-11-06",
+                "GitHub",
+                "GitHub Copilot subscription",
+                -10.00,
+                "subscriptions.software",
+            ),
+            (
+                "2025-11-07",
+                "Netflix",
+                "Streaming subscription",
+                -15.99,
+                "subscriptions.entertainment",
+            ),
+            ("2025-11-08", "Amazon", "Online shopping", -93.25, "shopping.online"),
+            ("2025-11-09", "Target", "Household + snacks", -86.40, "shopping.retail"),
+            (
+                "2025-11-10",
+                "PlayStation Store",
+                "Game purchase",
+                -79.99,
+                "entertainment.games",
+            ),
+            ("2025-11-11", "Uber", "Airport ride", -34.15, "transportation.rideshare"),
+            ("2025-11-12", "AT&T Wireless", "Phone bill", -85.00, "utilities.mobile"),
+            ("2025-11-13", "Zelle Transfer", "Money to savings", -400.00, "transfers"),
+            ("2025-11-14", "Zelle Transfer", "Money from savings", 400.00, "transfers"),
+            # Unknown transactions for ML categorization demo (blank category)
+            ("2025-11-15", "Unknown Coffee Shop", "POS PURCHASE - 8374", -14.37, ""),
+            ("2025-11-16", "XYZ MARKET", "POS PURCHASE - 5493", -27.80, ""),
+            ("2025-11-17", "RandomCharge", "WEB*RCG 10293", -8.99, ""),
+            ("2025-11-18", "Whole Foods Market", "Grocery top-up", -68.20, "groceries"),
+            ("2025-11-19", "Shell Gas Station", "Gas refill", -48.75, "fuel"),
+            ("2025-11-20", "Panera Bread", "Lunch", -24.30, "restaurants"),
+        ]
+    )
 
     return transactions
 
 
-def write_csv(transactions: List[Tuple[str, str, str, float, str]]) -> None:
+def write_csv(transactions, output_path):
     """Write transactions to CSV file."""
+    output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    print(f"Writing {len(transactions)} transactions to {OUTPUT_CSV}")
-
-    with open(OUTPUT_CSV, "w", newline="", encoding="utf-8") as f:
-        writer = csv.writer(f, quoting=csv.QUOTE_NONNUMERIC)
-
-        # Header
+    with open(output_path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
         writer.writerow(["date", "merchant", "description", "amount", "category"])
 
-        # Data rows
-        for date_str, merchant, description, amount, category in transactions:
-            writer.writerow([date_str, merchant, description, amount, category])
+        for txn in transactions:
+            writer.writerow(txn)
 
-    print(f"✓ Generated demo CSV: {OUTPUT_CSV}")
-    print(f"  Date range: {START_DATE} to {END_DATE}")
-    print(f"  Total transactions: {len(transactions)}")
+    print(f"✅ Generated {len(transactions)} transactions")
+    print(f"📁 Written to: {output_path}")
 
-    # Summary stats
-    income_count = sum(1 for t in transactions if t[3] > 0)
-    expense_count = sum(1 for t in transactions if t[3] < 0)
-    total_income = sum(t[3] for t in transactions if t[3] > 0)
-    total_expenses = sum(abs(t[3]) for t in transactions if t[3] < 0)
+    # Print summary statistics
+    months = {}
+    categories = {}
+    unknowns = 0
 
-    print("\nSummary:")
-    print(f"  Income transactions: {income_count} (${total_income:,.2f})")
-    print(f"  Expense transactions: {expense_count} (${total_expenses:,.2f})")
-    print(f"  Net: ${total_income - total_expenses:,.2f}")
+    for date_str, merchant, desc, amount, category in transactions:
+        month = date_str[:7]  # YYYY-MM
+        months[month] = months.get(month, 0) + (amount if amount < 0 else 0)
+
+        if category:
+            categories[category] = categories.get(category, 0) + (
+                abs(amount) if amount < 0 else 0
+            )
+        else:
+            unknowns += 1
+
+    print("\n📊 Monthly spending totals:")
+    for month in sorted(months.keys()):
+        print(f"  {month}: ${abs(months[month]):,.2f}")
+
+    print(f"\n📂 Categories ({len(categories)} distinct):")
+    for cat in sorted(categories.keys(), key=lambda c: categories[c], reverse=True)[
+        :10
+    ]:
+        print(f"  {cat}: ${categories[cat]:,.2f}")
+
+    print(f"\n❓ Unknown transactions: {unknowns}")
 
 
 if __name__ == "__main__":
-    transactions = generate_transactions()
-    write_csv(transactions)
-
-    print("\n✓ Done! Run the seed script to load this data:")
-    print("  docker exec backend python -m app.scripts.reset_and_seed_demo")
+    transactions = generate_demo_transactions()
+    write_csv(transactions, OUTPUT_CSV)
+    print("\n✨ Demo CSV generation complete!")
+    print("   Next steps:")
+    print(
+        "   1. Rebuild frontend: docker build -t ledgermind-web:main-demo-6mo apps/web"
+    )
+    print("   2. Update docker-compose.prod.yml to use new image")
+    print("   3. Deploy: docker compose -f docker-compose.prod.yml up -d nginx")
+    print("   4. Click 'Reset → Use sample data' in UI")
