@@ -226,6 +226,11 @@ lm-chatdock-host.ready {
   --lm-chart-income:  #22c55e;   /* green-500 */
   --lm-chart-net:     #60a5fa;   /* blue-400 */
 
+  /* chart colors - spend buckets (for bar charts with low/mid/high legend) */
+  --chart-spend-low:  #22c55e;   /* green-500 */
+  --chart-spend-mid:  #eab308;   /* yellow-500 */
+  --chart-spend-high: #ef4444;   /* red-500 */
+
   /* chart colors - categories */
   --lm-chart-groceries:             #10b981; /* emerald-500 */
   --lm-chart-restaurants:           #f59e0b; /* amber-500 */

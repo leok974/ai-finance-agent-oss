@@ -40,6 +40,7 @@ import {
 import { getMerchantAliasName } from "@/lib/formatters/merchants";
 import { getCategoryColor } from "@/lib/categories";
 import { SERIES_COLORS, CATEGORY_COLORS, getCategoryColor as getChartCategoryColor } from "@/lib/charts/theme";
+import { getSpendBucket, getSpendBucketColor } from "@/lib/charts/spendBuckets";
 
 // Cast so TS treats them as FCs (safe for now)
 const ResponsiveContainer = RC.ResponsiveContainer as unknown as React.FC<any>;
@@ -210,9 +211,9 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
   const SpendLegend: React.FC = () => (
     <div className="flex items-center gap-2 text-[11px] text-slate-400">
       <div className="flex items-center gap-1">
-        <span className="inline-block h-2 w-2 rounded-sm bg-emerald-500" />
-        <span className="inline-block h-2 w-2 rounded-sm bg-amber-500" />
-        <span className="inline-block h-2 w-2 rounded-sm bg-red-500" />
+        <span className="inline-block h-2 w-2 rounded-sm" style={{ backgroundColor: "var(--chart-spend-low)" }} />
+        <span className="inline-block h-2 w-2 rounded-sm" style={{ backgroundColor: "var(--chart-spend-mid)" }} />
+        <span className="inline-block h-2 w-2 rounded-sm" style={{ backgroundColor: "var(--chart-spend-high)" }} />
       </div>
       <span className="font-medium">Spend</span>
       <span className="ml-1 text-slate-500">low → high</span>
@@ -317,11 +318,14 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
                 />
                 <Bar dataKey="amount" name={t('ui.charts.legend_spend')} activeBar={{ fillOpacity: 1, stroke: "#fff", strokeWidth: 1 }} fillOpacity={0.9}>
                   {categoriesData.map((d: any, i: number) => {
-                    const slug = (d?.category_slug ?? d?.category ?? d?.name ?? 'unknown')
-                      .toString()
-                      .trim()
-                      .toLowerCase();
-                    return <Cell key={i} fill={getChartCategoryColor(slug)} />;
+                    const amount = Math.abs(Number(d?.amount ?? 0));
+                    const bucket = getSpendBucket(amount, maxCategory);
+                    return (
+                      <Cell
+                        key={`category-bar-${d?.category ?? d?.name ?? 'unknown'}-${i}`}
+                        fill={getSpendBucketColor(bucket)}
+                      />
+                    );
                   })}
                 </Bar>
               </BarChart>
@@ -404,13 +408,18 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
                   dataKey="spend"
                   radius={[8, 8, 0, 0]}
                   barSize={28}
-                  fill={SERIES_COLORS.spend}
                   activeBar={{ fillOpacity: 1, stroke: "#fff", strokeWidth: 1 }}
                   fillOpacity={0.9}
                 >
-                  {topMerchantsData.map((d, i: number) => (
-                    <Cell key={i} fill={SERIES_COLORS.spend} />
-                  ))}
+                  {topMerchantsData.map((d, i: number) => {
+                    const bucket = getSpendBucket(d.spend, maxMerchant);
+                    return (
+                      <Cell
+                        key={`merchant-bar-${d.merchant}-${i}`}
+                        fill={getSpendBucketColor(bucket)}
+                      />
+                    );
+                  })}
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
