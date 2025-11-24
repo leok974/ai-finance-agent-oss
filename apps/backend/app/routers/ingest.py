@@ -11,6 +11,7 @@ from fastapi import (
 from sqlalchemy.orm import Session
 from app.deps.auth_guard import get_current_user_id
 from sqlalchemy import select, update, delete
+from app.utils.csrf import csrf_protect
 from io import TextIOWrapper
 import csv
 import datetime as dt
@@ -890,7 +891,7 @@ async def ingest_head():
     return Response(status_code=204, headers={"Cache-Control": "no-store"})
 
 
-@router.delete("/dashboard/reset")
+@router.delete("/dashboard/reset", dependencies=[Depends(csrf_protect)])
 async def dashboard_reset(
     user_id: int = Depends(get_current_user_id),
     db: Session = Depends(get_db),
