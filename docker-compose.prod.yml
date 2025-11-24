@@ -66,7 +66,7 @@ services:
 
   backend:
     container_name: ai-finance-backend
-    image: ledgermind-backend:main-099f435aa790
+    image: ledgermind-backend:main-18671941366c
     restart: unless-stopped
     env_file:
       - ./secrets/backend.env
@@ -211,7 +211,7 @@ services:
         VITE_BUILD_BRANCH: ${VITE_BUILD_BRANCH:-local}
         VITE_BUILD_COMMIT: ${VITE_BUILD_COMMIT:-dev}
         VITE_BUILD_TIME: ${VITE_BUILD_TIME:-unknown}
-    image: ledgermind-web:main-099f435aa790
+    image: ledgermind-web:main-18671941366c
     depends_on:
       backend:
         condition: service_healthy
