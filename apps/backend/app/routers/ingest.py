@@ -11,7 +11,7 @@ from fastapi import (
 from sqlalchemy.orm import Session
 from app.deps.auth_guard import get_current_user_id
 from sqlalchemy import select, update, delete
-from app.utils.csrf import csrf_protect
+from app.utils.csrf import csrf_protect, issue_csrf_cookie
 from io import TextIOWrapper
 import csv
 import datetime as dt
@@ -383,6 +383,7 @@ router = APIRouter(
 
 @router.post("")
 async def ingest_csv(
+    response: Response,
     user_id: int = Depends(get_current_user_id),
     file: UploadFile = File(...),
     replace: bool = Query(False),
@@ -441,6 +442,9 @@ async def ingest_csv(
                 "duplicates": result.get("duplicates", 0),
             },
         )
+
+        # Issue CSRF cookie on successful upload so subsequent operations (like reset) work
+        issue_csrf_cookie(response)
 
         return result
 
@@ -871,6 +875,7 @@ async def _ingest_csv_impl(
 
 @router.put("")
 async def ingest_csv_put(
+    response: Response,
     file: UploadFile = File(...),
     replace: bool = Query(False),
     expenses_are_positive: bool | None = Query(None),
@@ -878,6 +883,7 @@ async def ingest_csv_put(
 ):
     """PUT alias for ingest to support idempotent clients; delegates to POST handler."""
     return await ingest_csv(
+        response=response,
         file=file,
         replace=replace,
         expenses_are_positive=expenses_are_positive,
