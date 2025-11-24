@@ -37,6 +37,13 @@ function withQuery(url: string, qs?: Record<string, string | number | boolean>) 
   return u.pathname + (u.search || "");
 }
 
+// Extract CSRF token from cookie (matches backend cookie name: csrf_token)
+function getCsrfTokenFromCookie(): string | null {
+  if (typeof document === 'undefined') return null;
+  const match = document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/);
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
 export type FetchOpts = RequestInit & { query?: Record<string, string | number | boolean> };
 
 export async function fetchJSON<T>(path: string, opts: FetchOpts = {}): Promise<T> {
@@ -50,13 +57,15 @@ export async function fetchJSON<T>(path: string, opts: FetchOpts = {}): Promise<
   const isForm = typeof FormData !== 'undefined' && opts.body instanceof FormData;
   if (!isForm && !hdrs.has('Content-Type')) hdrs.set('Content-Type', 'application/json');
 
-  // CSRF: include header for unsafe methods if cookie is present (matches api.ts pattern)
+  // 🔐 CSRF: Always include X-CSRF-Token header for mutating requests (POST/PUT/PATCH/DELETE)
+  // Backend validates this against the csrf_token cookie for CSRF protection
   const method = (opts.method ?? 'GET').toUpperCase();
-  if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) {
-    if (typeof document !== 'undefined') {
-      const m = document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/);
-      const csrf = m && m[1] ? decodeURIComponent(m[1]) : undefined;
-      if (csrf && !hdrs.has("X-CSRF-Token")) hdrs.set("X-CSRF-Token", csrf);
+  if (method !== 'GET' && method !== 'HEAD') {
+    if (!hdrs.has("X-CSRF-Token")) {
+      const csrf = getCsrfTokenFromCookie();
+      if (csrf) {
+        hdrs.set("X-CSRF-Token", csrf);
+      }
     }
   }
 

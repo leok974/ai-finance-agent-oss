@@ -1,5 +1,6 @@
 import os
 import secrets
+import logging
 from fastapi import Header, Request, HTTPException, status
 from fastapi.responses import Response
 from typing import Optional
@@ -7,6 +8,8 @@ from typing import Optional
 # Reuse cookie settings from auth utils
 from app.utils.auth import _cookie_secure, _cookie_samesite, _cookie_domain
 from app.utils.env import is_test
+
+logger = logging.getLogger(__name__)
 
 
 def issue_csrf_cookie(response: Response, max_age_seconds: int = 60 * 60 * 8) -> str:
@@ -69,7 +72,50 @@ def csrf_protect(
         return
 
     cookie = request.cookies.get("csrf_token")
-    if not cookie or not x_csrf_token or x_csrf_token != cookie:
+
+    # Enhanced logging for CSRF failures to aid debugging
+    if not cookie:
+        logger.warning(
+            "CSRF check failed: no csrf_token cookie",
+            extra={
+                "path": path,
+                "method": method,
+                "has_header": bool(x_csrf_token),
+                "client_ip": request.client.host if request.client else None,
+            },
+        )
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="CSRF check failed"
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="CSRF check failed: missing cookie",
+        )
+
+    if not x_csrf_token:
+        logger.warning(
+            "CSRF check failed: no X-CSRF-Token header",
+            extra={
+                "path": path,
+                "method": method,
+                "has_cookie": bool(cookie),
+                "client_ip": request.client.host if request.client else None,
+            },
+        )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="CSRF check failed: missing header",
+        )
+
+    if x_csrf_token != cookie:
+        logger.warning(
+            "CSRF check failed: token mismatch",
+            extra={
+                "path": path,
+                "method": method,
+                "cookie_len": len(cookie),
+                "header_len": len(x_csrf_token),
+                "client_ip": request.client.host if request.client else None,
+            },
+        )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="CSRF check failed: token mismatch",
         )
