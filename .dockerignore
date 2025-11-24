@@ -9,7 +9,8 @@
 *.log
 .env*
 secrets/
-node_modules
+node_modules/
+apps/web/node_modules/
 **/.pnpm
 **/node_modules/.pnpm
 dist/
