@@ -25,6 +25,7 @@ from ..db import get_db
 from app.transactions import Transaction
 from app.services.ingest_utils import detect_positive_expense_format
 from app.services.metrics import INGEST_REQUESTS, INGEST_ERRORS, INGEST_FILES
+from app.core.category_mappings import normalize_category
 
 logger = logging.getLogger(__name__)
 
@@ -697,6 +698,11 @@ async def _ingest_csv_impl(
             continue
 
         seen_keys.add(dedup_key)
+
+        # If CSV provides a category, normalize and use it (for demo mode)
+        # Otherwise leave as None for ML categorization
+        normalized_cat = normalize_category(raw_cat) if raw_cat else None
+
         new_transactions.append(
             Transaction(
                 user_id=user_id,
@@ -707,7 +713,7 @@ async def _ingest_csv_impl(
                 account=acct,
                 raw_category=raw_cat,
                 month=month,
-                category=None,
+                category=normalized_cat,
                 pending=pending,
             )
         )
