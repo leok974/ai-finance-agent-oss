@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.transactions import Transaction
+from app.deps.auth_guard import get_current_user_id
 from app.agent.prompts import (
     FINANCE_QUICK_RECAP_PROMPT,
     ANALYTICS_TRENDS_PROMPT,
@@ -121,7 +122,11 @@ def _inflow_sum():
 
 
 @router.post("/summary", response_model=SummaryResp)
-def charts_summary(body: SummaryBody, db: Session = Depends(get_db)) -> SummaryResp:
+def charts_summary(
+    body: SummaryBody,
+    user_id: int = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+) -> SummaryResp:
     # Totals for the month
     totals = (
         db.query(
@@ -129,7 +134,7 @@ def charts_summary(body: SummaryBody, db: Session = Depends(get_db)) -> SummaryR
             _abs_outflow_sum().label("outflow"),
             func.sum(Transaction.amount).label("net_raw"),
         )
-        .filter(Transaction.month == body.month)
+        .filter(Transaction.user_id == user_id, Transaction.month == body.month)
         .one()
     )
     total_in = float(totals.inflow or 0.0)
@@ -145,7 +150,7 @@ def charts_summary(body: SummaryBody, db: Session = Depends(get_db)) -> SummaryR
                 _abs_outflow_sum().label("outflow"),
                 func.sum(Transaction.amount).label("net_raw"),
             )
-            .filter(Transaction.month == body.month)
+            .filter(Transaction.user_id == user_id, Transaction.month == body.month)
             .group_by(Transaction.date)
             .order_by(asc(Transaction.date))
             .all()
@@ -170,7 +175,9 @@ def charts_summary(body: SummaryBody, db: Session = Depends(get_db)) -> SummaryR
 
 @router.post("/merchants", response_model=MerchantsResp)
 def charts_merchants(
-    body: MerchantsBody, db: Session = Depends(get_db)
+    body: MerchantsBody,
+    user_id: int = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
 ) -> MerchantsResp:
     """
     Get top merchants with brand-aware normalization and learned categories.
@@ -188,6 +195,7 @@ def charts_merchants(
     txns = (
         db.query(Transaction.merchant, Transaction.amount, Transaction.description)
         .filter(
+            Transaction.user_id == user_id,
             Transaction.month == body.month,
             Transaction.amount < 0,
             ~Transaction.pending,
@@ -248,7 +256,11 @@ def charts_merchants(
 
 
 @router.post("/flows", response_model=FlowsResp)
-def charts_flows(body: FlowsBody, db: Session = Depends(get_db)) -> FlowsResp:
+def charts_flows(
+    body: FlowsBody,
+    user_id: int = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+) -> FlowsResp:
     """
     Produce simple Sankey-like edges for outflows:
       Category -> Merchant with 'amount' = spend for that pair in the month.
@@ -264,7 +276,7 @@ def charts_flows(body: FlowsBody, db: Session = Depends(get_db)) -> FlowsResp:
             ),
             _abs_outflow_sum().label("spend"),
         )
-        .filter(Transaction.month == body.month)
+        .filter(Transaction.user_id == user_id, Transaction.month == body.month)
         .group_by("category", "merchant")
         .order_by(desc("spend"))
         .all()
@@ -308,7 +320,9 @@ def charts_flows(body: FlowsBody, db: Session = Depends(get_db)) -> FlowsResp:
 @router.post("/spending_trends", response_model=TrendsResp)  # legacy underscore
 @router.post("/spending-trends", response_model=TrendsResp)  # canonical dashed
 async def spending_trends_post(
-    body: TrendsBody, db: Session = Depends(get_db)
+    body: TrendsBody,
+    user_id: int = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
 ) -> TrendsResp:
     # Determine which months to include
     months: List[str]
@@ -317,6 +331,7 @@ async def spending_trends_post(
     else:
         rows = (
             db.query(Transaction.month)
+            .filter(Transaction.user_id == user_id)
             .group_by(Transaction.month)
             .order_by(desc(Transaction.month))
             .limit(body.window)
@@ -333,7 +348,7 @@ async def spending_trends_post(
             _abs_outflow_sum().label("outflow"),
             func.sum(Transaction.amount).label("net_raw"),
         )
-        .filter(Transaction.month.in_(months))
+        .filter(Transaction.user_id == user_id, Transaction.month.in_(months))
         .group_by(Transaction.month)
         .all()
     )

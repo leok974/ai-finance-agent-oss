@@ -9,7 +9,7 @@ import {
   chartsCategories,
   chartsFlows
 } from "../lib/api"; // uses your existing helpers
-import { fetchJSON } from "@/lib/fetchJSON";
+import { fetchJSON } from "@/lib/http";
 import { emitToastSuccess, emitToastError } from "@/lib/toast-helpers";
 import { t } from '@/lib/i18n';
 import { useMonth } from "../context/MonthContext";
@@ -230,7 +230,7 @@ const UploadCsv: React.FC<UploadCsvProps> = ({ onUploaded, defaultReplace = true
     try {
       setBusy(true);
       // Use new dedicated dashboard reset endpoint
-      await fetchJSON('/ingest/dashboard/reset', { method: 'DELETE' });
+      await fetchJSON('/ingest/dashboard/reset', { method: 'POST' });
       // Clear UI state
       setFile(null);
       setResult(null);

@@ -1789,7 +1789,7 @@ export async function uploadCsv(file: File | Blob, replace = true, format = 'csv
 
 // Delete all transactions using dedicated dashboard reset endpoint
 export async function deleteAllTransactions(): Promise<void> {
-  await fetchJSON('/ingest/dashboard/reset', { method: 'DELETE' });
+  await fetchJSON('/ingest/dashboard/reset', { method: 'POST' });
 }
 
 export async function fetchLatestMonth(): Promise<string | null> {

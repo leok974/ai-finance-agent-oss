@@ -899,6 +899,7 @@ async def ingest_head():
 
 @router.delete("/dashboard/reset", dependencies=[Depends(csrf_protect)])
 async def dashboard_reset(
+    request: Request,
     user_id: int = Depends(get_current_user_id),
     db: Session = Depends(get_db),
 ):
@@ -909,6 +910,19 @@ async def dashboard_reset(
     request_id = uuid4().hex
 
     logger.info(
+        "reset_dashboard called (DELETE)",
+        extra={
+            "request_id": request_id,
+            "path": request.url.path,
+            "method": request.method,
+            "user_id": user_id,
+            "cookies": list(request.cookies.keys()),
+            "has_csrf_header": "x-csrf-token"
+            in {k.lower(): v for k, v in request.headers.items()},
+        },
+    )
+
+    logger.info(
         "dashboard.reset.start",
         extra={
             "request_id": request_id,
@@ -917,10 +931,11 @@ async def dashboard_reset(
     )
 
     try:
-        # Delete all user transactions
-        deleted_count = db.execute(
+        # Delete all user transactions (CASCADE will handle related records)
+        deleted_txns = db.execute(
             delete(Transaction).where(Transaction.user_id == user_id)
         ).rowcount
+
         db.commit()
 
         # Clear legacy in-memory state if present
@@ -936,11 +951,11 @@ async def dashboard_reset(
             extra={
                 "request_id": request_id,
                 "user_id": user_id,
-                "deleted_count": deleted_count,
+                "deleted_transactions": deleted_txns,
             },
         )
 
-        return {"ok": True, "deleted": deleted_count}
+        return {"ok": True, "deleted": deleted_txns}
 
     except Exception as exc:
         db.rollback()
@@ -960,3 +975,14 @@ async def dashboard_reset(
             status_code=500,
             detail=f"Ingest failed – please check logs and try again (request_id: {request_id})",
         )
+
+
+@router.post("/dashboard/reset", dependencies=[Depends(csrf_protect)])
+async def dashboard_reset_post(
+    request: Request,
+    user_id: int = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
+    """POST alias for dashboard reset (compatibility with proxies/WAFs)."""
+    logger.info("reset_dashboard called via POST, delegating to DELETE handler")
+    return await dashboard_reset(request=request, user_id=user_id, db=db)

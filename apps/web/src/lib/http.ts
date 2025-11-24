@@ -65,6 +65,9 @@ export async function fetchJSON<T>(path: string, opts: FetchOpts = {}): Promise<
       const csrf = getCsrfTokenFromCookie();
       if (csrf) {
         hdrs.set("X-CSRF-Token", csrf);
+        console.log('[CSRF DEBUG] Added X-CSRF-Token header:', csrf.substring(0, 20) + '...');
+      } else {
+        console.warn('[CSRF DEBUG] No csrf_token cookie found! Cookies:', document.cookie);
       }
     }
   }
