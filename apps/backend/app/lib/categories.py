@@ -30,8 +30,6 @@ VALID_CATEGORIES = {
     # Transportation sub-categories
     "transportation.fuel",
     "transportation.public",
-    "transportation.ride_hailing",
-    "transportation.rideshare",
     # Health sub-categories
     "health.pharmacy",
     "health.insurance",

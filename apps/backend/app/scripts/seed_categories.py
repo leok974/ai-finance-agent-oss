@@ -13,7 +13,6 @@ CATS = [
     ("transportation", "Transportation", None),
     ("transportation.fuel", "Fuel", "transportation"),
     ("transportation.public", "Public Transit", "transportation"),
-    ("transportation.ride_hailing", "Ride Hailing", "transportation"),
     ("groceries", "Groceries", None),
     ("restaurants", "Restaurants", None),
     ("coffee", "Coffee", None),
@@ -47,8 +46,8 @@ RULES = [
     (r"CASH\s+APP|SQC\*", "transfers", 5),
     (r"PAYPAL(?!.*(NETFLIX|SPOTIFY|AMAZON|ADOBE))", "transfers", 5),
     (r"APPLE\s+CASH", "transfers", 5),
-    # Ride hailing
-    (r"UBER|LYFT", "transportation.ride_hailing", 10),
+    # Transportation (Uber/Lyft)
+    (r"UBER|LYFT", "transportation", 10),
     # Streaming subscriptions
     (r"NETFLIX|HULU|DISNEY\+|MAX|PARAMOUNT", "subscriptions.streaming", 10),
     (r"SPOTIFY|APPLE\s*MUSIC|YTMUSIC|YOUTUBE\s*PREMIUM", "subscriptions.streaming", 10),

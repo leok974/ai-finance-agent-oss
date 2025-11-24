@@ -166,9 +166,9 @@ def from_amount(amount: float, text: str) -> List[Dict]:
     if re.search(r"uber|lyft", text, re.I):
         out.append(
             {
-                "category_slug": "transportation.ride_hailing",
+                "category_slug": "transportation",
                 "score": WEIGHTS["amount"] * 0.5,
-                "why": ["ride hailing merchant"],
+                "why": ["transportation merchant"],
             }
         )
     return out

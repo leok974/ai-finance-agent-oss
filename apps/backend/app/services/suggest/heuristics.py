@@ -28,8 +28,8 @@ MERCHANT_PRIORS = {
     "doordash": "restaurants",
     "uber eats": "restaurants",
     # Transportation
-    "uber": "transportation.ride_hailing",
-    "lyft": "transportation.ride_hailing",
+    "uber": "transportation",
+    "lyft": "transportation",
     "shell": "transportation.fuel",
     "chevron": "transportation.fuel",
     "bp": "transportation.fuel",
