@@ -356,3 +356,125 @@ class TestFallbackBehavior:
             # Verify it used deterministic fallback
             assert result["_router_fallback_active"] is True
             assert result["mode"] == "finance_deep_dive"
+
+
+class TestSpendingTrendsCardReference:
+    """Tests for Spending Trends card reference in LLM responses."""
+
+    @pytest.mark.asyncio
+    async def test_quick_recap_llm_mentions_spending_trends_card(
+        self, mock_http_client, mock_user_context
+    ):
+        """Test that LLM quick recap mentions the Spending trends card."""
+        from app.agent.modes_finance_llm import mode_finance_quick_recap_llm
+
+        # Mock API responses
+        summary_response = MagicMock()
+        summary_response.json.return_value = {
+            "summary": {"income": 1000.0, "spend": -500.0, "net": 500.0}
+        }
+
+        expanded_response = MagicMock()
+        expanded_response.json.return_value = {
+            "unknown_spend": {"amount": 100.0, "count": 5},
+            "categories": [{"label": "Groceries", "amount": -200.0, "share_pct": 40.0}],
+        }
+
+        merchants_response = MagicMock()
+        merchants_response.json.return_value = {
+            "merchants": [{"merchant": "Amazon", "amount": -200.0, "count": 3}]
+        }
+
+        async def mock_post(url, **kwargs):
+            if "charts/summary" in url:
+                return summary_response
+            elif "insights/expanded" in url:
+                return expanded_response
+            elif "charts/merchants" in url:
+                return merchants_response
+            raise ValueError(f"Unexpected URL: {url}")
+
+        mock_http_client.post = mock_post
+
+        # Mock LLM call with expected card reference
+        with patch("app.utils.llm.call_local_llm") as mock_llm:
+            mock_llm.return_value = (
+                "Here's your summary for **2025-11**: Income was $1,000, spend was $500.\n\n"
+                "You can also check the Spending trends card I highlighted below.",
+                [{"tool": "llm", "status": "ok"}],
+            )
+
+            result = await mode_finance_quick_recap_llm(
+                month="2025-11", http=mock_http_client, user_context=mock_user_context
+            )
+
+            # Verify card_hints includes spending-trends
+            assert "card_hints" in result
+            assert "card-spending-trends" in result["card_hints"]
+
+            # Verify reply mentions the card
+            assert "Spending trends card I highlighted below" in result["reply"]
+
+    @pytest.mark.asyncio
+    async def test_deep_dive_llm_mentions_spending_trends_card(
+        self, mock_http_client, mock_user_context
+    ):
+        """Test that LLM deep dive mentions the Spending trends card."""
+        from app.agent.modes_finance_llm import mode_finance_deep_dive_llm
+
+        # Mock API responses
+        summary_response = MagicMock()
+        summary_response.json.return_value = {
+            "summary": {"income": 1000.0, "spend": -500.0, "net": 500.0}
+        }
+
+        expanded_response = MagicMock()
+        expanded_response.json.return_value = {
+            "unknown_spend": {"amount": 100.0, "count": 5},
+            "categories": [{"label": "Groceries", "amount": -200.0, "share_pct": 40.0}],
+            "anomalies": [],
+        }
+
+        merchants_response = MagicMock()
+        merchants_response.json.return_value = {
+            "merchants": [
+                {
+                    "merchant": "Amazon",
+                    "amount": -200.0,
+                    "count": 3,
+                    "category": "Shopping",
+                }
+            ]
+        }
+
+        async def mock_post(url, **kwargs):
+            if "charts/summary" in url:
+                return summary_response
+            elif "insights/expanded" in url:
+                return expanded_response
+            elif "charts/merchants" in url:
+                return merchants_response
+            raise ValueError(f"Unexpected URL: {url}")
+
+        mock_http_client.post = mock_post
+
+        # Mock LLM call with expected card reference
+        with patch("app.utils.llm.call_local_llm") as mock_llm:
+            mock_llm.return_value = (
+                "Deep dive for **2025-11**\n\n"
+                "**By category**: Groceries $200 (40% of spend).\n\n"
+                "You can also check the Spending trends card I highlighted below to see how this compares over time.",
+                [{"tool": "llm", "status": "ok"}],
+            )
+
+            result = await mode_finance_deep_dive_llm(
+                month="2025-11", http=mock_http_client, user_context=mock_user_context
+            )
+
+            # Verify card_hints includes spending-trends
+            assert "card_hints" in result
+            assert "card-spending-trends" in result["card_hints"]
+
+            # Verify reply mentions the card
+            assert "Spending trends card I highlighted below" in result["reply"]
+            assert "to see how this compares over time" in result["reply"]
