@@ -286,7 +286,7 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
           <SpendLegend />
         </div>
         {loading && (
-          <div className="h-64">
+          <div className="h-64 relative z-0">
             <div className="h-full w-full flex items-end gap-2">
               {[...Array(8)].map((_, i) => (
                 <Skeleton key={i} className="w-8" style={{ height: `${20 + (i % 5) * 12}%` }} />
@@ -345,7 +345,7 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
           <SpendLegend />
         </div>
         {loading && (
-          <div className="h-64">
+          <div className="h-64 relative z-0">
             <div className="h-full w-full flex items-end gap-2">
               {[...Array(8)].map((_, i) => (
                 <Skeleton key={i} className="w-8" style={{ height: `${18 + (i % 4) * 14}%` }} />
@@ -437,7 +437,7 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
           </h3>
         </div>
         {loading && (
-          <div className="h-64">
+          <div className="h-64 relative z-0">
             <div className="h-full w-full flex items-center">
               <Skeleton className="h-32 w-full" />
             </div>
@@ -498,7 +498,7 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
           </h3>
         </div>
         {loading && (
-          <div className="h-64">
+          <div className="h-64 relative z-0">
             <div className="h-full w-full flex items-center">
               <Skeleton className="h-32 w-full" />
             </div>
