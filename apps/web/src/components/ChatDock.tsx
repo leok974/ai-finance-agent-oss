@@ -1482,69 +1482,32 @@ export default function ChatDock() {
 
   const runMonthSummary = React.useCallback(async (_ev?: React.MouseEvent) => {
     if (busy) return;
-
-    const currentMonth = month || '';
-
-    // Try AGUI with finance_quick_recap mode if agent is available
-    if (canUseAgent(llmStatus)) {
-      const success = startAguiRun(
-        'finance_quick_recap',
-        `Give me a month summary for ${currentMonth}. Focus on income, spend, net, unknowns, and top merchants.`,
-        currentMonth
-      );
-      if (success) return;
-    }
-
-    // Fallback: deterministic local summary using insightsExpanded
-    setBusy(true);
+    // Use streaming via sendMessage with finance_quick_recap mode
     try {
-      appendUser('Summarize my spending this month');
-
-      // Fetch insightsExpanded for richer data (includes unknowns, categories, anomalies)
-      const data = await agentTools.insightsExpanded({ month: currentMonth, large_limit: 10, status: 'posted' });
-
-      // Transform to MonthSummary format using the richer adapter
-      const summary = adaptInsightsExpandedToMonthSummary(data, currentMonth);
-      lastMonthSummaryRef.current = summary;
-
-      // Render quick recap
-      const quickRecap = renderQuick(summary);
-
-      // Add with special meta to show "Deeper breakdown" chip
-      appendAssistant(quickRecap, {
-        ctxMonth: currentMonth,
-        mode: 'finance_quick_recap',
-        showDeeperBreakdown: true,
-        monthSummary: summary, // Store for smart export
-      });
-
-      syncFromStoreDebounced(120);
-    } catch (err: any) {
-      appendAssistant(`Failed to load month summary: ${err?.message || String(err)}`);
-    } finally {
-      setBusy(false);
+      await agentStream.sendMessage(
+        `Give me a month summary for ${month || ''}. Focus on income, spend, net, unknowns, and top merchants.`,
+        {
+          month: month || '',
+          mode: 'finance_quick_recap',
+        }
+      );
+    } catch (err) {
+      console.error('[ChatDock] Month summary stream error:', err);
     }
-  }, [busy, month, llmStatus, appendAssistant]);
+  }, [busy, month, agentStream]);
 
   const runFindSubscriptions = React.useCallback(async (_ev?: React.MouseEvent) => {
     if (busy) return;
-  if (startAguiRun('subscriptions', AGUI_ACTIONS['subscriptions'].prompt, month)) return;
-    setBusy(true);
+    // Use streaming via sendMessage with analytics_subscriptions_all mode
     try {
-      appendUser('Find subscriptions to review and suggest which I could cancel or downgrade.');
-      await runToolWithRephrase(
-        'analytics.subscriptions',
-        () => analytics.subscriptions(month) as Promise<AnalyticsSubscriptionsResponse>,
-        (raw: AnalyticsSubscriptionsResponse) => formatSubscriptionsReply(raw),
-        (msg, meta) => appendAssistant(msg, { ...meta, ctxMonth: month }),
-        (on) => setBusy(on),
-        () => ({ context: getContext() })
-      );
-      syncFromStoreDebounced(120);
-    } finally {
-      setBusy(false);
+      await agentStream.sendMessage('Find subscriptions to review and suggest which I could cancel or downgrade.', {
+        month: month || '',
+        mode: 'analytics_subscriptions_all',
+      });
+    } catch (err) {
+      console.error('[ChatDock] Subscriptions stream error:', err);
     }
-  }, [busy, month, appendAssistant]);
+  }, [busy, month, agentStream]);
 
   // Additional one-click runners shown in the tools tray
   const runTopMerchants = React.useCallback(async (_ev?: React.MouseEvent) => {
@@ -1587,22 +1550,16 @@ export default function ChatDock() {
 
   const runTrends = React.useCallback(async (_ev?: React.MouseEvent) => {
     if (busy) return;
-  if (startAguiRun('overview', AGUI_ACTIONS['trends'].prompt, month)) return;
-    setBusy(true);
+    // Use streaming via sendMessage with analytics_trends mode
     try {
-      appendUser('Show my spending trends.');
-      await runToolWithRephrase(
-        'charts.spending_trends',
-  // Prefer Agent Tools POST with selected month and months_back window
-  () => agentTools.chartsSpendingTrends({ month: month || '', months_back: 6 }) as any,
-  (raw: any) => fmtTrends(raw?.trends || raw?.series || raw || []),
-  (msg, meta) => appendAssistant(msg, { ...meta, ctxMonth: month }),
-  (on) => setBusy(on),
-  () => ({ context: getContext() })
-      );
-      syncFromStoreDebounced(120);
-    } finally { setBusy(false); }
-  }, [busy, month, appendAssistant]);
+      await agentStream.sendMessage('Show my spending trends.', {
+        month: month || '',
+        mode: 'analytics_trends',
+      });
+    } catch (err) {
+      console.error('[ChatDock] Trends stream error:', err);
+    }
+  }, [busy, month, agentStream]);
 
   // Debug: confirm onClick bindings are in place for the current month
   useEffect(() => {
@@ -1720,21 +1677,16 @@ export default function ChatDock() {
 
   const runAnalyticsRecurring = React.useCallback(async (_ev?: React.MouseEvent) => {
     if (busy) return;
-  if (startAguiRun('subscriptions', AGUI_ACTIONS['recurring'].prompt, month)) return;
-    setBusy(true);
+    // Use streaming via sendMessage with analytics_recurring_all mode
     try {
-      appendUser('Show all recurring charges (including subscriptions and other patterns).');
-      await runToolWithRephrase(
-        'analytics.recurring',
-        () => analytics.recurring(month),
-        (raw: any) => formatSubscriptionsReply(raw),
-        (msg, meta) => appendAssistant(msg, { ...meta, ctxMonth: month }),
-        (on) => setBusy(on),
-        () => ({ context: getContext() })
-      );
-      syncFromStoreDebounced(120);
-    } finally { setBusy(false); }
-  }, [busy, month, appendAssistant]);
+      await agentStream.sendMessage('Show all recurring charges (including subscriptions and other patterns).', {
+        month,
+        mode: 'analytics_recurring_all',
+      });
+    } catch (err) {
+      console.error('[ChatDock] Recurring stream error:', err);
+    }
+  }, [busy, month, agentStream]);
 
   const runAnalyticsBudgetSuggest = React.useCallback(async (_ev?: React.MouseEvent) => {
     if (busy) return;
@@ -2322,22 +2274,16 @@ export default function ChatDock() {
 
   const runAlerts = React.useCallback(async (ev?: React.MouseEvent) => {
     if (busy) return;
-  if (startAguiRun('alerts', AGUI_ACTIONS['alerts'].prompt, month)) return;
-    setBusy(true);
+    // Use streaming via sendMessage with finance_alerts mode
     try {
-      appendUser('Show my alerts.');
-      const req: AgentChatRequest = {
-        messages: [{ role: 'user', content: 'List my alerts for the selected month.' }],
-        intent: 'general',
-        context: getContext(ev),
-        conversational: true  // Enable conversational voice styling
-      };
-  console.debug('[chat] alerts -> /agent/chat', { preview: req.messages[0]?.content?.slice(0, 80) });
-  const resp = await agentChat(req);
-  console.debug('[chat] alerts ΓåÉ ok', { model: resp?.model });
-      handleAgentResponse(resp);
-    } finally { setBusy(false); }
-  }, [busy, handleAgentResponse]);
+      await agentStream.sendMessage('List my alerts for the selected month.', {
+        month,
+        mode: 'finance_alerts',
+      });
+    } catch (err) {
+      console.error('[ChatDock] Alerts stream error:', err);
+    }
+  }, [busy, month, agentStream]);
 
   // Removed legacy non-NL search tool in favor of NL query
 
