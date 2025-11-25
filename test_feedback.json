@@ -1,8 +1,0 @@
-{
-  "txn_id": 999001,
-  "action": "accept",
-  "label": "Groceries",
-  "confidence": 0.95,
-  "reason": "Looks correct",
-  "user_id": "test_user"
-}
