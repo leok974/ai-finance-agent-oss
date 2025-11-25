@@ -5,15 +5,12 @@
 
 import { test, expect } from '@playwright/test';
 
-test.describe('Chat Streaming Consistency', () => {
+test.describe('Chat Streaming Consistency @prod', () => {
   test.beforeEach(async ({ page }) => {
-    // Login first
     await page.goto('/');
-    // Add login steps here if needed
-    // For now, assume we're already logged in or using a test session
   });
 
-  test('Typed "quick recap" query uses streaming', async ({ page }) => {
+  test('Typed "quick recap" query uses streaming @prod', async ({ page }) => {
     await page.goto('/');
 
     // Open chat panel
@@ -37,7 +34,7 @@ test.describe('Chat Streaming Consistency', () => {
     await expect(summaryContent).toBeVisible({ timeout: 10000 });
   });
 
-  test('Month summary button uses streaming', async ({ page }) => {
+  test('Month summary button uses streaming @prod', async ({ page }) => {
     await page.goto('/');
 
     // Open chat panel
@@ -60,7 +57,7 @@ test.describe('Chat Streaming Consistency', () => {
     await expect(summaryContent).toBeVisible({ timeout: 10000 });
   });
 
-  test('Typed query and button produce equivalent results', async ({ page }) => {
+  test('Typed query and button produce equivalent results @prod', async ({ page }) => {
     await page.goto('/');
 
     // Open chat panel
@@ -104,7 +101,7 @@ test.describe('Chat Streaming Consistency', () => {
     expect(secondResponseText).not.toMatch(/temporarily unavailable/i);
   });
 
-  test('Alerts button uses streaming with correct mode', async ({ page }) => {
+  test('Alerts button uses streaming with correct mode @prod', async ({ page }) => {
     await page.goto('/');
 
     const chatButton = page.getByRole('button', { name: /chat/i });
@@ -132,7 +129,7 @@ test.describe('Chat Streaming Consistency', () => {
     await expect(unavailableText).not.toBeVisible({ timeout: 2000 });
   });
 
-  test('Recurring charges button uses streaming with correct mode', async ({ page }) => {
+  test('Recurring charges button uses streaming with correct mode @prod', async ({ page }) => {
     await page.goto('/');
 
     const chatButton = page.getByRole('button', { name: /chat/i });
@@ -156,7 +153,7 @@ test.describe('Chat Streaming Consistency', () => {
     await expect(unavailableText).not.toBeVisible({ timeout: 2000 });
   });
 
-  test('Subscriptions button uses streaming with correct mode', async ({ page }) => {
+  test('Subscriptions button uses streaming with correct mode @prod', async ({ page }) => {
     await page.goto('/');
 
     const chatButton = page.getByRole('button', { name: /chat/i });
@@ -180,7 +177,7 @@ test.describe('Chat Streaming Consistency', () => {
     await expect(unavailableText).not.toBeVisible({ timeout: 2000 });
   });
 
-  test('Deterministic quick recap works without LLM', async ({ page }) => {
+  test('Deterministic quick recap works without LLM @prod', async ({ page }) => {
     // This test verifies that quick recap works even when LLM is unavailable
     await page.goto('/');
 
