@@ -293,43 +293,48 @@ def manual_categorize_transaction(
     # Upsert hint when scope is not JUST_THIS
     hint_applied = False
     if payload.scope != ManualCategorizeScope.JUST_THIS and merchant_canonical:
-        db.execute(
-            text(
-                """
-                INSERT INTO merchant_category_hints
-                    (merchant_canonical, category_slug, source, confidence)
-                VALUES
-                    (:merchant, :category, :source, :confidence)
-                ON CONFLICT (merchant_canonical, category_slug) DO UPDATE
-                SET
-                    confidence = GREATEST(merchant_category_hints.confidence, EXCLUDED.confidence),
-                    source = CASE
-                        WHEN merchant_category_hints.source = 'user_block' THEN merchant_category_hints.source
-                        ELSE EXCLUDED.source
-                    END
-                """
-            ),
-            {
-                "merchant": merchant_canonical,
-                "category": payload.category_slug,
-                "source": "manual_user",
-                "confidence": 0.95,
-            },
-        )
-        hint_applied = True
+        # Only create hints for real user data, not demo transactions
+        is_demo_transaction = getattr(anchor, "is_demo", False)
 
-        # Record ML feedback event for bulk categorizations
-        # This helps the model learn from manual bulk tagging patterns
-        feedback_event = MlFeedbackEvent(
-            txn_id=txn_id,
-            user_id=str(user_id),
-            category=payload.category_slug,
-            action="accept",
-            source="manual_bulk",
-            model=None,
-            score=None,
-        )
-        db.add(feedback_event)
+        if not is_demo_transaction:
+            db.execute(
+                text(
+                    """
+                    INSERT INTO merchant_category_hints
+                        (merchant_canonical, category_slug, source, confidence)
+                    VALUES
+                        (:merchant, :category, :source, :confidence)
+                    ON CONFLICT (merchant_canonical, category_slug) DO UPDATE
+                    SET
+                        confidence = GREATEST(merchant_category_hints.confidence, EXCLUDED.confidence),
+                        source = CASE
+                            WHEN merchant_category_hints.source = 'user_block' THEN merchant_category_hints.source
+                            ELSE EXCLUDED.source
+                        END
+                    """
+                ),
+                {
+                    "merchant": merchant_canonical,
+                    "category": payload.category_slug,
+                    "source": "manual_user",
+                    "confidence": 0.95,
+                },
+            )
+            hint_applied = True
+
+            # Record ML feedback event for bulk categorizations
+            # This helps the model learn from manual bulk tagging patterns
+            # Only create feedback events for real user data (not demo)
+            feedback_event = MlFeedbackEvent(
+                txn_id=txn_id,
+                user_id=str(user_id),
+                category=payload.category_slug,
+                action="accept",
+                source="manual_bulk",
+                model=None,
+                score=None,
+            )
+            db.add(feedback_event)
 
     db.commit()
 
