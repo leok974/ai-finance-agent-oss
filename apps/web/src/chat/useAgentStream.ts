@@ -206,26 +206,43 @@ export function useAgentStream(): UseAgentStreamResult {
         const decoder = new TextDecoder();
         let buffer = ''; // Buffer for incomplete JSON
 
-        try {
-          // eslint-disable-next-line no-constant-condition
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
+        // Helper to parse event lines with fallback for escaped \n sequences
+        const parseEventLine = (rawLine: string) => {
+          if (!rawLine) return;
+          
+          try {
+            const event = JSON.parse(rawLine);
+            handleEvent(event);
+            return;
+          } catch (err) {
+            // Fallback: sometimes backend sends multiple JSON objects joined with literal '\n'
+            // e.g. '{"type":"token",...}\\n{"type":"token",...}\\n{"type":"done",...}'
+            console.warn('[useAgentStream] Primary parse failed, trying fallback split', err);
 
-            buffer += decoder.decode(value, { stream: true });
+            const parts = rawLine
+              .split(/\\n/g)          // split on literal "\n"
+              .map((p) => p.trim())
+              .filter(Boolean);
 
-            // Process complete lines using indexOf for robustness
-            let newlineIndex;
-            while ((newlineIndex = buffer.indexOf('\n')) !== -1) {
-              const rawLine = buffer.slice(0, newlineIndex).trim();
-              buffer = buffer.slice(newlineIndex + 1);
+            if (parts.length <= 1) {
+              console.warn('[useAgentStream] Failed to parse event line:', rawLine, err);
+              return;
+            }
 
-              if (!rawLine) continue;
-
+            for (const part of parts) {
               try {
-                const event = JSON.parse(rawLine);
+                const event = JSON.parse(part);
+                handleEvent(event);
+              } catch (innerErr) {
+                console.warn('[useAgentStream] Failed to parse sub-event part:', part, innerErr);
+              }
+            }
+          }
+        };
 
-                switch (event.type) {
+        // Event handler extracted for reuse
+        const handleEvent = (event: any) => {
+          switch (event.type) {
                   case 'start':
                     // Session started
                     break;
@@ -340,24 +357,33 @@ export function useAgentStream(): UseAgentStreamResult {
                       },
                     ]);
                     break;
-                }
-              } catch (parseError) {
-                console.warn('[useAgentStream] Failed to parse event line:', rawLine, parseError);
-              }
+            }
+          };
+
+        try {
+          // eslint-disable-next-line no-constant-condition
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            buffer += decoder.decode(value, { stream: true });
+
+            // Process complete lines using indexOf for robustness
+            let newlineIndex;
+            while ((newlineIndex = buffer.indexOf('\n')) !== -1) {
+              const rawLine = buffer.slice(0, newlineIndex).trim();
+              buffer = buffer.slice(newlineIndex + 1);
+
+              if (!rawLine) continue;
+              
+              parseEventLine(rawLine);
             }
           }
 
           // Handle any trailing partial JSON at the end of the stream
           const tail = buffer.trim();
           if (tail.length > 0) {
-            try {
-              const event = JSON.parse(tail);
-              // Process the final event using the same switch as above
-              // For simplicity, just log it - in production you'd call the same handler
-              console.log('[useAgentStream] Final event from tail:', event);
-            } catch (err) {
-              console.warn('[useAgentStream] Failed to parse final event tail:', tail, err);
-            }
+            parseEventLine(tail);
           }
         } catch (error: any) {
           // Retry on transient stream errors
