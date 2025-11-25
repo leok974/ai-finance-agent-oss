@@ -26,13 +26,15 @@ const WHAT: Record<string, string> = {
   'cards.overview':
     'Shows total inflows (income), total outflows (spend), and net for the selected month. Values update after CSV ingest or month change.',
   'charts.top_categories':
-    'Top spending categories for the selected month. Amounts are outflows (absolute value of negatives). Click a row to filter transactions.',
+    'Top spending categories for the selected month, ranked by total outflows. Amounts are absolute values of negative transactions. Click a category row to filter and view matching transactions in detail.',
   'charts.month_merchants':
-    'Top merchants by spend for the selected month. Helps identify where most money went.',
+    'Top merchants by total spend for the selected month, ranked highest to lowest. Helps you identify where most of your money went and which vendors dominate your budget.',
   'charts.daily_flows':
-    'Daily net = income − spend for the selected month. Use it to spot spikes and streaks.',
+    'Daily net cash flow (income − spend) for each day in the selected month. Use this to spot spending spikes, payday patterns, and multi-day spending streaks or lulls.',
   'charts.spending_trends':
-    'Multi-month trend of total spend and/or net. Useful for seasonality and month-over-month changes.',
+    'Multi-month trend showing total spend and net cash flow over time. Useful for identifying seasonality, month-over-month changes, and whether your spending is trending up or down.',
+  'cards.unknowns':
+    'Uncategorized transactions that haven\'t been assigned a category yet. Review and categorize these to improve budget accuracy and get better AI-powered insights. The total amount shows how much of your spend is still unmapped.',
   'cards.forecast':
     'Forecast projects future net/in/out using your selected model, horizon, and confidence band.',
 };
