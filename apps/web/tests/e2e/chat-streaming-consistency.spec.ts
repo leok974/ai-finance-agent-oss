@@ -17,7 +17,7 @@ test.describe('Chat Streaming Consistency @prod @chat-stream', () => {
     // Clear storage to start fresh (demo login needs unauthenticated state)
     await context.clearCookies();
     await context.clearPermissions();
-    
+
     // Navigate to homepage
     await page.goto('/', { waitUntil: 'load', timeout: 60000 });
 
