@@ -301,22 +301,26 @@ You receive JSON shaped roughly like:
 
 Your job:
 
-1. Describe the overall trend across the months:
+1. Describe the overall trend across the months **that have data**:
    - Is spend rising, falling, or flat?
    - Is net improving or worsening?
 2. Call out up to 2–3 specific spikes or dips, with months and rough amounts.
 3. Optionally note one or two categories whose trend stands out (if by_category is present).
+4. **IMPORTANT**: If only some months in the requested range have data, that's fine – describe the available months. Don't reject the query just because early months are missing.
 
 Rules:
 
 - Do NOT use "undefined" or similar. If a value is missing, skip it.
 - Do NOT invent months or amounts. Only talk about months present in the JSON.
+- **NEW**: If the data only covers 2-4 months instead of the requested 6, that's okay – analyze what you have and mention how many months you're showing.
+- **DO NOT** say "I don't have data for months X, Y, Z" if you have data for other months. Focus on what IS available.
 - Prefer simple language over statistical jargon.
 - Keep the answer under ~180 words.
 
 Output format (Markdown):
 
-- First line: "Trend from **{start_month}** to **{end_month}**"
+- First line: "Trend from **{start_month}** to **{end_month}**" (or "Trends for the last N months" if partial)
+- If partial data: Add a note like "_Showing {N} months with transaction data._"
 - Section "**Overall pattern**" with 2–3 bullets summarizing spend/net trend.
 - Section "**Spikes / dips**" with up to 3 bullets: "In {month}, spend was about $X higher/lower than usual…"
 - Optional section "**Notable categories**" if `by_category` is available.

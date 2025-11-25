@@ -1739,6 +1739,96 @@ async def agent_stream(
                     )
                     # Fall through to LLM
 
+            elif detected_mode == "analytics_trends":
+                # Build deterministic spending trends response from charts data
+                try:
+                    # Fetch spending trends from the same endpoint that powers the dashboard card
+                    if _opt_charts:
+                        # Request last 6 months of data
+                        trends_body = getattr(_opt_charts, "TrendsBody")(
+                            months=None, window=6, order="asc"
+                        )
+                        trends_result = await getattr(
+                            _opt_charts, "spending_trends_post"
+                        )(trends_body, auth.get("user_id"), db)
+
+                        # Filter to months that have actual data (non-zero spend or income)
+                        available_series = [
+                            point
+                            for point in trends_result.series
+                            if point.inflow > 0 or point.outflow > 0
+                        ]
+
+                        if not available_series:
+                            # Truly no data
+                            deterministic_response = (
+                                "I don't have any transaction data to show spending trends yet. "
+                                "Try uploading transactions or using sample data to get started."
+                            )
+                        else:
+                            # Build response from available months
+                            start_month = available_series[0].month
+                            end_month = available_series[-1].month
+
+                            # Calculate average spend
+                            avg_spend = sum(p.outflow for p in available_series) / len(
+                                available_series
+                            )
+
+                            # Find highest and lowest spend months
+                            max_spend_point = max(
+                                available_series, key=lambda p: p.outflow
+                            )
+                            min_spend_point = min(
+                                available_series, key=lambda p: p.outflow
+                            )
+
+                            # Check if spend is trending up or down
+                            if len(available_series) >= 2:
+                                recent_avg = sum(
+                                    p.outflow for p in available_series[-3:]
+                                ) / min(3, len(available_series[-3:]))
+                                earlier_avg = sum(
+                                    p.outflow for p in available_series[:3]
+                                ) / min(3, len(available_series[:3]))
+                                trend = (
+                                    "increasing"
+                                    if recent_avg > earlier_avg * 1.1
+                                    else (
+                                        "decreasing"
+                                        if recent_avg < earlier_avg * 0.9
+                                        else "stable"
+                                    )
+                                )
+                            else:
+                                trend = "stable"
+
+                            trends_parts = [
+                                f"Spending trends from {start_month} to {end_month}",
+                                f"\n\n📊 **Overall pattern**: Your spending has been {trend}.",
+                                f"\n\n💰 **Average monthly spend**: ${avg_spend:,.2f}",
+                                f"\n\n📈 **Highest spend**: {max_spend_point.month} (${max_spend_point.outflow:,.2f})",
+                                f"\n📉 **Lowest spend**: {min_spend_point.month} (${min_spend_point.outflow:,.2f})",
+                            ]
+
+                            # Note if we're showing partial data
+                            if len(available_series) < 6:
+                                trends_parts.append(
+                                    f"\n\n_Note: Showing {len(available_series)} months with transaction data._"
+                                )
+
+                            trends_parts.append(
+                                "\n\nAsk me to zoom into a specific month if you'd like more detail."
+                            )
+
+                            deterministic_response = "".join(trends_parts)
+
+                except Exception as det_err:
+                    logger.warning(
+                        f"[agent_stream] Deterministic trends failed: {det_err}"
+                    )
+                    # Fall through to LLM
+
             # If we have a deterministic response, stream it and skip LLM
             if deterministic_response:
                 # Stream the deterministic response token by token
