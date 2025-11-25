@@ -17,10 +17,11 @@ import type {
 
 // Resolve API base from env, with a dev fallback when running Vite on port 5173
 const rawApiBase = (import.meta as { env?: Record<string, string> }).env?.VITE_API_BASE;
-// Allow empty string for production (where nginx handles /api/ routing)
+// Production default: empty string (nginx routes all /api/* to backend internally)
+// Dev default: /api (when running Vite dev server on port 5173)
 export const API_BASE = rawApiBase !== undefined
   ? (rawApiBase as string).replace(/\/+$/, '')
-  : '/api';
+  : '';
 
 // ============================================================================
 // Runtime guards (keeps UI stable with malformed backend responses)
