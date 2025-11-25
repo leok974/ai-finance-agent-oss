@@ -27,3 +27,4 @@ Dockerfile*
 !.gitlab-ci.yml
 gitignore
 **/tests/__pycache__
+elysia-agui-gateway/
