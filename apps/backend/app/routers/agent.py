@@ -1833,7 +1833,7 @@ async def agent_stream(
             if deterministic_response:
                 # Stream the deterministic response token by token
                 for char in deterministic_response:
-                    yield json.dumps({"type": "token", "data": {"text": char}}) + "\\n"
+                    yield json.dumps({"type": "token", "data": {"text": char}}) + "\n"
                     await asyncio.sleep(0.005)
             else:
                 # Build context string for LLM
@@ -1864,7 +1864,7 @@ async def agent_stream(
                         top_p=0.9,
                     ):
                         # token_event already has { "type": "token", "data": { "text": "..." } }
-                        yield json.dumps(token_event) + "\\n"
+                        yield json.dumps(token_event) + "\n"
 
                 except Exception as stream_err:
                     logger.warning(
@@ -1875,7 +1875,7 @@ async def agent_stream(
                     for char in fallback_msg:
                         yield json.dumps(
                             {"type": "token", "data": {"text": char}}
-                        ) + "\\n"
+                        ) + "\n"
                         await asyncio.sleep(0.01)
 
             # Send done event
