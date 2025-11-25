@@ -1700,43 +1700,93 @@ async def agent_stream(
                     {"type": "tool_end", "data": {"name": tool_name, "ok": True}}
                 ) + "\n"
 
-            # Build context string for LLM
-            ctx_str = json.dumps(ctx, default=str)
-            if len(ctx_str) > 10000:
-                ctx_str = ctx_str[:10000] + " …(trimmed)"
+            # Check if we can handle this mode deterministically (without LLM)
+            deterministic_response = None
+            if detected_mode == "finance_quick_recap":
+                # Build deterministic quick recap from backend data
+                try:
+                    # Use the insights from context (already enriched earlier)
+                    insights = ctx.get("insights", {})
+                    month_str = month or ctx.get("month", "current month")
 
-            # Prepare LLM messages
-            final_messages = [{"role": "system", "content": SYSTEM_PROMPT}]
-            final_messages.extend(messages)
-            final_messages.append(
-                {
-                    "role": "system",
-                    "content": f"## CONTEXT\n{ctx_str}\n## INTENT: general",
-                }
-            )
+                    income = insights.get("income", 0)
+                    spend = abs(insights.get("spend", 0))
+                    net = insights.get("net", 0)
+                    unknowns = insights.get("unknowns_count", 0)
 
-            # Stream actual tokens using local-first + OpenAI fallback
-            from app.utils.llm_stream import stream_llm_tokens_with_fallback
+                    recap_parts = [
+                        f"Month summary for {month_str}:",
+                        f"\n\n📊 Income: ${income:,.2f}",
+                        f"\n💸 Spend: ${spend:,.2f}",
+                        f"\n📈 Net: ${net:,.2f}",
+                    ]
 
-            model = settings.DEFAULT_LLM_MODEL
+                    if unknowns > 0:
+                        recap_parts.append(f"\n⚠️ {unknowns} uncategorized transactions")
 
-            try:
-                async for token_event in stream_llm_tokens_with_fallback(
-                    messages=final_messages,
-                    model=model,
-                    temperature=0.2,
-                    top_p=0.9,
-                ):
-                    # token_event already has { "type": "token", "data": { "text": "..." } }
-                    yield json.dumps(token_event) + "\n"
+                    top_categories = insights.get("top_categories", [])[:3]
+                    if top_categories:
+                        recap_parts.append("\n\n**Top categories:**")
+                        for cat in top_categories:
+                            cat_name = cat.get("category", "Unknown")
+                            cat_spend = abs(cat.get("spend", 0))
+                            recap_parts.append(f"\n• {cat_name}: ${cat_spend:,.2f}")
 
-            except Exception as stream_err:
-                logger.warning(f"[agent_stream] All LLM providers failed: {stream_err}")
-                # Final fallback: friendly error message
-                fallback_msg = "The AI assistant is temporarily unavailable. Please try again in a moment."
-                for char in fallback_msg:
-                    yield json.dumps({"type": "token", "data": {"text": char}}) + "\n"
-                    await asyncio.sleep(0.01)
+                    deterministic_response = "".join(recap_parts)
+                except Exception as det_err:
+                    logger.warning(
+                        f"[agent_stream] Deterministic quick recap failed: {det_err}"
+                    )
+                    # Fall through to LLM
+
+            # If we have a deterministic response, stream it and skip LLM
+            if deterministic_response:
+                # Stream the deterministic response token by token
+                for char in deterministic_response:
+                    yield json.dumps({"type": "token", "data": {"text": char}}) + "\\n"
+                    await asyncio.sleep(0.005)
+            else:
+                # Build context string for LLM
+                ctx_str = json.dumps(ctx, default=str)
+                if len(ctx_str) > 10000:
+                    ctx_str = ctx_str[:10000] + " …(trimmed)"
+
+                # Prepare LLM messages
+                final_messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+                final_messages.extend(messages)
+                final_messages.append(
+                    {
+                        "role": "system",
+                        "content": f"## CONTEXT\\n{ctx_str}\\n## INTENT: general",
+                    }
+                )
+
+                # Stream actual tokens using local-first + OpenAI fallback
+                from app.utils.llm_stream import stream_llm_tokens_with_fallback
+
+                model = settings.DEFAULT_LLM_MODEL
+
+                try:
+                    async for token_event in stream_llm_tokens_with_fallback(
+                        messages=final_messages,
+                        model=model,
+                        temperature=0.2,
+                        top_p=0.9,
+                    ):
+                        # token_event already has { "type": "token", "data": { "text": "..." } }
+                        yield json.dumps(token_event) + "\\n"
+
+                except Exception as stream_err:
+                    logger.warning(
+                        f"[agent_stream] All LLM providers failed: {stream_err}"
+                    )
+                    # Final fallback: friendly error message
+                    fallback_msg = "The AI assistant is temporarily unavailable. Please try again in a moment."
+                    for char in fallback_msg:
+                        yield json.dumps(
+                            {"type": "token", "data": {"text": char}}
+                        ) + "\\n"
+                        await asyncio.sleep(0.01)
 
             # Send done event
             yield json.dumps({"type": "done", "data": {}}) + "\n"
@@ -1757,6 +1807,11 @@ async def agent_stream(
 
 def _detect_mode(user_text: str, ctx: dict) -> str:
     """Detect mode from user query."""
+    # Check for quick recap / month summary patterns
+    if any(
+        k in user_text for k in ["quick recap", "month summary", "recap", "summarize"]
+    ):
+        return "finance_quick_recap"
     if any(k in user_text for k in ["summary", "overview", "spending"]):
         return "summary"
     if any(k in user_text for k in ["category", "categories"]):
@@ -1764,17 +1819,29 @@ def _detect_mode(user_text: str, ctx: dict) -> str:
     if any(k in user_text for k in ["merchant", "merchants", "vendor"]):
         return "merchants"
     if any(k in user_text for k in ["alert", "alerts", "warning"]):
-        return "alerts"
+        return "finance_alerts"
+    if any(k in user_text for k in ["trend", "trends", "spending trend"]):
+        return "analytics_trends"
+    if any(k in user_text for k in ["recurring", "subscription", "subscriptions"]):
+        return "analytics_subscriptions_all"
     return "general"
 
 
 def _get_tools_for_mode(mode: str) -> list:
     """Map mode to tool names for planner display."""
     tools_map = {
+        "finance_quick_recap": ["insights.expanded", "charts.month_flows"],
         "summary": ["charts.summary", "insights.overview"],
         "categories": ["charts.categories", "analytics.top_categories"],
         "merchants": ["charts.merchants", "analytics.spending_patterns"],
+        "finance_alerts": ["analytics.alerts", "insights.anomalies"],
         "alerts": ["analytics.alerts", "insights.anomalies"],
+        "analytics_trends": ["charts.spending_trends"],
+        "analytics_subscriptions_all": [
+            "analytics.subscriptions",
+            "analytics.recurring",
+        ],
+        "analytics_recurring_all": ["analytics.recurring", "analytics.subscriptions"],
         "general": ["charts.summary", "insights.overview"],
     }
     return tools_map.get(mode, ["charts.summary"])
