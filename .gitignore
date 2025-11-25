@@ -130,3 +130,27 @@ ledgermind-web-*.tar
 backup_*.sql
 *.dump
 *.backup
+
+### Test/debug outputs (artifacts from local testing/probing)
+cookie.txt
+cookies.txt
+jar.txt
+*.trace.zip
+edge-*.json
+test_feedback.json
+unknowns.json
+segment_before.txt
+_*.txt
+_*.csv
+_*.yml
+metrics.body
+hooks-lint.json
+
+### Temp files
+*.tmp.yml
+*.bak.tsx
+*.bak
+
+### Large generated directories
+artifacts/
+aws-audit-*/
