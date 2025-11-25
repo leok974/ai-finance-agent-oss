@@ -66,6 +66,7 @@ export function useAgentStream(): UseAgentStreamResult {
   const [messages, setMessages] = useState<StreamMessage[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
   const [hasReceivedToken, setHasReceivedToken] = useState(false);
+  const [error, setError] = useState<"unavailable" | null>(null);
 
   // Initialize thinking state from localStorage
   const [thinkingState, setThinkingState] = useState<ThinkingState | null>(() => {
@@ -136,6 +137,7 @@ export function useAgentStream(): UseAgentStreamResult {
       // Reset state for new run
       setIsStreaming(true);
       setHasReceivedToken(false);
+      setError(null);
       retryIndexRef.current = 0;
 
       let assistantContent = '';
@@ -201,6 +203,7 @@ export function useAgentStream(): UseAgentStreamResult {
         const reader = response.body.getReader();
         readerRef.current = reader;
         const decoder = new TextDecoder();
+        let buffer = ''; // Buffer for incomplete JSON
 
         try {
           // eslint-disable-next-line no-constant-condition
@@ -209,11 +212,19 @@ export function useAgentStream(): UseAgentStreamResult {
             if (done) break;
 
             const chunk = decoder.decode(value, { stream: true });
-            const lines = chunk.split('\n').filter((line) => line.trim());
+            buffer += chunk;
+
+            // Split by newlines - SSE format uses \n between events
+            const lines = buffer.split('\n');
+            // Keep the last potentially incomplete line in the buffer
+            buffer = lines.pop() || '';
 
             for (const line of lines) {
+              const trimmed = line.trim();
+              if (!trimmed) continue;
+
               try {
-                const event = JSON.parse(line);
+                const event = JSON.parse(trimmed);
 
                 switch (event.type) {
                   case 'start':
@@ -266,6 +277,7 @@ export function useAgentStream(): UseAgentStreamResult {
                     if (!tokenText) break;
 
                     setHasReceivedToken(true);
+                    setError(null);
                     assistantContent += tokenText;
 
                     // Update assistant message progressively
@@ -300,6 +312,7 @@ export function useAgentStream(): UseAgentStreamResult {
                     setIsStreaming(false);
                     setThinkingState(null);
                     persistThinkingState(null);
+                    setError(null);
                     break;
 
                   case 'error':
@@ -307,6 +320,14 @@ export function useAgentStream(): UseAgentStreamResult {
                     setIsStreaming(false);
                     setThinkingState(null);
                     persistThinkingState(null);
+
+                    // Only set "unavailable" error if we haven't received any tokens yet
+                    if (!hasReceivedToken) {
+                      setError("unavailable");
+                    } else {
+                      console.warn('[useAgentStream] error after tokens received:', event.data);
+                    }
+
                     toast.error('Agent error', {
                       description: event.data.message || 'Something went wrong.',
                     });
@@ -373,6 +394,7 @@ export function useAgentStream(): UseAgentStreamResult {
     isStreaming,
     thinkingState,
     hasReceivedToken,
+    error,
     sendMessage,
     cancel,
   };

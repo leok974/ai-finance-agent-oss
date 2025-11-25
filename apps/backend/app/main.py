@@ -947,6 +947,7 @@ def get_current_user_endpoint(request: Request):
             "email": email,
             "roles": roles,
             "is_active": user.is_active,
+            "is_demo": user.is_demo,  # For demo mode banner in frontend
             "name": name,
             "picture": user.picture,  # Legacy field (deprecated, keep for backward compat)
             "picture_url": picture_url,  # New field for Google photos

@@ -289,6 +289,7 @@ def me(request: Request, user: User = Depends(get_current_user)):
         "email": user.email,
         "roles": [ur.role.name for ur in user.roles],
         "is_active": user.is_active,
+        "is_demo": user.is_demo,  # For demo mode banner in frontend
         "dev_unlocked": bool(getattr(user, "dev_unlocked", False)),
         "unlock_persist": unlock_persist,
         "env": settings.APP_ENV or settings.ENV,

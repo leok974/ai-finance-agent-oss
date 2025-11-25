@@ -2633,6 +2633,12 @@ export default function ChatDock() {
       {/* Dark footer */}
       <CardFooter className="lm-chat-footer">
           <div className="lm-chat-footer-inner">
+            {/* Unavailable banner - only show if no tokens received and error occurred */}
+            {agentStream.error === "unavailable" && (
+              <div className="bg-amber-900/30 border border-amber-700/50 rounded-lg px-3 py-2 mb-3 text-sm text-amber-200">
+                The AI assistant is temporarily unavailable. Please try again in a moment.
+              </div>
+            )}
             <div
               className="lm-chat-body mt-3 max-h-[260px] overflow-y-auto space-y-3 pr-1"
               data-testid="lm-chat-messages"
