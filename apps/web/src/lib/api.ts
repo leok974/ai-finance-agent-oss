@@ -579,7 +579,7 @@ export const analytics = {
       body: JSON.stringify({ month, lookback_months }),
     }),
   alerts: (month?: string) =>
-    fetchJSON(`agent/tools/analytics/alerts`, {
+    fetchJSON(`alerts`, {
       method: 'POST',
       body: JSON.stringify({ month }),
     }),

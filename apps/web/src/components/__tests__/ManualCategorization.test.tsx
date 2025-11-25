@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 
 // Import the modules we want to test
 import * as api from '@/lib/api';
+import * as http from '@/lib/http';
 
 // Mock sonner toast
 vi.mock('sonner', () => ({
@@ -17,8 +18,11 @@ vi.mock('sonner', () => ({
 vi.mock('@/lib/api', () => ({
   categorizeTxn: vi.fn(),
   mlFeedback: vi.fn(),
-  manualCategorizeTransaction: vi.fn(),
   patchTxn: vi.fn(),
+}));
+
+vi.mock('@/lib/http', () => ({
+  manualCategorizeTransaction: vi.fn(),
 }));
 
 vi.mock('@/api/rules', () => ({
@@ -125,7 +129,7 @@ describe('Manual Categorization Toast Notifications', () => {
 
   describe('API Integration Patterns', () => {
     it('categorizeTxn is called before showing toast', async () => {
-      vi.mocked(api.categorizeTxn).mockResolvedValue(undefined);
+      vi.mocked(api.categorizeTxn).mockResolvedValue({ updated: 1, category: 'groceries', txn_ids: [123] });
 
       await api.categorizeTxn(123, 'Groceries');
       toast.success('Applied "Groceries"');
@@ -135,7 +139,7 @@ describe('Manual Categorization Toast Notifications', () => {
     });
 
     it('mlFeedback is called for learning', async () => {
-      vi.mocked(api.mlFeedback).mockResolvedValue(undefined);
+      vi.mocked(api.mlFeedback).mockResolvedValue({ ok: true, id: 1 });
 
       await api.mlFeedback({
         txn_id: 123,
@@ -175,14 +179,18 @@ describe('Manual Categorization Toast Notifications', () => {
 
   describe('Manual Categorization Response Handling', () => {
     it('handles single transaction update', async () => {
-      vi.mocked(api.manualCategorizeTransaction).mockResolvedValue({
+      vi.mocked(http.manualCategorizeTransaction).mockResolvedValue({
+        txn_id: 123,
+        category_slug: 'groceries',
+        scope: 'just_this',
         updated_count: 1,
         similar_updated: 0,
+        hint_applied: false,
         affected: [],
       });
 
-      const result = await api.manualCategorizeTransaction(123, {
-        category_slug: 'groceries',
+      const result = await http.manualCategorizeTransaction(123, {
+        categorySlug: 'groceries',
         scope: 'just_this',
       });
 
@@ -191,14 +199,18 @@ describe('Manual Categorization Toast Notifications', () => {
     });
 
     it('handles bulk transaction update', async () => {
-      vi.mocked(api.manualCategorizeTransaction).mockResolvedValue({
+      vi.mocked(http.manualCategorizeTransaction).mockResolvedValue({
+        txn_id: 123,
+        category_slug: 'groceries',
+        scope: 'same_merchant',
         updated_count: 1,
         similar_updated: 5,
+        hint_applied: false,
         affected: [],
       });
 
-      const result = await api.manualCategorizeTransaction(123, {
-        category_slug: 'groceries',
+      const result = await http.manualCategorizeTransaction(123, {
+        categorySlug: 'groceries',
         scope: 'same_merchant',
       });
 

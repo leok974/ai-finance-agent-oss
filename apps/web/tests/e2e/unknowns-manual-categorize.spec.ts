@@ -49,7 +49,7 @@ test.describe('@prod @unknowns Manual Categorization Flow', () => {
     // 5. Select a category from the dropdown
     const categorySelect = drawer.locator('[data-testid="category-select"]');
     await expect(categorySelect).toBeVisible();
-    await categorySelect.selectOption({ label: /Groceries/i });
+    await categorySelect.selectOption('Groceries');
 
     // 6. Choose scope (default is usually "same_merchant")
     const scopeSameMerchant = drawer.locator('[data-testid="scope-same-merchant"]');
@@ -138,7 +138,7 @@ test.describe('@prod @unknowns Manual Categorization Flow', () => {
     await expect(drawer).toBeVisible();
 
     // Select "Shopping" category
-    await drawer.locator('[data-testid="category-select"]').selectOption({ label: /Shopping/i });
+    await drawer.locator('[data-testid="category-select"]').selectOption('Shopping');
 
     // Choose "just this" scope
     const scopeJustThis = drawer.locator('[data-testid="scope-just-this"]');
@@ -173,7 +173,7 @@ test.describe('@prod @unknowns Manual Categorization Flow', () => {
     await expect(drawer).toBeVisible();
 
     // Select "Groceries" category
-    await drawer.locator('[data-testid="category-select"]').selectOption({ label: /Groceries/i });
+    await drawer.locator('[data-testid="category-select"]').selectOption('Groceries');
 
     // Choose "same merchant" scope (default)
     const scopeSameMerchant = drawer.locator('[data-testid="scope-same-merchant"]');

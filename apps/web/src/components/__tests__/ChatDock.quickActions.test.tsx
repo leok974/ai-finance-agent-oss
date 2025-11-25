@@ -67,6 +67,7 @@ describe('ChatDock Quick Actions Streaming', () => {
       isStreaming: false,
       thinkingState: null,
       hasReceivedToken: false,
+      error: null,
     });
   });
 

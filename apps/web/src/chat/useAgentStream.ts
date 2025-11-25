@@ -38,13 +38,33 @@ interface UseAgentStreamResult {
   isStreaming: boolean;
   thinkingState: ThinkingState | null;
   hasReceivedToken: boolean;
-  error: "unavailable" | null;
+  error: string | null;
+  temporarilyUnavailable: boolean;
   sendMessage: (text: string, options?: { month?: string; mode?: string }) => Promise<void>;
   cancel: () => void;
 }
 
 const RETRY_DELAYS_MS = [250, 750, 2000] as const;
 const THINKING_STATE_KEY = 'lm:thinking';
+
+/**
+ * Determine if an error represents a hard agent/model failure vs soft/transient error.
+ * Only hard errors should show "temporarily unavailable" banner.
+ */
+const isHardAgentError = (status?: number, eventData?: any): boolean => {
+  // 5xx errors are hard failures
+  if (status && status >= 500) return true;
+
+  // 429 is rate limiting, not permanent offline
+  if (status === 429) return false;
+
+  // Check event error codes
+  if (eventData?.code === "MODEL_UNAVAILABLE" || eventData?.code === "UPSTREAM_UNAVAILABLE") {
+    return true;
+  }
+
+  return false;
+};
 
 const isTransientError = (err: unknown): boolean => {
   if (!err) return false;
@@ -67,7 +87,8 @@ export function useAgentStream(): UseAgentStreamResult {
   const [messages, setMessages] = useState<StreamMessage[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
   const [hasReceivedToken, setHasReceivedToken] = useState(false);
-  const [error, setError] = useState<"unavailable" | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [temporarilyUnavailable, setTemporarilyUnavailable] = useState(false);
 
   // Initialize thinking state from localStorage
   const [thinkingState, setThinkingState] = useState<ThinkingState | null>(() => {
@@ -103,6 +124,8 @@ export function useAgentStream(): UseAgentStreamResult {
     setIsStreaming(false);
     setThinkingState(null);
     setHasReceivedToken(false);
+    setError(null);
+    setTemporarilyUnavailable(false);
     if (typeof window !== 'undefined') {
       window.localStorage.removeItem(THINKING_STATE_KEY);
     }
@@ -181,6 +204,14 @@ export function useAgentStream(): UseAgentStreamResult {
 
         if (!response.ok) {
           setIsStreaming(false);
+          const errorMsg = `Request failed with status ${response.status}`;
+          setError(errorMsg);
+
+          // Mark temporarily unavailable only for hard errors (5xx)
+          if (isHardAgentError(response.status)) {
+            setTemporarilyUnavailable(true);
+          }
+
           toast.error('Agent request failed', {
             description: `Status ${response.status}`,
           });
@@ -188,7 +219,7 @@ export function useAgentStream(): UseAgentStreamResult {
             ...prev,
             {
               role: 'assistant',
-              content: `Request failed with status ${response.status}`,
+              content: errorMsg,
               timestamp: Date.now(),
             },
           ]);
@@ -209,7 +240,7 @@ export function useAgentStream(): UseAgentStreamResult {
         // Helper to parse event lines with fallback for escaped \n sequences
         const parseEventLine = (rawLine: string) => {
           if (!rawLine) return;
-          
+
           try {
             const event = JSON.parse(rawLine);
             handleEvent(event);
@@ -294,6 +325,7 @@ export function useAgentStream(): UseAgentStreamResult {
 
                     setHasReceivedToken(true);
                     setError(null);
+                    setTemporarilyUnavailable(false);
                     assistantContent += tokenText;
 
                     // Update assistant message progressively
@@ -337,22 +369,24 @@ export function useAgentStream(): UseAgentStreamResult {
                     setThinkingState(null);
                     persistThinkingState(null);
 
-                    // Only set "unavailable" error if we haven't received any tokens yet
-                    if (!hasReceivedToken) {
-                      setError("unavailable");
-                    } else {
-                      console.warn('[useAgentStream] error after tokens received:', event.data);
+                    // Always set error message
+                    const errorMsg = event.data.message || 'Unknown error';
+                    setError(errorMsg);
+
+                    // Only mark temporarily unavailable for hard errors (model/upstream failures)
+                    if (isHardAgentError(undefined, event.data)) {
+                      setTemporarilyUnavailable(true);
                     }
 
                     toast.error('Agent error', {
-                      description: event.data.message || 'Something went wrong.',
+                      description: errorMsg,
                     });
                     // Add error message
                     setMessages((prev) => [
                       ...prev,
                       {
                         role: 'assistant',
-                        content: `Error: ${event.data.message || 'Unknown error'}`,
+                        content: `Error: ${errorMsg}`,
                         timestamp: Date.now(),
                       },
                     ]);
@@ -375,7 +409,7 @@ export function useAgentStream(): UseAgentStreamResult {
               buffer = buffer.slice(newlineIndex + 1);
 
               if (!rawLine) continue;
-              
+
               parseEventLine(rawLine);
             }
           }
@@ -433,6 +467,7 @@ export function useAgentStream(): UseAgentStreamResult {
     thinkingState,
     hasReceivedToken,
     error,
+    temporarilyUnavailable,
     sendMessage,
     cancel,
   };

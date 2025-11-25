@@ -25,7 +25,7 @@ describe('manualCategorizeUndo', () => {
       {
         id: 1,
         date: '2025-01-15',
-        amount: '50.00',
+        amount: 50.00,
         merchant: 'Test Merchant',
         previous_category_slug: 'unknown',
         new_category_slug: 'groceries',

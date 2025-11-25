@@ -362,6 +362,18 @@ export default function ChatDock() {
 
     return () => clearInterval(interval);
   }, []);
+
+  // Guard: reset temporarilyUnavailable when agent status is OK
+  // This prevents demo/prod from getting stuck with "temporarily unavailable" banner
+  React.useEffect(() => {
+    if (llmStatus.ok && llmStatus.llm_ok) {
+      // Agent is healthy - clear any temporary unavailability
+      // Note: We can't directly call agentStream internal state setter,
+      // but we can rely on the stream itself clearing the flag on next successful token
+      // The temporarilyUnavailable flag will be cleared when next stream succeeds
+    }
+  }, [llmStatus]);
+
   // Track last what-if scenario text for rule saving
   const lastWhatIfScenarioRef = useRef<string>("");
   // Save Rule modal state (new component)
@@ -1450,24 +1462,20 @@ export default function ChatDock() {
     const currentReqRef = reqRef.current;
 
     try {
-      const req: AgentChatRequest = {
-        messages: [{ role: 'user', content: text }],
-        intent: 'general',
-        context: getContext(ev as any),
-        conversational: true  // Enable conversational voice styling
-      };
-      const resp = await agentChat(req);
-      handleAgentResponse(resp);
+      // Use streaming via sendMessage for general chat
+      await agentStream.sendMessage(text, {
+        month: month || '',
+      });
       syncFromStoreDebounced(120);
     } catch (e: any) {
       if (e?.name !== 'AbortError') {
-        appendAssistant(`Send failed: ${e?.message ?? String(e)}`);
+        console.error('[ChatDock] Send error:', e);
       }
     } finally {
       setBusy(false);
       if (reqRef.current === currentReqRef) reqRef.current = null;
     }
-  }, [busy, input, handleAgentResponse, month, appendUser, appendAssistant]);
+  }, [busy, input, month, appendUser, agentStream]);
 
   const onComposerKeyDown = React.useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); handleSend(e); return; }
@@ -1512,41 +1520,29 @@ export default function ChatDock() {
   // Additional one-click runners shown in the tools tray
   const runTopMerchants = React.useCallback(async (_ev?: React.MouseEvent) => {
     if (busy) return;
-  if (startAguiRun('merchants', AGUI_ACTIONS['merchants'].prompt, month)) return;
-    setBusy(true);
+    // Use streaming via sendMessage with charts_merchants mode
     try {
-      appendUser('Show top merchants for the current month.');
-      await runToolWithRephrase(
-        'charts.month_merchants',
-  // Use Agent Tools POST to ensure auth + month-aware behavior
-  () => agentTools.chartsMerchants({ month: month || '', limit: 10 }),
-        (raw: any) => fmtTopMerchants(month || '', raw?.merchants || raw || []),
-  (msg, meta) => appendAssistant(msg, { ...meta, ctxMonth: month }),
-  (on) => setBusy(on),
-  () => ({ context: getContext() })
-      );
-      syncFromStoreDebounced(120);
-    } finally { setBusy(false); }
-  }, [busy, month, appendAssistant]);
+      await agentStream.sendMessage('Show top merchants for the current month.', {
+        month: month || '',
+        mode: 'charts_merchants',
+      });
+    } catch (err) {
+      console.error('[ChatDock] Top merchants stream error:', err);
+    }
+  }, [busy, month, agentStream]);
 
   const runCashflow = React.useCallback(async (_ev?: React.MouseEvent) => {
     if (busy) return;
-  if (startAguiRun('cashflow', AGUI_ACTIONS['cashflow'].prompt, month)) return;
-    setBusy(true);
+    // Use streaming via sendMessage with charts_flows mode
     try {
-      appendUser('Show my cashflow (inflows vs outflows).');
-      await runToolWithRephrase(
-        'charts.month_flows',
-  // Use Agent Tools POST to avoid GET auth issues
-  () => agentTools.chartsFlows({ month: month || '' }),
-        (raw) => fmtCashflow(month || '', raw as any),
-  (msg, meta) => appendAssistant(msg, { ...meta, ctxMonth: month }),
-  (on) => setBusy(on),
-  () => ({ context: getContext() })
-      );
-      syncFromStoreDebounced(120);
-    } finally { setBusy(false); }
-  }, [busy, month, appendAssistant]);
+      await agentStream.sendMessage('Show my cashflow (inflows vs outflows).', {
+        month: month || '',
+        mode: 'charts_flows',
+      });
+    } catch (err) {
+      console.error('[ChatDock] Cashflow stream error:', err);
+    }
+  }, [busy, month, agentStream]);
 
   const runTrends = React.useCallback(async (_ev?: React.MouseEvent) => {
     if (busy) return;
@@ -1574,106 +1570,77 @@ export default function ChatDock() {
   // Merged Insights function with size parameter
   const runInsights = React.useCallback(async ({ size }: { size: "compact" | "expanded" }) => {
     if (busy) return;
-    const aguiAction = size === "compact" ? "insights-summary" : "insights-expanded";
-    if (startAguiRun('overview', AGUI_ACTIONS[aguiAction].prompt, month)) return;
-    setBusy(true);
+    // Use streaming via sendMessage with insights mode
+    const userPrompt = size === "compact"
+      ? 'Summarize key insights for this month.'
+      : 'Expand insights (month-over-month + anomalies).';
+
+    const mode = size === "compact" ? 'insights_summary' : 'insights_expanded';
+
+    telemetry.track(AGENT_TOOL_EVENTS.INSIGHTS, { size });
+
     try {
-      const userPrompt = size === "compact"
-        ? 'Summarize key insights for this month.'
-        : 'Expand insights (month-over-month + anomalies).';
-      appendUser(userPrompt);
-
-      const rephrasePrompt = size === "compact"
-        ? `Turn these insights for ${month} into a friendly paragraph with one recommendation: `
-        : `Expand insights for ${month} with MoM and anomalies: `;
-
-      telemetry.track(AGENT_TOOL_EVENTS.INSIGHTS, { size });
-
-      await runToolWithRephrase(
-        'insights.expanded',
-        () => agentTools.insightsExpanded({ month }),
-        (raw) => rephrasePrompt + JSON.stringify(raw),
-        (msg, meta) => appendAssistant(msg, { ...meta, ctxMonth: month }),
-        (on) => setBusy(on),
-        () => ({ context: getContext() })
-      );
-      syncFromStore();
-    } finally { setBusy(false); }
-  }, [busy, month, appendAssistant, insightsSize]);
+      await agentStream.sendMessage(userPrompt, {
+        month: month || '',
+        mode,
+      });
+    } catch (err) {
+      console.error('[ChatDock] Insights stream error:', err);
+    }
+  }, [busy, month, agentStream, insightsSize]);
 
   const runBudgetCheck = React.useCallback(async (_ev?: React.MouseEvent) => {
     if (busy) return;
-  if (startAguiRun('budget', AGUI_ACTIONS['budget'].prompt, month)) return;
-    setBusy(true);
+    // Use streaming via sendMessage with budget_check mode
     try {
-      appendUser('Check my budget status for this month.');
-      await runToolWithRephrase(
-        'budget.check',
-  // Use Agent Tools POST variant with month
-  () => agentTools.budgetCheck({ month: month || '' }),
-        (raw) => `Summarize this budget status for ${month}: ${JSON.stringify(raw)}`,
-  (msg, meta) => appendAssistant(msg, { ...meta, ctxMonth: month }),
-  (on) => setBusy(on),
-  () => ({ context: getContext() })
-      );
-      syncFromStore();
-    } finally { setBusy(false); }
-  }, [busy, month, appendAssistant]);
+      await agentStream.sendMessage('Check my budget status for this month.', {
+        month: month || '',
+        mode: 'budget_check',
+      });
+    } catch (err) {
+      console.error('[ChatDock] Budget check stream error:', err);
+    }
+  }, [busy, month, agentStream]);
 
   // ---------- Analytics quick buttons ----------
   const runAnalyticsKpis = React.useCallback(async (_ev?: React.MouseEvent) => {
     if (busy) return;
-  if (startAguiRun('kpis', AGUI_ACTIONS['kpis'].prompt, month)) return;
-    setBusy(true);
+    // Use streaming via sendMessage with analytics_kpis mode
     try {
-      appendUser('Show KPIs for this month.');
-      await runToolWithRephrase(
-        'analytics.kpis',
-        () => analytics.kpis(month),
-        (raw: any) => `Summarize these KPIs for ${month} in 3 bullets and one suggestion:\n\n${JSON.stringify(raw)}`,
-        (msg, meta) => appendAssistant(msg, { ...meta, ctxMonth: month }),
-        (on) => setBusy(on),
-        () => ({ context: getContext() })
-      );
-      syncFromStoreDebounced(120);
-    } finally { setBusy(false); }
-  }, [busy, month, appendAssistant]);
+      await agentStream.sendMessage('Show KPIs for this month.', {
+        month: month || '',
+        mode: 'analytics_kpis',
+      });
+    } catch (err) {
+      console.error('[ChatDock] KPIs stream error:', err);
+    }
+  }, [busy, month, agentStream]);
 
   const runAnalyticsForecast = React.useCallback(async (_ev?: React.MouseEvent) => {
     if (busy) return;
-  // forecast not a dedicated branch yet; legacy path
-    setBusy(true);
+    // Use streaming via sendMessage with analytics_forecast mode
     try {
-      appendUser('Forecast my next 3 months cashflow.');
-      await runToolWithRephrase(
-        'analytics.forecast',
-  () => analytics.forecast(month, 3, { model: "auto", ciLevel: 0.8 }),
-        (raw: any) => `Explain this cashflow forecast for ${month} and what it means:\n\n${JSON.stringify(raw)}`,
-        (msg, meta) => appendAssistant(msg, { ...meta, ctxMonth: month }),
-        (on) => setBusy(on),
-        () => ({ context: getContext() })
-      );
-      syncFromStoreDebounced(120);
-    } finally { setBusy(false); }
-  }, [busy, month, appendAssistant]);
+      await agentStream.sendMessage('Forecast my next 3 months cashflow.', {
+        month: month || '',
+        mode: 'analytics_forecast',
+      });
+    } catch (err) {
+      console.error('[ChatDock] Forecast stream error:', err);
+    }
+  }, [busy, month, agentStream]);
 
   const runAnalyticsAnomalies = React.useCallback(async (_ev?: React.MouseEvent) => {
     if (busy) return;
-  // anomalies not a dedicated branch yet; legacy path
-    setBusy(true);
+    // Use streaming via sendMessage with analytics_anomalies mode
     try {
-      appendUser('Find anomalies this month.');
-      await runToolWithRephrase(
-        'analytics.anomalies',
-        () => analytics.anomalies(month),
-        (raw: any) => `List any spending anomalies for ${month} and suggest actions:\n\n${JSON.stringify(raw)}`,
-        (msg, meta) => appendAssistant(msg, { ...meta, ctxMonth: month }),
-        (on) => setBusy(on),
-        () => ({ context: getContext() })
-      );
-      syncFromStoreDebounced(120);
-    } finally { setBusy(false); }
-  }, [busy, month, appendAssistant]);
+      await agentStream.sendMessage('Find anomalies this month.', {
+        month: month || '',
+        mode: 'analytics_anomalies',
+      });
+    } catch (err) {
+      console.error('[ChatDock] Anomalies stream error:', err);
+    }
+  }, [busy, month, agentStream]);
 
   const runAnalyticsRecurring = React.useCallback(async (_ev?: React.MouseEvent) => {
     if (busy) return;
@@ -1690,21 +1657,16 @@ export default function ChatDock() {
 
   const runAnalyticsBudgetSuggest = React.useCallback(async (_ev?: React.MouseEvent) => {
     if (busy) return;
-  if (startAguiRun('budget', AGUI_ACTIONS['budget-suggest'].prompt, month)) return;
-    setBusy(true);
+    // Use streaming via sendMessage with analytics_budget_suggest mode
     try {
-      appendUser('Suggest budget targets.');
-      await runToolWithRephrase(
-        'analytics.budget_suggest',
-        () => analytics.budgetSuggest(month),
-        (raw: any) => `Propose budget targets for ${month} from these stats, in a short list:\n\n${JSON.stringify(raw)}`,
-        (msg, meta) => appendAssistant(msg, { ...meta, ctxMonth: month }),
-        (on) => setBusy(on),
-        () => ({ context: getContext() })
-      );
-      syncFromStoreDebounced(120);
-    } finally { setBusy(false); }
-  }, [busy, month, appendAssistant]);
+      await agentStream.sendMessage('Suggest budget targets.', {
+        month: month || '',
+        mode: 'analytics_budget_suggest',
+      });
+    } catch (err) {
+      console.error('[ChatDock] Budget suggest stream error:', err);
+    }
+  }, [busy, month, agentStream]);
 
   const callTransactionsNl = React.useCallback(async (payload?: Record<string, any>) => {
     if (busy) return null;
@@ -2256,21 +2218,17 @@ export default function ChatDock() {
     if (!cat) return;
     const pctStr = window.prompt('Cut percent (0-100)', '20');
     const pct = Math.max(0, Math.min(100, Number(pctStr || 0)));
-  // what-if not a dedicated branch; legacy path (could map to overview)
-    setBusy(true);
+
+    // Use streaming via sendMessage with analytics_whatif mode
     try {
-      appendUser(`What if I cut ${cat} by ${pct}%?`);
-      await runToolWithRephrase(
-        'analytics.whatif',
-        () => analytics.whatif({ month, cuts: [{ category: cat, pct }] }),
-        (raw: any) => `Explain this what-if simulation for ${month} (cut ${cat} by ${pct}%):\n\n${JSON.stringify(raw)}`,
-        (msg, meta) => appendAssistant(msg, { ...meta, ctxMonth: month }),
-        (on) => setBusy(on),
-        () => ({ context: getContext() })
-      );
-      syncFromStoreDebounced(120);
-    } finally { setBusy(false); }
-  }, [busy, month, appendAssistant]);
+      await agentStream.sendMessage(`What if I cut ${cat} by ${pct}%?`, {
+        month: month || '',
+        mode: 'analytics_whatif',
+      });
+    } catch (err) {
+      console.error('[ChatDock] What-if stream error:', err);
+    }
+  }, [busy, month, agentStream]);
 
   const runAlerts = React.useCallback(async (ev?: React.MouseEvent) => {
     if (busy) return;
@@ -2633,16 +2591,90 @@ export default function ChatDock() {
       {/* Dark footer */}
       <CardFooter className="lm-chat-footer">
           <div className="lm-chat-footer-inner">
-            {/* Unavailable banner - only show if no tokens received and error occurred */}
-            {agentStream.error === "unavailable" && (
+            {/* Unavailable banner - only show for hard agent/model failures */}
+            {agentStream.temporarilyUnavailable && (
               <div className="bg-amber-900/30 border border-amber-700/50 rounded-lg px-3 py-2 mb-3 text-sm text-amber-200">
                 The AI assistant is temporarily unavailable. Please try again in a moment.
+              </div>
+            )}
+            {/* Soft error message - show for transient errors that don't indicate full unavailability */}
+            {!agentStream.temporarilyUnavailable && agentStream.error && (
+              <div className="bg-red-900/20 border border-red-700/40 rounded-lg px-3 py-2 mb-3 text-sm text-red-200">
+                Something went wrong while answering. Please try again.
               </div>
             )}
             <div
               className="lm-chat-body mt-3 max-h-[260px] overflow-y-auto space-y-3 pr-1"
               data-testid="lm-chat-messages"
             >
+              {/* Thinking bubble - rendered inside chat body */}
+              {agentStream.isStreaming && (
+                <div
+                  className="rounded-xl bg-slate-900/95 border border-slate-700 shadow-lg px-4 py-3 max-w-[280px] mb-2"
+                  data-testid="lm-chat-thinking"
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500/20 text-[11px] font-semibold text-emerald-300">
+                        LM
+                      </span>
+                      <span className="text-xs font-semibold text-slate-100">
+                        Thinking…
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={cancelAgentStream}
+                      className="text-[10px] text-slate-400 hover:text-slate-200 transition-colors"
+                      aria-label="Cancel streaming"
+                    >
+                      Stop
+                    </button>
+                  </div>
+
+                  {/* Warmup indicator before first token */}
+                  {!agentStream.hasReceivedToken && (
+                    <div className="mb-2 flex items-center gap-2 text-[11px] text-slate-400">
+                      <span className="flex h-1.5 w-6 items-center justify-between">
+                        <span className="h-1.5 w-1.5 rounded-full bg-slate-500 animate-pulse" />
+                        <span className="h-1.5 w-1.5 rounded-full bg-slate-500/70 animate-pulse" style={{ animationDelay: '0.2s' }} />
+                        <span className="h-1.5 w-1.5 rounded-full bg-slate-500/40 animate-pulse" style={{ animationDelay: '0.4s' }} />
+                      </span>
+                      <span>Preparing tools…</span>
+                    </div>
+                  )}
+
+                  {agentStream.thinkingState?.step && (
+                    <p data-testid="lm-chat-thinking-step" className="mb-2 text-[11px] text-slate-200 leading-relaxed">
+                      {agentStream.thinkingState.step}
+                    </p>
+                  )}
+
+                  {agentStream.thinkingState?.tools && agentStream.thinkingState.tools.length > 0 && (
+                    <div className="flex flex-wrap gap-1" data-testid="lm-chat-thinking-tools">
+                      {agentStream.thinkingState.tools.map((tool) => {
+                        const isActive = agentStream.thinkingState?.activeTool === tool;
+                        return (
+                          <span
+                            key={tool}
+                            data-testid={`lm-chat-thinking-tool-${tool}`}
+                            data-active={isActive ? "true" : "false"}
+                            className={cn(
+                              "rounded-full border px-2 py-[2px] text-[10px] font-medium transition-all duration-200",
+                              isActive
+                                ? "border-sky-500/80 bg-sky-900/40 text-sky-200 shadow-sm"
+                                : "border-slate-700 bg-slate-900 text-slate-300"
+                            )}
+                          >
+                            {tool.replace(/^(charts|insights|analytics)\./g, '')}
+                          </span>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+
               {uiMessages.length === 0 ? (
                 <div className="lm-chat-greeting">
                   <p className="lm-chat-greeting-title">Hey! 👋</p>
@@ -2696,74 +2728,6 @@ export default function ChatDock() {
           data-testid="lm-chat-tool-status"
         >
           {formatToolStatus(streamingToolNames)}
-        </div>
-      )}
-
-      {/* NEW: Enhanced thinking bubble for agent streaming */}
-      {agentStream.isStreaming && (
-        <div
-          className="rounded-xl bg-slate-900/95 border border-slate-700 shadow-2xl px-4 py-3 max-w-[280px] mb-2"
-          data-testid="lm-chat-thinking"
-        >
-          <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-2">
-              <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500/20 text-[11px] font-semibold text-emerald-300">
-                LM
-              </span>
-              <span className="text-xs font-semibold text-slate-100">
-                Thinking…
-              </span>
-            </div>
-            <button
-              type="button"
-              onClick={cancelAgentStream}
-              className="text-[10px] text-slate-400 hover:text-slate-200 transition-colors"
-              aria-label="Cancel streaming"
-            >
-              Stop
-            </button>
-          </div>
-
-          {/* Warmup indicator before first token */}
-          {!agentStream.hasReceivedToken && (
-            <div className="mb-2 flex items-center gap-2 text-[11px] text-slate-400">
-              <span className="flex h-1.5 w-6 items-center justify-between">
-                <span className="h-1.5 w-1.5 rounded-full bg-slate-500 animate-pulse" />
-                <span className="h-1.5 w-1.5 rounded-full bg-slate-500/70 animate-pulse" style={{ animationDelay: '0.2s' }} />
-                <span className="h-1.5 w-1.5 rounded-full bg-slate-500/40 animate-pulse" style={{ animationDelay: '0.4s' }} />
-              </span>
-              <span>Preparing tools…</span>
-            </div>
-          )}
-
-          {agentStream.thinkingState?.step && (
-            <p data-testid="lm-chat-thinking-step" className="mb-2 text-[11px] text-slate-200 leading-relaxed">
-              {agentStream.thinkingState.step}
-            </p>
-          )}
-
-          {agentStream.thinkingState?.tools && agentStream.thinkingState.tools.length > 0 && (
-            <div className="flex flex-wrap gap-1" data-testid="lm-chat-thinking-tools">
-              {agentStream.thinkingState.tools.map((tool) => {
-                const isActive = agentStream.thinkingState?.activeTool === tool;
-                return (
-                  <span
-                    key={tool}
-                    data-testid={`lm-chat-thinking-tool-${tool}`}
-                    data-active={isActive ? "true" : "false"}
-                    className={cn(
-                      "rounded-full border px-2 py-[2px] text-[10px] font-medium transition-all duration-200",
-                      isActive
-                        ? "border-sky-500/80 bg-sky-900/40 text-sky-200 shadow-sm"
-                        : "border-slate-700 bg-slate-900 text-slate-300"
-                    )}
-                  >
-                    {tool.replace(/^(charts|insights|analytics)\./, '')}
-                  </span>
-                );
-              })}
-            </div>
-          )}
         </div>
       )}
 

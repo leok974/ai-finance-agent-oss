@@ -58,6 +58,7 @@ describe('ChatDock Availability', () => {
       isStreaming: false,
       thinkingState: null,
       hasReceivedToken: false,
+      error: null,
       sendMessage: vi.fn(),
       cancel: vi.fn(),
     });
@@ -82,6 +83,7 @@ describe('ChatDock Availability', () => {
       isStreaming: false,
       thinkingState: null,
       hasReceivedToken: false,
+      error: null,
       sendMessage: vi.fn(),
       cancel: vi.fn(),
     });
@@ -108,6 +110,7 @@ describe('ChatDock Availability', () => {
       isStreaming: false,
       thinkingState: null,
       hasReceivedToken: false,
+      error: null,
       sendMessage: vi.fn(),
       cancel: vi.fn(),
     });
@@ -139,6 +142,7 @@ describe('ChatDock Availability', () => {
         activeTool: 'fetch_transactions',
       },
       hasReceivedToken: false,
+      error: null,
       sendMessage: vi.fn(),
       cancel: vi.fn(),
     });
@@ -158,6 +162,7 @@ describe('ChatDock Availability', () => {
       isStreaming: false,
       thinkingState: null,
       hasReceivedToken: false,
+      error: null,
       sendMessage: vi.fn(),
       cancel: vi.fn(),
     });
