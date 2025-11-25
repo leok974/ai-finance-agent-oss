@@ -63,6 +63,10 @@ class Transaction(Base):
     pending: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default=sa_false()
     )
+    # NEW: Demo/sample data flag for isolation from model training
+    is_demo: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=sa_false(), index=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

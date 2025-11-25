@@ -10,7 +10,6 @@ from app.db import Base
 
 if TYPE_CHECKING:
     from app.models.ml_feedback import MlFeedbackEvent
-    from app.orm_models import Transaction
 
 
 class MlFeedbackMerchantCategoryStats(Base):
@@ -47,15 +46,20 @@ class MlFeedbackMerchantCategoryStats(Base):
         """
         Increment accept/reject counters for the merchant/category of this transaction.
         If we can't resolve merchant_canonical, we no-op.
+
+        IMPORTANT: Only applies to real user transactions (is_demo=False).
+        Demo/sample data is excluded from ML training feedback.
         """
         from app.orm_models import Transaction
 
-        txn = (
-            db.query(Transaction).filter(Transaction.id == event.txn_id).one_or_none()
-        )
+        txn = db.query(Transaction).filter(Transaction.id == event.txn_id).one_or_none()
         if not txn:
             return
-        
+
+        # DEMO ISOLATION: Skip feedback from demo transactions
+        if getattr(txn, "is_demo", False):
+            return
+
         # Use merchant_canonical from Transaction model
         merchant = getattr(txn, "merchant_canonical", None)
         if not merchant:

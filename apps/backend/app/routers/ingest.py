@@ -424,6 +424,10 @@ async def ingest_csv(
 
     # Wrap main handler in try-catch for comprehensive error logging
     try:
+        # Detect if this is demo/sample data based on filename
+        # Frontend sets filename to "ledgermind-demo.csv" for sample data
+        is_demo_upload = file.filename and "demo" in file.filename.lower()
+
         result = await _ingest_csv_impl(
             user_id=user_id,
             file=file,
@@ -431,6 +435,7 @@ async def ingest_csv(
             expenses_are_positive=expenses_are_positive,
             db=db,
             phase=phase,
+            is_demo=is_demo_upload,
         )
 
         # Log successful ingest
@@ -498,6 +503,7 @@ async def _ingest_csv_impl(
     expenses_are_positive: bool | None,
     db: Session,
     phase: str,
+    is_demo: bool = False,  # NEW: flag for demo/sample data isolation
 ):
     """Internal implementation of CSV ingest logic."""
 
@@ -506,8 +512,12 @@ async def _ingest_csv_impl(
         # - suggestion_events deleted via FK CASCADE
         # - suggestion_feedback.event_id set to NULL via FK SET NULL
         # - rules, merchant_overrides remain intact
+        # IMPORTANT: Only delete transactions matching the is_demo flag to prevent
+        # demo uploads from wiping real user data and vice versa
         try:
-            db.query(Transaction).filter(Transaction.user_id == user_id).delete()
+            db.query(Transaction).filter(
+                Transaction.user_id == user_id, Transaction.is_demo == is_demo
+            ).delete()
             db.commit()
         except Exception:
             # Track replace failures for monitoring/alerting
@@ -715,6 +725,7 @@ async def _ingest_csv_impl(
                 month=month,
                 category=normalized_cat,
                 pending=pending,
+                is_demo=is_demo,  # Mark as demo if this is sample data
             )
         )
 

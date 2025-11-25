@@ -107,6 +107,7 @@ def ingest_csv_for_user(
     user_id: int,
     csv_path: str | Path,
     clear_existing: bool = False,
+    is_demo: bool = False,
 ) -> int:
     """
     Ingest transactions from CSV file for a specific user.
@@ -120,6 +121,7 @@ def ingest_csv_for_user(
         user_id: User ID to associate transactions with
         csv_path: Path to CSV file
         clear_existing: If True, delete existing transactions first
+        is_demo: If True, mark transactions as demo data (isolated from ML training)
 
     Returns:
         Number of transactions inserted
@@ -129,11 +131,21 @@ def ingest_csv_for_user(
     if not csv_path.exists():
         raise FileNotFoundError(f"CSV file not found: {csv_path}")
 
-    # Clear existing transactions if requested
+    # Clear existing transactions if requested (only matching is_demo type)
     if clear_existing:
-        deleted = db.query(Transaction).filter(Transaction.user_id == user_id).delete()
+        deleted = (
+            db.query(Transaction)
+            .filter(
+                Transaction.user_id == user_id,
+                Transaction.is_demo == is_demo,
+            )
+            .delete()
+        )
         db.commit()
-        print(f"✓ Deleted {deleted} existing transactions for user {user_id}")
+        demo_label = "demo" if is_demo else "real"
+        print(
+            f"✓ Deleted {deleted} existing {demo_label} transactions for user {user_id}"
+        )
 
     # Read and parse CSV
     rows_added = 0
@@ -194,6 +206,7 @@ def ingest_csv_for_user(
                 category=category_slug,
                 raw_category=raw_category,
                 pending=False,
+                is_demo=is_demo,
             )
 
             db.add(txn)
@@ -255,4 +268,5 @@ def ingest_demo_csv(
         user_id=user_id,
         csv_path=demo_csv,
         clear_existing=clear_existing,
+        is_demo=True,  # Mark demo data for isolation from ML training
     )
