@@ -66,7 +66,7 @@ services:
 
   backend:
     container_name: ai-finance-backend
-    image: ledgermind-backend:main-7b2be8f4
+    image: ledgermind-backend:main-f1848e14
     pull_policy: never
     restart: unless-stopped
     env_file:
@@ -212,7 +212,7 @@ services:
         VITE_BUILD_BRANCH: ${VITE_BUILD_BRANCH:-local}
         VITE_BUILD_COMMIT: ${VITE_BUILD_COMMIT:-dev}
         VITE_BUILD_TIME: ${VITE_BUILD_TIME:-unknown}
-    image: ledgermind-web:main-88f3ab6b
+    image: ledgermind-web:main-f1848e14
     pull_policy: never
     depends_on:
       backend:
