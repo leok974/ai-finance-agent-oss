@@ -143,7 +143,7 @@ docker compose -f docker-compose.prod.yml logs backend --since 5m | grep -i erro
 # ✅ Database constraints correct
 docker compose -f docker-compose.prod.yml exec postgres \
   psql -U myuser -d finance -c \
-  "SELECT pg_get_constraintdef(oid) FROM pg_constraint 
+  "SELECT pg_get_constraintdef(oid) FROM pg_constraint
    WHERE conname = 'suggestion_feedback_event_id_fkey'"
 # Result: FOREIGN KEY (event_id) REFERENCES suggestion_events(id) ON DELETE SET NULL
 

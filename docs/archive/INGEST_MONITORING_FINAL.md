@@ -6,7 +6,7 @@
 - **Migration**: `20251104_fk_feedback_event_cascade`
 - **Status**: Applied and verified at head revision
 - **Change**: Added `ON DELETE SET NULL` to `suggestion_feedback.event_id` FK
-- **Verification**: 
+- **Verification**:
   ```bash
   docker compose -f docker-compose.prod.yml exec backend python -m alembic -c /app/alembic.ini current
   # Output: 20251104_fk_feedback_event_cascade (head)
@@ -15,7 +15,7 @@
 ### 2. SLO Alert with Quiet-Hours Logic (✅ IMPLEMENTED)
 - **Alert**: `IngestSLOViolation`
 - **File**: `prometheus/rules/ingest.yml`
-- **Logic**: 
+- **Logic**:
   ```yaml
   expr: |
     (
@@ -70,7 +70,7 @@ ingest_errors = Counter(
 
 ### Alert Rules (`prometheus/rules/ingest.yml`)
 1. **IngestReplaceErrors** (page, 2m): Any errors detected
-2. **IngestReplaceErrorsHigh** (critical, 1m): High error rate  
+2. **IngestReplaceErrorsHigh** (critical, 1m): High error rate
 3. **IngestSLOViolation** (warn, 5m): Errors during active traffic ⭐ NEW
 4. **OrphanedFeedbackAccumulating** (info, 24h): Housekeeping reminder
 
@@ -117,7 +117,7 @@ curl -X POST -F "file=@test.csv" "http://localhost/ingest?replace=true"
 ### Scenario 1: Quiet Hours (No Alert)
 - **Condition**: No requests for 1 hour, but some old errors exist
 - **Expected**: No alert (requires both errors AND requests)
-- **Verification**: 
+- **Verification**:
   ```promql
   increase(lm_ingest_errors_total[1h]) > 0     # May be true
   increase(lm_ingest_requests_total[1h]) > 0    # False (no traffic)
@@ -130,7 +130,7 @@ curl -X POST -F "file=@test.csv" "http://localhost/ingest?replace=true"
 - **Verification**:
   ```promql
   increase(lm_ingest_errors_total[1h]) > 0      # True
-  increase(lm_ingest_requests_total[1h]) > 0     # True  
+  increase(lm_ingest_requests_total[1h]) > 0     # True
   # AND result = True → Alert after 5m
   ```
 
@@ -198,7 +198,7 @@ curl -X POST -F "file=@test.csv" "http://localhost/ingest?replace=true"
 - [x] Runbook links added to all alerts
 - [x] Runbook links added to Grafana dashboard
 - [x] Request counter metric implemented
-- [x] Error counter metric implemented  
+- [x] Error counter metric implemented
 - [x] Metrics registered with Prometheus
 - [x] Ingest endpoint successfully handles requests
 - [x] Code deployed to production container

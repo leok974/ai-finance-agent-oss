@@ -1,7 +1,7 @@
 # Phase 1 ML Infrastructure - Implementation Summary
 
-**Date**: November 4, 2025  
-**Status**: ✅ COMPLETE (Database, ORM, Features, dbt models)  
+**Date**: November 4, 2025
+**Status**: ✅ COMPLETE (Database, ORM, Features, dbt models)
 **Remaining**: Heuristics logging enhancement
 
 ## What Was Built
@@ -15,12 +15,12 @@
   - Fields: txn_id (PK/FK), label, source, timestamps
   - Indexes: label, source
   - ON DELETE CASCADE with transactions
-  
+
 - **`ml_features`**: Point-in-time feature vectors (leakage-safe)
   - Fields: txn_id (PK/FK), ts_month, amount, abs_amount, merchant, mcc, channel, hour_of_day, dow, is_weekend, is_subscription, norm_desc, tokens
   - Indexes: ts_month, merchant
   - ON DELETE CASCADE with transactions
-  
+
 - **`ml_training_runs`**: Training audit log
   - Fields: run_id (PK), timestamps, feature_count, train/test sizes, f1_macro, accuracy, class_count, model_uri, notes
   - Index: started_at
@@ -42,7 +42,7 @@ docker compose exec postgres psql -U myuser -d finance -c "\d transaction_labels
 
 **Transaction Model Enhanced** (`app/orm_models.py`):
 ```python
-label = relationship("TransactionLabel", back_populates="transaction", 
+label = relationship("TransactionLabel", back_populates="transaction",
                      uselist=False, cascade="all, delete-orphan")
 features = relationship("MLFeature", back_populates="transaction",
                        uselist=False, cascade="all, delete-orphan")
@@ -101,13 +101,13 @@ INFO ✅ Built 2847 feature vectors
   - Quality filters (non-zero amount, valid merchant/label)
   - Leakage prevention via ts_month bucketing
   - Sample weighting via label_source
-  
+
 - **`dim_merchants.sql`**: Merchant dimension with priors
   - Category probabilities: P(category|merchant)
   - Confidence levels: high/medium/low
   - Subscription detection
   - Human label tracking
-  
+
 - **`fct_suggestions_eval.sql`**: Model evaluation (incremental)
   - Joins suggestions + feedback + labels
   - Computed metrics: is_accepted, is_correct_accept, is_correct_reject
@@ -280,7 +280,7 @@ df['sample_weight'] = df['label_source'].map({
 **Step 6: Evaluate model**
 ```sql
 -- Track performance in fct_suggestions_eval
-SELECT 
+SELECT
   suggestion_mode,
   COUNT(*) as suggestions,
   AVG(is_accepted) as acceptance_rate,
@@ -312,7 +312,7 @@ GROUP BY suggestion_mode
 2. Increment metrics with source label:
    ```python
    from app.services.metrics import SUGGESTIONS_TOTAL
-   
+
    SUGGESTIONS_TOTAL.labels(source='rule').inc()
    ```
 

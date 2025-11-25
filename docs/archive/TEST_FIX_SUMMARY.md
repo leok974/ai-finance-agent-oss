@@ -18,16 +18,16 @@ FastAPI's `Query(..., regex=r"^\d{4}-\d{2}$")` only validates the **format** (YY
 def _month_bounds(yyyymm: str):
     """
     Convert YYYY-MM to (start, end) datetimes.
-    
+
     Raises:
         ValueError: If month is not in 1-12 range
     """
     year, month = map(int, yyyymm.split("-"))
-    
+
     # Validate month range
     if not (1 <= month <= 12):
         raise ValueError(f"Month must be between 1 and 12, got {month}")
-    
+
     # ... rest of function
 ```
 
