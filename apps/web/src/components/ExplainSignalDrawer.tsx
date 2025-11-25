@@ -377,8 +377,8 @@ export default function ExplainSignalDrawer({ txnId, open, onOpenChange, txn, su
 
                     // Show success toast with details
                     toast.success('Categorization applied', {
-                      description: res.similar_updated > 0
-                        ? `Updated ${res.similar_updated + 1} transaction${res.similar_updated > 0 ? 's' : ''} to "${categoryLabel}" for ${merchantDisplay}`
+                      description: res.updated_count > 1
+                        ? `Updated ${res.updated_count} transactions to "${categoryLabel}" for ${merchantDisplay}`
                         : `Updated category to "${categoryLabel}" for ${merchantDisplay}`,
                       duration: 4000,
                     });
@@ -415,6 +415,7 @@ export default function ExplainSignalDrawer({ txnId, open, onOpenChange, txn, su
                     try {
                       const res = await manualCategorizeUndo(lastChange.affected);
                       emitToastSuccess(`Reverted ${res.reverted_count} transaction${res.reverted_count !== 1 ? 's' : ''}.`);
+                      window.localStorage.removeItem('lm:lastManualCategorize');
                       setLastChange(null);
                       onRefresh?.();
                     } catch (err: any) {
@@ -429,7 +430,7 @@ export default function ExplainSignalDrawer({ txnId, open, onOpenChange, txn, su
               </div>
 
               <p className="text-xs text-slate-400 mb-3">
-                {lastChange.similar_updated + 1} transaction{lastChange.similar_updated > 0 ? 's' : ''} categorized
+                {lastChange.updated_count} transaction{lastChange.updated_count !== 1 ? 's' : ''} categorized
               </p>
 
               <div className="max-h-40 overflow-y-auto space-y-2 rounded-lg bg-slate-950/50 p-2">
