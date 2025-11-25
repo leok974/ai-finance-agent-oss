@@ -1794,7 +1794,7 @@ async def agent_stream(
                                 else:
                                     # Still nothing - show softer message
                                     deterministic_response = (
-                                        "I found transactions in your account, but not enough history for this view. "
+                                        f"I found {txn_count} transactions in your account, but not enough history for this view. "
                                         "Try uploading more recent data or using **Use sample data** to preview full trends."
                                     )
 
