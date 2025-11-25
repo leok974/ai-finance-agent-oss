@@ -61,6 +61,7 @@ from app.routers import txns_edit as txns_edit_router
 from app.routers import auth as auth_router
 from app.routers import auth_dev as auth_dev_router
 from app.routers import auth_demo as auth_demo_router  # Demo login
+from app.routers import demo_seed as demo_seed_router  # Demo seed endpoint
 from app.routers import e2e_session as e2e_session_router  # E2E test session mint
 from app.routers import agent_txns  # NEW
 from app.routers import help_ui as help_ui_router
@@ -900,6 +901,7 @@ app.include_router(
 app.include_router(
     auth_demo_router.router
 )  # Demo login (only active when DEMO_ENABLED=1)
+app.include_router(demo_seed_router.router)  # Demo seed endpoint
 
 # === E2E Test Session ===
 app.include_router(e2e_session_router.router)  # Only active when E2E_SESSION_ENABLED=1

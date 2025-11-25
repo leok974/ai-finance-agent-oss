@@ -3,6 +3,7 @@ import {
   uploadCsv,
   fetchLatestMonth,
   deleteAllTransactions,
+  seedDemoData,
   agentTools,
   chartsSummary,
   chartsMerchants,
@@ -401,23 +402,12 @@ const UploadCsv: React.FC<UploadCsvProps> = ({ onUploaded, defaultReplace = true
     setBusy(true);
     setResult(null);
     try {
-      const res = await fetch("/demo-sample.csv");
-      if (!res.ok) throw new Error(`Sample CSV fetch failed: ${res.status}`);
+      // Use dedicated demo seed endpoint (idempotent - clears and reseeds)
+      const data = await seedDemoData();
 
-      const blob = await res.blob();
-      const sampleFile = new File([blob], "ledgermind-demo.csv", { type: "text/csv" });
-
-      // Reuse existing upload logic
-      const data = await uploadCsv(sampleFile, replace, 'csv');
-
-      const responseOk = (data as { ok?: boolean }).ok;
-      const added = (data as { added?: number }).added ?? 0;
-      const backendMessage = (data as { message?: string }).message;
-
-      if (responseOk === false || added === 0) {
-        const errorMsg = backendMessage || "No transactions were imported from sample data.";
+      if (!data.ok) {
+        const errorMsg = data.message || "Failed to load demo data.";
         const errorData: IngestResult = {
-          ...(data as Partial<IngestResult>),
           ok: false,
           added: 0,
           count: 0,
@@ -429,18 +419,38 @@ const UploadCsv: React.FC<UploadCsvProps> = ({ onUploaded, defaultReplace = true
         return;
       }
 
-      const r: UploadResult = { ok: true, data, message: `Sample data imported. ${added} transaction${added !== 1 ? 's' : ''} added.` };
+      const successMsg = `Demo data loaded: ${data.transactions_added} transactions added.`;
+      const successData: IngestResult = {
+        ok: true,
+        added: data.transactions_added,
+        count: data.transactions_added,
+        duplicates: 0,
+        message: successMsg,
+      };
+      const r: UploadResult = { ok: true, data: successData, message: successMsg };
       setResult(r);
       onUploaded?.(r);
-      void handleUploadSuccess(data as Record<string, unknown>);
-      toast.success("Sample data imported for this month.");
+
+      // Refresh all dashboard data
+      void handleUploadSuccess({ detected_month: null });
+      toast.success("Demo data loaded successfully", {
+        description: "Charts will update in a moment."
+      });
     } catch (err) {
       console.error(err);
-      toast.error("Could not load sample data. Please try again.");
+      const errorMsg = err instanceof Error ? err.message : "Could not load demo data. Please try again.";
+      toast.error("Failed to load demo data", { description: errorMsg });
+      const errorData: IngestResult = {
+        ok: false,
+        added: 0,
+        count: 0,
+        message: errorMsg,
+      };
+      setResult({ ok: false, data: errorData, message: errorMsg });
     } finally {
       setBusy(false);
     }
-  }, [replace, onUploaded, handleUploadSuccess]);
+  }, [onUploaded, handleUploadSuccess]);
 
   const disabled = busy || !file;
 

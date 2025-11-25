@@ -1793,6 +1793,22 @@ export async function deleteAllTransactions(): Promise<void> {
   await fetchJSON('/ingest/dashboard/reset', { method: 'POST' });
 }
 
+// Seed demo data (idempotent - clears existing demo data and reseeds)
+export async function seedDemoData(): Promise<{
+  ok: boolean;
+  transactions_cleared: number;
+  transactions_added: number;
+  message: string;
+}> {
+  const res = await fetchJSON('demo/seed', { method: 'POST' });
+  return res as {
+    ok: boolean;
+    transactions_cleared: number;
+    transactions_added: number;
+    message: string;
+  };
+}
+
 export async function fetchLatestMonth(): Promise<string | null> {
   // Canonical method: POST meta endpoint (GET may 405)
   try {
