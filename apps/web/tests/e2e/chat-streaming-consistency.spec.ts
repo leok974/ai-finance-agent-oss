@@ -1,38 +1,29 @@
 /**
  * E2E tests for chat streaming consistency.
  * Verifies that typed queries and toolbar buttons produce equivalent streaming behavior.
+ *
+ * These tests use demo login + sample data to ensure a consistent, known dataset.
  */
 
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect } from '@playwright/test';
+import { ensureDemoSeeded } from './utils/ensureDemoSeeded';
 
-async function ensureChatAvailable(page: Page) {
-  await page.goto('/', { waitUntil: 'load', timeout: 60000 });
-
-  if (process.env.IS_PROD === 'true') {
-    try {
-      await page
-        .getByTestId('lm-chat-launcher-button')
-        .waitFor({ timeout: 15000 });
-    } catch {
-      test.skip(
-        true,
-        'Chat launcher button not found in prod – likely E2E session/auth issue'
-      );
-    }
-  }
-}
-
-test.describe('Chat Streaming Consistency @prod @chat-stream', () => {
+test.describe('Chat Streaming Consistency @prod @chat-stream @demo', () => {
   test.describe.configure({
     retries: process.env.IS_PROD === 'true' ? 1 : 0,
-    timeout: 60_000,
+    timeout: 90_000, // Increased to account for demo seeding
   });
 
   test.beforeEach(async ({ page }) => {
-    await ensureChatAvailable(page);
+    // Ensure demo user is logged in with fresh sample data
+    await ensureDemoSeeded(page);
+
+    // Verify chat launcher is available (app is fully ready)
+    const launcher = page.getByTestId('lm-chat-launcher-button');
+    await expect(launcher).toBeVisible({ timeout: 15000 });
   });
 
-  test('Typed "quick recap" query uses streaming @prod', async ({ page }) => {
+  test('Typed "quick recap" query uses streaming @prod @demo', async ({ page }) => {
     // Open chat panel
     const launcher = page.getByTestId('lm-chat-launcher-button');
     await expect(launcher).toBeVisible();
@@ -48,17 +39,20 @@ test.describe('Chat Streaming Consistency @prod @chat-stream', () => {
     await chatInput.press('Enter');
 
     // Wait for response - deterministic mode might be very fast
-    // Just verify content appears without "unavailable" message
+    // Verify we get financial data, not an error message
     const response = page.locator('[data-testid^="lm-chat-message-assistant"]').last();
     await expect(response).toBeVisible({ timeout: 20000 });
-    await expect(response).toContainText(/income|spend|net/i);
 
-    // Verify no "temporarily unavailable" message
     const responseText = await response.textContent();
-    expect(responseText).not.toMatch(/temporarily unavailable/i);
+
+    // Should contain financial keywords (flexible - works with any month's data)
+    expect(responseText).toMatch(/income|spend|net|total|categories|merchants|transfers|groceries|shopping|rent|subscriptions/i);
+
+    // Should NOT contain error messages
+    expect(responseText).not.toMatch(/temporarily unavailable|don't have any spending data/i);
   });
 
-  test('Month summary button uses streaming @prod', async ({ page }) => {
+  test('Month summary button uses streaming @prod @demo', async ({ page }) => {
     // Open chat panel
     const launcher = page.getByTestId('lm-chat-launcher-button');
     await launcher.click();
@@ -73,14 +67,17 @@ test.describe('Chat Streaming Consistency @prod @chat-stream', () => {
     // Wait for response
     const response = page.locator('[data-testid^="lm-chat-message-assistant"]').last();
     await expect(response).toBeVisible({ timeout: 20000 });
-    await expect(response).toContainText(/income|spend|net|top categories|top merchants/i);
 
-    // Verify no "temporarily unavailable" message
     const responseText = await response.textContent();
-    expect(responseText).not.toMatch(/temporarily unavailable/i);
+
+    // Should contain financial summary data (flexible keywords)
+    expect(responseText).toMatch(/income|spend|net|total|top categories|top merchants|transfers|groceries/i);
+
+    // Should NOT contain error messages
+    expect(responseText).not.toMatch(/temporarily unavailable|don't have any spending data/i);
   });
 
-  test('Typed query and button produce equivalent results @prod', async ({ page }) => {
+  test('Typed query and button produce equivalent results @prod @demo', async ({ page }) => {
     // Open chat panel
     const launcher = page.getByTestId('lm-chat-launcher-button');
     await launcher.click();
@@ -97,7 +94,6 @@ test.describe('Chat Streaming Consistency @prod @chat-stream', () => {
     // Wait for response
     const firstResponse = page.locator('[data-testid^="lm-chat-message-assistant"]').last();
     await expect(firstResponse).toBeVisible({ timeout: 20000 });
-    await expect(firstResponse).toContainText(/income|spend|net/i);
     const firstResponseText = await firstResponse.textContent();
 
     // Second: use button
@@ -106,19 +102,18 @@ test.describe('Chat Streaming Consistency @prod @chat-stream', () => {
 
     const secondResponse = page.locator('[data-testid^="lm-chat-message-assistant"]').last();
     await expect(secondResponse).toBeVisible({ timeout: 20000 });
-    await expect(secondResponse).toContainText(/income|spend|net/i);
     const secondResponseText = await secondResponse.textContent();
 
-    // Both should contain financial data
-    expect(firstResponseText).toMatch(/income|spend|net/i);
-    expect(secondResponseText).toMatch(/income|spend|net/i);
+    // Both should contain financial data (flexible keywords)
+    expect(firstResponseText).toMatch(/income|spend|net|total|categories|merchants/i);
+    expect(secondResponseText).toMatch(/income|spend|net|total|categories|merchants/i);
 
-    // Neither should contain "unavailable"
-    expect(firstResponseText).not.toMatch(/temporarily unavailable/i);
-    expect(secondResponseText).not.toMatch(/temporarily unavailable/i);
+    // Neither should contain error messages
+    expect(firstResponseText).not.toMatch(/temporarily unavailable|don't have any spending data/i);
+    expect(secondResponseText).not.toMatch(/temporarily unavailable|don't have any spending data/i);
   });
 
-  test('Deterministic quick recap works without LLM @prod', async ({ page }) => {
+  test('Deterministic quick recap works without LLM @prod @demo', async ({ page }) => {
     // This test verifies that quick recap works even when LLM is unavailable
     const launcher = page.getByTestId('lm-chat-launcher-button');
     await launcher.click();
@@ -132,12 +127,16 @@ test.describe('Chat Streaming Consistency @prod @chat-stream', () => {
     await chatInput.fill('month summary');
     await chatInput.press('Enter');
 
-    // Should see financial summary without "unavailable" message
+    // Should see financial summary without error messages
     const response = page.locator('[data-testid^="lm-chat-message-assistant"]').last();
     await expect(response).toBeVisible({ timeout: 20000 });
-    await expect(response).toContainText(/income|spend|net/i);
 
     const responseText = await response.textContent();
-    expect(responseText).not.toMatch(/temporarily unavailable/i);
+
+    // Should contain financial data (flexible keywords for demo data)
+    expect(responseText).toMatch(/income|spend|net|total|categories|merchants|transfers|groceries/i);
+
+    // Should NOT contain error messages
+    expect(responseText).not.toMatch(/temporarily unavailable|don't have any spending data/i);
   });
 });
