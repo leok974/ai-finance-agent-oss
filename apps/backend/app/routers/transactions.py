@@ -245,17 +245,23 @@ def manual_categorize_transaction(
     )
 
     # Build query for transactions to update
-    query = db.query(Transaction).filter(
-        Transaction.user_id == user_id,
-        Transaction.category == "unknown",  # Only touch unknowns
-    )
+    query = db.query(Transaction).filter(Transaction.user_id == user_id)
 
     if payload.scope == ManualCategorizeScope.JUST_THIS:
+        # For just_this scope, update the specific transaction regardless of current category
         query = query.filter(Transaction.id == txn_id)
     elif payload.scope == ManualCategorizeScope.SAME_MERCHANT:
-        query = query.filter(Transaction.merchant_canonical == merchant_canonical)
+        # For bulk scopes, only touch unknown transactions
+        query = query.filter(
+            Transaction.category == "unknown",
+            Transaction.merchant_canonical == merchant_canonical,
+        )
     elif payload.scope == ManualCategorizeScope.SAME_DESCRIPTION and description_key:
-        query = query.filter(Transaction.description.ilike(f"%{description_key}%"))
+        # For bulk scopes, only touch unknown transactions
+        query = query.filter(
+            Transaction.category == "unknown",
+            Transaction.description.ilike(f"%{description_key}%"),
+        )
 
     # Snapshot BEFORE we update
     to_update: list[Transaction] = query.all()
