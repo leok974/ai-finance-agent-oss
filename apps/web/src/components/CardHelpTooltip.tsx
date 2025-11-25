@@ -202,7 +202,7 @@ export default function CardHelpTooltip({
           id={popId}
           data-popover-role="card-help"
           className="fixed z-[99999] w-[360px] rounded-xl border bg-background p-3 shadow-xl animate-in fade-in-0 zoom-in-95 pointer-events-auto"
-          style={{ top: pos.top, left: pos.left }}
+          style={{ top: pos.top, left: pos.left, isolation: 'isolate' }}
           role="dialog"
         >
           <div className="flex items-center justify-between">
@@ -211,17 +211,17 @@ export default function CardHelpTooltip({
               {t('ui.help.close')}
             </Button>
           </div>
-          <div className="mt-3 border-b pb-2 flex items-center gap-2 text-xs">
+          <div className="mt-3 border-b pb-2 flex items-center gap-2 text-xs relative z-10">
             <button
               onClick={() => setActiveTab('what')}
-              className={`px-2 py-1 rounded-md ${activeTab === 'what' ? 'bg-accent text-accent-foreground' : 'hover:bg-muted'}`}
+              className={`px-2 py-1 rounded-md relative z-10 cursor-pointer ${activeTab === 'what' ? 'bg-accent text-accent-foreground' : 'hover:bg-muted'}`}
             >
               {t('ui.help.what')}
             </button>
             {/* 🔑 Always clickable - removed disabled attribute */}
             <button
               onClick={switchToWhy}
-              className={`px-2 py-1 rounded-md ${activeTab === 'why' ? 'bg-accent text-accent-foreground' : 'hover:bg-muted'}`}
+              className={`px-2 py-1 rounded-md relative z-10 cursor-pointer ${activeTab === 'why' ? 'bg-accent text-accent-foreground' : 'hover:bg-muted'}`}
               aria-label="Why is this value what it is?"
             >
               {t('ui.help.why')}
