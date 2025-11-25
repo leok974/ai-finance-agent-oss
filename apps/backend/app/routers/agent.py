@@ -1715,36 +1715,28 @@ async def agent_stream(
                 }
             )
 
-            # Check LLM health
-            from app.services.llm_health import is_llm_available
+            # Stream actual tokens using local-first + OpenAI fallback
+            from app.utils.llm_stream import stream_llm_tokens_with_fallback
 
-            llm_available = await is_llm_available(use_cache=True)
+            model = settings.DEFAULT_LLM_MODEL
 
-            if not llm_available:
-                # Stream fallback message
+            try:
+                async for token_event in stream_llm_tokens_with_fallback(
+                    messages=final_messages,
+                    model=model,
+                    temperature=0.2,
+                    top_p=0.9,
+                ):
+                    # token_event already has { "type": "token", "data": { "text": "..." } }
+                    yield json.dumps(token_event) + "\n"
+
+            except Exception as stream_err:
+                logger.warning(f"[agent_stream] All LLM providers failed: {stream_err}")
+                # Final fallback: friendly error message
                 fallback_msg = "The AI assistant is temporarily unavailable. Please try again in a moment."
                 for char in fallback_msg:
                     yield json.dumps({"type": "token", "data": {"text": char}}) + "\n"
                     await asyncio.sleep(0.01)
-            else:
-                # Stream LLM response token by token
-                model = settings.DEFAULT_LLM_MODEL
-
-                # Call LLM (non-streaming for now, will implement streaming later)
-                reply, _ = await asyncio.to_thread(
-                    llm_mod.call_llm,
-                    model=model,
-                    messages=final_messages,
-                    temperature=0.2,
-                    top_p=0.9,
-                )
-
-                # Simulate streaming by sending chunks
-                for char in reply:
-                    yield json.dumps({"type": "token", "data": {"text": char}}) + "\n"
-                    await asyncio.sleep(
-                        0.005
-                    )  # Small delay for visual streaming effect
 
             # Send done event
             yield json.dumps({"type": "done", "data": {}}) + "\n"
