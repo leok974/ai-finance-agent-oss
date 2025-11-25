@@ -6,7 +6,7 @@ import { test, expect } from '@playwright/test';
  * Verifies toasts appear and unknowns list updates
  */
 
-test.describe('@unknowns @categorize Manual Categorization Flow', () => {
+test.describe('@prod @unknowns Manual Categorization Flow', () => {
   test.beforeEach(async ({ page }) => {
     // Navigate to dashboard
     await page.goto('/');
