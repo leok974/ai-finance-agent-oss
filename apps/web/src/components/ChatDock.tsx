@@ -329,6 +329,9 @@ export default function ChatDock() {
   const agentStream = useAgentStream();
   const [useNewStreaming, setUseNewStreaming] = useState(false); // Toggle for new streaming
 
+  // Expose cancel method for UI
+  const cancelAgentStream = agentStream.cancel;
+
   // Poll agent status every 30 seconds
   React.useEffect(() => {
     const fetchStatus = async () => {
@@ -2712,32 +2715,67 @@ export default function ChatDock() {
         </div>
       )}
 
-      {/* NEW: Thinking bubble for agent streaming */}
-      {agentStream.thinkingState && (
+      {/* NEW: Enhanced thinking bubble for agent streaming */}
+      {agentStream.isStreaming && (
         <div
-          className="rounded-xl bg-slate-900/95 border border-slate-700 shadow-2xl p-3 max-w-[280px] mb-2"
+          className="rounded-xl bg-slate-900/95 border border-slate-700 shadow-2xl px-4 py-3 max-w-[280px] mb-2"
           data-testid="lm-chat-thinking-bubble"
         >
-          <div className="flex items-center justify-between mb-1">
-            <span className="font-semibold text-slate-100 text-sm">Thinking…</span>
-            <RobotThinking size={16} />
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2">
+              <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500/20 text-[11px] font-semibold text-emerald-300">
+                LM
+              </span>
+              <span className="text-xs font-semibold text-slate-100">
+                Thinking…
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={cancelAgentStream}
+              className="text-[10px] text-slate-400 hover:text-slate-200 transition-colors"
+              aria-label="Cancel streaming"
+            >
+              Stop
+            </button>
           </div>
-          <p className="text-slate-300 text-xs mb-2">{agentStream.thinkingState.step}</p>
-          {agentStream.thinkingState.tools.length > 0 && (
+
+          {/* Warmup indicator before first token */}
+          {!agentStream.hasReceivedToken && (
+            <div className="mb-2 flex items-center gap-2 text-[11px] text-slate-400">
+              <span className="flex h-1.5 w-6 items-center justify-between">
+                <span className="h-1.5 w-1.5 rounded-full bg-slate-500 animate-pulse" />
+                <span className="h-1.5 w-1.5 rounded-full bg-slate-500/70 animate-pulse" style={{ animationDelay: '0.2s' }} />
+                <span className="h-1.5 w-1.5 rounded-full bg-slate-500/40 animate-pulse" style={{ animationDelay: '0.4s' }} />
+              </span>
+              <span>Preparing tools…</span>
+            </div>
+          )}
+
+          {agentStream.thinkingState?.step && (
+            <p className="mb-2 text-[11px] text-slate-200 leading-relaxed">
+              {agentStream.thinkingState.step}
+            </p>
+          )}
+
+          {agentStream.thinkingState?.tools && agentStream.thinkingState.tools.length > 0 && (
             <div className="flex flex-wrap gap-1">
-              {agentStream.thinkingState.tools.map(tool => (
-                <span
-                  key={tool}
-                  className={cn(
-                    "rounded-full px-2 py-[2px] text-[10px] font-medium transition-colors",
-                    agentStream.thinkingState?.activeTools.has(tool)
-                      ? "bg-blue-500/20 text-blue-300 border border-blue-400/30"
-                      : "bg-slate-800 text-slate-400 border border-slate-700"
-                  )}
-                >
-                  {tool.replace(/^(charts|insights|analytics)\./, '')}
-                </span>
-              ))}
+              {agentStream.thinkingState.tools.map((tool) => {
+                const isActive = agentStream.thinkingState?.activeTool === tool;
+                return (
+                  <span
+                    key={tool}
+                    className={cn(
+                      "rounded-full border px-2 py-[2px] text-[10px] font-medium transition-all duration-200",
+                      isActive
+                        ? "border-sky-500/80 bg-sky-900/40 text-sky-200 shadow-sm"
+                        : "border-slate-700 bg-slate-900 text-slate-300"
+                    )}
+                  >
+                    {tool.replace(/^(charts|insights|analytics)\./, '')}
+                  </span>
+                );
+              })}
             </div>
           )}
         </div>

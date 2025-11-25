@@ -8,15 +8,23 @@
  * - token: Progressive text rendering
  * - done: Stream completion
  * - error: Error handling
+ *
+ * Features:
+ * - Automatic retry with exponential backoff for transient errors
+ * - Thinking state persistence to localStorage
+ * - Cancel support with cleanup
+ * - Warmup indicator before first token
  */
 
 import { useState, useRef, useCallback } from 'react';
 import { API_BASE } from '@/lib/api';
+import { toast } from 'sonner';
 
 export interface ThinkingState {
-  step: string;
+  step?: string;
   tools: string[];
   activeTools: Set<string>;
+  activeTool?: string | null;
 }
 
 export interface StreamMessage {
@@ -29,17 +37,56 @@ interface UseAgentStreamResult {
   messages: StreamMessage[];
   isStreaming: boolean;
   thinkingState: ThinkingState | null;
+  hasReceivedToken: boolean;
   sendMessage: (text: string, options?: { month?: string; mode?: string }) => Promise<void>;
   cancel: () => void;
 }
 
+const RETRY_DELAYS_MS = [250, 750, 2000] as const;
+const THINKING_STATE_KEY = 'lm:thinking';
+
+const isTransientError = (err: unknown): boolean => {
+  if (!err) return false;
+  const msg =
+    typeof err === 'string'
+      ? err.toLowerCase()
+      : (err as any)?.message?.toLowerCase?.() ?? '';
+
+  return (
+    msg.includes('network') ||
+    msg.includes('econnreset') ||
+    msg.includes('timed out') ||
+    msg.includes('load failed') ||
+    msg.includes('fetch') ||
+    msg.includes('aborted')
+  );
+};
+
 export function useAgentStream(): UseAgentStreamResult {
   const [messages, setMessages] = useState<StreamMessage[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
-  const [thinkingState, setThinkingState] = useState<ThinkingState | null>(null);
+  const [hasReceivedToken, setHasReceivedToken] = useState(false);
+
+  // Initialize thinking state from localStorage
+  const [thinkingState, setThinkingState] = useState<ThinkingState | null>(() => {
+    if (typeof window === 'undefined') return null;
+    try {
+      const raw = window.localStorage.getItem(THINKING_STATE_KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      // Convert tools array back to Set
+      return {
+        ...parsed,
+        activeTools: new Set(parsed.activeTools || []),
+      };
+    } catch {
+      return null;
+    }
+  });
 
   const readerRef = useRef<ReadableStreamDefaultReader<Uint8Array> | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const retryIndexRef = useRef(0);
 
   const cancel = useCallback(() => {
     if (abortControllerRef.current) {
@@ -50,8 +97,27 @@ export function useAgentStream(): UseAgentStreamResult {
       readerRef.current.cancel();
       readerRef.current = null;
     }
+    retryIndexRef.current = 0;
     setIsStreaming(false);
     setThinkingState(null);
+    setHasReceivedToken(false);
+    if (typeof window !== 'undefined') {
+      window.localStorage.removeItem(THINKING_STATE_KEY);
+    }
+  }, []);
+
+  const persistThinkingState = useCallback((state: ThinkingState | null) => {
+    if (typeof window === 'undefined') return;
+    if (!state) {
+      window.localStorage.removeItem(THINKING_STATE_KEY);
+      return;
+    }
+    // Convert Set to array for JSON serialization
+    const serializable = {
+      ...state,
+      activeTools: Array.from(state.activeTools),
+    };
+    window.localStorage.setItem(THINKING_STATE_KEY, JSON.stringify(serializable));
   }, []);
 
   const sendMessage = useCallback(
@@ -67,164 +133,246 @@ export function useAgentStream(): UseAgentStreamResult {
       };
       setMessages((prev) => [...prev, userMessage]);
 
-      // Build query params
-      const params = new URLSearchParams({ q: text });
-      if (options?.month) params.set('month', options.month);
-      if (options?.mode) params.set('mode', options.mode);
-
-      // Start streaming
+      // Reset state for new run
       setIsStreaming(true);
-      const abortController = new AbortController();
-      abortControllerRef.current = abortController;
+      setHasReceivedToken(false);
+      retryIndexRef.current = 0;
 
       let assistantContent = '';
       const assistantTimestamp = Date.now();
 
-      try {
-        const url = `${API_BASE}/agent/stream?${params.toString()}`;
-        const response = await fetch(url, {
-          method: 'GET',
-          headers: {
-            Accept: 'application/x-ndjson',
-          },
-          credentials: 'same-origin',
-          signal: abortController.signal,
-        });
+      const runOnce = async (): Promise<void> => {
+        // Build query params
+        const params = new URLSearchParams({ q: text });
+        if (options?.month) params.set('month', options.month);
+        if (options?.mode) params.set('mode', options.mode);
+
+        const abortController = new AbortController();
+        abortControllerRef.current = abortController;
+
+        let response: Response;
+        try {
+          const url = `${API_BASE}/agent/stream?${params.toString()}`;
+          response = await fetch(url, {
+            method: 'GET',
+            headers: {
+              Accept: 'application/x-ndjson',
+            },
+            credentials: 'same-origin',
+            signal: abortController.signal,
+          });
+        } catch (err: any) {
+          // Retry on transient network errors
+          if (isTransientError(err) && retryIndexRef.current < RETRY_DELAYS_MS.length) {
+            const delay = RETRY_DELAYS_MS[retryIndexRef.current++];
+            await new Promise((resolve) => setTimeout(resolve, delay));
+            return runOnce();
+          }
+
+          setIsStreaming(false);
+          toast.error('Could not reach LedgerMind agent', {
+            description: 'Please check your connection and try again.',
+          });
+          return;
+        }
 
         if (!response.ok) {
-          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+          setIsStreaming(false);
+          toast.error('Agent request failed', {
+            description: `Status ${response.status}`,
+          });
+          setMessages((prev) => [
+            ...prev,
+            {
+              role: 'assistant',
+              content: `Request failed with status ${response.status}`,
+              timestamp: Date.now(),
+            },
+          ]);
+          return;
         }
 
         if (!response.body) {
-          throw new Error('Response body is null');
+          setIsStreaming(false);
+          toast.error('No response body');
+          return;
         }
 
         const reader = response.body.getReader();
         readerRef.current = reader;
         const decoder = new TextDecoder();
 
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
+        try {
+          // eslint-disable-next-line no-constant-condition
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
 
-          const chunk = decoder.decode(value, { stream: true });
-          const lines = chunk.split('\n').filter((line) => line.trim());
+            const chunk = decoder.decode(value, { stream: true });
+            const lines = chunk.split('\n').filter((line) => line.trim());
 
-          for (const line of lines) {
-            try {
-              const event = JSON.parse(line);
+            for (const line of lines) {
+              try {
+                const event = JSON.parse(line);
 
-              switch (event.type) {
-                case 'start':
-                  // Session started
-                  break;
+                switch (event.type) {
+                  case 'start':
+                    // Session started
+                    break;
 
-                case 'planner':
-                  setThinkingState({
-                    step: event.data.step || 'Planning...',
-                    tools: event.data.tools || [],
-                    activeTools: new Set(),
-                  });
-                  break;
+                  case 'planner':
+                    setThinkingState((prev) => {
+                      const next: ThinkingState = {
+                        step: event.data.step || 'Planning…',
+                        tools: event.data.tools || [],
+                        activeTools: prev?.activeTools || new Set(),
+                        activeTool: prev?.activeTool || null,
+                      };
+                      persistThinkingState(next);
+                      return next;
+                    });
+                    break;
 
-                case 'tool_start':
-                  setThinkingState((prev) =>
-                    prev
-                      ? {
-                          ...prev,
-                          activeTools: new Set([...prev.activeTools, event.data.name]),
-                        }
-                      : null
-                  );
-                  break;
-
-                case 'tool_end':
-                  setThinkingState((prev) => {
-                    if (!prev) return null;
-                    const newActive = new Set(prev.activeTools);
-                    newActive.delete(event.data.name);
-                    return { ...prev, activeTools: newActive };
-                  });
-                  break;
-
-                case 'token':
-                  assistantContent += event.data.text || '';
-                  // Update assistant message progressively
-                  setMessages((prev) => {
-                    const last = prev[prev.length - 1];
-                    if (last && last.role === 'assistant' && last.timestamp === assistantTimestamp) {
-                      // Update existing assistant message
-                      return [
-                        ...prev.slice(0, -1),
-                        { ...last, content: assistantContent },
-                      ];
-                    } else {
-                      // Create new assistant message
-                      return [
+                  case 'tool_start':
+                    setThinkingState((prev) => {
+                      if (!prev) return prev;
+                      const next: ThinkingState = {
                         ...prev,
-                        {
-                          role: 'assistant',
-                          content: assistantContent,
-                          timestamp: assistantTimestamp,
-                        },
-                      ];
-                    }
-                  });
-                  break;
+                        activeTools: new Set([...prev.activeTools, event.data.name]),
+                        activeTool: event.data.name,
+                      };
+                      persistThinkingState(next);
+                      return next;
+                    });
+                    break;
 
-                case 'done':
-                  setIsStreaming(false);
-                  setThinkingState(null);
-                  break;
+                  case 'tool_end':
+                    setThinkingState((prev) => {
+                      if (!prev) return null;
+                      const newActive = new Set(prev.activeTools);
+                      newActive.delete(event.data.name);
+                      const next: ThinkingState = {
+                        ...prev,
+                        activeTools: newActive,
+                        activeTool: newActive.size > 0 ? Array.from(newActive)[0] : null,
+                      };
+                      persistThinkingState(next);
+                      return next;
+                    });
+                    break;
 
-                case 'error':
-                  console.error('[useAgentStream] Error event:', event.data);
-                  setIsStreaming(false);
-                  setThinkingState(null);
-                  // Add error message
-                  setMessages((prev) => [
-                    ...prev,
-                    {
-                      role: 'assistant',
-                      content: `Error: ${event.data.message || 'Unknown error'}`,
-                      timestamp: Date.now(),
-                    },
-                  ]);
-                  break;
+                  case 'token': {
+                    const tokenText = event.data.text || '';
+                    if (!tokenText) break;
+
+                    setHasReceivedToken(true);
+                    assistantContent += tokenText;
+
+                    // Update assistant message progressively
+                    setMessages((prev) => {
+                      const last = prev[prev.length - 1];
+                      if (
+                        last &&
+                        last.role === 'assistant' &&
+                        last.timestamp === assistantTimestamp
+                      ) {
+                        // Update existing assistant message
+                        return [
+                          ...prev.slice(0, -1),
+                          { ...last, content: assistantContent },
+                        ];
+                      } else {
+                        // Create new assistant message
+                        return [
+                          ...prev,
+                          {
+                            role: 'assistant',
+                            content: assistantContent,
+                            timestamp: assistantTimestamp,
+                          },
+                        ];
+                      }
+                    });
+                    break;
+                  }
+
+                  case 'done':
+                    setIsStreaming(false);
+                    setThinkingState(null);
+                    persistThinkingState(null);
+                    break;
+
+                  case 'error':
+                    console.error('[useAgentStream] Error event:', event.data);
+                    setIsStreaming(false);
+                    setThinkingState(null);
+                    persistThinkingState(null);
+                    toast.error('Agent error', {
+                      description: event.data.message || 'Something went wrong.',
+                    });
+                    // Add error message
+                    setMessages((prev) => [
+                      ...prev,
+                      {
+                        role: 'assistant',
+                        content: `Error: ${event.data.message || 'Unknown error'}`,
+                        timestamp: Date.now(),
+                      },
+                    ]);
+                    break;
+                }
+              } catch (parseError) {
+                console.error('[useAgentStream] Failed to parse event:', line, parseError);
               }
-            } catch (parseError) {
-              console.error('[useAgentStream] Failed to parse event:', line, parseError);
             }
           }
+        } catch (error: any) {
+          // Retry on transient stream errors
+          if (
+            error.name !== 'AbortError' &&
+            isTransientError(error) &&
+            retryIndexRef.current < RETRY_DELAYS_MS.length
+          ) {
+            const delay = RETRY_DELAYS_MS[retryIndexRef.current++];
+            await new Promise((resolve) => setTimeout(resolve, delay));
+            return runOnce();
+          }
+
+          if (error.name === 'AbortError') {
+            console.log('[useAgentStream] Stream cancelled');
+          } else {
+            console.error('[useAgentStream] Stream error:', error);
+            toast.error('Agent stream interrupted', {
+              description: 'Please try again.',
+            });
+            setMessages((prev) => [
+              ...prev,
+              {
+                role: 'assistant',
+                content: `Connection interrupted: ${error.message}`,
+                timestamp: Date.now(),
+              },
+            ]);
+          }
+        } finally {
+          setIsStreaming(false);
+          setThinkingState(null);
+          persistThinkingState(null);
+          readerRef.current = null;
+          abortControllerRef.current = null;
         }
-      } catch (error: any) {
-        if (error.name === 'AbortError') {
-          console.log('[useAgentStream] Stream cancelled');
-        } else {
-          console.error('[useAgentStream] Stream error:', error);
-          setMessages((prev) => [
-            ...prev,
-            {
-              role: 'assistant',
-              content: `Failed to connect: ${error.message}`,
-              timestamp: Date.now(),
-            },
-          ]);
-        }
-      } finally {
-        setIsStreaming(false);
-        setThinkingState(null);
-        readerRef.current = null;
-        abortControllerRef.current = null;
-      }
+      };
+
+      await runOnce();
     },
-    [cancel]
+    [cancel, persistThinkingState]
   );
 
   return {
     messages,
     isStreaming,
     thinkingState,
+    hasReceivedToken,
     sendMessage,
     cancel,
   };

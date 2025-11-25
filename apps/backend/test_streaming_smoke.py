@@ -41,7 +41,7 @@ async def main():
                 print(text, end="", flush=True)
                 token_count += 1
 
-        print(f"\n\n✅ Streaming completed successfully!")
+        print("\n\n✅ Streaming completed successfully!")
         print(f"📊 Total tokens: {token_count}")
         print(f"📝 Full response: {full_response}")
 
