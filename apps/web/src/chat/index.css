@@ -1324,4 +1324,11 @@ textarea.lm-input,
 .recharts-tooltip-wrapper {
   /* Soften any default white text, making tooltips more readable on dark backgrounds */
   color: #e5e7eb;
+  /* Ensure tooltip appears above chart bars and elements */
+  z-index: 9999 !important;
+  pointer-events: none;
+}
+
+.recharts-tooltip-wrapper * {
+  pointer-events: auto;
 }
