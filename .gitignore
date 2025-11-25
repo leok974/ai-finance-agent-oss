@@ -87,6 +87,8 @@ apps/web/coverage/
 *.lcov
 lcov.info
 htmlcov/
+**/.vitest/
+**/.nyc_output/
 
 # Reinforced coverage & report ignores
 **/coverage/
@@ -97,6 +99,8 @@ htmlcov/
 ### Playwright test artifacts
 **/test-results/
 **/playwright-report/
+**/playwright-report-*/
+**/.playwright/
 **/.last-run.json
 apps/web/test-results/
 apps/web/playwright-report/
@@ -119,6 +123,8 @@ apps/web/.last-run.json
 *.tar
 *.tar.gz
 ledgermind-*.tar
+ledgermind-backend-*.tar
+ledgermind-web-*.tar
 
 ### Database backups (never commit)
 backup_*.sql

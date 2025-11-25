@@ -2,6 +2,7 @@
   "type": "module",
   "packageManager": "pnpm@9.0.0",
   "scripts": {
+    "clean:artifacts": "node scripts/clean-artifacts.mjs",
     "cf:purge": "node scripts/cf-purge.js --base=https://app.ledger-mind.org --dist=apps/web/dist --extra=/site.webmanifest,/favicon.ico",
     "cf:purge:changed": "node scripts/cf-purge.js --base=https://app.ledger-mind.org --dist=apps/web/dist --onlyIfChanged=1",
     "cf:purge:dry": "node scripts/cf-purge.js --base=https://app.ledger-mind.org --dist=apps/web/dist --onlyIfChanged=1 --dryRun=1",
