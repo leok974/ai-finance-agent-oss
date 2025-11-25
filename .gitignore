@@ -114,3 +114,8 @@ apps/web/.last-run.json
 *.log
 *.tmp
 *.swp
+
+### Docker build artifacts (never commit)
+*.tar
+*.tar.gz
+ledgermind-*.tar
