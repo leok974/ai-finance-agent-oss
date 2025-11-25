@@ -51,10 +51,14 @@ test.describe('Chat Streaming Consistency @prod @chat-stream', () => {
     await chatInput.fill('give me a quick recap');
     await chatInput.press('Enter');
 
-    // Wait for response - deterministic mode might be very fast
-    // Verify we get financial data, not an error message
+    // Wait for streaming to complete by watching thinking bubble disappear
+    const thinkingBubble = page.getByTestId('lm-chat-thinking');
+    await expect(thinkingBubble).toBeVisible({ timeout: 15000 });
+    await expect(thinkingBubble).toBeHidden({ timeout: 30000 });
+
+    // Now read the completed response
     const response = page.locator('[data-testid^="lm-chat-message-assistant"]').last();
-    await expect(response).toBeVisible({ timeout: 30000 });
+    await expect(response).toBeVisible({ timeout: 5000 });
 
     const responseText = await response.textContent();
 
@@ -77,9 +81,14 @@ test.describe('Chat Streaming Consistency @prod @chat-stream', () => {
     const monthSummaryButton = page.getByTestId('agent-tool-month-summary');
     await monthSummaryButton.click();
 
-    // Wait for response
+    // Wait for streaming to complete by watching thinking bubble disappear
+    const thinkingBubble = page.getByTestId('lm-chat-thinking');
+    await expect(thinkingBubble).toBeVisible({ timeout: 15000 });
+    await expect(thinkingBubble).toBeHidden({ timeout: 30000 });
+
+    // Now read the completed response
     const response = page.locator('[data-testid^="lm-chat-message-assistant"]').last();
-    await expect(response).toBeVisible({ timeout: 30000 });
+    await expect(response).toBeVisible({ timeout: 5000 });
 
     const responseText = await response.textContent();
 
@@ -104,17 +113,27 @@ test.describe('Chat Streaming Consistency @prod @chat-stream', () => {
     await chatInput.fill('give me a quick recap');
     await chatInput.press('Enter');
 
-    // Wait for response
+    // Wait for first streaming to complete
+    const thinkingBubble = page.getByTestId('lm-chat-thinking');
+    await expect(thinkingBubble).toBeVisible({ timeout: 15000 });
+    await expect(thinkingBubble).toBeHidden({ timeout: 30000 });
+
+    // Read first completed response
     const firstResponse = page.locator('[data-testid^="lm-chat-message-assistant"]').last();
-    await expect(firstResponse).toBeVisible({ timeout: 30000 });
+    await expect(firstResponse).toBeVisible({ timeout: 5000 });
     const firstResponseText = await firstResponse.textContent();
 
     // Second: use button
     const monthSummaryButton = page.getByTestId('agent-tool-month-summary');
     await monthSummaryButton.click();
 
+    // Wait for second streaming to complete
+    await expect(thinkingBubble).toBeVisible({ timeout: 15000 });
+    await expect(thinkingBubble).toBeHidden({ timeout: 30000 });
+
+    // Read second completed response
     const secondResponse = page.locator('[data-testid^="lm-chat-message-assistant"]').last();
-    await expect(secondResponse).toBeVisible({ timeout: 30000 });
+    await expect(secondResponse).toBeVisible({ timeout: 5000 });
     const secondResponseText = await secondResponse.textContent();
 
     // Both should contain financial data (flexible keywords)
@@ -140,9 +159,14 @@ test.describe('Chat Streaming Consistency @prod @chat-stream', () => {
     await chatInput.fill('month summary');
     await chatInput.press('Enter');
 
-    // Should see financial summary without error messages
+    // Wait for streaming to complete by watching thinking bubble disappear
+    const thinkingBubble = page.getByTestId('lm-chat-thinking');
+    await expect(thinkingBubble).toBeVisible({ timeout: 15000 });
+    await expect(thinkingBubble).toBeHidden({ timeout: 30000 });
+
+    // Now read the completed response
     const response = page.locator('[data-testid^="lm-chat-message-assistant"]').last();
-    await expect(response).toBeVisible({ timeout: 30000 });
+    await expect(response).toBeVisible({ timeout: 5000 });
 
     const responseText = await response.textContent();
 
