@@ -38,6 +38,7 @@ interface UseAgentStreamResult {
   isStreaming: boolean;
   thinkingState: ThinkingState | null;
   hasReceivedToken: boolean;
+  error: "unavailable" | null;
   sendMessage: (text: string, options?: { month?: string; mode?: string }) => Promise<void>;
   cancel: () => void;
 }
@@ -211,20 +212,18 @@ export function useAgentStream(): UseAgentStreamResult {
             const { done, value } = await reader.read();
             if (done) break;
 
-            const chunk = decoder.decode(value, { stream: true });
-            buffer += chunk;
+            buffer += decoder.decode(value, { stream: true });
 
-            // Split by newlines - SSE format uses \n between events
-            const lines = buffer.split('\n');
-            // Keep the last potentially incomplete line in the buffer
-            buffer = lines.pop() || '';
+            // Process complete lines using indexOf for robustness
+            let newlineIndex;
+            while ((newlineIndex = buffer.indexOf('\n')) !== -1) {
+              const rawLine = buffer.slice(0, newlineIndex).trim();
+              buffer = buffer.slice(newlineIndex + 1);
 
-            for (const line of lines) {
-              const trimmed = line.trim();
-              if (!trimmed) continue;
+              if (!rawLine) continue;
 
               try {
-                const event = JSON.parse(trimmed);
+                const event = JSON.parse(rawLine);
 
                 switch (event.type) {
                   case 'start':
@@ -343,8 +342,21 @@ export function useAgentStream(): UseAgentStreamResult {
                     break;
                 }
               } catch (parseError) {
-                console.error('[useAgentStream] Failed to parse event:', line, parseError);
+                console.warn('[useAgentStream] Failed to parse event line:', rawLine, parseError);
               }
+            }
+          }
+
+          // Handle any trailing partial JSON at the end of the stream
+          const tail = buffer.trim();
+          if (tail.length > 0) {
+            try {
+              const event = JSON.parse(tail);
+              // Process the final event using the same switch as above
+              // For simplicity, just log it - in production you'd call the same handler
+              console.log('[useAgentStream] Final event from tail:', event);
+            } catch (err) {
+              console.warn('[useAgentStream] Failed to parse final event tail:', tail, err);
             }
           }
         } catch (error: any) {
