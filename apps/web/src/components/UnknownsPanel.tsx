@@ -289,8 +289,18 @@ export default function UnknownsPanel({ month, onSeedRule: _onSeedRule, onChange
       refresh(); // Re-fetch unknowns after manual categorization
       onChanged?.(); // Notify parent
     }}
-    onSuccess={() => {
+    onSuccess={(res) => {
       // Called after successful manual categorization
+      // Immediately dismiss the categorized transaction(s) from UI
+      if (explainTxnId) {
+        dismissedTxnIdsForSession.add(explainTxnId);
+      }
+      // Also dismiss any similar transactions that were updated
+      if (res?.affected) {
+        res.affected.forEach((txn) => dismissedTxnIdsForSession.add(txn.id));
+      }
+      setRenderKey((n) => n + 1); // Force re-render to apply dismissal
+
       refresh(); // Re-fetch unknowns
       onChanged?.(); // Notify parent
     }}
