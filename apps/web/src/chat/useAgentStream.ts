@@ -212,17 +212,11 @@ export function useAgentStream(): UseAgentStreamResult {
             setTemporarilyUnavailable(true);
           }
 
+          console.error('[useAgentStream] HTTP error', response.status, errorMsg);
           toast.error('Agent request failed', {
             description: `Status ${response.status}`,
           });
-          setMessages((prev) => [
-            ...prev,
-            {
-              role: 'assistant',
-              content: errorMsg,
-              timestamp: Date.now(),
-            },
-          ]);
+          // DON'T add error to messages - show in banner only
           return;
         }
 
@@ -273,6 +267,7 @@ export function useAgentStream(): UseAgentStreamResult {
 
         // Event handler extracted for reuse
         const handleEvent = (event: any) => {
+          console.log('[useAgentStream] event', event.type, event);
           switch (event.type) {
                   case 'start':
                     // Session started
@@ -381,15 +376,7 @@ export function useAgentStream(): UseAgentStreamResult {
                     toast.error('Agent error', {
                       description: errorMsg,
                     });
-                    // Add error message
-                    setMessages((prev) => [
-                      ...prev,
-                      {
-                        role: 'assistant',
-                        content: `Error: ${errorMsg}`,
-                        timestamp: Date.now(),
-                      },
-                    ]);
+                    // DON'T add error to messages - show in banner only
                     break;
             }
           };
@@ -435,17 +422,11 @@ export function useAgentStream(): UseAgentStreamResult {
             console.log('[useAgentStream] Stream cancelled');
           } else {
             console.error('[useAgentStream] Stream error:', error);
+            setError(`Connection interrupted: ${error.message}`);
             toast.error('Agent stream interrupted', {
               description: 'Please try again.',
             });
-            setMessages((prev) => [
-              ...prev,
-              {
-                role: 'assistant',
-                content: `Connection interrupted: ${error.message}`,
-                timestamp: Date.now(),
-              },
-            ]);
+            // DON'T add error to messages - show in banner only
           }
         } finally {
           setIsStreaming(false);
