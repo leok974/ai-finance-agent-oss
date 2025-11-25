@@ -1713,8 +1713,8 @@ async def agent_stream(
                     # Only show "no data" message if there are truly no transactions
                     if txn_count == 0:
                         deterministic_response = (
-                            "I don't have any transaction data yet. "
-                            "Try uploading transactions or using sample data to get started."
+                            "I don't see any transactions in your account yet. "
+                            "You can upload a CSV file or click **Use sample data** to explore LedgerMind's insights."
                         )
                     else:
                         income = insights.get("income", 0)
@@ -1779,8 +1779,8 @@ async def agent_stream(
                             if txn_count == 0:
                                 # Truly no data - show onboarding message
                                 deterministic_response = (
-                                    "I don't have any transaction data to show spending trends yet. "
-                                    "Try uploading transactions or using sample data to get started."
+                                    "I don't see any transactions in your account yet. "
+                                    "You can upload a CSV file or click **Use sample data** to explore LedgerMind's insights."
                                 )
                             else:
                                 # Has transactions but all are zero-amount
@@ -1794,8 +1794,8 @@ async def agent_stream(
                                 else:
                                     # Still nothing - show softer message
                                     deterministic_response = (
-                                        f"I found {txn_count} transactions, but they don't have enough "
-                                        "spending or income data to show trends yet."
+                                        "I found transactions in your account, but not enough history for this view. "
+                                        "Try uploading more recent data or using **Use sample data** to preview full trends."
                                     )
 
                         # Build response if we have available_series and no deterministic_response set yet

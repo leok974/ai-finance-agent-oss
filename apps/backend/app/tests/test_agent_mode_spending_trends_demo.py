@@ -143,12 +143,12 @@ async def test_deterministic_trends_no_data_case():
 
     # Should return no-data message
     deterministic_response = (
-        "I don't have any transaction data to show spending trends yet. "
-        "Try uploading transactions or using sample data to get started."
+        "I don't see any transactions in your account yet. "
+        "You can upload a CSV file or click **Use sample data** to explore LedgerMind's insights."
     )
 
-    assert "don't have any transaction data" in deterministic_response
-    assert "sample data" in deterministic_response
+    assert "don't see any transactions" in deterministic_response
+    assert "Use sample data" in deterministic_response
 
 
 @pytest.mark.asyncio

@@ -8,8 +8,6 @@ Verifies that:
 """
 
 import pytest
-from unittest.mock import MagicMock, AsyncMock, patch
-from sqlalchemy.orm import Session
 
 
 @pytest.mark.asyncio
@@ -32,20 +30,19 @@ async def test_quick_recap_with_zero_transactions():
 
     # Simulate the deterministic quick recap logic from agent.py
     insights = ctx.get("insights", {})
-    month_str = ctx.get("month", "current month")
     txn_count = insights.get("transaction_count", 0)
 
     if txn_count == 0:
         deterministic_response = (
-            "I don't have any transaction data yet. "
-            "Try uploading transactions or using sample data to get started."
+            "I don't see any transactions in your account yet. "
+            "You can upload a CSV file or click **Use sample data** to explore LedgerMind's insights."
         )
     else:
         # Would build normal recap
         deterministic_response = "Month summary for..."
 
     # Assert: Should get "no data" message
-    assert "don't have any transaction data" in deterministic_response
+    assert "don't see any transactions" in deterministic_response
     assert txn_count == 0
 
 
@@ -75,8 +72,8 @@ async def test_quick_recap_with_transactions_but_zero_amounts():
 
     if txn_count == 0:
         deterministic_response = (
-            "I don't have any transaction data yet. "
-            "Try uploading transactions or using sample data to get started."
+            "I don't see any transactions in your account yet. "
+            "You can upload a CSV file or click **Use sample data** to explore LedgerMind's insights."
         )
     else:
         income = insights.get("income", 0)
@@ -97,7 +94,9 @@ async def test_quick_recap_with_transactions_but_zero_amounts():
         deterministic_response = "".join(recap_parts)
 
     # Assert: Should NOT get "no data" message
-    assert "don't have any transaction data" not in deterministic_response
+    assert (
+        "don't see any transactions in your account yet" not in deterministic_response
+    )
     assert "Month summary for 2025-11" in deterministic_response
     assert "Income: $0.00" in deterministic_response
     assert "5 uncategorized transactions" in deterministic_response
@@ -133,8 +132,8 @@ async def test_quick_recap_with_normal_demo_data():
 
     if txn_count == 0:
         deterministic_response = (
-            "I don't have any transaction data yet. "
-            "Try uploading transactions or using sample data to get started."
+            "I don't see any transactions in your account yet. "
+            "You can upload a CSV file or click **Use sample data** to explore LedgerMind's insights."
         )
     else:
         income = insights.get("income", 0)
@@ -163,7 +162,9 @@ async def test_quick_recap_with_normal_demo_data():
         deterministic_response = "".join(recap_parts)
 
     # Assert: Should get full summary
-    assert "don't have any transaction data" not in deterministic_response
+    assert (
+        "don't see any transactions in your account yet" not in deterministic_response
+    )
     assert "Month summary for 2025-11" in deterministic_response
     assert "Income: $5,000.00" in deterministic_response
     assert "Spend: $2,500.00" in deterministic_response
@@ -186,16 +187,16 @@ async def test_trends_with_zero_series():
     # Simulate the deterministic trends logic from agent.py
     if not available_series:
         deterministic_response = (
-            "I don't have any transaction data to show spending trends yet. "
-            "Try uploading transactions or using sample data to get started."
+            "I don't see any transactions in your account yet. "
+            "You can upload a CSV file or click **Use sample data** to explore LedgerMind's insights."
         )
     else:
         # Would build normal trends response
         deterministic_response = "Spending trends from..."
 
     # Assert: Should get "no data" message
-    assert "don't have any transaction data" in deterministic_response
-    assert "spending trends" in deterministic_response
+    assert "don't see any transactions" in deterministic_response
+    assert "Use sample data" in deterministic_response
 
 
 @pytest.mark.asyncio
@@ -203,6 +204,7 @@ async def test_trends_with_available_series():
     """
     When available_series has data, analytics_trends should return trends summary.
     """
+
     # Arrange: Mock trends series with 3 months
     class MockTrendPoint:
         def __init__(self, month, inflow, outflow):
@@ -219,8 +221,8 @@ async def test_trends_with_available_series():
     # Simulate the deterministic trends logic from agent.py
     if not available_series:
         deterministic_response = (
-            "I don't have any transaction data to show spending trends yet. "
-            "Try uploading transactions or using sample data to get started."
+            "I don't see any transactions in your account yet. "
+            "You can upload a CSV file or click **Use sample data** to explore LedgerMind's insights."
         )
     else:
         start_month = available_series[0].month
@@ -262,9 +264,13 @@ async def test_trends_with_available_series():
         deterministic_response = "".join(trends_parts)
 
     # Assert: Should get trends summary
-    assert "don't have any transaction data" not in deterministic_response
+    assert (
+        "don't see any transactions in your account yet" not in deterministic_response
+    )
     assert "Spending trends from 2025-09 to 2025-11" in deterministic_response
     assert "Overall pattern" in deterministic_response
-    assert "stable" in deterministic_response  # Trend is stable (26.7% increase, but threshold is >10% per month)
+    assert (
+        "stable" in deterministic_response
+    )  # Trend is stable (26.7% increase, but threshold is >10% per month)
     assert "$1,700.00" in deterministic_response
     assert "Showing 3 months" in deterministic_response
