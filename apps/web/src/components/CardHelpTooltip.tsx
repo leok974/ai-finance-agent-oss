@@ -1,10 +1,13 @@
 import * as React from 'react';
 import { useState, useEffect, useRef, useId, useMemo } from 'react';
+import * as ReactDOM from 'react-dom';
 import { fetchCardExplain } from '@/lib/agent/explain';
 import { fetchAgentStatus } from '@/lib/agent/status';
 import { useLlmStore } from '@/state/llmStore';
 import { Button, pillIconClass } from '@/components/ui/button';
 import { t } from '@/lib/i18n';
+import { useSafePortalReady } from '@/hooks/useSafePortal';
+import { getPortalRoot } from '@/lib/portal';
 
 /**
  * CardHelpTooltip
@@ -68,6 +71,7 @@ export default function CardHelpTooltip({
   const popId = useId();
 
   const modelsOk = useLlmStore((s) => s.modelsOk);
+  const portalReady = useSafePortalReady();
 
   const what = WHAT[cardId] ?? 'This card explains a key metric for the selected month.';
 
@@ -183,6 +187,138 @@ export default function CardHelpTooltip({
     return { kind: 'empty' } as const;
   }, [loadingWhy, why, whyErr, modelsOk, llmStatus?.llm_ok]);
 
+  // Render popover content
+  const popoverContent = open && portalReady && document.body ? (
+    <div
+      id={popId}
+      data-popover-role="card-help"
+      className="fixed z-[99999] w-[360px] rounded-xl border bg-background p-3 shadow-xl animate-in fade-in-0 zoom-in-95 pointer-events-auto"
+      style={{ top: pos.top, left: pos.left, isolation: 'isolate' }}
+      role="dialog"
+    >
+      <div className="flex items-center justify-between">
+        <div className="font-medium">Card Help</div>
+        <Button variant="pill-ghost" className="h-7 px-2 text-xs" onClick={closePopover}>
+          {t('ui.help.close')}
+        </Button>
+      </div>
+      <div className="mt-3 border-b pb-2 flex items-center gap-2 text-xs relative z-10">
+        <button
+          onClick={() => setActiveTab('what')}
+          className={`px-2 py-1 rounded-md relative z-10 cursor-pointer ${activeTab === 'what' ? 'bg-accent text-accent-foreground' : 'hover:bg-muted'}`}
+        >
+          {t('ui.help.what')}
+        </button>
+        {/* 🔑 Always clickable - removed disabled attribute */}
+        <button
+          onClick={switchToWhy}
+          className={`px-2 py-1 rounded-md relative z-10 cursor-pointer ${activeTab === 'why' ? 'bg-accent text-accent-foreground' : 'hover:bg-muted'}`}
+          aria-label="Why is this value what it is?"
+        >
+          {t('ui.help.why')}
+        </button>
+        {activeTab === 'what' && (
+          <span className="ml-auto text-[10px] uppercase tracking-wide opacity-60">
+            DETERMINISTIC
+          </span>
+        )}
+        {activeTab === 'why' && reasons.length > 0 && (
+          <span className="ml-auto text-[10px] uppercase tracking-wide opacity-60">
+            {reasons.includes('heuristic') && (
+              <span className="px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300">
+                HEURISTIC
+              </span>
+            )}
+            {grounded && (
+              <span className="px-1.5 py-0.5 rounded bg-sky-100 dark:bg-sky-900/30 text-sky-700 dark:text-sky-300 ml-1">
+                AI-GROUNDED
+              </span>
+            )}
+          </span>
+        )}
+      </div>
+      <div className="mt-3 text-sm whitespace-pre-wrap max-h-[50vh] overflow-auto">
+        {activeTab === 'what' && what}
+
+        {activeTab === 'why' && whyState.kind === 'loading' && (
+          <div className="text-muted-foreground">Fetching an explanation…</div>
+        )}
+
+        {activeTab === 'why' && whyState.kind === 'ready' && (
+          <div>{whyState.explain}</div>
+        )}
+
+        {activeTab === 'why' && whyState.kind === 'error' && (
+          <div className="space-y-3">
+            <p className="text-muted-foreground">{whyState.message}</p>
+            <div className="flex gap-2">
+              <Button
+                variant="pill"
+                size="sm"
+                onClick={() => {
+                  setWhy(null);
+                  setWhyErr(null);
+                  ensureExplain();
+                }}
+              >
+                Try again
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'why' && whyState.kind === 'fallback' && (
+          <div className="space-y-3">
+            <p className="text-muted-foreground">
+              An explanation isn't available right now because the language model is unavailable.
+            </p>
+            <div className="flex gap-2">
+              <Button
+                variant="pill"
+                size="sm"
+                onClick={() => {
+                  // Dispatch event to open chat with prefilled message
+                  window.dispatchEvent(new CustomEvent('agent:prefill', {
+                    detail: {
+                      message: `Explain ${cardId} for ${month ?? 'the current month'} and cite sources.`,
+                    }
+                  }));
+                  closePopover();
+                }}
+              >
+                Ask the agent
+              </Button>
+              {llmStatus?.llm_ok && (
+                <Button
+                  variant="pill-outline"
+                  size="sm"
+                  onClick={ensureExplain}
+                >
+                  Re-run now
+                </Button>
+              )}
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'why' && whyState.kind === 'empty' && (
+          <div className="space-y-3">
+            <p className="text-muted-foreground">
+              No explanation attached yet. Want me to generate one?
+            </p>
+            <Button
+              variant="pill"
+              size="sm"
+              onClick={ensureExplain}
+            >
+              Generate explanation
+            </Button>
+          </div>
+        )}
+      </div>
+    </div>
+  ) : null;
+
   return (
     <>
       <button
@@ -197,136 +333,7 @@ export default function CardHelpTooltip({
         {triggerLabel}
       </button>
 
-      {open && (
-        <div
-          id={popId}
-          data-popover-role="card-help"
-          className="fixed z-[99999] w-[360px] rounded-xl border bg-background p-3 shadow-xl animate-in fade-in-0 zoom-in-95 pointer-events-auto"
-          style={{ top: pos.top, left: pos.left, isolation: 'isolate' }}
-          role="dialog"
-        >
-          <div className="flex items-center justify-between">
-            <div className="font-medium">Card Help</div>
-            <Button variant="pill-ghost" className="h-7 px-2 text-xs" onClick={closePopover}>
-              {t('ui.help.close')}
-            </Button>
-          </div>
-          <div className="mt-3 border-b pb-2 flex items-center gap-2 text-xs relative z-10">
-            <button
-              onClick={() => setActiveTab('what')}
-              className={`px-2 py-1 rounded-md relative z-10 cursor-pointer ${activeTab === 'what' ? 'bg-accent text-accent-foreground' : 'hover:bg-muted'}`}
-            >
-              {t('ui.help.what')}
-            </button>
-            {/* 🔑 Always clickable - removed disabled attribute */}
-            <button
-              onClick={switchToWhy}
-              className={`px-2 py-1 rounded-md relative z-10 cursor-pointer ${activeTab === 'why' ? 'bg-accent text-accent-foreground' : 'hover:bg-muted'}`}
-              aria-label="Why is this value what it is?"
-            >
-              {t('ui.help.why')}
-            </button>
-            {activeTab === 'what' && (
-              <span className="ml-auto text-[10px] uppercase tracking-wide opacity-60">
-                DETERMINISTIC
-              </span>
-            )}
-            {activeTab === 'why' && reasons.length > 0 && (
-              <span className="ml-auto text-[10px] uppercase tracking-wide opacity-60">
-                {reasons.includes('heuristic') && (
-                  <span className="px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300">
-                    HEURISTIC
-                  </span>
-                )}
-                {grounded && (
-                  <span className="px-1.5 py-0.5 rounded bg-sky-100 dark:bg-sky-900/30 text-sky-700 dark:text-sky-300 ml-1">
-                    AI-GROUNDED
-                  </span>
-                )}
-              </span>
-            )}
-          </div>
-          <div className="mt-3 text-sm whitespace-pre-wrap max-h-[50vh] overflow-auto">
-            {activeTab === 'what' && what}
-
-            {activeTab === 'why' && whyState.kind === 'loading' && (
-              <div className="text-muted-foreground">Fetching an explanation…</div>
-            )}
-
-            {activeTab === 'why' && whyState.kind === 'ready' && (
-              <div>{whyState.explain}</div>
-            )}
-
-            {activeTab === 'why' && whyState.kind === 'error' && (
-              <div className="space-y-3">
-                <p className="text-muted-foreground">{whyState.message}</p>
-                <div className="flex gap-2">
-                  <Button
-                    variant="pill"
-                    size="sm"
-                    onClick={() => {
-                      setWhy(null);
-                      setWhyErr(null);
-                      ensureExplain();
-                    }}
-                  >
-                    Try again
-                  </Button>
-                </div>
-              </div>
-            )}
-
-            {activeTab === 'why' && whyState.kind === 'fallback' && (
-              <div className="space-y-3">
-                <p className="text-muted-foreground">
-                  An explanation isn't available right now because the language model is unavailable.
-                </p>
-                <div className="flex gap-2">
-                  <Button
-                    variant="pill"
-                    size="sm"
-                    onClick={() => {
-                      // Dispatch event to open chat with prefilled message
-                      window.dispatchEvent(new CustomEvent('agent:prefill', {
-                        detail: {
-                          message: `Explain ${cardId} for ${month ?? 'the current month'} and cite sources.`,
-                        }
-                      }));
-                      closePopover();
-                    }}
-                  >
-                    Ask the agent
-                  </Button>
-                  {llmStatus?.llm_ok && (
-                    <Button
-                      variant="pill-outline"
-                      size="sm"
-                      onClick={ensureExplain}
-                    >
-                      Re-run now
-                    </Button>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {activeTab === 'why' && whyState.kind === 'empty' && (
-              <div className="space-y-3">
-                <p className="text-muted-foreground">
-                  No explanation attached yet. Want me to generate one?
-                </p>
-                <Button
-                  variant="pill"
-                  size="sm"
-                  onClick={ensureExplain}
-                >
-                  Generate explanation
-                </Button>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+      {portalReady && popoverContent ? ReactDOM.createPortal(popoverContent, getPortalRoot()) : null}
     </>
   );
 }
