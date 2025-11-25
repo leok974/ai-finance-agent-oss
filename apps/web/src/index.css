@@ -105,7 +105,7 @@ lm-chatdock-host.ready {
   }
 
   /* Chart card + title */
-  .chart-card { @apply panel-no-border p-4 md:p-5; }
+  .chart-card { @apply panel-no-border p-4 md:p-5 relative; }
   .chart-title { @apply text-sm md:text-base font-medium tracking-tight mb-3 opacity-90; }
 
   /* Help long text wrap inside rows/lists */

@@ -298,7 +298,7 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
           <p className="text-sm text-gray-400">{t('ui.charts.empty_categories')}</p>
         )}
         {!loading && categoriesData.length > 0 && (
-          <div className="h-64" data-testid="top-categories-chart">
+          <div className="h-64 relative z-0" data-testid="top-categories-chart">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={categoriesData}>
                 <CartesianGrid stroke="var(--grid-line)" />
@@ -362,7 +362,7 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
           </div>
         )}
         {!loading && hasMerchantData && (
-          <div className="h-64" data-testid="top-merchants-chart">
+          <div className="h-64 relative z-0" data-testid="top-merchants-chart">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart
                 data={topMerchantsData}
@@ -447,7 +447,7 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
           <p className="text-sm text-gray-400">{t('ui.charts.empty_flows')}</p>
         )}
         {!loading && flowsData.length > 0 && (
-          <div className="h-64">
+          <div className="h-64 relative z-0">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={flowsData}>
                 <CartesianGrid stroke="var(--grid-line)" />
@@ -508,7 +508,7 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
           <p className="text-sm text-gray-400">{t('ui.charts.empty_trends')}</p>
         )}
         {!loading && trendsData.length > 0 && (
-          <div className="h-64">
+          <div className="h-64 relative z-0">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={trendsData}>
                 <CartesianGrid stroke="var(--grid-line)" />

@@ -72,4 +72,15 @@ describe('CardHelpTooltip', () => {
     // Ensure fetchCardExplain was called once
     expect(explainCalls.length).toBe(1);
   });
+
+  it('has high z-index to appear above chart elements', async () => {
+    render(<CardHelpTooltip cardId="charts.top_categories" />);
+    const btn = screen.getByRole('button', { name: /card help/i });
+    fireEvent.click(btn);
+    await waitFor(() => {
+      const popover = screen.getByRole('dialog');
+      expect(popover).toBeInTheDocument();
+      expect(popover).toHaveClass('z-[99999]');
+    });
+  });
 });

@@ -201,7 +201,7 @@ export default function CardHelpTooltip({
         <div
           id={popId}
           data-popover-role="card-help"
-          className="fixed z-[9999] w-[360px] rounded-xl border bg-background p-3 shadow-xl animate-in fade-in-0 zoom-in-95 pointer-events-auto"
+          className="fixed z-[99999] w-[360px] rounded-xl border bg-background p-3 shadow-xl animate-in fade-in-0 zoom-in-95 pointer-events-auto"
           style={{ top: pos.top, left: pos.left }}
           role="dialog"
         >
