@@ -21,6 +21,7 @@ import { t } from '@/lib/i18n'
 import { useRuleSeed } from '@/hooks/useRuleSeedHook'
 import { scrollToId } from '@/lib/scroll'
 import { SuggestionsInfoModal } from './SuggestionsInfoModal'
+import { toast } from 'sonner'
 
 // Session-level dismissal tracking (survives component remounts and re-fetches)
 const dismissedTxnIdsForSession = new Set<number>()
@@ -85,9 +86,13 @@ export default function UnknownsPanel({ month, onSeedRule: _onSeedRule, onChange
       // 3) Show success toast with details
       const categoryDisplay = suggestionLabel || categorySlug
       const merchantDisplay = txnMerchant || 'transaction'
-      ok(`Suggestion applied: Set category to "${categoryDisplay}" for "${merchantDisplay}"`)
+      toast.success(`Applied "${categoryDisplay}"`, {
+        description: `Updated category for ${merchantDisplay}`,
+        duration: 4000,
+      });
 
-      // 4) Notify parent
+      // 4) Notify parent and refresh
+      refresh(); // Re-fetch unknowns to update UI
       onChanged?.()
     },
     [ok, onChanged]
@@ -282,6 +287,11 @@ export default function UnknownsPanel({ month, onSeedRule: _onSeedRule, onChange
     onOpenChange={(v)=>{ setExplainOpen(v); if(!v){ setExplainTxnId(null); setExplainTxn(null); setExplainSuggestions([]);} }}
     onRefresh={() => {
       refresh(); // Re-fetch unknowns after manual categorization
+      onChanged?.(); // Notify parent
+    }}
+    onSuccess={() => {
+      // Called after successful manual categorization
+      refresh(); // Re-fetch unknowns
       onChanged?.(); // Notify parent
     }}
     unknowns={visibleUnknowns}

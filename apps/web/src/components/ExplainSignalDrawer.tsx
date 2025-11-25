@@ -21,6 +21,7 @@ import {
 import { CATEGORY_OPTIONS, CATEGORY_DEFS } from '@/lib/categories'
 import { Button } from '@/components/ui/button'
 import type { UnknownTxn } from '@/hooks/useUnknowns'
+import { toast } from 'sonner'
 
 type ExplainSignalDrawerEntryPoint = 'transactions' | 'unknowns';
 
@@ -76,13 +77,14 @@ function formatSuggestionReason(reasons?: string[]): string {
   return "Suggested as a possible fit. Treat this as a hint, not a final answer.";
 }
 
-export default function ExplainSignalDrawer({ txnId, open, onOpenChange, txn, suggestions, onRefresh, unknowns, entryPoint = 'transactions' }: {
+export default function ExplainSignalDrawer({ txnId, open, onOpenChange, txn, suggestions, onRefresh, onSuccess, unknowns, entryPoint = 'transactions' }: {
   txnId: number | null
   open: boolean
   onOpenChange: (v: boolean) => void
   txn?: any
   suggestions?: SuggestionItem[]
   onRefresh?: () => void
+  onSuccess?: (response?: ManualCategorizeResponse) => void
   unknowns?: UnknownTxn[]
   entryPoint?: ExplainSignalDrawerEntryPoint
 }) {
@@ -196,7 +198,7 @@ export default function ExplainSignalDrawer({ txnId, open, onOpenChange, txn, su
   if (!open || !portalReady || !document.body) return null;
   const fallbackHtml = buildDeterministicExplain(txn, data?.evidence, rationale);
   return ReactDOM.createPortal(
-    <div className="fixed inset-0 z-[9900]" aria-modal role="dialog" data-testid="explain-drawer">
+    <div className="fixed inset-0 z-[9900]" aria-modal role="dialog" data-testid="explain-drawer" data-drawer-type="manual-categorize">
       <div className="absolute inset-0 bg-black/70 backdrop-blur-[2px]" onClick={() => onOpenChange(false)} />
       <aside className="absolute right-0 top-0 h-full w-full max-w-[460px] bg-[rgb(var(--panel))] text-zinc-100 ring-1 ring-white/10 shadow-2xl border-l border-white/5 z-[1] overflow-y-auto">
         <header className="sticky top-0 bg-[rgb(var(--panel))]/95 backdrop-blur px-4 py-3 border-b border-white/5">
@@ -371,16 +373,26 @@ export default function ExplainSignalDrawer({ txnId, open, onOpenChange, txn, su
                     }
 
                     const categoryLabel = CATEGORY_DEFS[categorySlug]?.label || categorySlug;
+                    const merchantDisplay = txn?.merchant || txn?.description || 'transaction';
 
-                    emitToastSuccess(
-                      res.similar_updated > 0
-                        ? `Categorized 1 transaction (+${res.similar_updated} similar) as ${categoryLabel}.`
-                        : `Categorized 1 transaction as ${categoryLabel}.`
-                    );
+                    // Show success toast with details
+                    toast.success('Categorization applied', {
+                      description: res.similar_updated > 0
+                        ? `Updated ${res.similar_updated + 1} transaction${res.similar_updated > 0 ? 's' : ''} to "${categoryLabel}" for ${merchantDisplay}`
+                        : `Updated category to "${categoryLabel}" for ${merchantDisplay}`,
+                      duration: 4000,
+                    });
+
+                    // Call onSuccess callback for refresh
+                    onSuccess?.(res);
                     onRefresh?.();
                     onOpenChange(false);
                   } catch (err: any) {
-                    emitToastError(err?.message ?? 'Categorization failed. Please try again.');
+                    const errorMsg = err?.message ?? 'Categorization failed. Please try again.';
+                    toast.error('Failed to categorize', {
+                      description: errorMsg,
+                      duration: 5000,
+                    });
                   } finally {
                     setSaving(false);
                   }
