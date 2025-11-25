@@ -1,6 +1,6 @@
 # Phase 2 ML Pipeline - Implementation Complete ✅
 
-**Date**: November 4, 2025  
+**Date**: November 4, 2025
 **Status**: READY FOR USE
 
 ## Summary
@@ -183,7 +183,7 @@ from app.metrics_ml import suggest_compare_total, suggest_source_total
 def suggest_for_txn(txn):
     # Rules (primary)
     rule_label = run_rules(txn)
-    
+
     # Model (shadow)
     model_res = predict_row({
         "abs_amount": abs(txn.amount),
@@ -194,11 +194,11 @@ def suggest_for_txn(txn):
         "is_subscription": False,  # or detect
         "norm_desc": normalize_desc(txn.description),
     })
-    
+
     # Compare (shadow mode)
     agree = (model_res.get("label") == rule_label)
     suggest_compare_total.labels(agree=str(agree)).inc()
-    
+
     # Canary switch
     canary = os.getenv("SUGGEST_USE_MODEL_CANARY", "0")
     if canary == "1" and model_res.get("available"):

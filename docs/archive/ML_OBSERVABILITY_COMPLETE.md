@@ -43,7 +43,7 @@ Created dedicated dashboard with 4 panels:
 
 #### Panel 1-3: Stat Panels (Current Freshness)
 - **transactions freshness (hours)**: How stale is transactions table
-- **transaction_labels freshness (hours)**: How stale is labels table  
+- **transaction_labels freshness (hours)**: How stale is labels table
 - **ml_features freshness (hours)**: How stale is features table
 
 **Color thresholds**:
@@ -220,17 +220,17 @@ push_to_gateway('localhost:9091', job='dbt-freshness', registry=...)
 If you already scrape Postgres metrics, add:
 
 ```sql
-SELECT 
+SELECT
   'transactions' as table,
   EXTRACT(EPOCH FROM MAX(created_at)) as loaded_at_seconds
 FROM transactions
 UNION ALL
-SELECT 
+SELECT
   'transaction_labels' as table,
   EXTRACT(EPOCH FROM MAX(updated_at)) as loaded_at_seconds
 FROM transaction_labels
 UNION ALL
-SELECT 
+SELECT
   'ml_features' as table,
   EXTRACT(EPOCH FROM MAX(created_at)) as loaded_at_seconds
 FROM ml_features;
@@ -280,7 +280,7 @@ transactions freshness:        52 hours   🟡
 transaction_labels freshness:  65 hours   🟡
 ml_features freshness:          8 hours   🟢
 ```
-**Action**: 
+**Action**:
 1. Check ETL pipeline status
 2. Verify data ingestion scripts running
 3. Review Prometheus alerts (should have 2 warnings)
@@ -293,7 +293,7 @@ transactions freshness:       128 hours   🔴
 transaction_labels freshness: 135 hours   🔴
 ml_features freshness:        140 hours   🔴
 ```
-**Action**: 
+**Action**:
 1. **DO NOT RUN ML TRAINING** (data too stale)
 2. Investigate ETL failure
 3. Check database connectivity
@@ -309,19 +309,19 @@ graph TD
     B -->|< 2 days| C[No Alert]
     B -->|2-5 days| D[Warning Alert]
     B -->|> 5 days| E[Critical Alert]
-    
+
     D --> F[AlertManager]
     E --> F
-    
+
     F --> G[Slack/Email]
     F --> H[PagerDuty]
-    
+
     G --> I[Team Reviews]
     H --> J[On-Call Responds]
-    
+
     I --> K[Check DATA_QUALITY_COMPLETE.md]
     J --> K
-    
+
     K --> L{Root Cause}
     L -->|ETL Failed| M[Restart Pipeline]
     L -->|DB Offline| N[Check Postgres]
@@ -491,8 +491,8 @@ If implementing Option A/B/C, document in:
 
 ---
 
-**Implementation Status**: ✅ Complete (awaiting metric exporter for full functionality)  
-**dbt Lineage**: ✅ Active  
-**Grafana Dashboard**: ✅ Ready (needs metrics)  
-**Prometheus Alerts**: ✅ Ready (needs metrics + reload)  
+**Implementation Status**: ✅ Complete (awaiting metric exporter for full functionality)
+**dbt Lineage**: ✅ Active
+**Grafana Dashboard**: ✅ Ready (needs metrics)
+**Prometheus Alerts**: ✅ Ready (needs metrics + reload)
 **Last Updated**: November 4, 2025

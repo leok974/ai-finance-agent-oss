@@ -149,7 +149,7 @@ make ml-verify-calibration
 # Expected output:
 # Calibration enabled: True
 # Checking model directory: /app/models/ledger_suggestions/latest
-# 
+#
 # Model metadata:
 # {
 #   "ok": true,
@@ -158,13 +158,13 @@ make ml-verify-calibration
 #   "calibration_enabled": true,
 #   "passed_acceptance_gate": true
 # }
-# 
+#
 # Model artifacts:
 #   - pipeline.joblib (1234.5 KB)
 #   - classes.json (0.2 KB)
 #   - calibrator.pkl (45.3 KB)
 #   - meta.json (0.5 KB)
-# 
+#
 # ✅ Calibration artifact check PASSED
 ```
 
@@ -399,8 +399,8 @@ make precommit-run
 
 ---
 
-**Implementation Status**: ✅ Complete  
-**Total Tests Added**: 22+ (18 dbt + 4 pytest)  
-**Files Created/Modified**: 7  
-**CI Integration**: ✅ Complete  
+**Implementation Status**: ✅ Complete
+**Total Tests Added**: 22+ (18 dbt + 4 pytest)
+**Files Created/Modified**: 7
+**CI Integration**: ✅ Complete
 **Last Updated**: November 4, 2025

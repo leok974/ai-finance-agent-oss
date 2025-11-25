@@ -111,16 +111,16 @@ Checking source data freshness...
 18:24:16  Found 3 models, 22 tests, 0 snapshots, 0 analyses, 0 macros, 0 operations, 0 seed files, 7 sources, 0 exposures, 0 metrics, 0 groups
 
 18:24:16  Concurrency: 1 threads (target='prod')
-18:24:16  
+18:24:16
 18:24:16  1 of 3 START freshness of app.transactions ...................... [RUN]
 18:24:16  1 of 3 PASS freshness of app.transactions ...................... [PASS in 0.02s]
 18:24:16  2 of 3 START freshness of app.transaction_labels ............... [RUN]
 18:24:16  2 of 3 PASS freshness of app.transaction_labels ............... [PASS in 0.02s]
 18:24:16  3 of 3 START freshness of app.ml_features ...................... [RUN]
 18:24:16  3 of 3 PASS freshness of app.ml_features ...................... [PASS in 0.02s]
-18:24:16  
+18:24:16
 18:24:16  Finished running 3 freshness checks in 0.15s.
-18:24:16  
+18:24:16
 18:24:16  Completed successfully
 ```
 
@@ -262,7 +262,7 @@ docker compose exec postgres psql -U myuser -d finance -c \
 **Diagnosis**:
 ```sql
 -- Find offending rows
-SELECT 
+SELECT
   txn_id,
   ts_month,
   label_observed_at,
@@ -437,9 +437,9 @@ time() - max(transaction_labels_last_update_timestamp) > 172800  # 2 days
 
 ---
 
-**Implementation Status**: ✅ Complete  
-**Total Quality Gates**: 23+ tests  
-**Freshness Coverage**: 3 critical sources  
-**Leakage Prevention**: ✅ Active  
-**CI Integration**: ✅ Complete  
+**Implementation Status**: ✅ Complete
+**Total Quality Gates**: 23+ tests
+**Freshness Coverage**: 3 critical sources
+**Leakage Prevention**: ✅ Active
+**CI Integration**: ✅ Complete
 **Last Updated**: November 4, 2025
