@@ -119,3 +119,8 @@ apps/web/.last-run.json
 *.tar
 *.tar.gz
 ledgermind-*.tar
+
+### Database backups (never commit)
+backup_*.sql
+*.dump
+*.backup
