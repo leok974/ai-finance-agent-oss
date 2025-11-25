@@ -152,4 +152,52 @@ test.describe('Chat Streaming Consistency @prod @chat-stream', () => {
     // Should NOT contain error messages
     expect(responseText).not.toMatch(/temporarily unavailable|don't have any spending data/i);
   });
+
+  test('@prod thinking bubble shows tools during streaming', async ({ page }) => {
+    // Open chat panel
+    const launcher = page.getByTestId('lm-chat-launcher-button');
+    await expect(launcher).toBeVisible();
+    await launcher.click();
+
+    const shell = page.getByTestId('lm-chat-shell');
+    await expect(shell).toBeVisible();
+
+    // Type a query that will trigger tool execution (trends uses multiple tools)
+    const chatInput = shell.getByRole('textbox');
+    await chatInput.waitFor({ state: 'visible', timeout: 5000 });
+    await chatInput.fill('show my spending trends for this month');
+    await chatInput.press('Enter');
+
+    // 1) Thinking bubble should appear during streaming
+    const thinkingBubble = page.getByTestId('lm-chat-thinking');
+    await expect(thinkingBubble).toBeVisible({ timeout: 15000 });
+
+    // 2) Step text should be present and contain relevant keywords
+    const stepText = page.getByTestId('lm-chat-thinking-step');
+    await expect(stepText).toBeVisible();
+    const stepContent = await stepText.textContent();
+    expect(stepContent).toMatch(/analyzing|checking|trends|summary|overview|finance/i);
+
+    // 3) At least one tool chip should appear
+    const toolsContainer = page.getByTestId('lm-chat-thinking-tools');
+    await expect(toolsContainer).toBeVisible();
+
+    // Verify we have tool chips
+    const toolChips = toolsContainer.locator('[data-testid^="lm-chat-thinking-tool-"]');
+    const chipCount = await toolChips.count();
+    expect(chipCount).toBeGreaterThan(0);
+
+    // Optionally check that a specific tool is present
+    const firstChip = toolChips.first();
+    await expect(firstChip).toBeVisible();
+
+    // 4) Eventually, assistant message should appear
+    const assistantMessage = page
+      .locator('[data-testid^="lm-chat-message-assistant"]')
+      .last();
+    await expect(assistantMessage).toBeVisible({ timeout: 30000 });
+
+    // 5) Once streaming completes, thinking bubble should disappear
+    await expect(thinkingBubble).toBeHidden({ timeout: 10000 });
+  });
 });

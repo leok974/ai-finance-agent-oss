@@ -2703,7 +2703,7 @@ export default function ChatDock() {
       {agentStream.isStreaming && (
         <div
           className="rounded-xl bg-slate-900/95 border border-slate-700 shadow-2xl px-4 py-3 max-w-[280px] mb-2"
-          data-testid="lm-chat-thinking-bubble"
+          data-testid="lm-chat-thinking"
         >
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2">
@@ -2737,18 +2737,20 @@ export default function ChatDock() {
           )}
 
           {agentStream.thinkingState?.step && (
-            <p data-testid="chat-thinking-step" className="mb-2 text-[11px] text-slate-200 leading-relaxed">
+            <p data-testid="lm-chat-thinking-step" className="mb-2 text-[11px] text-slate-200 leading-relaxed">
               {agentStream.thinkingState.step}
             </p>
           )}
 
           {agentStream.thinkingState?.tools && agentStream.thinkingState.tools.length > 0 && (
-            <div className="flex flex-wrap gap-1">
+            <div className="flex flex-wrap gap-1" data-testid="lm-chat-thinking-tools">
               {agentStream.thinkingState.tools.map((tool) => {
                 const isActive = agentStream.thinkingState?.activeTool === tool;
                 return (
                   <span
                     key={tool}
+                    data-testid={`lm-chat-thinking-tool-${tool}`}
+                    data-active={isActive ? "true" : "false"}
                     className={cn(
                       "rounded-full border px-2 py-[2px] text-[10px] font-medium transition-all duration-200",
                       isActive
