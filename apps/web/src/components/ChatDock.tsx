@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import { wireAguiStream } from "@/lib/aguiStream";
 import { CHAT_STREAMING_ENABLED } from "@/lib/streaming-config";
 import { formatToolStatus } from "@/lib/formatToolStatus";
+import { useAgentStream, type ThinkingState } from "@/chat/useAgentStream";
 import RobotThinking from "@/components/ui/RobotThinking";
 import EnvAvatar from "@/components/EnvAvatar";
 import { useAuth, getUserInitial } from "@/state/auth";
@@ -323,6 +324,10 @@ export default function ChatDock() {
   // NEW: Streaming status state for live tool tracking above launcher
   const [isStreamingStatus, setIsStreamingStatus] = useState(false);
   const [streamingToolNames, setStreamingToolNames] = useState<string[]>([]);
+
+  // New agent streaming hook (alternative to AGUI)
+  const agentStream = useAgentStream();
+  const [useNewStreaming, setUseNewStreaming] = useState(false); // Toggle for new streaming
 
   // Poll agent status every 30 seconds
   React.useEffect(() => {
@@ -2704,6 +2709,37 @@ export default function ChatDock() {
           data-testid="lm-chat-tool-status"
         >
           {formatToolStatus(streamingToolNames)}
+        </div>
+      )}
+
+      {/* NEW: Thinking bubble for agent streaming */}
+      {agentStream.thinkingState && (
+        <div
+          className="rounded-xl bg-slate-900/95 border border-slate-700 shadow-2xl p-3 max-w-[280px] mb-2"
+          data-testid="lm-chat-thinking-bubble"
+        >
+          <div className="flex items-center justify-between mb-1">
+            <span className="font-semibold text-slate-100 text-sm">Thinking…</span>
+            <RobotThinking size={16} />
+          </div>
+          <p className="text-slate-300 text-xs mb-2">{agentStream.thinkingState.step}</p>
+          {agentStream.thinkingState.tools.length > 0 && (
+            <div className="flex flex-wrap gap-1">
+              {agentStream.thinkingState.tools.map(tool => (
+                <span
+                  key={tool}
+                  className={cn(
+                    "rounded-full px-2 py-[2px] text-[10px] font-medium transition-colors",
+                    agentStream.thinkingState?.activeTools.has(tool)
+                      ? "bg-blue-500/20 text-blue-300 border border-blue-400/30"
+                      : "bg-slate-800 text-slate-400 border border-slate-700"
+                  )}
+                >
+                  {tool.replace(/^(charts|insights|analytics)\./, '')}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
