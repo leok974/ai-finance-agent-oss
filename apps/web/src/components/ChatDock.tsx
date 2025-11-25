@@ -2651,13 +2651,14 @@ export default function ChatDock() {
 
             <form className="lm-chat-input-row" onSubmit={(e) => { e.preventDefault(); handleSend(); }}>
             <input
+              data-testid="chat-input"
               className="lm-chat-input"
               placeholder="Ask or type a command..."
               value={input}
               onChange={(e) => setInput(e.target.value)}
               disabled={busy}
             />
-            <Button className="lm-chat-send-button" type="submit" disabled={!input.trim() || busy} size="sm">
+            <Button data-testid="chat-send" className="lm-chat-send-button" type="submit" disabled={!input.trim() || busy} size="sm">
               Send
             </Button>
           </form>
@@ -2730,7 +2731,7 @@ export default function ChatDock() {
           )}
 
           {agentStream.thinkingState?.step && (
-            <p className="mb-2 text-[11px] text-slate-200 leading-relaxed">
+            <p data-testid="chat-thinking-step" className="mb-2 text-[11px] text-slate-200 leading-relaxed">
               {agentStream.thinkingState.step}
             </p>
           )}

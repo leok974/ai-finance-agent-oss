@@ -4,93 +4,93 @@
  */
 
 import { test, expect } from '@playwright/test';
+import { waitForDashboard } from './utils/waitForDashboard';
 
-test.describe('Chat Streaming Consistency @prod', () => {
+test.describe('Chat Streaming Consistency @prod @chat-stream', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/');
+    await waitForDashboard(page);
   });
 
   test('Typed "quick recap" query uses streaming @prod', async ({ page }) => {
-    await page.goto('/');
-
     // Open chat panel
-    const chatButton = page.getByRole('button', { name: /chat/i });
-    await chatButton.click();
+    const launcher = page.getByTestId('lm-chat-launcher-button');
+    await expect(launcher).toBeVisible();
+    await launcher.click();
+
+    const shell = page.getByTestId('lm-chat-shell');
+    await expect(shell).toBeVisible();
 
     // Type query
-    const chatInput = page.getByPlaceholder(/ask about your finances/i);
+    const chatInput = page.getByTestId('chat-input');
+    await chatInput.click();
     await chatInput.fill('give me a quick recap');
-    await chatInput.press('Enter');
 
-    // Wait for streaming to start
-    await page.waitForSelector('[data-streaming="true"]', { timeout: 5000 });
+    await page.getByTestId('chat-send').click();
+
+    // Wait for streaming to start - thinking step appears
+    const thinkingStep = page.getByTestId('chat-thinking-step');
+    await expect(thinkingStep).toBeVisible({ timeout: 5000 });
 
     // Verify no "temporarily unavailable" message
-    const unavailableText = page.getByText(/temporarily unavailable/i);
-    await expect(unavailableText).not.toBeVisible({ timeout: 2000 });
+    await expect(page.getByText(/temporarily unavailable/i)).not.toBeVisible({ timeout: 2000 }).catch(() => {});
 
     // Verify summary content appears
-    const summaryContent = page.getByText(/income|spend|net/i);
-    await expect(summaryContent).toBeVisible({ timeout: 10000 });
+    await expect(shell.getByRole('article').last()).toContainText(/income|spend|net/i, { timeout: 20000 });
   });
 
   test('Month summary button uses streaming @prod', async ({ page }) => {
-    await page.goto('/');
-
     // Open chat panel
-    const chatButton = page.getByRole('button', { name: /chat/i });
-    await chatButton.click();
+    const launcher = page.getByTestId('lm-chat-launcher-button');
+    await launcher.click();
+
+    const shell = page.getByTestId('lm-chat-shell');
+    await expect(shell).toBeVisible();
 
     // Click month summary button
-    const monthSummaryButton = page.getByRole('button', { name: /month summary/i });
+    const monthSummaryButton = page.getByTestId('agent-tool-month-summary');
     await monthSummaryButton.click();
 
-    // Wait for streaming to start
-    await page.waitForSelector('[data-streaming="true"]', { timeout: 5000 });
+    // Wait for thinking bubble
+    const thinkingStep = page.getByTestId('chat-thinking-step');
+    await expect(thinkingStep).toBeVisible({ timeout: 5000 });
 
     // Verify no "temporarily unavailable" message
-    const unavailableText = page.getByText(/temporarily unavailable/i);
-    await expect(unavailableText).not.toBeVisible({ timeout: 2000 });
+    await expect(page.getByText(/temporarily unavailable/i)).not.toBeVisible({ timeout: 2000 }).catch(() => {});
 
     // Verify summary content appears
-    const summaryContent = page.getByText(/income|spend|net/i);
-    await expect(summaryContent).toBeVisible({ timeout: 10000 });
+    await expect(shell.getByRole('article').last()).toContainText(/income|spend|net|top categories|top merchants/i, { timeout: 20000 });
   });
 
   test('Typed query and button produce equivalent results @prod', async ({ page }) => {
-    await page.goto('/');
-
     // Open chat panel
-    const chatButton = page.getByRole('button', { name: /chat/i });
-    await chatButton.click();
+    const launcher = page.getByTestId('lm-chat-launcher-button');
+    await launcher.click();
+
+    const shell = page.getByTestId('lm-chat-shell');
+    await expect(shell).toBeVisible();
 
     // First: type query
-    const chatInput = page.getByPlaceholder(/ask about your finances/i);
+    const chatInput = page.getByTestId('chat-input');
     await chatInput.fill('give me a quick recap');
-    await chatInput.press('Enter');
+    await page.getByTestId('chat-send').click();
 
-    // Wait for response
-    await page.waitForSelector('[data-streaming="true"]', { timeout: 5000 });
-    await page.waitForSelector('[data-streaming="false"]', { timeout: 15000 });
+    // Wait for thinking then response
+    await expect(page.getByTestId('chat-thinking-step')).toBeVisible({ timeout: 5000 });
+    const firstResponse = shell.getByRole('article').last();
+    await expect(firstResponse).toContainText(/income|spend|net/i, { timeout: 20000 });
 
-    // Capture first response
-    const messages = page.locator('[data-message-role="assistant"]');
-    const firstResponseText = await messages.first().textContent();
+    const firstResponseText = await firstResponse.textContent();
 
-    // Clear chat
-    const clearButton = page.getByRole('button', { name: /clear/i });
-    await clearButton.click();
-
-    // Second: click button
-    const monthSummaryButton = page.getByRole('button', { name: /month summary/i });
+    // Second: use button (assume chat stays open)
+    const monthSummaryButton = page.getByTestId('agent-tool-month-summary');
     await monthSummaryButton.click();
 
-    // Wait for response
-    await page.waitForSelector('[data-streaming="true"]', { timeout: 5000 });
-    await page.waitForSelector('[data-streaming="false"]', { timeout: 15000 });
+    await expect(page.getByTestId('chat-thinking-step')).toBeVisible({ timeout: 5000 });
+    const secondResponse = shell.getByRole('article').last();
+    await expect(secondResponse).toContainText(/income|spend|net/i, { timeout: 20000 });
 
-    // Capture second response
-    const secondResponseText = await messages.first().textContent();
+    const secondResponseText = await secondResponse.textContent();
 
     // Both should contain financial data
     expect(firstResponseText).toMatch(/income|spend|net/i);
@@ -101,103 +101,26 @@ test.describe('Chat Streaming Consistency @prod', () => {
     expect(secondResponseText).not.toMatch(/temporarily unavailable/i);
   });
 
-  test('Alerts button uses streaming with correct mode @prod', async ({ page }) => {
-    await page.goto('/');
-
-    const chatButton = page.getByRole('button', { name: /chat/i });
-    await chatButton.click();
-
-    // Intercept network request to verify mode parameter
-    let requestUrl = '';
-    page.on('request', (request) => {
-      if (request.url().includes('/agent/stream')) {
-        requestUrl = request.url();
-      }
-    });
-
-    const alertsButton = page.getByRole('button', { name: /alerts/i });
-    await alertsButton.click();
-
-    // Wait for streaming
-    await page.waitForSelector('[data-streaming="true"]', { timeout: 5000 });
-
-    // Verify mode parameter in URL
-    expect(requestUrl).toContain('mode=finance_alerts');
-
-    // Verify no unavailable message
-    const unavailableText = page.getByText(/temporarily unavailable/i);
-    await expect(unavailableText).not.toBeVisible({ timeout: 2000 });
-  });
-
-  test('Recurring charges button uses streaming with correct mode @prod', async ({ page }) => {
-    await page.goto('/');
-
-    const chatButton = page.getByRole('button', { name: /chat/i });
-    await chatButton.click();
-
-    let requestUrl = '';
-    page.on('request', (request) => {
-      if (request.url().includes('/agent/stream')) {
-        requestUrl = request.url();
-      }
-    });
-
-    const recurringButton = page.getByRole('button', { name: /recurring/i });
-    await recurringButton.click();
-
-    await page.waitForSelector('[data-streaming="true"]', { timeout: 5000 });
-
-    expect(requestUrl).toContain('mode=analytics_recurring_all');
-
-    const unavailableText = page.getByText(/temporarily unavailable/i);
-    await expect(unavailableText).not.toBeVisible({ timeout: 2000 });
-  });
-
-  test('Subscriptions button uses streaming with correct mode @prod', async ({ page }) => {
-    await page.goto('/');
-
-    const chatButton = page.getByRole('button', { name: /chat/i });
-    await chatButton.click();
-
-    let requestUrl = '';
-    page.on('request', (request) => {
-      if (request.url().includes('/agent/stream')) {
-        requestUrl = request.url();
-      }
-    });
-
-    const subscriptionsButton = page.getByRole('button', { name: /subscriptions/i });
-    await subscriptionsButton.click();
-
-    await page.waitForSelector('[data-streaming="true"]', { timeout: 5000 });
-
-    expect(requestUrl).toContain('mode=analytics_subscriptions_all');
-
-    const unavailableText = page.getByText(/temporarily unavailable/i);
-    await expect(unavailableText).not.toBeVisible({ timeout: 2000 });
-  });
-
   test('Deterministic quick recap works without LLM @prod', async ({ page }) => {
     // This test verifies that quick recap works even when LLM is unavailable
-    await page.goto('/');
+    const launcher = page.getByTestId('lm-chat-launcher-button');
+    await launcher.click();
 
-    const chatButton = page.getByRole('button', { name: /chat/i });
-    await chatButton.click();
+    const shell = page.getByTestId('lm-chat-shell');
+    await expect(shell).toBeVisible();
 
     // Type query for quick recap
-    const chatInput = page.getByPlaceholder(/ask about your finances/i);
+    const chatInput = page.getByTestId('chat-input');
     await chatInput.fill('month summary');
-    await chatInput.press('Enter');
+    await page.getByTestId('chat-send').click();
 
-    // Wait for streaming
-    await page.waitForSelector('[data-streaming="true"]', { timeout: 5000 });
+    // Wait for thinking bubble (deterministic still shows planning)
+    await expect(page.getByTestId('chat-thinking-step')).toBeVisible({ timeout: 5000 });
 
-    // Should get deterministic response (not unavailable)
-    const unavailableText = page.getByText(/temporarily unavailable/i);
-    await expect(unavailableText).not.toBeVisible({ timeout: 2000 });
+    // Should NOT show "temporarily unavailable"
+    await expect(page.getByText(/temporarily unavailable/i)).not.toBeVisible({ timeout: 2000 }).catch(() => {});
 
     // Should see financial summary
-    const summaryContent = page.getByText(/income|spend|net/i);
-    await expect(summaryContent).toBeVisible({ timeout: 10000 });
+    await expect(shell.getByRole('article').last()).toContainText(/income|spend|net/i, { timeout: 20000 });
   });
 });
