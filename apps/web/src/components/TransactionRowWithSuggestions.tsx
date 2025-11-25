@@ -95,10 +95,17 @@ export function TransactionRowWithSuggestions({
       await onAcceptSuggestion(transaction.id, candidate.label);
 
       // 5) Show success feedback with details
-      const merchantDisplay = transaction.merchant || transaction.description;
-      toast.success(`Suggestion applied: Set category to "${candidate.label}" for "${merchantDisplay}"`);
+      const merchantDisplay = transaction.merchant || transaction.description || 'transaction';
+      toast.success(`Applied "${candidate.label}"`, {
+        description: `Updated category for ${merchantDisplay}`,
+        duration: 4000,
+      });
     } catch (error) {
-      toast.error('Failed to apply suggestion');
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+      toast.error('Failed to apply suggestion', {
+        description: errorMsg,
+        duration: 5000,
+      });
       console.error('Accept suggestion error:', error);
     } finally {
       setApplying(false);
@@ -108,7 +115,10 @@ export function TransactionRowWithSuggestions({
   const handleReject = (candidate: { label: string }) => {
     // Optional: notify parent if rejection tracking needed
     onRejectSuggestion?.(transaction.id, candidate.label);
-    toast('Suggestion dismissed');
+    toast.info('Suggestion dismissed', {
+      description: `Won't suggest "${candidate.label}" for similar transactions`,
+      duration: 3000,
+    });
   };
 
   // Convert suggestions to CategoryCell format
@@ -155,10 +165,18 @@ export function TransactionRowWithSuggestions({
 
       setAppliedCategory(category);
       await onAcceptSuggestion(transaction.id, category);
-      toast.success(`Category updated to ${category}`);
+      const ruleText = makeRule ? ' (+ rule created)' : '';
+      toast.success(`Category updated to "${category}"${ruleText}`, {
+        description: transaction.merchant || transaction.description || undefined,
+        duration: 4000,
+      });
     } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
       console.error('Failed to save category:', error);
-      toast.error('Failed to save category');
+      toast.error('Failed to save category', {
+        description: errorMsg,
+        duration: 5000,
+      });
     } finally {
       setApplying(false);
     }
