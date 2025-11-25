@@ -170,7 +170,6 @@ async def seed_demo_data(
                 date=row["date"],
                 month=row["month"],
                 merchant=row["merchant"],
-                merchant_raw=row["merchant_raw"],
                 merchant_canonical=row["merchant_canonical"],
                 description=row["description"],
                 amount=row["amount"],
@@ -178,7 +177,6 @@ async def seed_demo_data(
                 raw_category=row["raw_category"],
                 pending=row["pending"],
                 is_demo=True,  # Mark as demo data (excluded from ML training)
-                source="demo_seed",
             )
             db.add(txn)
             added_count += 1
