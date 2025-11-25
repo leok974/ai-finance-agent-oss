@@ -1708,31 +1708,39 @@ async def agent_stream(
                     # Use the insights from context (already enriched earlier)
                     insights = ctx.get("insights", {})
                     month_str = month or ctx.get("month", "current month")
+                    txn_count = insights.get("transaction_count", 0)
 
-                    income = insights.get("income", 0)
-                    spend = abs(insights.get("spend", 0))
-                    net = insights.get("net", 0)
-                    unknowns = insights.get("unknowns_count", 0)
+                    # Only show "no data" message if there are truly no transactions
+                    if txn_count == 0:
+                        deterministic_response = (
+                            "I don't have any transaction data yet. "
+                            "Try uploading transactions or using sample data to get started."
+                        )
+                    else:
+                        income = insights.get("income", 0)
+                        spend = abs(insights.get("spend", 0))
+                        net = insights.get("net", 0)
+                        unknowns = insights.get("unknowns_count", 0)
 
-                    recap_parts = [
-                        f"Month summary for {month_str}:",
-                        f"\n\n📊 Income: ${income:,.2f}",
-                        f"\n💸 Spend: ${spend:,.2f}",
-                        f"\n📈 Net: ${net:,.2f}",
-                    ]
+                        recap_parts = [
+                            f"Month summary for {month_str}:",
+                            f"\n\n📊 Income: ${income:,.2f}",
+                            f"\n💸 Spend: ${spend:,.2f}",
+                            f"\n📈 Net: ${net:,.2f}",
+                        ]
 
-                    if unknowns > 0:
-                        recap_parts.append(f"\n⚠️ {unknowns} uncategorized transactions")
+                        if unknowns > 0:
+                            recap_parts.append(f"\n⚠️ {unknowns} uncategorized transactions")
 
-                    top_categories = insights.get("top_categories", [])[:3]
-                    if top_categories:
-                        recap_parts.append("\n\n**Top categories:**")
-                        for cat in top_categories:
-                            cat_name = cat.get("category", "Unknown")
-                            cat_spend = abs(cat.get("spend", 0))
-                            recap_parts.append(f"\n• {cat_name}: ${cat_spend:,.2f}")
+                        top_categories = insights.get("top_categories", [])[:3]
+                        if top_categories:
+                            recap_parts.append("\n\n**Top categories:**")
+                            for cat in top_categories:
+                                cat_name = cat.get("category", "Unknown")
+                                cat_spend = abs(cat.get("spend", 0))
+                                recap_parts.append(f"\n• {cat_name}: ${cat_spend:,.2f}")
 
-                    deterministic_response = "".join(recap_parts)
+                        deterministic_response = "".join(recap_parts)
                 except Exception as det_err:
                     logger.warning(
                         f"[agent_stream] Deterministic quick recap failed: {det_err}"
@@ -1760,7 +1768,9 @@ async def agent_stream(
                         ]
 
                         if not available_series:
-                            # Truly no data
+                            # Check if there are any transactions at all
+                            # If available_series is empty, it means no months with non-zero spend/income
+                            # But there might still be zero-amount transactions
                             deterministic_response = (
                                 "I don't have any transaction data to show spending trends yet. "
                                 "Try uploading transactions or using sample data to get started."

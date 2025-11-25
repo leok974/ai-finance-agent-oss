@@ -145,6 +145,47 @@ es.addEventListener('finish', () => {
 
 ---
 
+## Streaming & Planner UI
+
+### `/agent/stream` Endpoint (NDJSON)
+
+**Protocol**: Newline-Delimited JSON (NDJSON) over HTTP streaming  
+**Media Type**: `application/x-ndjson`  
+**Purpose**: Real-time chat responses with tool execution visibility
+
+**Event Types**:
+- `start` – Session initialization
+- `planner` – Shows detected intent and tools to be executed
+- `tool_start` / `tool_end` – Tool execution lifecycle
+- `token` – LLM response text chunks (streamed character-by-character or word-by-word)
+- `done` – Stream completion
+- `error` – Error occurred (with message details)
+
+**Frontend Integration** (`useAgentStream.ts`):
+- Custom React hook manages NDJSON parsing with buffer handling for concatenated events
+- Displays "Thinking…" bubble with animated tool chips during `planner` phase
+- Progressive text rendering as `token` events arrive
+- Fallback parser handles both proper NDJSON (real newlines) and escaped `\n` sequences
+
+**LLM Provider Strategy**:
+- **Local-first**: Ollama (local inference, no API costs)
+- **Fallback**: OpenAI API (when Ollama unavailable or warming up)
+- **Automatic**: Backend switches providers transparently during stream
+
+**Testing**:
+- E2E tests verify streaming works end-to-end: `apps/web/tests/e2e/chat-streaming-consistency.spec.ts`
+- Tests run against production (`https://app.ledger-mind.org`) with demo auth
+- Assertions check for assistant responses within 30s timeout
+- Validates both user queries and tool-based interactions
+
+**Why This Matters** (for recruiters/hiring managers):
+- **UX**: Users see progress in real-time instead of waiting for complete response
+- **Transparency**: Tool execution visible (users know what data is being accessed)
+- **Reliability**: Multi-provider fallback ensures high availability
+- **Testability**: E2E tests prevent regressions in production streaming behavior
+
+---
+
 ### POST `/agent/tools/charts/summary`
 
 Get month financial summary (income, spend, net) without LLM rephrase.

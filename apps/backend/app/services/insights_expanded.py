@@ -39,6 +39,7 @@ class MonthAgg:
     unknown_spend_amount: float
     unknown_spend_count: int
     large_transactions: List[Dict[str, Any]]
+    transaction_count: int = 0
 
 
 def _safe_pct(curr: float, prev: float) -> Optional[float]:
@@ -131,6 +132,7 @@ def load_month(
         unknown_spend_amount=unknown_amount,
         unknown_spend_count=unknown_count,
         large_transactions=large,
+        transaction_count=len(txns),
     )
 
 
@@ -278,5 +280,6 @@ def build_expanded_insights(
         "top_categories": top_cats,
         "top_merchants": top_merch,
         "large_transactions": curr.large_transactions,
+        "transaction_count": curr.transaction_count,
         "anomalies": anomalies,
     }
