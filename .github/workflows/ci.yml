@@ -62,7 +62,7 @@ jobs:
           git diff --exit-code .coveragerc || { echo "Change in .coveragerc detected. If intentional, set ALLOW_OMIT_DIFF=1 and add rationale to PR." ; exit 1 ; }
 
       - name: Run backend tests with coverage
-        run: pytest --cov=app --cov-report=xml --cov-report=term
+        run: pnpm -C apps/backend pytest --cov=app --cov-report=xml --cov-report=term
 
       - name: Upload backend coverage
         uses: actions/upload-artifact@v4
@@ -93,7 +93,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Typecheck (web)
-        run: pnpm typecheck
+        run: pnpm -C apps/web typecheck
 
       - name: Test (web)
-        run: pnpm test -- --ci --reporter=default
+        run: pnpm -C apps/web vitest run --ci --reporter=default
