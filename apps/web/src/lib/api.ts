@@ -1691,8 +1691,7 @@ export const agentTools = {
   chartsMerchants: (body: Record<string, unknown>, signal?: AbortSignal) => fetchJSON('agent/tools/charts/merchants', { method: 'POST', body: JSON.stringify(body), signal }),
   chartsFlows: (body: Record<string, unknown>, signal?: AbortSignal) => fetchJSON('agent/tools/charts/flows', { method: 'POST', body: JSON.stringify(body), signal }),
   chartsSpendingTrends: (body: Record<string, unknown>, signal?: AbortSignal) => fetchJSON('agent/tools/charts/spending-trends', { method: 'POST', body: JSON.stringify(body), signal }),
-  // Suggestions (returns { items, meta? })
-  suggestionsWithMeta: (body: Record<string, unknown>, signal?: AbortSignal) => fetchJSON('agent/tools/suggestions', { method: 'POST', body: JSON.stringify(body), signal }),
+  // Note: suggestionsWithMeta removed - deprecated in favor of ML feedback system
   // Insights
   insightsExpanded: (body: Record<string, unknown>, signal?: AbortSignal) => fetchJSON('agent/tools/insights/expanded', { method: 'POST', body: JSON.stringify({ ...body, view: 'insights' }), signal }),
   financeDeepDive: (body: Record<string, unknown>, signal?: AbortSignal) => fetchJSON('agent/tools/insights/expanded', { method: 'POST', body: JSON.stringify({ ...body, view: 'deep_dive' }), signal }),

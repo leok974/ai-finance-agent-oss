@@ -1730,7 +1730,9 @@ async def agent_stream(
                         ]
 
                         if unknowns > 0:
-                            recap_parts.append(f"\n⚠️ {unknowns} uncategorized transactions")
+                            recap_parts.append(
+                                f"\n⚠️ {unknowns} uncategorized transactions"
+                            )
 
                         top_categories = insights.get("top_categories", [])[:3]
                         if top_categories:
@@ -1768,14 +1770,36 @@ async def agent_stream(
                         ]
 
                         if not available_series:
-                            # Check if there are any transactions at all
-                            # If available_series is empty, it means no months with non-zero spend/income
-                            # But there might still be zero-amount transactions
-                            deterministic_response = (
-                                "I don't have any transaction data to show spending trends yet. "
-                                "Try uploading transactions or using sample data to get started."
-                            )
-                        else:
+                            # Double-check: does the user have ANY transactions at all?
+                            from app.services.insights_expanded import load_month
+
+                            check_insights = load_month(db, auth.get("user_id"), None)
+                            txn_count = check_insights.get("transaction_count", 0)
+
+                            if txn_count == 0:
+                                # Truly no data - show onboarding message
+                                deterministic_response = (
+                                    "I don't have any transaction data to show spending trends yet. "
+                                    "Try uploading transactions or using sample data to get started."
+                                )
+                            else:
+                                # Has transactions but all are zero-amount
+                                # Try to get ANY available months without strict filtering
+                                fallback_series = [
+                                    p for p in trends_result.series if p.month
+                                ]
+                                if fallback_series:
+                                    # Use fallback and continue to build response
+                                    available_series = fallback_series
+                                else:
+                                    # Still nothing - show softer message
+                                    deterministic_response = (
+                                        f"I found {txn_count} transactions, but they don't have enough "
+                                        "spending or income data to show trends yet."
+                                    )
+
+                        # Build response if we have available_series and no deterministic_response set yet
+                        if available_series and not deterministic_response:
                             # Build response from available months
                             start_month = available_series[0].month
                             end_month = available_series[-1].month

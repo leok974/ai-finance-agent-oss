@@ -264,14 +264,14 @@ const UploadCsv: React.FC<UploadCsvProps> = ({ onUploaded, defaultReplace = true
       const resolved = detectedMonth || month || latest;
       if (resolved) {
         // Fire-and-forget to avoid blocking UI
-        // Refetch all key dashboard data: charts and suggestions
+        // Refetch all key dashboard data: charts
         void Promise.allSettled([
           chartsSummary(resolved),
           chartsMerchants(resolved, 10),
           chartsCategories(resolved, 10),
           chartsFlows(resolved),
           agentTools.chartsSpendingTrends({ month: resolved, months_back: 6 }),
-          agentTools.suggestionsWithMeta({ month: resolved, window_months: 3, min_support: 3, min_share: 0.6, limit: 10 }),
+          // Note: /agent/tools/suggestions was deprecated - ML feedback system replaced it
         ]);
       }
     } catch {
