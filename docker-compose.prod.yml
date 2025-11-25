@@ -212,7 +212,7 @@ services:
         VITE_BUILD_BRANCH: ${VITE_BUILD_BRANCH:-local}
         VITE_BUILD_COMMIT: ${VITE_BUILD_COMMIT:-dev}
         VITE_BUILD_TIME: ${VITE_BUILD_TIME:-unknown}
-    image: ledgermind-web:main-f62d38d6
+    image: ledgermind-web:main-12b94d2d
     depends_on:
       backend:
         condition: service_healthy
