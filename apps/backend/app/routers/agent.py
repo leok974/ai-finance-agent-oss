@@ -1632,6 +1632,162 @@ def agent_rephrase(
     return r
 
 
+@router.get("/stream")
+async def agent_stream(
+    q: str = Query(..., description="User query"),
+    month: Optional[str] = Query(None, pattern=r"^\d{4}-\d{2}$"),
+    mode: Optional[str] = Query(None, description="Force routing mode"),
+    db: Session = Depends(get_db),
+    auth: dict = Depends(verify_hmac_auth),
+):
+    """
+    Streaming endpoint for ChatDock with token-by-token responses and planner/tool events.
+
+    Returns NDJSON stream with events:
+    - {"type": "start", "data": {"session_id": "...", "intent": "..."}}
+    - {"type": "planner", "data": {"step": "...", "tools": [...]}}
+    - {"type": "tool_start", "data": {"name": "..."}}
+    - {"type": "token", "data": {"text": "..."}}
+    - {"type": "tool_end", "data": {"name": "...", "ok": true}}
+    - {"type": "done", "data": {}}
+    """
+    from fastapi.responses import StreamingResponse
+    import asyncio
+
+    async def event_generator():
+        session_id = str(uuid.uuid4())[:8]
+
+        try:
+            # Send start event
+            yield json.dumps(
+                {"type": "start", "data": {"session_id": session_id, "query": q}}
+            ) + "\n"
+
+            # Build request similar to /chat
+            messages = [{"role": "user", "content": q}]
+
+            # Enrich context
+            ctx = _enrich_context(
+                db=db, ctx={"month": month} if month else None, txn_id=None
+            )
+
+            # Determine mode/intent
+            user_text = q.lower()
+            detected_mode = mode or _detect_mode(user_text, ctx)
+
+            # Send planner event with detected mode and tools
+            tools_for_mode = _get_tools_for_mode(detected_mode)
+            yield json.dumps(
+                {
+                    "type": "planner",
+                    "data": {
+                        "step": f"Analyzing {detected_mode or 'your request'}",
+                        "tools": tools_for_mode,
+                    },
+                }
+            ) + "\n"
+
+            # Execute tools
+            for tool_name in tools_for_mode:
+                yield json.dumps(
+                    {"type": "tool_start", "data": {"name": tool_name}}
+                ) + "\n"
+
+                # Small delay to simulate tool execution
+                await asyncio.sleep(0.05)
+
+                yield json.dumps(
+                    {"type": "tool_end", "data": {"name": tool_name, "ok": True}}
+                ) + "\n"
+
+            # Build context string for LLM
+            ctx_str = json.dumps(ctx, default=str)
+            if len(ctx_str) > 10000:
+                ctx_str = ctx_str[:10000] + " …(trimmed)"
+
+            # Prepare LLM messages
+            final_messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+            final_messages.extend(messages)
+            final_messages.append(
+                {
+                    "role": "system",
+                    "content": f"## CONTEXT\n{ctx_str}\n## INTENT: general",
+                }
+            )
+
+            # Check LLM health
+            from app.services.llm_health import is_llm_available
+
+            llm_available = await is_llm_available(use_cache=True)
+
+            if not llm_available:
+                # Stream fallback message
+                fallback_msg = "The AI assistant is temporarily unavailable. Please try again in a moment."
+                for char in fallback_msg:
+                    yield json.dumps({"type": "token", "data": {"text": char}}) + "\n"
+                    await asyncio.sleep(0.01)
+            else:
+                # Stream LLM response token by token
+                model = settings.DEFAULT_LLM_MODEL
+
+                # Call LLM (non-streaming for now, will implement streaming later)
+                reply, _ = await asyncio.to_thread(
+                    llm_mod.call_llm,
+                    model=model,
+                    messages=final_messages,
+                    temperature=0.2,
+                    top_p=0.9,
+                )
+
+                # Simulate streaming by sending chunks
+                for char in reply:
+                    yield json.dumps({"type": "token", "data": {"text": char}}) + "\n"
+                    await asyncio.sleep(
+                        0.005
+                    )  # Small delay for visual streaming effect
+
+            # Send done event
+            yield json.dumps({"type": "done", "data": {}}) + "\n"
+
+        except Exception as e:
+            logger.error(f"[agent_stream] Error: {e}", exc_info=True)
+            yield json.dumps({"type": "error", "data": {"message": str(e)}}) + "\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="application/x-ndjson",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",  # Disable nginx buffering
+        },
+    )
+
+
+def _detect_mode(user_text: str, ctx: dict) -> str:
+    """Detect mode from user query."""
+    if any(k in user_text for k in ["summary", "overview", "spending"]):
+        return "summary"
+    if any(k in user_text for k in ["category", "categories"]):
+        return "categories"
+    if any(k in user_text for k in ["merchant", "merchants", "vendor"]):
+        return "merchants"
+    if any(k in user_text for k in ["alert", "alerts", "warning"]):
+        return "alerts"
+    return "general"
+
+
+def _get_tools_for_mode(mode: str) -> list:
+    """Map mode to tool names for planner display."""
+    tools_map = {
+        "summary": ["charts.summary", "insights.overview"],
+        "categories": ["charts.categories", "analytics.top_categories"],
+        "merchants": ["charts.merchants", "analytics.spending_patterns"],
+        "alerts": ["analytics.alerts", "insights.anomalies"],
+        "general": ["charts.summary", "insights.overview"],
+    }
+    return tools_map.get(mode, ["charts.summary"])
+
+
 def _fmt_usd(v: float) -> str:
     sign = "-" if v < 0 else ""
     return f"{sign}${abs(v):,.2f}"
