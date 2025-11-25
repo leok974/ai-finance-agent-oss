@@ -327,10 +327,24 @@ export default function ChatDock() {
 
   // New agent streaming hook (alternative to AGUI)
   const agentStream = useAgentStream();
-  const [useNewStreaming, setUseNewStreaming] = useState(false); // Toggle for new streaming
+  const [useNewStreaming, setUseNewStreaming] = useState(true); // Toggle for new streaming - ENABLED
 
   // Expose cancel method for UI
   const cancelAgentStream = agentStream.cancel;
+
+  // Sync agentStream messages to uiMessages when using new streaming
+  React.useEffect(() => {
+    if (useNewStreaming && agentStream.messages.length > 0) {
+      const chatMessages = agentStream.messages.map(m => ({
+        id: crypto.randomUUID(),
+        role: m.role as 'user' | 'assistant',
+        text: m.content,
+        ts: m.timestamp,
+        meta: undefined,
+      }));
+      setUiMessages(chatMessages);
+    }
+  }, [agentStream.messages, useNewStreaming]);
 
   // Poll agent status every 30 seconds
   React.useEffect(() => {
@@ -1298,6 +1312,23 @@ export default function ChatDock() {
     if (reqRef.current) {
       reqRef.current.abort();
       reqRef.current = null;
+    }
+
+    // NEW STREAMING PATH: Use useAgentStream hook
+    if (useNewStreaming) {
+      setInput("");
+      setComposerPlaceholderUI(DEFAULT_PLACEHOLDER);
+      focusComposer();
+      setBusy(true);
+
+      try {
+        await agentStream.sendMessage(text, { month, mode: undefined });
+      } catch (err: any) {
+        console.error('[ChatDock] Streaming error:', err);
+      } finally {
+        setBusy(false);
+      }
+      return;
     }
 
     if (ENABLE_AGUI) {
