@@ -1,91 +1,154 @@
 date,merchant,description,amount,category
-2025-06-01,ACME Corp,Paycheck,3200.0,income.salary
-2025-06-02,Rent Payment,Monthly rent,-1200.0,transfers
-2025-06-05,WFM #1234 SAN FRANCISCO,Weekly groceries,-145.3,groceries
-2025-06-08,SHELL OIL #1234,Gas,-48.2,fuel
-2025-06-10,CHIPOTLE MEXICAN GRILL,Lunch,-32.5,restaurants
-2025-06-12,ATT*BILL PAYMENT,Phone bill,-85.0,utilities.mobile
-2025-06-14,AMZN Mktp US*2J8KL9BC1,Books & supplies,-87.45,shopping.online
-2025-06-17,TARGET 0001023 FAIRFAX VA,Household,-76.3,shopping.retail
-2025-06-20,STEAM PURCHASE,Game,-29.99,entertainment.games
-2025-06-22,UBER TRIP SANDBOX US,Ride,-18.75,transportation.rideshare
-2025-06-25,NETFLIX.COM AMSTERDAM,Streaming,-15.99,subscriptions.entertainment
-2025-06-28,"GITHUB, INC. COPILOT",Copilot,-10.0,subscriptions.software
-2025-07-01,ACME Corp,Paycheck,3200.0,income.salary
-2025-07-02,Rent Payment,Monthly rent,-1200.0,transfers
-2025-07-15,Upwork Client,Freelance project,800.0,income.freelance
-2025-07-05,WHOLE FOODS MARKET #1234,Groceries,-178.5,groceries
-2025-07-08,SHELL OIL 12345678910,Gas,-55.4,fuel
-2025-07-10,STARBUCKS STORE 4321 FAIRFAX VA,Coffee meetings,-52.3,restaurants
-2025-07-12,AT&T *WIRELESS 800-331-0500,Phone bill,-85.0,utilities.mobile
-2025-07-14,AMAZON.COM*MARKETPLACE PMTS,Electronics,-234.99,shopping.online
-2025-07-17,TARGET #1023 HOUSEHOLD + SNACKS,Clothes & groceries,-143.2,shopping.retail
-2025-07-19,SONY PLAYSTATION NETWORK,Game,-69.99,entertainment.games
-2025-07-22,LYFT *PENDING AUTH,Airport,-45.8,transportation.rideshare
-2025-07-25,NETFLIX.COM LOS GATOS CA,Streaming,-15.99,subscriptions.entertainment
-2025-07-27,SPOTIFY SUBSCRIPTION NY,Premium,-10.99,subscriptions.entertainment
-2025-07-28,"GITHUB, INC. COPILOT",Copilot,-10.0,subscriptions.software
-2025-08-01,ACME Corp,Paycheck,3200.0,income.salary
-2025-08-02,Rent Payment,Monthly rent,-1200.0,transfers
-2025-08-04,Bright Smiles Dental,Root canal,-850.0,health.medical
-2025-08-30,Comcast,Internet,-79.99,utilities.internet
-2025-08-05,WHOLEFDS #1234,Groceries,-198.75,groceries
-2025-08-08,SHELL #4521 GAS & SNACKS,Gas,-72.3,fuel
-2025-08-10,OLIVE GARDEN #1234,Dinner,-89.4,restaurants
-2025-08-12,ATT WIRELESS PMT,Phone bill,-85.0,utilities.mobile
-2025-08-14,AMAZON.COM*MARKETPLACE PMTS,Luggage + travel gear,-387.5,shopping.online
-2025-08-17,TARGET 0001023 FAIRFAX VA,Toiletries & snacks,-112.8,shopping.retail
-2025-08-19,STEAMPOWERED.COM,Summer sale,-94.97,entertainment.games
-2025-08-22,UBER *EATS ORDER,Multiple rides,-67.5,transportation.rideshare
-2025-08-25,NETFLIX.COM STREAMING,Streaming,-15.99,subscriptions.entertainment
-2025-08-27,SPOTIFY PREMIUM,Premium,-10.99,subscriptions.entertainment
-2025-08-28,GITHUB SUBSCRIPTION,Copilot,-10.0,subscriptions.software
-2025-09-01,ACME Corp,Paycheck,3200.0,income.salary
-2025-09-02,Rent Payment,Monthly rent,-1200.0,transfers
-2025-09-05,WHOLE FOODS MARKET #1234,Grocery shopping,-187.45,groceries
-2025-09-08,SHELL OIL 12345678910,Gas for car,-62.3,fuel
-2025-09-10,SBX MOBILE ORDER #9876,Coffee meetings,-45.8,restaurants
-2025-09-12,AT&T *WIRELESS 800-331-0500,Phone bill,-85.0,utilities.mobile
-2025-09-15,AMZN Mktp US*2J8KL9BC1,Online shopping,-156.7,shopping.online
-2025-09-18,TARGET #1023 HOUSEHOLD + SNACKS,Household items,-132.9,shopping.retail
-2025-09-20,PSN*GAME PURCHASE,New game,-79.99,entertainment.games
-2025-09-22,UBER *PENDING HELP.UBER.COM,Weekend rides,-42.5,transportation.rideshare
-2025-09-25,NETFLIX.COM STREAMING,Streaming,-15.99,subscriptions.entertainment
-2025-09-28,GITHUB SUBSCRIPTION,Developer tools,-10.0,subscriptions.software
-2025-10-01,ACME Corp,Paycheck,3200.0,income.salary
-2025-10-02,Rent Payment,Monthly rent,-1200.0,transfers
-2025-10-03,Blue Shield,Health insurance,-450.0,health.insurance
-2025-10-04,WHOLE FOODS MARKET #1234,Weekly groceries,-143.25,groceries
-2025-10-07,SHELL 123456 PUMP 3,Gas refill,-58.9,fuel
-2025-10-09,CMG #1234 LUNCH,Lunch meetings,-67.4,restaurants
-2025-10-12,ATT WIRELESS PMT,Phone bill,-85.0,utilities.mobile
-2025-10-14,AMZN Mktp US*2J8KL9BC1,Electronics,-224.5,shopping.online
-2025-10-17,TARGET #1023 HOUSEHOLD + SNACKS,Groceries + supplies,-98.65,shopping.retail
-2025-10-19,STEAM PURCHASE,Game sale,-89.97,entertainment.games
-2025-10-22,LYFT *PENDING AUTH,Airport ride,-38.75,transportation.rideshare
-2025-10-25,NETFLIX.COM STREAMING,Streaming,-15.99,subscriptions.entertainment
-2025-10-27,SPOTIFY USA 123456,Premium subscription,-10.99,subscriptions.entertainment
-2025-11-01,ACME Corp,Paycheck,3200.0,income.salary
-2025-11-02,Rent Payment,Monthly rent,-1200.0,transfers
-2025-11-13,Zelle Transfer,Money to savings,-400.0,transfers
-2025-11-14,Zelle Transfer,Money from savings,400.0,transfers
-2025-11-03,WFM #1234 SAN FRANCISCO,Grocery shopping,-162.7,groceries
-2025-11-04,POS PURCHASE STARBUCKS #5678,Coffee with friends,-18.45,restaurants
-2025-11-05,SHELL SERVICE STATION 1234,Gas for car,-52.8,fuel
-2025-11-06,"GITHUB, INC. COPILOT",GitHub Copilot subscription,-10.0,subscriptions.software
-2025-11-07,NETFLIX SUBSCRIPTION,Streaming subscription,-15.99,subscriptions.entertainment
-2025-11-08,AMZN Mktp US*2J8KL9BC1,Online shopping,-93.25,shopping.online
-2025-11-09,TARGET MOBILE #1023,Household + snacks,-86.4,shopping.retail
-2025-11-10,PLAYSTATION NETWORK,Game purchase,-79.99,entertainment.games
-2025-11-11,UBER TRIP SANDBOX US,Airport ride,-34.15,transportation.rideshare
-2025-11-12,ATT*BILL PAYMENT,Phone bill,-85.0,utilities.mobile
-2025-11-15,STARBUCKS #1234 SAN FRANCISCO CA,STARBUCKS #1234 SAN FRANCISCO CA,-14.37,
-2025-11-16,TARGET.COM *ONLINE ORDER,TARGET.COM *ONLINE ORDER,-27.8,
-2025-11-17,SHELL OIL #1234,SHELL OIL #1234,-42.15,
-2025-11-18,DOORDASH *LUNCH ORDER,DOORDASH *LUNCH ORDER,-28.45,
-2025-11-19,CVS #8923 - MEDICINE & SNACKS,CVS #8923 - MEDICINE & SNACKS,-31.22,
-2025-11-20,PANERA #445 - BREAKFAST,PANERA #445 - BREAKFAST,-16.85,
-2025-11-21,MCD #2341 - DRIVE THRU,MCD #2341 - DRIVE THRU,-12.47,
-2025-11-22,COSTCO WHOLESALE #123,COSTCO WHOLESALE #123,-156.38,
-2025-11-23,APPLE.COM/BILL - APP PURCHASE,APPLE.COM/BILL - APP PURCHASE,-4.99,
-2025-11-24,WALGREENS #5421 - TOILETRIES,WALGREENS #5421 - TOILETRIES,-22.67,
+2025-06-01,ACME Corporation,Monthly Salary,4200.00,income.salary
+2025-06-02,Landlord Payment Service,June Rent,-1450.00,housing.rent
+2025-06-03,WHOLE FOODS MARKET #1234,Weekly groceries,-127.45,groceries
+2025-06-04,SHELL OIL #5678,Gas station,-52.30,transportation.fuel
+2025-06-05,STARBUCKS STORE 4521,Morning coffee,-6.75,restaurants.coffee
+2025-06-07,NETFLIX.COM,Monthly streaming,-15.99,subscriptions.entertainment
+2025-06-07,SPOTIFY PREMIUM,Music subscription,-10.99,subscriptions.entertainment
+2025-06-08,GITHUB INC COPILOT,Developer tools,-10.00,subscriptions.software
+2025-06-10,AMZN Mktp US*2K8PQ1RT,Office supplies,-45.99,shopping.online
+2025-06-12,VERIZON WIRELESS,Phone bill,-95.00,utilities.mobile
+2025-06-13,PGE SAN FRANCISCO,Electric bill,-145.30,utilities.electricity
+2025-06-14,COMCAST CABLE,Internet service,-89.99,utilities.internet
+2025-06-15,UBER TRIP,Ride,-32.50,transportation.rideshare
+2025-06-16,COSTCO WHOLESALE #234,Bulk shopping,-178.92,groceries
+2025-06-18,DOORDASH*PANERA,Food delivery,-28.45,restaurants.delivery
+2025-06-18,CVS PHARMACY #7890,Prescriptions,-25.00,healthcare.pharmacy
+2025-06-19,STEAM PURCHASE,Video game,-39.99,entertainment.games
+2025-06-21,UNKNOWN MERCHANT XYZ,Unknown charge,-850.00,unknown
+2025-06-22,TRADER JOES #456,Groceries,-92.18,groceries
+2025-06-26,ATT BILL PAYMENT,Landline,-45.00,utilities.phone
+2025-06-29,SAFEWAY STORE 1892,Weekend groceries,-103.67,groceries
+2025-06-30,VENMO CASHOUT,Transfer to bank,200.00,transfers
+2025-06-5,CHIPOTLE MEXICAN GRILL #890,Lunch,-14.25000,restaurants
+2025-06-9,TARGET STORE #1245,Household supplies,-89.34,shopping.retail
+2025-07-01,ACME Corporation,Monthly Salary,4200.00,income.salary
+2025-07-02,Landlord Payment Service,July Rent,-1450.00,housing.rent
+2025-07-02,UPWORK ESCROW,Freelance project,650,income.freelance
+2025-07-03,WHOLE FOODS MARKET #1234,Weekly groceries,-134.89,groceries
+2025-07-04,SHELL OIL #5678,Gas station,-55.50,transportation.fuel
+2025-07-05,STARBUCKS STORE 4521,Morning coffee,-7.75,restaurants.coffee
+2025-07-07,NETFLIX.COM,Monthly streaming,-15.99,subscriptions.entertainment
+2025-07-07,SPOTIFY PREMIUM,Music subscription,-10.99,subscriptions.entertainment
+2025-07-08,GITHUB INC COPILOT,Developer tools,-10.00,subscriptions.software
+2025-07-10,CHIPOTLE MEXICAN GRILL #890,Lunch,-15.25000,restaurants
+2025-07-10,TARGET STORE #1245,Home goods,-115.34,shopping.retail
+2025-07-12,VERIZON WIRELESS,Phone bill,-95.00,utilities.mobile
+2025-07-13,PGE SAN FRANCISCO,Electric bill,-132.45,utilities.electricity
+2025-07-14,COMCAST CABLE,Internet service,-89.99,utilities.internet
+2025-07-15,UBER TRIP,Ride,-31.50,transportation.rideshare
+2025-07-16,COSTCO WHOLESALE #234,Bulk shopping,-201.45,groceries
+2025-07-19,UBER EATS*LOCAL,Food delivery,-36.45,restaurants.delivery
+2025-07-19,CVS PHARMACY #7890,Health items,-31.67,healthcare.pharmacy
+2025-07-20,STEAM GAMES,Game purchase,-46.66,entertainment.games
+2025-07-21,LYFT RIDE,Transportation,-20.75,transportation.rideshare
+2025-07-22,TRADER JOES #456,Groceries,-87.45,groceries
+2025-07-22,UNKNOWN VENDOR ABC,Unknown charge,-650.00,unknown
+2025-07-29,SAFEWAY STORE 1892,Weekend groceries,-112.34,groceries
+2025-07-31,REFUND - AMAZON,Product return,42.50,income.refund
+2025-07-9,AMZN Mktp US*3K7PQ1RT,Books,-75.99,shopping.online
+2025-08-01,ACME Corporation,Monthly Salary,4200.00,income.salary
+2025-08-02,Landlord Payment Service,August Rent,-1450.00,housing.rent
+2025-08-03,WHOLE FOODS MARKET #1234,Weekly groceries,-145.67,groceries
+2025-08-04,SHELL OIL #5678,Gas station,-58.70,transportation.fuel
+2025-08-05,STARBUCKS STORE 4521,Morning coffee,-8.75,restaurants.coffee
+2025-08-07,NETFLIX.COM,Monthly streaming,-15.99,subscriptions.entertainment
+2025-08-07,SPOTIFY PREMIUM,Music subscription,-10.99,subscriptions.entertainment
+2025-08-08,GITHUB INC COPILOT,Developer tools,-10.00,subscriptions.software
+2025-08-09,ADOBE CREATIVE CLOUD,Design tools,-54.99,subscriptions.software
+2025-08-10,CHIPOTLE MEXICAN GRILL #890,Dinner,-16.25000,restaurants
+2025-08-10,AMZN Mktp US*4K6PQ1RT,Kitchen items,-105.99,shopping.online
+2025-08-11,TARGET STORE #1245,Clothing,-141.34,shopping.retail
+2025-08-12,VERIZON WIRELESS,Phone bill,-95.00,utilities.mobile
+2025-08-13,PGE SAN FRANCISCO,Electric bill,-156.78,utilities.electricity
+2025-08-14,COMCAST CABLE,Internet service,-89.99,utilities.internet
+2025-08-15,UBER TRIP,Ride,-30.50,transportation.rideshare
+2025-08-16,COSTCO WHOLESALE #234,Bulk shopping,-234.56,groceries
+2025-08-20,DOORDASH*SUSHI,Food delivery,-44.45,restaurants.delivery
+2025-08-20,CVS PHARMACY #7890,Medications,-38.34,healthcare.pharmacy
+2025-08-21,STEAM SUMMER SALE,Games bundle,-53.33,entertainment.games
+2025-08-22,TRADER JOES #456,Groceries,-95.23,groceries
+2025-08-23,UNKNOWN CHARGE 123,Unknown transaction,-425.00,unknown
+2025-08-29,SAFEWAY STORE 1892,Weekend groceries,-118.90,groceries
+2025-08-29,BEST BUY #4567,Electronics,-289.99,shopping.retail
+2025-08-30,INSURANCE CO,Health insurance premium,-425.00,insurance.health
+2025-09-01,ACME Corporation,Monthly Salary,4200.00,income.salary
+2025-09-02,Landlord Payment Service,September Rent,-1450.00,housing.rent
+2025-09-03,UPWORK ESCROW,Freelance consulting,850,income.freelance
+2025-09-03,WHOLE FOODS MARKET #1234,Weekly groceries,-152.34,groceries
+2025-09-04,SHELL OIL #5678,Gas station,-61.90,transportation.fuel
+2025-09-05,STARBUCKS STORE 4521,Morning coffee,-9.75,restaurants.coffee
+2025-09-07,NETFLIX.COM,Monthly streaming,-15.99,subscriptions.entertainment
+2025-09-07,SPOTIFY PREMIUM,Music subscription,-10.99,subscriptions.entertainment
+2025-09-08,GITHUB INC COPILOT,Developer tools,-10.00,subscriptions.software
+2025-09-09,ADOBE CREATIVE CLOUD,Design tools,-54.99,subscriptions.software
+2025-09-10,CHIPOTLE MEXICAN GRILL #890,Dinner,-17.25000,restaurants
+2025-09-12,VERIZON WIRELESS,Phone bill,-95.00,utilities.mobile
+2025-09-12,TARGET STORE #1245,School supplies,-167.34,shopping.retail
+2025-09-13,PGE SAN FRANCISCO,Electric bill,-168.90,utilities.electricity
+2025-09-14,COMCAST CABLE,Internet service,-89.99,utilities.internet
+2025-09-15,UBER TRIP,Ride,-29.50,transportation.rideshare
+2025-09-16,COSTCO WHOLESALE #234,Bulk shopping,-267.89,groceries
+2025-09-18,CVS PHARMACY #7890,First aid supplies,-45.01,healthcare.pharmacy
+2025-09-21,UBER EATS*THAI,Food delivery,-52.45,restaurants.delivery
+2025-09-22,TRADER JOES #456,Groceries,-102.45,groceries
+2025-09-22,STEAM FALL SALE,Video games,-60.00,entertainment.games
+2025-09-23,LYFT RIDE,Transportation,-24.75,transportation.rideshare
+2025-09-24,UNKNOWN MERCHANT DEF,Suspicious charge,-312.00,unknown
+2025-09-29,SAFEWAY STORE 1892,Weekend groceries,-125.78,groceries
+2025-09-29,HOME DEPOT #8901,Hardware supplies,-156.34,shopping.retail
+2025-09-30,INSURANCE CO,Health insurance premium,-425.00,insurance.health
+2025-09-9,AMZN Mktp US*5K5PQ1RT,Home decor,-135.99,shopping.online
+2025-10-01,ACME Corporation,Monthly Salary,4200.00,income.salary
+2025-10-02,Landlord Payment Service,October Rent,-1450.00,housing.rent
+2025-10-03,WHOLE FOODS MARKET #1234,Weekly groceries,-167.89,groceries
+2025-10-04,SHELL OIL #5678,Gas station,-65.10,transportation.fuel
+2025-10-05,STARBUCKS STORE 4521,Morning coffee,-10.75,restaurants.coffee
+2025-10-07,NETFLIX.COM,Monthly streaming,-15.99,subscriptions.entertainment
+2025-10-07,SPOTIFY PREMIUM,Music subscription,-10.99,subscriptions.entertainment
+2025-10-08,GITHUB INC COPILOT,Developer tools,-10.00,subscriptions.software
+2025-10-09,ADOBE CREATIVE CLOUD,Design tools,-54.99,subscriptions.software
+2025-10-10,CHIPOTLE MEXICAN GRILL #890,Dinner,-18.25000,restaurants
+2025-10-10,AMZN Mktp US*6K4PQ1RT,Winter clothes,-165.99,shopping.online
+2025-10-12,VERIZON WIRELESS,Phone bill,-95.00,utilities.mobile
+2025-10-13,PGE SAN FRANCISCO,Electric bill,-142.35,utilities.electricity
+2025-10-13,TARGET STORE #1245,Halloween decor,-193.34,shopping.retail
+2025-10-14,COMCAST CABLE,Internet service,-89.99,utilities.internet
+2025-10-15,UBER TRIP,Ride,-28.50,transportation.rideshare
+2025-10-16,COSTCO WHOLESALE #234,Bulk shopping,-289.45,groceries
+2025-10-19,CVS PHARMACY #7890,Flu shot & vitamins,-51.68,healthcare.pharmacy
+2025-10-22,TRADER JOES #456,Groceries,-108.90,groceries
+2025-10-22,DOORDASH*ITALIAN,Food delivery,-60.45,restaurants.delivery
+2025-10-23,STEAM HALLOWEEN,Horror games,-66.67,entertainment.games
+2025-10-25,INSURANCE CO,Health insurance premium,-425.00,insurance.health
+2025-10-25,UNKNOWN PAYMENT XYZ,Unknown debit,-378.00,unknown
+2025-10-29,SAFEWAY STORE 1892,Weekend groceries,-134.67,groceries
+2025-10-29,BEST BUY #4567,Laptop accessories,-178.90,shopping.retail
+2025-10-31,UPWORK ESCROW,Freelance web dev,1200,income.freelance
+2025-11-01,ACME Corporation,Monthly Salary,4200.00,income.salary
+2025-11-02,Landlord Payment Service,November Rent,-1450.00,housing.rent
+2025-11-03,WHOLE FOODS MARKET #1234,Weekly groceries,-178.45,groceries
+2025-11-04,SHELL OIL #5678,Gas station,-68.30,transportation.fuel
+2025-11-05,STARBUCKS STORE 4521,Morning coffee,-11.75,restaurants.coffee
+2025-11-07,NETFLIX.COM,Monthly streaming,-15.99,subscriptions.entertainment
+2025-11-07,SPOTIFY PREMIUM,Music subscription,-10.99,subscriptions.entertainment
+2025-11-08,GITHUB INC COPILOT,Developer tools,-10.00,subscriptions.software
+2025-11-09,ADOBE CREATIVE CLOUD,Design tools,-54.99,subscriptions.software
+2025-11-10,CHIPOTLE MEXICAN GRILL #890,Dinner,-19.25000,restaurants
+2025-11-12,VERIZON WIRELESS,Phone bill,-95.00,utilities.mobile
+2025-11-13,PGE SAN FRANCISCO,Electric bill,-178.45,utilities.electricity
+2025-11-14,COMCAST CABLE,Internet service,-89.99,utilities.internet
+2025-11-14,TARGET STORE #1245,Holiday shopping,-219.34,shopping.retail
+2025-11-15,UBER TRIP,Ride,-27.50,transportation.rideshare
+2025-11-16,COSTCO WHOLESALE #234,Bulk shopping,-312.89,groceries
+2025-11-20,CVS PHARMACY #7890,Cold medicine,-58.35,healthcare.pharmacy
+2025-11-22,TRADER JOES #456,Groceries,-156.78,groceries
+2025-11-23,UBER EATS*PIZZA,Food delivery,-68.45,restaurants.delivery
+2025-11-24,STEAM BLACK FRIDAY,Game deals,-73.34,entertainment.games
+2025-11-24,BEST BUY BLACK FRIDAY,TV upgrade,-899.99,shopping.retail
+2025-11-25,LYFT RIDE,Transportation,-28.75,transportation.rideshare
+2025-11-25,INSURANCE CO,Health insurance premium,-425.00,insurance.health
+2025-11-26,UNKNOWN MERCHANT GHI,Unrecognized charge,-512.00,unknown
+2025-11-29,SAFEWAY STORE 1892,Weekend groceries,-89.45,groceries
+2025-11-9,AMZN Mktp US*7K3PQ1RT,Thanksgiving prep,-195.99,shopping.online

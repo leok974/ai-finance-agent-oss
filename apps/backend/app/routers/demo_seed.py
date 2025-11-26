@@ -31,7 +31,19 @@ class DemoSeedResponse(BaseModel):
     ok: bool
     transactions_cleared: int
     transactions_added: int
+    months_seeded: list[str]
+    txns_count: int
     message: str
+
+
+class DemoSampleTransaction(BaseModel):
+    """Sample transaction for demo mode."""
+
+    date: str
+    merchant: str
+    description: str
+    amount: float
+    category: str
 
 
 def load_demo_csv() -> list[dict]:
@@ -124,6 +136,44 @@ def load_demo_csv() -> list[dict]:
     return rows
 
 
+@router.get("/demo/sample")
+async def get_demo_sample_data() -> list[DemoSampleTransaction]:
+    """
+    Return raw demo sample data without requiring authentication.
+
+    This endpoint is used by the frontend to fetch sample transactions
+    that can then be ingested via the normal /ingest flow.
+
+    Returns:
+        List of sample transactions in LedgerMind format.
+    """
+    try:
+        demo_rows = load_demo_csv()
+
+        # Convert to frontend-friendly format
+        return [
+            DemoSampleTransaction(
+                date=row["date"].isoformat(),
+                merchant=row["merchant"],
+                description=row["description"],
+                amount=float(row["amount"]),
+                category=row["category"],
+            )
+            for row in demo_rows
+        ]
+    except FileNotFoundError:
+        raise HTTPException(
+            status_code=500,
+            detail="Demo sample data file is missing.",
+        )
+    except Exception as e:
+        logger.exception("Error loading demo sample")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to load demo sample: {str(e)}",
+        )
+
+
 @router.post("/demo/seed", response_model=DemoSeedResponse)
 async def seed_demo_data(
     db: Session = Depends(get_db),
@@ -185,11 +235,16 @@ async def seed_demo_data(
 
         logger.info(f"Added {added_count} demo transactions for user {current_user.id}")
 
+        # Get unique months from seeded data
+        months_seeded = sorted(list(set(row["month"] for row in demo_rows)))
+
         return DemoSeedResponse(
             ok=True,
             transactions_cleared=cleared_count,
             transactions_added=added_count,
-            message=f"Demo data reset successfully. Cleared {cleared_count} old transactions, added {added_count} new ones.",
+            months_seeded=months_seeded,
+            txns_count=added_count,
+            message=f"Demo data reset successfully. Cleared {cleared_count} old transactions, added {added_count} new ones across {len(months_seeded)} months.",
         )
 
     except FileNotFoundError as e:

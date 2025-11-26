@@ -1812,22 +1812,12 @@ export async function seedDemoData(): Promise<{
   transactions_added: number;
   message: string;
 }> {
-  // Use the working /demo/sample endpoint instead of broken /demo/seed
-  // This matches the pattern used everywhere else in the app
-  const sample = await fetchJSON('demo/sample', { method: 'GET' });
-
-  // Ingest the sample transactions (this auto-handles duplicates)
-  const ingestResult = await fetchJSON('ingest', {
-    method: 'POST',
-    body: JSON.stringify(sample),
-  }) as { ok?: boolean; added?: number; count?: number; message?: string };
-
-  // Transform the response to match the expected shape
-  return {
-    ok: ingestResult.ok ?? true,
-    transactions_cleared: 0, // /ingest doesn't clear, but handles duplicates
-    transactions_added: ingestResult.added ?? ingestResult.count ?? 0,
-    message: ingestResult.message ?? 'Sample data loaded successfully',
+  const res = await fetchJSON('demo/seed', { method: 'POST' });
+  return res as {
+    ok: boolean;
+    transactions_cleared: number;
+    transactions_added: number;
+    message: string;
   };
 }
 
