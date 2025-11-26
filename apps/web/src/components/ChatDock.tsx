@@ -2591,14 +2591,20 @@ export default function ChatDock() {
       {/* Dark footer */}
       <CardFooter className="lm-chat-footer">
           <div className="lm-chat-footer-inner">
-            {/* Unavailable banner - only show for hard agent/model failures */}
-            {agentStream.temporarilyUnavailable && (
+            {/* Hard error banner - show only when no tokens received */}
+            {agentStream.temporarilyUnavailable && !agentStream.hasReceivedToken && (
               <div className="bg-amber-900/30 border border-amber-700/50 rounded-lg px-3 py-2 mb-3 text-sm text-amber-200">
                 The AI assistant is temporarily unavailable. Please try again in a moment.
               </div>
             )}
-            {/* Soft error message - show for transient errors that don't indicate full unavailability */}
-            {!agentStream.temporarilyUnavailable && agentStream.error && (
+            {/* Soft error warning - model unavailable after partial answer */}
+            {agentStream.softError?.code === 'MODEL_UNAVAILABLE' && agentStream.hasReceivedToken && (
+              <div className="bg-amber-900/20 border border-amber-700/40 rounded-lg px-3 py-2 mb-3 text-sm text-amber-200">
+                ⚠️ The AI model became unavailable while answering. This response may be incomplete.
+              </div>
+            )}
+            {/* Other soft errors - show for transient errors that don't indicate full unavailability */}
+            {!agentStream.temporarilyUnavailable && agentStream.error && !agentStream.softError && (
               <div className="bg-red-900/20 border border-red-700/40 rounded-lg px-3 py-2 mb-3 text-sm text-red-200">
                 Something went wrong while answering. Please try again.
               </div>

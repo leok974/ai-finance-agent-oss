@@ -376,7 +376,7 @@ export async function getLlmHealth(): Promise<LlmHealth> {
 export const getInsights = (month?: string) =>
   fetchJSON(`insights`, { query: month ? { month } : undefined })
 export const getAlerts = (month?: string) =>
-  fetchJSON(`alerts`, { method: 'POST', body: JSON.stringify({ month }) })
+  fetchJSON(`/api/alerts`, { method: 'POST', body: JSON.stringify({ month }) })
 export const downloadReportCsv = (month: string) => window.open(`${apiUrl('/report_csv')}${q({ month })}`,'_blank')
 
 // ---------- Charts ----------

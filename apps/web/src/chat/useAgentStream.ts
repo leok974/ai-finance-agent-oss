@@ -33,12 +33,18 @@ export interface StreamMessage {
   timestamp: number;
 }
 
+export interface SoftError {
+  code: string;
+  message: string;
+}
+
 interface UseAgentStreamResult {
   messages: StreamMessage[];
   isStreaming: boolean;
   thinkingState: ThinkingState | null;
   hasReceivedToken: boolean;
   error: string | null;
+  softError: SoftError | null;
   temporarilyUnavailable: boolean;
   sendMessage: (text: string, options?: { month?: string; mode?: string }) => Promise<void>;
   cancel: () => void;
@@ -88,7 +94,11 @@ export function useAgentStream(): UseAgentStreamResult {
   const [isStreaming, setIsStreaming] = useState(false);
   const [hasReceivedToken, setHasReceivedToken] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [softError, setSoftError] = useState<SoftError | null>(null);
   const [temporarilyUnavailable, setTemporarilyUnavailable] = useState(false);
+
+  // Ref to track hasReceivedToken for reliable access in error handler
+  const hasReceivedTokenRef = useRef(false);
 
   // Initialize thinking state from localStorage
   const [thinkingState, setThinkingState] = useState<ThinkingState | null>(() => {
@@ -124,7 +134,9 @@ export function useAgentStream(): UseAgentStreamResult {
     setIsStreaming(false);
     setThinkingState(null);
     setHasReceivedToken(false);
+    hasReceivedTokenRef.current = false;
     setError(null);
+    setSoftError(null);
     setTemporarilyUnavailable(false);
     if (typeof window !== 'undefined') {
       window.localStorage.removeItem(THINKING_STATE_KEY);
@@ -161,7 +173,9 @@ export function useAgentStream(): UseAgentStreamResult {
       // Reset state for new run
       setIsStreaming(true);
       setHasReceivedToken(false);
+      hasReceivedTokenRef.current = false;
       setError(null);
+      setSoftError(null);
       retryIndexRef.current = 0;
 
       let assistantContent = '';
@@ -270,7 +284,9 @@ export function useAgentStream(): UseAgentStreamResult {
           console.log('[useAgentStream] event', event.type, event);
           switch (event.type) {
                   case 'start':
-                    // Session started
+                    // Session started - reset soft error state
+                    hasReceivedTokenRef.current = false;
+                    setSoftError(null);
                     break;
 
                   case 'planner':
@@ -319,7 +335,9 @@ export function useAgentStream(): UseAgentStreamResult {
                     if (!tokenText) break;
 
                     setHasReceivedToken(true);
+                    hasReceivedTokenRef.current = true;
                     setError(null);
+                    setSoftError(null);
                     setTemporarilyUnavailable(false);
                     assistantContent += tokenText;
 
@@ -358,26 +376,36 @@ export function useAgentStream(): UseAgentStreamResult {
                     setError(null);
                     break;
 
-                  case 'error':
-                    console.error('[useAgentStream] Error event:', event.data);
+                  case 'error': {
+                    console.warn('[useAgentStream] Error event:', event.data);
+                    const code = event.data?.code;
+                    const errorMsg = event.data?.message || 'Unknown error';
+
+                    // Soft error: we already gave user a partial answer, keep it
+                    if (hasReceivedTokenRef.current && code === 'MODEL_UNAVAILABLE') {
+                      setSoftError({
+                        code,
+                        message: event.data?.message ?? 'The AI model became unavailable after producing a partial answer.',
+                      });
+                      setIsStreaming(false);
+                      setThinkingState(null);
+                      persistThinkingState(null);
+                      break;
+                    }
+
+                    // Hard error: no tokens received, or different error code
                     setIsStreaming(false);
                     setThinkingState(null);
                     persistThinkingState(null);
-
-                    // Always set error message
-                    const errorMsg = event.data.message || 'Unknown error';
+                    setTemporarilyUnavailable(true);
                     setError(errorMsg);
-
-                    // Only mark temporarily unavailable for hard errors (model/upstream failures)
-                    if (isHardAgentError(undefined, event.data)) {
-                      setTemporarilyUnavailable(true);
-                    }
 
                     toast.error('Agent error', {
                       description: errorMsg,
                     });
                     // DON'T add error to messages - show in banner only
                     break;
+                  }
             }
           };
 
@@ -448,6 +476,7 @@ export function useAgentStream(): UseAgentStreamResult {
     thinkingState,
     hasReceivedToken,
     error,
+    softError,
     temporarilyUnavailable,
     sendMessage,
     cancel,
