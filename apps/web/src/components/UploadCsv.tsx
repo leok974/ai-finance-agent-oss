@@ -231,7 +231,7 @@ const UploadCsv: React.FC<UploadCsvProps> = ({ onUploaded, defaultReplace = true
     try {
       setBusy(true);
       // Use new dedicated dashboard reset endpoint
-      await fetchJSON('/ingest/dashboard/reset', { method: 'POST' });
+      await fetchJSON('ingest/dashboard/reset', { method: 'POST' });
       // Clear UI state
       setFile(null);
       setResult(null);

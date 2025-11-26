@@ -94,7 +94,7 @@ function monthsBack(anchor: string, count: number): string[] {
 export async function resolveMonth(): Promise<string> {
   // Canonical POST; server still provides GET compat temporarily
   try {
-    const r: { month?: string; latest_month?: string } = await fetchJSON('/agent/tools/meta/latest_month', { method: 'POST', body: JSON.stringify({}) });
+    const r: { month?: string; latest_month?: string } = await fetchJSON('agent/tools/meta/latest_month', { method: 'POST', body: JSON.stringify({}) });
     return r?.month ?? r?.latest_month ?? '';
   } catch { return ''; }
 }
@@ -376,7 +376,7 @@ export async function getLlmHealth(): Promise<LlmHealth> {
 export const getInsights = (month?: string) =>
   fetchJSON(`insights`, { query: month ? { month } : undefined })
 export const getAlerts = (month?: string) =>
-  fetchJSON(`/api/alerts`, { method: 'POST', body: JSON.stringify({ month }) })
+  fetchJSON('alerts', { method: 'POST', body: JSON.stringify({ month }) })
 export const downloadReportCsv = (month: string) => window.open(`${apiUrl('/report_csv')}${q({ month })}`,'_blank')
 
 // ---------- Charts ----------
@@ -1789,7 +1789,7 @@ export async function uploadCsv(file: File | Blob, replace = true, format = 'csv
 
 // Delete all transactions using dedicated dashboard reset endpoint
 export async function deleteAllTransactions(): Promise<void> {
-  await fetchJSON('/ingest/dashboard/reset', { method: 'POST' });
+  await fetchJSON('ingest/dashboard/reset', { method: 'POST' });
 }
 
 // Seed demo data (idempotent - clears existing demo data and reseeds)

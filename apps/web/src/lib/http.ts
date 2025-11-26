@@ -17,6 +17,44 @@ export const BASE = (env.VITE_API_BASE ?? '/').replace(/\/$/, '');
 // Auth endpoints (e.g., /api/auth in dev, /api/auth in prod)
 const AUTH_BASE = env.VITE_AUTH_API_BASE || '/api';
 
+/**
+ * Normalize API paths: add api/ prefix for data endpoints, preserve special routes
+ *
+ * Special routes (NO api/ prefix):
+ * - auth/*, agent/*, demo/* (have their own routing)
+ * - ready, _up (health checks)
+ *
+ * All other paths get api/ prefix for FastAPI /api router
+ */
+const withApiPrefix = (path: string): string => {
+  // Leave absolute URLs alone
+  if (path.startsWith("http://") || path.startsWith("https://")) return path;
+
+  // Leave non-api roots we explicitly route elsewhere
+  if (
+    path.startsWith("auth/") ||
+    path.startsWith("/auth/") ||
+    path.startsWith("agent/") ||
+    path.startsWith("/agent/") ||
+    path.startsWith("demo/") ||
+    path.startsWith("/demo/") ||
+    path === "ready" ||
+    path === "/ready" ||
+    path === "_up" ||
+    path === "/_up"
+  ) {
+    return path.replace(/^\//, "");
+  }
+
+  // If it already starts with api/, normalize to no leading slash
+  if (path.startsWith("api/")) return path;
+  if (path.startsWith("/api/")) return path.slice(1);
+
+  // Default: add api/ prefix for all data endpoints
+  const trimmed = path.replace(/^\//, "");
+  return `api/${trimmed}`;
+};
+
 // Paths that pass through without BASE prefix (already absolute with /api or external)
 function shouldBypassPrefix(path: string) {
   if (!path) return false;
@@ -47,8 +85,10 @@ function getCsrfTokenFromCookie(): string | null {
 export type FetchOpts = RequestInit & { query?: Record<string, string | number | boolean> };
 
 export async function fetchJSON<T>(path: string, opts: FetchOpts = {}): Promise<T> {
+  // Apply api/ prefix normalization
+  const finalPath = withApiPrefix(path);
   // Normalize to absolute
-  const normalized = path.startsWith('/') ? path : `/${path}`;
+  const normalized = finalPath.startsWith('/') ? finalPath : `/${finalPath}`;
   const baseApplied = shouldBypassPrefix(normalized) ? normalized : join(BASE, normalized);
   const url = withQuery(baseApplied, opts.query);
 
@@ -119,7 +159,9 @@ export const dashSlug = (s: string) => s.replace(/_/g, '-');
 
 // Raw HTTP helper for non-JSON responses (e.g., downloads, streaming)
 export async function http(path: string, opts: FetchOpts = {}): Promise<Response> {
-  const normalized = path.startsWith('/') ? path : `/${path}`;
+  // Apply api/ prefix normalization
+  const finalPath = withApiPrefix(path);
+  const normalized = finalPath.startsWith('/') ? finalPath : `/${finalPath}`;
   const baseApplied = shouldBypassPrefix(normalized) ? normalized : join(BASE, normalized);
   const url = withQuery(baseApplied, opts.query);
 
