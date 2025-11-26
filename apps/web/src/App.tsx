@@ -70,30 +70,24 @@ const App: React.FC = () => {
   // Chat feature flags with runtime fuse for crash protection
   const qp = new URLSearchParams(window.location.search);
   const CHAT_QP = qp.get('chat');
-  console.log('[App] CHAT_QP =', CHAT_QP, 'type=', typeof CHAT_QP);
   // Default: chat ON (can disable with ?chat=0 for debugging)
   // Allow diagnostic modes: ?chat=diag or ?chat=debug
   const CHAT_FLAG = CHAT_QP !== null
     ? CHAT_QP !== '0' // Enable for '1', 'diag', 'debug', or any truthy value
     : true; // Changed from env check - chat ON by default
-  console.log('[App] CHAT_FLAG =', CHAT_FLAG);
 
   // Session-scoped fuse (cleared on browser close, not persistent like localStorage)
   // Allow ?chat=1 query param to force-enable and clear fuse
   if (CHAT_QP === '1') {
     sessionStorage.removeItem('lm:disableChat');
-    console.log('[App] chat fuse cleared by ?chat=1 query param');
   }
   const CHAT_FUSE_OFF = sessionStorage.getItem('lm:disableChat') === '1';
-  console.log('[App] CHAT_FUSE_OFF =', CHAT_FUSE_OFF);
   const chatEnabled = CHAT_FLAG && !CHAT_FUSE_OFF;
-  console.log('[App] chatEnabled =', chatEnabled);
 
   // Global helper for debugging
   if (typeof window !== 'undefined') {
     (window as any).enableChat = () => {
       sessionStorage.removeItem('lm:disableChat');
-      console.log('[App] chat fuse cleared - reload page to enable chat');
       location.reload();
     };
   }
@@ -167,9 +161,9 @@ const App: React.FC = () => {
       // Core readiness gate: fetch /ready (new canonical) to decide whether to defer heavier chart calls
       try {
         const statusResp = await fetch('/ready', { credentials: 'include' });
-        if (statusResp.ok) (window as any).__CORE_READY__ = true; else console.warn('[boot] readiness probe not OK');
-      } catch (e) {
-        console.warn('[boot] status probe failed', e);
+        if (statusResp.ok) (window as any).__CORE_READY__ = true;
+      } catch {
+        // Core not ready; charts prefetch will be skipped
       }
       console.info("[boot] resolving month (meta POST)…");
       const m = (await fetchLatestMonth())
@@ -208,7 +202,6 @@ const App: React.FC = () => {
     const fetchCharts = async () => {
       try {
         await withRetry(() => refetchAllCharts(month), { maxAttempts: 3 });
-        console.log('[boot] charts prefetch completed for month:', month);
       } catch (error) {
         console.error('[boot] charts prefetch failed after retries:', error);
       }
@@ -220,8 +213,8 @@ const App: React.FC = () => {
           () => agentTools.chartsSpendingTrends({ month, months_back: 6 }),
           null
         );
-      } catch (error) {
-        console.warn('[boot] spending trends prefetch failed:', error);
+      } catch {
+        // Non-critical; continue
       }
     };
     void fetchCharts();
