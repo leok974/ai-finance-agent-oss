@@ -165,13 +165,11 @@ const App: React.FC = () => {
       } catch {
         // Core not ready; charts prefetch will be skipped
       }
-      console.info("[boot] resolving month (meta POST)…");
       const m = (await fetchLatestMonth())
         ?? (() => {
              const now = new Date();
              return `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}`;
            })();
-      console.info("[boot] resolved month =", m);
       setMonth(m);
       setReady(true);
     })();
@@ -192,10 +190,8 @@ const App: React.FC = () => {
   useEffect(() => {
     // CRITICAL: Never make API calls before auth is confirmed + feature flag check
     if (!authReady || !authOk || !ready || !month || !prefetchEnabled) return;
-    console.info("[boot] loading dashboards for month", month);
     const coreReady = (window as any).__CORE_READY__ === true;
     if (!coreReady) {
-      console.info('[boot] skipping charts prefetch (core not ready)');
       return;
     }
     // Wrap in retry logic for resilience
@@ -234,7 +230,6 @@ const App: React.FC = () => {
         const llmModelsOk = useLlmStore.getState().modelsOk;
         setDbRev((h as any)?.db_revision ?? (h as any)?.alembic?.db_revision ?? null);
         setInSync((h as any)?.alembic_ok ?? (h as any)?.alembic?.in_sync);
-        console.log(`[db] ${db} loaded | alembic_ok=${String(mig)} | models_ok=${String(llmModelsOk)}`);
       } catch (e) {
         console.warn('[db] healthz failed:', e);
       }
