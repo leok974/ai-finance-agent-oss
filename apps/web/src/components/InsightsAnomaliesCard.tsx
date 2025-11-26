@@ -56,6 +56,19 @@ export default function InsightsAnomaliesCard() {
     return () => { cancelled = true };
   }, [selectedMonth]);
 
+  // Derived flags for "has anything unusual"
+  const hasCategoryAnomalies = data.length > 0;
+  const hasAlerts = alerts?.alerts && alerts.alerts.length > 0;
+  const hasAnyUnusual = hasCategoryAnomalies || hasAlerts;
+
+  // Primary alert (highest severity)
+  const primaryAlert = hasAlerts
+    ? [...alerts.alerts].sort((a, b) => {
+        const severityOrder = { critical: 3, warning: 2, info: 1 };
+        return (severityOrder[b.severity] || 0) - (severityOrder[a.severity] || 0);
+      })[0]
+    : null;
+
   return (
     <div
       className="panel-no-border p-3 md:p-4 help-spot"
@@ -70,11 +83,46 @@ export default function InsightsAnomaliesCard() {
         {month && <span className="text-xs opacity-70">{month}</span>}
       </div>
 
+      {/* Description text based on unusual activity */}
+      {!loading && !err && (
+        hasAnyUnusual ? (
+          <p className="text-sm text-slate-200 mb-3">
+            We found some unusual activity this month. Review the alerts and anomaly tables below for details.
+          </p>
+        ) : (
+          <p className="text-sm text-slate-400 mb-3">
+            No unusual categories or alerts this month. 🎉
+          </p>
+        )
+      )}
+
+      {/* Primary alert callout */}
+      {primaryAlert && (
+        <div className="mt-3 mb-4 rounded-lg bg-amber-500/10 border border-amber-500/40 px-3 py-2 text-sm">
+          <div className="flex items-center gap-2">
+            <span className="text-amber-400">
+              {primaryAlert.severity === "critical" ? "🔴" : "⚠️"}
+            </span>
+            <span className="font-medium text-amber-100">
+              {primaryAlert.title}
+            </span>
+          </div>
+          {primaryAlert.description && (
+            <p className="mt-1 text-amber-100/90 text-xs">
+              {primaryAlert.description}
+            </p>
+          )}
+        </div>
+      )}
+
       {loading && <div className="text-sm opacity-70">Scanning…</div>}
       {err && <div className="text-sm text-red-500">{err}</div>}
 
-      {!loading && !err && (
-        data.length ? (
+      {!loading && !err && hasCategoryAnomalies && (
+        <section className="mb-4">
+          <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-2">
+            Anomalies — Categories
+          </h4>
           <ul className="space-y-1">
             {data.map((a) => {
               const pct = Math.round(a.pct_from_median * 100);
@@ -95,35 +143,32 @@ export default function InsightsAnomaliesCard() {
               );
             })}
           </ul>
-        ) : (
-          <div className="text-sm opacity-70">No unusual categories this month.</div>
-        )
+        </section>
       )}
 
       {/* Alerts Section */}
-      <div className="mt-4 border-t border-white/10 pt-3">
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-xs font-semibold uppercase text-white/60">
-            Alerts — {alerts?.month ?? selectedMonth ?? 'Selected month'}
-          </span>
-          {alertsError && (
-            <span className="text-[10px] text-red-300">
-              {alertsError}
-            </span>
-          )}
-        </div>
+      <section className="mt-4 border-t border-white/10 pt-3">
+        <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-2">
+          Alerts — {alerts?.month ?? selectedMonth ?? 'Selected month'}
+        </h4>
 
-        {!alerts && !alertsError && (
-          <p className="text-xs text-white/40">Checking for alerts…</p>
-        )}
-
-        {alerts && alerts.alerts.length === 0 && (
-          <p className="text-xs text-emerald-300">
-            ✓ No alerts this month — nothing unusual detected.
+        {alertsError && (
+          <p className="text-xs text-red-300 mb-2">
+            {alertsError}
           </p>
         )}
 
-        {alerts && alerts.alerts.length > 0 && (
+        {!alerts && !alertsError && (
+          <p className="text-xs text-slate-500">Checking for alerts…</p>
+        )}
+
+        {alerts && !hasAlerts && (
+          <p className="text-xs text-slate-500">
+            No alerts for this month.
+          </p>
+        )}
+
+        {hasAlerts && (
           <ul className="space-y-1.5 text-xs">
             {alerts.alerts.slice(0, 3).map((alert) => {
               const icon =
@@ -138,8 +183,12 @@ export default function InsightsAnomaliesCard() {
                   <span className={textColor}>{icon}</span>
                   <div className="flex-1 min-w-0">
                     <span className="font-medium">{alert.title}</span>
-                    {' — '}
-                    <span className="text-white/60">{alert.description}</span>
+                    {alert.description && (
+                      <>
+                        {' — '}
+                        <span className="text-white/60">{alert.description}</span>
+                      </>
+                    )}
                   </div>
                 </li>
               );
@@ -151,7 +200,7 @@ export default function InsightsAnomaliesCard() {
             )}
           </ul>
         )}
-      </div>
+      </section>
       </Card>
     </div>
   );
