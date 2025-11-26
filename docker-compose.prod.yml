@@ -111,7 +111,7 @@ services:
       DB_POOL_PRE_PING: "${DB_POOL_PRE_PING:-1}"
       ALLOWED_HOSTS: "localhost,127.0.0.1,ledger-mind.org,app.ledger-mind.org,api.ledger-mind.org,nginx"
       ANALYTICS_DB: "1"
-      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      # OPENAI_API_KEY loaded from secrets/backend.env (removed duplicate env override)
       LLM_CONNECT_TIMEOUT: "10"
       LLM_READ_TIMEOUT: "45"
       LLM_INITIAL_RETRY: "1"
