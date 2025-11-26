@@ -28,6 +28,7 @@ async def auth_demo_login(db: Session = Depends(get_db)):
     # Get or create demo user
     user = db.query(User).filter(User.email == settings.DEMO_USER_EMAIL).first()
 
+    is_new_demo_user = user is None
     if not user:
         # Create demo user if it doesn't exist
         user = User(
@@ -44,6 +45,19 @@ async def auth_demo_login(db: Session = Depends(get_db)):
 
     if not user.is_active:
         raise HTTPException(status_code=403, detail="Demo account is disabled")
+
+    # Auto-seed demo data for new demo users
+    if is_new_demo_user:
+        try:
+            from app.routers.demo_seed import seed_demo_data_for_user
+
+            seed_demo_data_for_user(user.id, db)
+            logger.info(f"Auto-seeded demo data for demo user {user.id}")
+        except Exception as e:
+            # Log but don't fail login if demo seed fails
+            logger.warning(
+                f"Failed to auto-seed demo data for demo user {user.id}: {e}"
+            )
 
     # Extract user roles for token generation
     roles = [ur.role.name for ur in user.roles] if user.roles else []
