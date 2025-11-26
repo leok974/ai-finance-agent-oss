@@ -2108,49 +2108,79 @@ async def agent_stream(
                     )
                     month_str = month or "current month"
 
+                    # Build structured alerts data
+                    alerts_data = []
+                    for alert in alerts_list[:10]:  # Limit to 10
+                        title = alert.title if hasattr(alert, "title") else "Alert"
+                        desc = (
+                            alert.description
+                            if hasattr(alert, "description")
+                            else str(alert)
+                        )
+                        severity_str = (
+                            alert.severity.value
+                            if hasattr(alert.severity, "value")
+                            else str(alert.severity)
+                        )
+                        alerts_data.append(
+                            {
+                                "title": title,
+                                "description": desc,
+                                "severity": severity_str,
+                            }
+                        )
+
                     if not alerts_list:
-                        deterministic_response = f"Good news! I didn't find any alerts for {month_str}. Your finances look healthy."
+                        deterministic_payload = {
+                            "mode": "finance_alerts",
+                            "month": month_str,
+                            "status": "no_alerts",
+                            "alerts": [],
+                        }
+                        deterministic_text = f"Good news! I didn't find any alerts for {month_str}. Your finances look healthy."
                     else:
+                        deterministic_payload = {
+                            "mode": "finance_alerts",
+                            "month": month_str,
+                            "status": "has_alerts",
+                            "alert_count": len(alerts_list),
+                            "alerts": alerts_data,
+                            "truncated": len(alerts_list) > 10,
+                        }
+
+                        # Build fallback text
                         alerts_parts = [
                             f"I found {len(alerts_list)} alert(s) for {month_str}:\n\n"
                         ]
-                        for idx, alert in enumerate(alerts_list[:10], 1):  # Limit to 10
-                            # Format alert nicely
-                            title = alert.title if hasattr(alert, "title") else "Alert"
-                            desc = (
-                                alert.description
-                                if hasattr(alert, "description")
-                                else str(alert)
-                            )
-                            severity_str = (
-                                alert.severity.value
-                                if hasattr(alert.severity, "value")
-                                else str(alert.severity)
-                            )
-
-                            # Icons by severity
+                        for idx, alert_dict in enumerate(alerts_data, 1):
                             icon = (
                                 "⚠️"
-                                if severity_str == "warning"
-                                else "🔴" if severity_str == "critical" else "ℹ️"
+                                if alert_dict["severity"] == "warning"
+                                else (
+                                    "🔴"
+                                    if alert_dict["severity"] == "critical"
+                                    else "ℹ️"
+                                )
                             )
-
-                            # Format with title and description
                             alerts_parts.append(
-                                f"{idx}. {icon} **{title}**\n   {desc}\n"
+                                f"{idx}. {icon} **{alert_dict['title']}**\n   {alert_dict['description']}\n"
                             )
-
                         if len(alerts_list) > 10:
                             alerts_parts.append(
                                 f"\n_...and {len(alerts_list) - 10} more._"
                             )
+                        deterministic_text = "".join(alerts_parts)
 
-                        deterministic_response = "".join(alerts_parts)
                 except Exception as det_err:
                     logger.warning(
                         f"[agent_stream] Deterministic alerts failed: {det_err}"
                     )
-                    # Fall through to LLM
+                    deterministic_payload = {
+                        "mode": "finance_alerts",
+                        "status": "error",
+                        "message": str(det_err),
+                    }
+                    deterministic_text = "I encountered an error analyzing your alerts. Please try again."
 
             elif detected_mode in (
                 "analytics_subscriptions_all",
@@ -2163,10 +2193,16 @@ async def agent_stream(
                     # Get transaction data for selected month
                     month_insights = load_month(db, auth.get("user_id"), month)
                     txn_count = month_insights.get("transaction_count", 0)
+                    month_display = month or "this month"
 
                     if txn_count == 0:
-                        month_display = month or "the current month"
-                        deterministic_response = (
+                        deterministic_payload = {
+                            "mode": detected_mode,
+                            "month": month_display,
+                            "status": "no_data",
+                            "merchants": [],
+                        }
+                        deterministic_text = (
                             f"I don't have any transaction data for {month_display}. "
                             "Once you have transactions, I'll be able to identify recurring charges."
                         )
@@ -2174,36 +2210,53 @@ async def agent_stream(
                         # Get merchants that appear multiple times (simple heuristic for recurring)
                         top_merchants = month_insights.get("top_merchants", [])[:10]
 
-                        recurring_parts = [
-                            f"Looking at your transactions for {month or 'this month'}, here are merchants that appear frequently:\n\n"
+                        merchants_data = [
+                            {
+                                "merchant": merch.get("merchant", "Unknown"),
+                                "transaction_count": merch.get("transaction_count", 0),
+                                "total_spend": float(abs(merch.get("spend", 0))),
+                            }
+                            for merch in top_merchants
                         ]
 
+                        deterministic_payload = {
+                            "mode": detected_mode,
+                            "month": month_display,
+                            "status": "has_data",
+                            "transaction_count": txn_count,
+                            "merchants": merchants_data,
+                        }
+
+                        # Build fallback text
                         if top_merchants:
-                            for merch in top_merchants:
-                                merchant_name = merch.get("merchant", "Unknown")
-                                count = merch.get("transaction_count", 0)
-                                total = abs(merch.get("spend", 0))
+                            recurring_parts = [
+                                f"Looking at your transactions for {month_display}, here are merchants that appear frequently:\n\n"
+                            ]
+                            for merch_dict in merchants_data:
                                 recurring_parts.append(
-                                    f"• **{merchant_name}**: {count} transaction(s), ${total:,.2f}\n"
+                                    f"• **{merch_dict['merchant']}**: {merch_dict['transaction_count']} transaction(s), ${merch_dict['total_spend']:,.2f}\n"
                                 )
-                        else:
                             recurring_parts.append(
-                                "I couldn't find obvious recurring merchants yet. "
-                                "Add more months of data for better pattern detection.\n"
+                                "\nℹ️ Subscriptions are merchants that charge you regularly (monthly, yearly, etc.). "
+                                "Review this list for any you might want to cancel or reduce."
                             )
-
-                        recurring_parts.append(
-                            "\nℹ️ Subscriptions are merchants that charge you regularly (monthly, yearly, etc.). "
-                            "Review this list for any you might want to cancel or reduce."
-                        )
-
-                        deterministic_response = "".join(recurring_parts)
+                            deterministic_text = "".join(recurring_parts)
+                        else:
+                            deterministic_text = (
+                                "I couldn't find obvious recurring merchants yet. "
+                                "Add more months of data for better pattern detection."
+                            )
 
                 except Exception as det_err:
                     logger.warning(
                         f"[agent_stream] Deterministic subscriptions failed: {det_err}"
                     )
-                    # Fall through to LLM
+                    deterministic_payload = {
+                        "mode": detected_mode,
+                        "status": "error",
+                        "message": str(det_err),
+                    }
+                    deterministic_text = "I encountered an error analyzing recurring charges. Please try again."
 
             elif detected_mode == "insights_summary":
                 # Build compact insights summary
@@ -2212,49 +2265,77 @@ async def agent_stream(
 
                     insights = load_month(db, auth.get("user_id"), month)
                     txn_count = insights.get("transaction_count", 0)
+                    month_display = month or "this month"
 
                     if txn_count == 0:
-                        month_display = month or "the current month"
-                        deterministic_response = (
+                        deterministic_payload = {
+                            "mode": "insights_summary",
+                            "month": month_display,
+                            "status": "no_data",
+                        }
+                        deterministic_text = (
                             f"No transaction data available for {month_display}. "
                             "Upload transactions to see insights."
                         )
                     else:
-                        month_str = month or "this month"
                         spend = abs(insights.get("spend", 0))
                         income = insights.get("income", 0)
                         net = insights.get("net", 0)
                         unknowns = insights.get("unknowns_count", 0)
 
+                        top_categories = [
+                            {
+                                "category": cat.get("category", "Unknown"),
+                                "spend": float(abs(cat.get("spend", 0))),
+                            }
+                            for cat in insights.get("top_categories", [])[:3]
+                        ]
+
+                        deterministic_payload = {
+                            "mode": "insights_summary",
+                            "month": month_display,
+                            "status": "has_data",
+                            "transaction_count": txn_count,
+                            "summary": {
+                                "spend": float(spend),
+                                "income": float(income),
+                                "net": float(net),
+                                "uncategorized_count": unknowns,
+                            },
+                            "top_categories": top_categories,
+                        }
+
+                        # Build fallback text
                         summary_parts = [
-                            f"**Quick insights for {month_str}**\n\n",
+                            f"**Quick insights for {month_display}**\n\n",
                             f"💸 **Spend**: ${spend:,.2f}\n",
                             f"💰 **Income**: ${income:,.2f}\n",
                             f"📊 **Net**: ${net:+,.2f}\n",
                         ]
-
                         if unknowns > 0:
                             summary_parts.append(
                                 f"⚠️ **Uncategorized**: {unknowns} transaction(s)\n"
                             )
-
-                        top_categories = insights.get("top_categories", [])[:3]
                         if top_categories:
                             summary_parts.append("\n**Top spending categories**:\n")
-                            for cat in top_categories:
-                                cat_name = cat.get("category", "Unknown")
-                                cat_spend = abs(cat.get("spend", 0))
+                            for cat_dict in top_categories:
                                 summary_parts.append(
-                                    f"• {cat_name}: ${cat_spend:,.2f}\n"
+                                    f"• {cat_dict['category']}: ${cat_dict['spend']:,.2f}\n"
                                 )
-
-                        deterministic_response = "".join(summary_parts)
+                        deterministic_text = "".join(summary_parts)
 
                 except Exception as det_err:
                     logger.warning(
                         f"[agent_stream] Deterministic insights summary failed: {det_err}"
                     )
-                    # Fall through to LLM
+                    deterministic_payload = {
+                        "mode": "insights_summary",
+                        "status": "error",
+                        "message": str(det_err),
+                    }
+                    deterministic_text = (
+                        "I encountered an error generating insights. Please try again."
+                    )
 
             elif detected_mode == "analytics_budget_suggest":
                 # Build budget suggestion
@@ -2263,32 +2344,66 @@ async def agent_stream(
 
                     insights = load_month(db, auth.get("user_id"), month)
                     txn_count = insights.get("transaction_count", 0)
+                    month_display = month or "this month"
 
                     if txn_count == 0:
-                        month_display = month or "the current month"
-                        deterministic_response = (
+                        deterministic_payload = {
+                            "mode": "analytics_budget_suggest",
+                            "month": month_display,
+                            "status": "no_data",
+                        }
+                        deterministic_text = (
                             f"I need transaction data for {month_display} to suggest a budget. "
                             "Upload transactions first."
                         )
                     else:
-                        month_str = month or "this month"
                         spend = abs(insights.get("spend", 0))
                         income = insights.get("income", 0)
 
                         # Simple 50/30/20 rule: 50% needs, 30% wants, 20% savings
                         if income > 0:
-                            needs_budget = income * 0.50
-                            wants_budget = income * 0.30
-                            savings_budget = income * 0.20
+                            base_amount = income
+                            based_on = "income"
                         else:
                             # Fallback to spend if no income data
-                            needs_budget = spend * 0.50
-                            wants_budget = spend * 0.30
-                            savings_budget = spend * 0.20
+                            base_amount = spend
+                            based_on = "spending"
 
+                        needs_budget = base_amount * 0.50
+                        wants_budget = base_amount * 0.30
+                        savings_budget = base_amount * 0.20
+
+                        over_budget = spend > (needs_budget + wants_budget)
+                        variance = (
+                            spend - (needs_budget + wants_budget)
+                            if over_budget
+                            else (needs_budget + wants_budget) - spend
+                        )
+
+                        deterministic_payload = {
+                            "mode": "analytics_budget_suggest",
+                            "month": month_display,
+                            "status": "has_data",
+                            "transaction_count": txn_count,
+                            "current": {"spend": float(spend), "income": float(income)},
+                            "budget_rule": "50/30/20",
+                            "based_on": based_on,
+                            "base_amount": float(base_amount),
+                            "suggested": {
+                                "needs": float(needs_budget),
+                                "wants": float(wants_budget),
+                                "savings": float(savings_budget),
+                            },
+                            "analysis": {
+                                "over_budget": over_budget,
+                                "variance": float(variance),
+                            },
+                        }
+
+                        # Build fallback text
                         budget_parts = [
-                            f"**Budget suggestion for {month_str}**\n\n",
-                            f"Based on your {'income' if income > 0 else 'spending'} of ${income if income > 0 else spend:,.2f}, "
+                            f"**Budget suggestion for {month_display}**\n\n",
+                            f"Based on your {based_on} of ${base_amount:,.2f}, "
                             f"here's a suggested budget using the 50/30/20 rule:\n\n",
                             f"🏠 **Needs** (50%): ${needs_budget:,.2f}\n",
                             "   _Housing, groceries, utilities, insurance_\n\n",
@@ -2298,27 +2413,40 @@ async def agent_stream(
                             "   _Emergency fund, investments, debt payoff_\n\n",
                             f"Current spending: ${spend:,.2f}\n",
                         ]
-
-                        if spend > (needs_budget + wants_budget):
+                        if over_budget:
                             budget_parts.append(
-                                f"\n⚠️ You're spending ${spend - (needs_budget + wants_budget):,.2f} more than the suggested budget."
+                                f"\n⚠️ You're spending ${variance:,.2f} more than the suggested budget."
                             )
                         else:
                             budget_parts.append(
-                                f"\n✅ You're within budget! Consider allocating ${(needs_budget + wants_budget) - spend:,.2f} to savings."
+                                f"\n✅ You're within budget! Consider allocating ${variance:,.2f} to savings."
                             )
-
-                        deterministic_response = "".join(budget_parts)
+                        deterministic_text = "".join(budget_parts)
 
                 except Exception as det_err:
                     logger.warning(
                         f"[agent_stream] Deterministic budget suggest failed: {det_err}"
                     )
-                    # Fall through to LLM
+                    deterministic_payload = {
+                        "mode": "analytics_budget_suggest",
+                        "status": "error",
+                        "message": str(det_err),
+                    }
+                    deterministic_text = "I encountered an error generating budget suggestions. Please try again."
 
             elif detected_mode == "search_transactions":
                 # Provide simple message - full NL search should use dedicated endpoint
-                deterministic_response = (
+                deterministic_payload = {
+                    "mode": "search_transactions",
+                    "status": "info",
+                    "examples": [
+                        "Starbucks this month",
+                        "Delta in Aug 2025",
+                        "transactions > $50 last 90 days",
+                        "refunds last month",
+                    ],
+                }
+                deterministic_text = (
                     "To search transactions, use the search box above and try queries like:\n\n"
                     "• 'Starbucks this month'\n"
                     "• 'Delta in Aug 2025'\n"
