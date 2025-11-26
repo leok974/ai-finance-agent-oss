@@ -18,7 +18,10 @@ date,merchant,description,amount,category
 2025-06-19,STEAM PURCHASE,Video game,-39.99,entertainment.games
 2025-06-21,UNKNOWN MERCHANT XYZ,Unknown charge,-850.00,unknown
 2025-06-22,TRADER JOES #456,Groceries,-92.18,groceries
+2025-06-23,ATM WITHDRAWAL 02:15AM,Suspicious late night ATM,-200.00,cash.withdrawal
+2025-06-24,CASH ADVANCE FEE,Cash advance charge,-35.00,fees.cash_advance
 2025-06-26,ATT BILL PAYMENT,Landline,-45.00,utilities.phone
+2025-06-27,PENDING AUTHORIZATION HOLD,Suspicious hold,-275.00,unknown
 2025-06-29,SAFEWAY STORE 1892,Weekend groceries,-103.67,groceries
 2025-06-30,VENMO CASHOUT,Transfer to bank,200.00,transfers
 2025-06-5,CHIPOTLE MEXICAN GRILL #890,Lunch,-14.25000,restaurants
@@ -45,6 +48,8 @@ date,merchant,description,amount,category
 2025-07-21,LYFT RIDE,Transportation,-20.75,transportation.rideshare
 2025-07-22,TRADER JOES #456,Groceries,-87.45,groceries
 2025-07-22,UNKNOWN VENDOR ABC,Unknown charge,-650.00,unknown
+2025-07-23,INTL TRANSACTION FEE,Foreign fee,-28.50,fees.foreign
+2025-07-24,ONLINE GAMBLING NY,Suspicious merchant,-180.00,unknown
 2025-07-29,SAFEWAY STORE 1892,Weekend groceries,-112.34,groceries
 2025-07-31,REFUND - AMAZON,Product return,42.50,income.refund
 2025-07-9,AMZN Mktp US*3K7PQ1RT,Books,-75.99,shopping.online
@@ -70,6 +75,8 @@ date,merchant,description,amount,category
 2025-08-21,STEAM SUMMER SALE,Games bundle,-53.33,entertainment.games
 2025-08-22,TRADER JOES #456,Groceries,-95.23,groceries
 2025-08-23,UNKNOWN CHARGE 123,Unknown transaction,-425.00,unknown
+2025-08-24,CRYPTO EXCHANGE MIAMI,Suspicious location,-340.00,unknown
+2025-08-25,ATM INTL WITHDRAWAL,Foreign ATM fee,-50.00,fees.foreign
 2025-08-29,SAFEWAY STORE 1892,Weekend groceries,-118.90,groceries
 2025-08-29,BEST BUY #4567,Electronics,-289.99,shopping.retail
 2025-08-30,INSURANCE CO,Health insurance premium,-425.00,insurance.health
@@ -96,6 +103,9 @@ date,merchant,description,amount,category
 2025-09-22,STEAM FALL SALE,Video games,-60.00,entertainment.games
 2025-09-23,LYFT RIDE,Transportation,-24.75,transportation.rideshare
 2025-09-24,UNKNOWN MERCHANT DEF,Suspicious charge,-312.00,unknown
+2025-09-25,DUPLICATE AUTH HOLD,Duplicate transaction,-95.00,unknown
+2025-09-25,DUPLICATE AUTH HOLD,Duplicate transaction,-95.00,unknown
+2025-09-26,WIRE TRANSFER FEE,Large transfer fee,-65.00,fees.wire
 2025-09-29,SAFEWAY STORE 1892,Weekend groceries,-125.78,groceries
 2025-09-29,HOME DEPOT #8901,Hardware supplies,-156.34,shopping.retail
 2025-09-30,INSURANCE CO,Health insurance premium,-425.00,insurance.health
@@ -123,6 +133,8 @@ date,merchant,description,amount,category
 2025-10-23,STEAM HALLOWEEN,Horror games,-66.67,entertainment.games
 2025-10-25,INSURANCE CO,Health insurance premium,-425.00,insurance.health
 2025-10-25,UNKNOWN PAYMENT XYZ,Unknown debit,-378.00,unknown
+2025-10-26,CASH APP SEND,Unusual cash app transfer,-220.00,unknown
+2025-10-27,OFFSHORE MERCHANT TLD,Suspicious offshore charge,-195.00,unknown
 2025-10-29,SAFEWAY STORE 1892,Weekend groceries,-134.67,groceries
 2025-10-29,BEST BUY #4567,Laptop accessories,-178.90,shopping.retail
 2025-10-31,UPWORK ESCROW,Freelance web dev,1200,income.freelance
@@ -150,5 +162,10 @@ date,merchant,description,amount,category
 2025-11-25,LYFT RIDE,Transportation,-28.75,transportation.rideshare
 2025-11-25,INSURANCE CO,Health insurance premium,-425.00,insurance.health
 2025-11-26,UNKNOWN MERCHANT GHI,Unrecognized charge,-512.00,unknown
+2025-11-26,ATM CASH WITHDRAW 03:42AM,Late night ATM,-300.00,cash.withdrawal
+2025-11-27,LAS VEGAS NV CASINO,Unusual location,-250.00,unknown
+2025-11-27,FOREIGN TRANSACTION FEE,International charge fee,-45.00,fees.foreign
+2025-11-28,DUPLICATE CHARGE ALERT,Possible duplicate,-150.00,unknown
+2025-11-28,DUPLICATE CHARGE ALERT,Possible duplicate,-150.00,unknown
 2025-11-29,SAFEWAY STORE 1892,Weekend groceries,-89.45,groceries
 2025-11-9,AMZN Mktp US*7K3PQ1RT,Thanksgiving prep,-195.99,shopping.online
