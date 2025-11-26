@@ -431,10 +431,11 @@ const UploadCsv: React.FC<UploadCsvProps> = ({ onUploaded, defaultReplace = true
       setResult(r);
       onUploaded?.(r);
 
-      // Refresh all dashboard data
-      void handleUploadSuccess({ detected_month: null });
+      // Trigger full dashboard refresh via parent callback
+      onUploaded?.(r);
+
       toast.success("Demo data loaded successfully", {
-        description: "Charts will update in a moment."
+        description: "Dashboard refreshed with sample transactions."
       });
     } catch (err) {
       console.error(err);

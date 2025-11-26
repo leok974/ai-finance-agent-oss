@@ -161,8 +161,7 @@ export const dictionaries = {
       },
       unknowns: {
         header_label: 'Uncategorized transactions',
-        tooltip_info: 'These are transactions without a category. Use “Seed rule” to quickly create a rule in the Rule Tester.',
-        workflow_hint: 'Review → Seed → Categorize',
+        tooltip_info: 'These are transactions without a category. Use "Seed rule" to quickly create a rule in the Rule Tester.',
         seed_rule: 'Seed rule',
         seed_rule_aria: 'Seed rule (prefill Rule Tester)',
         seed_rule_tooltip: 'Sends merchant/description (and current month) into Rule Tester so you can test & save a rule quickly.',

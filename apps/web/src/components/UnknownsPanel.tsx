@@ -218,9 +218,6 @@ export default function UnknownsPanel({ month, onSeedRule: _onSeedRule, onChange
           </Tooltip>
           <SuggestionsInfoModal source="unknowns" />
         </div>
-  <div className="text-xs opacity-70">
-    {t('ui.unknowns.workflow_hint')}
-  </div>
       </div>
   <ul className="space-y-2">
         {visibleUnknowns.map(tx => (
