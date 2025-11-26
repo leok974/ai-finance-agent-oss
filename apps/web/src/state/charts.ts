@@ -33,7 +33,6 @@ export const useChartsStore = create<ChartsState>((set) => ({
         chartsFlows(month),
       ]);
       set({ summary: s, merchants: m, categories: c, flows: f });
-      console.log('[charts] refetched all data for month:', month);
     } catch (error) {
       console.error('[charts] failed to refetch:', error);
     }

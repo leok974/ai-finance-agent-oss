@@ -53,8 +53,6 @@ export const AuthContext = createContext<{
 } | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  console.log('[AuthProvider] render');
-
   const [user, setUser] = useState<User>(null);
   const [authReady, setAuthReady] = useState(false);
 

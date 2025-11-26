@@ -8,7 +8,7 @@ import ExplainButton from "@/components/ExplainButton";
 type ModelOpt = "auto" | "ema" | "sarimax";
 type CiOpt = 0 | 0.8 | 0.9 | 0.95;
 
-export default function ForecastCard({ className = "" }: { className?: string }) {
+export default function ForecastCard({ className = "", refreshKey = 0 }: { className?: string; refreshKey?: number }) {
   const { month } = useMonth();
   const [data, setData] = React.useState<any>(null);
   const [busy, setBusy] = React.useState(false);
@@ -35,17 +35,11 @@ export default function ForecastCard({ className = "" }: { className?: string })
     }
   }
 
-  // Reset forecast data (e.g., after dashboard reset)
-  const resetForecast = React.useCallback(() => {
+  // Reset forecast data when refreshKey changes (e.g., after dashboard reset/seed)
+  React.useEffect(() => {
     setData(null);
     lastAutoRunMonth.current = null;
-  }, []);
-
-  // Expose reset function via a global hook (optional)
-  React.useEffect(() => {
-    // Listen for dashboard reset events if you have a context
-    // For now, this is just a placeholder for future integration
-  }, []);
+  }, [refreshKey]);
 
   // Auto-run once when a valid month is available and no data yet
   React.useEffect(() => {

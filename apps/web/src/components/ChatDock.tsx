@@ -183,8 +183,6 @@ function useRenderGuard(name: string) {
 }
 
 export default function ChatDock() {
-  console.log('[ChatDock] render start');
-
   useRenderGuard('ChatDock');
 
   // Γ¢æ∩╕Å CRITICAL: Only allow portal creation after complete page load
@@ -538,7 +536,6 @@ export default function ChatDock() {
     }));
 
     setUiMessages(mapped);
-    console.log('[ChatDock] synced messages from store:', mapped.length);
   }, [storeMessages]);
 
   // Equality guard to avoid redundant setState on cross-tab updates
@@ -578,9 +575,6 @@ export default function ChatDock() {
 
   // quick sanity ping so you can confirm the file actually recompiled
   useEffect(() => {
-    if (isPrimary) {
-      console.log("[ChatDock] v0906f loaded");
-    }
     return () => { if (syncTimerRef.current) window.clearTimeout(syncTimerRef.current); };
   }, [isPrimary]);
 

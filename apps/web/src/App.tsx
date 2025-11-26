@@ -399,7 +399,7 @@ const App: React.FC = () => {
 
         {/* Forecast (model + CI controls) */}
         <div className="section">
-          <ForecastCard />
+          <ForecastCard refreshKey={refreshKey} />
         </div>
 
         {/* Main grid - CANONICAL: Unknowns card with ML feedback suggestions */}

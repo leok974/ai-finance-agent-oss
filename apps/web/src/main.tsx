@@ -114,15 +114,6 @@ root.render(
   )
 );
 
-// Boot diagnostics - prove single mount + single React copy
-console.info('[boot] react', reactVersion, 'react-dom', reactDomVersion);
-console.info('[boot] root created at', (window as any).__ROOT_CREATED_AT__);
-console.info('[boot] mount once flag', window.__APP_MOUNTED__);
-
-if (import.meta.env.PROD) {
-  console.info('[boot] React root mounted once (production mode)');
-}
-
 // Chat handshake listener (iframe architecture - no custom element wrapper)
 if (!(window as any).__chatHandshakeBound) {
   const chatListener = (e: MessageEvent) => {

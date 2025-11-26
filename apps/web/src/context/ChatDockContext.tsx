@@ -24,8 +24,6 @@ const ChatDockContext = createContext<ChatDockContextValue>({
 });
 
 export function ChatDockProvider({ children }: { children: React.ReactNode }) {
-  console.log('[ChatDockProvider] render');
-
   const appendUserRef = useRef<AppendUser | null>(null);
   const appendAssistantRef = useRef<AppendAssistant | null>(null);
 

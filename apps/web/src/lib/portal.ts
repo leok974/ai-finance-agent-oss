@@ -69,7 +69,6 @@ export const getPortalRoot = (): HTMLElement => {
   // Check for #__LM_PORTAL_ROOT__ div in current document
   const el = document.getElementById(PORTAL_ID);
   if (el) {
-    console.log(`[portal] getPortalRoot() → #__LM_PORTAL_ROOT__ (iframe=${isIframe})`);
     return el;
   }
 
