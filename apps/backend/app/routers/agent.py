@@ -2192,11 +2192,15 @@ async def agent_stream(
                 try:
                     # Import alerts module
                     from app.services.analytics_alerts import compute_alerts_for_month
+                    from app.orm_models import User
 
-                    # Get user_id from auth context
-                    user_id = (
-                        int(auth.get("client_id")) if auth.get("client_id") else None
-                    )
+                    # Get user_id by looking up email (client_id) in database
+                    client_email = auth.get("client_id")
+                    user_id = None
+                    if client_email:
+                        user = db.query(User).filter(User.email == client_email).first()
+                        if user:
+                            user_id = user.id
 
                     alerts_result = compute_alerts_for_month(
                         db=db, month=month, user_id=user_id
