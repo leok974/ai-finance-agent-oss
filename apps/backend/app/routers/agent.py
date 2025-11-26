@@ -6,9 +6,35 @@ import logging
 import re
 import time
 import uuid
+from datetime import date
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 print("[agent.py] loaded version: refactor-tagfix-1")
+
+
+def _parse_target_month(month_str: Optional[str]) -> Optional[str]:
+    """
+    Accepts 'YYYY-MM' or 'YYYY-MM-DD' and returns 'YYYY-MM' string,
+    or None if parsing fails.
+    """
+    if not month_str:
+        return None
+    try:
+        if len(month_str) == 7:  # 'YYYY-MM'
+            # Validate format
+            year, month = map(int, month_str.split("-"))
+            if 1 <= month <= 12:
+                return month_str
+        elif len(month_str) == 10:  # 'YYYY-MM-DD'
+            # Extract YYYY-MM
+            return month_str[:7]
+        # Try to parse as date and extract YYYY-MM
+        d = date.fromisoformat(month_str)
+        return d.strftime("%Y-%m")
+    except Exception:
+        return None
+
 
 _HERMETIC = _os.getenv("HERMETIC") == "1"
 
@@ -1709,49 +1735,115 @@ async def agent_stream(
             if detected_mode == "finance_quick_recap":
                 # Build deterministic quick recap from backend data
                 try:
-                    # Use the insights from context (already enriched earlier)
-                    insights = ctx.get("insights", {})
-                    month_str = month or ctx.get("month", "current month")
-                    txn_count = insights.get("transaction_count", 0)
+                    from app.services.insights_expanded import (
+                        load_month,
+                        latest_month_from_data,
+                    )
 
-                    # Only show "no data" message if there are truly no transactions
-                    if txn_count == 0:
-                        deterministic_response = (
+                    # Normalize month parameter
+                    target_month = _parse_target_month(month) or latest_month_from_data(
+                        db
+                    )
+
+                    if not target_month:
+                        deterministic_payload = {
+                            "mode": "finance_quick_recap",
+                            "status": "no_data",
+                            "target_month": None,
+                        }
+                        deterministic_text = (
                             "I don't see any transactions in your account yet. "
                             "You can upload a CSV file or click **Use sample data** to explore LedgerMind's insights."
                         )
                     else:
-                        income = insights.get("income", 0)
-                        spend = abs(insights.get("spend", 0))
-                        net = insights.get("net", 0)
-                        unknowns = insights.get("unknowns_count", 0)
+                        # Load month data using the same function as analytics_trends
+                        month_agg = load_month(db, target_month)
+                        txn_count = month_agg.transaction_count
 
-                        recap_parts = [
-                            f"Month summary for {month_str}:",
-                            f"\n\n📊 Income: ${income:,.2f}",
-                            f"\n💸 Spend: ${spend:,.2f}",
-                            f"\n📈 Net: ${net:,.2f}",
-                        ]
-
-                        if unknowns > 0:
-                            recap_parts.append(
-                                f"\n⚠️ {unknowns} uncategorized transactions"
+                        if txn_count == 0:
+                            deterministic_payload = {
+                                "mode": "finance_quick_recap",
+                                "status": "no_data",
+                                "target_month": target_month,
+                            }
+                            deterministic_text = (
+                                f"I don't see any transactions for {target_month}. "
+                                "Upload a CSV or use sample data to explore LedgerMind."
                             )
+                        else:
+                            # Build top merchants list
+                            top_merchants = [
+                                {"name": merch, "spend": float(amt)}
+                                for merch, amt in sorted(
+                                    month_agg.by_merchant.items(),
+                                    key=lambda x: x[1],
+                                    reverse=True,
+                                )[:5]
+                            ]
 
-                        top_categories = insights.get("top_categories", [])[:3]
-                        if top_categories:
-                            recap_parts.append("\n\n**Top categories:**")
-                            for cat in top_categories:
-                                cat_name = cat.get("category", "Unknown")
-                                cat_spend = abs(cat.get("spend", 0))
-                                recap_parts.append(f"\n• {cat_name}: ${cat_spend:,.2f}")
+                            # Build top categories list
+                            top_categories = [
+                                {"name": cat, "spend": float(amt)}
+                                for cat, amt in sorted(
+                                    month_agg.by_category.items(),
+                                    key=lambda x: x[1],
+                                    reverse=True,
+                                )[:3]
+                            ]
 
-                        deterministic_response = "".join(recap_parts)
+                            deterministic_payload = {
+                                "mode": "finance_quick_recap",
+                                "status": "has_data",
+                                "target_month": target_month,
+                                "summary": {
+                                    "total_spend": float(month_agg.spend),
+                                    "total_income": float(month_agg.income),
+                                    "net": float(month_agg.net),
+                                    "unknown_spend": float(
+                                        month_agg.unknown_spend_amount
+                                    ),
+                                    "unknown_count": month_agg.unknown_spend_count,
+                                    "txns": txn_count,
+                                },
+                                "top_merchants": top_merchants,
+                                "top_categories": top_categories,
+                            }
+
+                            # Build fallback text
+                            recap_parts = [
+                                f"Month summary for {target_month}:",
+                                f"\n\n📊 Income: ${month_agg.income:,.2f}",
+                                f"\n💸 Spend: ${month_agg.spend:,.2f}",
+                                f"\n📈 Net: ${month_agg.net:,.2f}",
+                            ]
+
+                            if month_agg.unknown_spend_count > 0:
+                                recap_parts.append(
+                                    f"\n⚠️ ${month_agg.unknown_spend_amount:,.2f} uncategorized ({month_agg.unknown_spend_count} txns)"
+                                )
+
+                            if top_categories:
+                                recap_parts.append("\n\n**Top categories:**")
+                                for cat in top_categories:
+                                    recap_parts.append(
+                                        f"\n• {cat['name']}: ${cat['spend']:,.2f}"
+                                    )
+
+                            deterministic_text = "".join(recap_parts)
+
                 except Exception as det_err:
                     logger.warning(
-                        f"[agent_stream] Deterministic quick recap failed: {det_err}"
+                        f"[agent_stream] Deterministic quick recap failed: {det_err}",
+                        exc_info=True,
                     )
-                    # Fall through to LLM
+                    deterministic_payload = {
+                        "mode": "finance_quick_recap",
+                        "status": "error",
+                    }
+                    deterministic_text = (
+                        "I encountered an error loading your month summary. "
+                        "Please try again or select a different month."
+                    )
 
             elif detected_mode == "analytics_trends":
                 # Build deterministic payload and always call LLM with it as context
@@ -2188,75 +2280,101 @@ async def agent_stream(
             ):
                 # Build deterministic recurring/subscriptions response
                 try:
-                    from app.services.insights_expanded import load_month
+                    from app.services.insights_expanded import (
+                        load_month,
+                        latest_month_from_data,
+                    )
 
-                    # Get transaction data for selected month
-                    month_insights = load_month(db, auth.get("user_id"), month)
-                    txn_count = month_insights.get("transaction_count", 0)
-                    month_display = month or "this month"
+                    # Normalize month parameter
+                    target_month = _parse_target_month(month) or latest_month_from_data(
+                        db
+                    )
 
-                    if txn_count == 0:
+                    if not target_month:
                         deterministic_payload = {
                             "mode": detected_mode,
-                            "month": month_display,
+                            "month": None,
                             "status": "no_data",
                             "merchants": [],
                         }
                         deterministic_text = (
-                            f"I don't have any transaction data for {month_display}. "
+                            "I don't have any transaction data yet. "
                             "Once you have transactions, I'll be able to identify recurring charges."
                         )
                     else:
-                        # Get merchants that appear multiple times (simple heuristic for recurring)
-                        top_merchants = month_insights.get("top_merchants", [])[:10]
+                        # Get transaction data for selected month using MonthAgg dataclass
+                        month_agg = load_month(db, target_month)
+                        txn_count = month_agg.transaction_count
 
-                        merchants_data = [
-                            {
-                                "merchant": merch.get("merchant", "Unknown"),
-                                "transaction_count": merch.get("transaction_count", 0),
-                                "total_spend": float(abs(merch.get("spend", 0))),
+                        if txn_count == 0:
+                            deterministic_payload = {
+                                "mode": detected_mode,
+                                "month": target_month,
+                                "status": "no_data",
+                                "merchants": [],
                             }
-                            for merch in top_merchants
-                        ]
-
-                        deterministic_payload = {
-                            "mode": detected_mode,
-                            "month": month_display,
-                            "status": "has_data",
-                            "transaction_count": txn_count,
-                            "merchants": merchants_data,
-                        }
-
-                        # Build fallback text
-                        if top_merchants:
-                            recurring_parts = [
-                                f"Looking at your transactions for {month_display}, here are merchants that appear frequently:\n\n"
-                            ]
-                            for merch_dict in merchants_data:
-                                recurring_parts.append(
-                                    f"• **{merch_dict['merchant']}**: {merch_dict['transaction_count']} transaction(s), ${merch_dict['total_spend']:,.2f}\n"
-                                )
-                            recurring_parts.append(
-                                "\nℹ️ Subscriptions are merchants that charge you regularly (monthly, yearly, etc.). "
-                                "Review this list for any you might want to cancel or reduce."
-                            )
-                            deterministic_text = "".join(recurring_parts)
-                        else:
                             deterministic_text = (
-                                "I couldn't find obvious recurring merchants yet. "
-                                "Add more months of data for better pattern detection."
+                                f"I don't have any transaction data for {target_month}. "
+                                "Once you have transactions, I'll be able to identify recurring charges."
                             )
+                        else:
+                            # Get top merchants by spend (proxy for recurring)
+                            # Sort by spend amount descending
+                            top_merchants_list = sorted(
+                                month_agg.by_merchant.items(),
+                                key=lambda x: x[1],
+                                reverse=True,
+                            )[:10]
+
+                            merchants_data = [
+                                {
+                                    "merchant": merch_name,
+                                    "total_spend": float(spend_amt),
+                                }
+                                for merch_name, spend_amt in top_merchants_list
+                            ]
+
+                            deterministic_payload = {
+                                "mode": detected_mode,
+                                "month": target_month,
+                                "status": "has_data",
+                                "transaction_count": txn_count,
+                                "merchants": merchants_data,
+                            }
+
+                            # Build fallback text
+                            if merchants_data:
+                                recurring_parts = [
+                                    f"Looking at your transactions for {target_month}, here are your top merchants:\n\n"
+                                ]
+                                for merch_dict in merchants_data:
+                                    recurring_parts.append(
+                                        f"• **{merch_dict['merchant']}**: ${merch_dict['total_spend']:,.2f}\n"
+                                    )
+                                recurring_parts.append(
+                                    "\nℹ️ Subscriptions are merchants that charge you regularly (monthly, yearly, etc.). "
+                                    "Review this list for any you might want to cancel or reduce."
+                                )
+                                deterministic_text = "".join(recurring_parts)
+                            else:
+                                deterministic_text = (
+                                    "I couldn't find obvious recurring merchants yet. "
+                                    "Add more months of data for better pattern detection."
+                                )
 
                 except Exception as det_err:
                     logger.warning(
-                        f"[agent_stream] Deterministic subscriptions failed: {det_err}"
+                        f"[agent_stream] Deterministic subscriptions failed: {det_err}",
+                        exc_info=True,
                     )
                     deterministic_payload = {
                         "mode": detected_mode,
                         "status": "error",
-                        "message": str(det_err),
                     }
-                    deterministic_text = "I encountered an error analyzing recurring charges. Please try again."
+                    deterministic_text = (
+                        "I tried to pull your subscription data but something went wrong on the server. "
+                        "For now, you can scan your transactions for recurring merchants (same name, similar amount, monthly)."
+                    )
 
             elif detected_mode == "insights_summary":
                 # Build compact insights summary
@@ -2340,99 +2458,125 @@ async def agent_stream(
             elif detected_mode == "analytics_budget_suggest":
                 # Build budget suggestion
                 try:
-                    from app.services.insights_expanded import load_month
+                    from app.services.insights_expanded import (
+                        load_month,
+                        latest_month_from_data,
+                    )
 
-                    insights = load_month(db, auth.get("user_id"), month)
-                    txn_count = insights.get("transaction_count", 0)
-                    month_display = month or "this month"
+                    # Normalize month parameter
+                    target_month = _parse_target_month(month) or latest_month_from_data(
+                        db
+                    )
 
-                    if txn_count == 0:
+                    if not target_month:
                         deterministic_payload = {
                             "mode": "analytics_budget_suggest",
-                            "month": month_display,
+                            "month": None,
                             "status": "no_data",
                         }
                         deterministic_text = (
-                            f"I need transaction data for {month_display} to suggest a budget. "
+                            "I need transaction data to suggest a budget. "
                             "Upload transactions first."
                         )
                     else:
-                        spend = abs(insights.get("spend", 0))
-                        income = insights.get("income", 0)
+                        # Load month data using MonthAgg dataclass
+                        month_agg = load_month(db, target_month)
+                        txn_count = month_agg.transaction_count
 
-                        # Simple 50/30/20 rule: 50% needs, 30% wants, 20% savings
-                        if income > 0:
-                            base_amount = income
-                            based_on = "income"
-                        else:
-                            # Fallback to spend if no income data
-                            base_amount = spend
-                            based_on = "spending"
-
-                        needs_budget = base_amount * 0.50
-                        wants_budget = base_amount * 0.30
-                        savings_budget = base_amount * 0.20
-
-                        over_budget = spend > (needs_budget + wants_budget)
-                        variance = (
-                            spend - (needs_budget + wants_budget)
-                            if over_budget
-                            else (needs_budget + wants_budget) - spend
-                        )
-
-                        deterministic_payload = {
-                            "mode": "analytics_budget_suggest",
-                            "month": month_display,
-                            "status": "has_data",
-                            "transaction_count": txn_count,
-                            "current": {"spend": float(spend), "income": float(income)},
-                            "budget_rule": "50/30/20",
-                            "based_on": based_on,
-                            "base_amount": float(base_amount),
-                            "suggested": {
-                                "needs": float(needs_budget),
-                                "wants": float(wants_budget),
-                                "savings": float(savings_budget),
-                            },
-                            "analysis": {
-                                "over_budget": over_budget,
-                                "variance": float(variance),
-                            },
-                        }
-
-                        # Build fallback text
-                        budget_parts = [
-                            f"**Budget suggestion for {month_display}**\n\n",
-                            f"Based on your {based_on} of ${base_amount:,.2f}, "
-                            f"here's a suggested budget using the 50/30/20 rule:\n\n",
-                            f"🏠 **Needs** (50%): ${needs_budget:,.2f}\n",
-                            "   _Housing, groceries, utilities, insurance_\n\n",
-                            f"🎭 **Wants** (30%): ${wants_budget:,.2f}\n",
-                            "   _Dining, entertainment, hobbies_\n\n",
-                            f"💰 **Savings** (20%): ${savings_budget:,.2f}\n",
-                            "   _Emergency fund, investments, debt payoff_\n\n",
-                            f"Current spending: ${spend:,.2f}\n",
-                        ]
-                        if over_budget:
-                            budget_parts.append(
-                                f"\n⚠️ You're spending ${variance:,.2f} more than the suggested budget."
+                        if txn_count == 0:
+                            deterministic_payload = {
+                                "mode": "analytics_budget_suggest",
+                                "month": target_month,
+                                "status": "no_data",
+                            }
+                            deterministic_text = (
+                                f"I need transaction data for {target_month} to suggest a budget. "
+                                "Upload transactions first."
                             )
                         else:
-                            budget_parts.append(
-                                f"\n✅ You're within budget! Consider allocating ${variance:,.2f} to savings."
+                            # Extract data from MonthAgg dataclass attributes
+                            spend = month_agg.spend
+                            income = month_agg.income
+
+                            # Simple 50/30/20 rule: 50% needs, 30% wants, 20% savings
+                            if income > 0:
+                                base_amount = income
+                                based_on = "income"
+                            else:
+                                # Fallback to spend if no income data
+                                base_amount = spend
+                                based_on = "spending"
+
+                            needs_budget = base_amount * 0.50
+                            wants_budget = base_amount * 0.30
+                            savings_budget = base_amount * 0.20
+
+                            over_budget = spend > (needs_budget + wants_budget)
+                            variance = (
+                                spend - (needs_budget + wants_budget)
+                                if over_budget
+                                else (needs_budget + wants_budget) - spend
                             )
-                        deterministic_text = "".join(budget_parts)
+
+                            deterministic_payload = {
+                                "mode": "analytics_budget_suggest",
+                                "month": target_month,
+                                "status": "has_data",
+                                "transaction_count": txn_count,
+                                "current": {
+                                    "spend": float(spend),
+                                    "income": float(income),
+                                },
+                                "budget_rule": "50/30/20",
+                                "based_on": based_on,
+                                "base_amount": float(base_amount),
+                                "suggested": {
+                                    "needs": float(needs_budget),
+                                    "wants": float(wants_budget),
+                                    "savings": float(savings_budget),
+                                },
+                                "analysis": {
+                                    "over_budget": over_budget,
+                                    "variance": float(variance),
+                                },
+                            }
+
+                            # Build fallback text
+                            budget_parts = [
+                                f"**Budget suggestion for {target_month}**\n\n",
+                                f"Based on your {based_on} of ${base_amount:,.2f}, "
+                                f"here's a suggested budget using the 50/30/20 rule:\n\n",
+                                f"🏠 **Needs** (50%): ${needs_budget:,.2f}\n",
+                                "   _Housing, groceries, utilities, insurance_\n\n",
+                                f"🎭 **Wants** (30%): ${wants_budget:,.2f}\n",
+                                "   _Dining, entertainment, hobbies_\n\n",
+                                f"💰 **Savings** (20%): ${savings_budget:,.2f}\n",
+                                "   _Emergency fund, investments, debt payoff_\n\n",
+                                f"Current spending: ${spend:,.2f}\n",
+                            ]
+                            if over_budget:
+                                budget_parts.append(
+                                    f"\n⚠️ You're spending ${variance:,.2f} more than the suggested budget."
+                                )
+                            else:
+                                budget_parts.append(
+                                    f"\n✅ You're within budget! Consider allocating ${variance:,.2f} to savings."
+                                )
+                            deterministic_text = "".join(budget_parts)
 
                 except Exception as det_err:
                     logger.warning(
-                        f"[agent_stream] Deterministic budget suggest failed: {det_err}"
+                        f"[agent_stream] Deterministic budget suggest failed: {det_err}",
+                        exc_info=True,
                     )
                     deterministic_payload = {
                         "mode": "analytics_budget_suggest",
                         "status": "error",
-                        "message": str(det_err),
                     }
-                    deterministic_text = "I encountered an error generating budget suggestions. Please try again."
+                    deterministic_text = (
+                        "I encountered an error generating budget suggestions. "
+                        "Please try again or select a different month."
+                    )
 
             elif detected_mode == "search_transactions":
                 # Provide simple message - full NL search should use dedicated endpoint
