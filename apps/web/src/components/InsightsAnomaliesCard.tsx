@@ -1,6 +1,6 @@
 import * as React from "react";
 import Card from "./Card";
-import { getAnomalies, type Anomaly } from "@/lib/api";
+import { getAnomalies, getAlerts, type Anomaly, type AlertsResponse } from "@/lib/api";
 import { useMonth } from "@/context/MonthContext";
 import CardHelpTooltip from "./CardHelpTooltip";
 import { getHelpBaseText } from '@/lib/helpBaseText';
@@ -10,6 +10,8 @@ export default function InsightsAnomaliesCard() {
   const [data, setData] = React.useState<Anomaly[]>([]);
   const [month, setMonth] = React.useState<string | null>(null);
   const [err, setErr] = React.useState<string | null>(null);
+  const [alerts, setAlerts] = React.useState<AlertsResponse | null>(null);
+  const [alertsError, setAlertsError] = React.useState<string | null>(null);
   const { month: selectedMonth } = useMonth();
 
   React.useEffect(() => {
@@ -28,6 +30,29 @@ export default function InsightsAnomaliesCard() {
         if (!cancelled) setLoading(false);
       }
     })();
+    return () => { cancelled = true };
+  }, [selectedMonth]);
+
+  // Load alerts separately
+  React.useEffect(() => {
+    let cancelled = false;
+    if (!selectedMonth) return;
+
+    (async () => {
+      try {
+        setAlertsError(null);
+        const res = await getAlerts(selectedMonth);
+        if (!cancelled) {
+          setAlerts(res);
+        }
+      } catch (e: any) {
+        if (!cancelled) {
+          console.warn('[InsightsAnomaliesCard] Failed to load alerts', e);
+          setAlertsError('Unable to load alerts');
+        }
+      }
+    })();
+
     return () => { cancelled = true };
   }, [selectedMonth]);
 
@@ -74,6 +99,59 @@ export default function InsightsAnomaliesCard() {
           <div className="text-sm opacity-70">No unusual categories this month.</div>
         )
       )}
+
+      {/* Alerts Section */}
+      <div className="mt-4 border-t border-white/10 pt-3">
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-xs font-semibold uppercase text-white/60">
+            Alerts — {alerts?.month ?? selectedMonth ?? 'Selected month'}
+          </span>
+          {alertsError && (
+            <span className="text-[10px] text-red-300">
+              {alertsError}
+            </span>
+          )}
+        </div>
+
+        {!alerts && !alertsError && (
+          <p className="text-xs text-white/40">Checking for alerts…</p>
+        )}
+
+        {alerts && alerts.alerts.length === 0 && (
+          <p className="text-xs text-emerald-300">
+            ✓ No alerts this month — nothing unusual detected.
+          </p>
+        )}
+
+        {alerts && alerts.alerts.length > 0 && (
+          <ul className="space-y-1.5 text-xs">
+            {alerts.alerts.slice(0, 3).map((alert) => {
+              const icon =
+                alert.severity === 'critical' ? '🔴' :
+                alert.severity === 'warning' ? '⚠️' : 'ℹ️';
+              const textColor =
+                alert.severity === 'critical' ? 'text-red-300' :
+                alert.severity === 'warning' ? 'text-amber-300' : 'text-sky-300';
+
+              return (
+                <li key={alert.code} className="flex items-start gap-2">
+                  <span className={textColor}>{icon}</span>
+                  <div className="flex-1 min-w-0">
+                    <span className="font-medium">{alert.title}</span>
+                    {' — '}
+                    <span className="text-white/60">{alert.description}</span>
+                  </div>
+                </li>
+              );
+            })}
+            {alerts.alerts.length > 3 && (
+              <li className="text-white/40">
+                +{alerts.alerts.length - 3} more (open Alerts in ChatDock for details)
+              </li>
+            )}
+          </ul>
+        )}
+      </div>
       </Card>
     </div>
   );

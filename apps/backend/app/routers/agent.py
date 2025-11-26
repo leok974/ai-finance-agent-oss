@@ -2193,7 +2193,14 @@ async def agent_stream(
                     # Import alerts module
                     from app.services.analytics_alerts import compute_alerts_for_month
 
-                    alerts_result = compute_alerts_for_month(db=db, month=month)
+                    # Get user_id from auth context
+                    user_id = (
+                        int(auth.get("client_id")) if auth.get("client_id") else None
+                    )
+
+                    alerts_result = compute_alerts_for_month(
+                        db=db, month=month, user_id=user_id
+                    )
 
                     alerts_list = (
                         alerts_result.alerts if hasattr(alerts_result, "alerts") else []

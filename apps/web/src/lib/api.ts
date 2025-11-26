@@ -372,11 +372,28 @@ export async function getLlmHealth(): Promise<LlmHealth> {
 // };
 
 // ---------- Insights / Alerts ----------
+// ---------- Alerts ----------
+export type AlertItem = {
+  code: string;
+  severity: 'info' | 'warning' | 'critical';
+  title: string;
+  description: string;
+  month: string;
+  amount?: number;
+  context?: Record<string, any>;
+};
+
+export type AlertsResponse = {
+  month: string;
+  alerts: AlertItem[];
+  llm_prompt: string;
+};
+
 // Use robust fetchJson; keep optional month for backward-compat callers
 export const getInsights = (month?: string) =>
   fetchJSON(`insights`, { query: month ? { month } : undefined })
-export const getAlerts = (month?: string) =>
-  fetchJSON('alerts', { method: 'POST', body: JSON.stringify({ month }) })
+export const getAlerts = (month: string): Promise<AlertsResponse> =>
+  fetchJSON<AlertsResponse>('alerts', { method: 'POST', body: JSON.stringify({ month }) })
 export const downloadReportCsv = (month: string) => window.open(`${apiUrl('/report_csv')}${q({ month })}`,'_blank')
 
 // ---------- Charts ----------
@@ -578,11 +595,7 @@ export const analytics = {
       method: 'POST',
       body: JSON.stringify({ month, lookback_months }),
     }),
-  alerts: (month?: string) =>
-    fetchJSON(`alerts`, {
-      method: 'POST',
-      body: JSON.stringify({ month }),
-    }),
+  // Removed alerts: use getAlerts() instead (defined above with proper types)
   whatif: (payload: WhatIfParams): Promise<WhatIfResult> =>
     fetchJSON<WhatIfResult>(`agent/tools/analytics/whatif`, {
       method: 'POST',
