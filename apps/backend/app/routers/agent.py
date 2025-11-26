@@ -1674,6 +1674,7 @@ async def agent_stream(
             # Determine mode/intent
             user_text = q.lower()
             detected_mode = mode or _detect_mode(user_text, ctx)
+            logger.info(f"[agent_stream] detected_mode={detected_mode} q={q[:50]}")
 
             # Send planner event with detected mode and tools
             tools_for_mode = _get_tools_for_mode(detected_mode)
@@ -1752,6 +1753,17 @@ async def agent_stream(
             elif detected_mode == "analytics_trends":
                 # Build deterministic spending trends response from charts data
                 try:
+                    # First, get transaction count for the selected month
+                    from app.services.insights_expanded import load_month
+
+                    # Get insights for selected month
+                    month_insights = load_month(db, auth.get("user_id"), month)
+                    txn_count_month = month_insights.get("transaction_count", 0)
+
+                    # Get overall transaction count
+                    all_insights = load_month(db, auth.get("user_id"), None)
+                    txn_count_all = all_insights.get("transaction_count", 0)
+
                     # Fetch spending trends from the same endpoint that powers the dashboard card
                     if _opt_charts:
                         # Request last 6 months of data
@@ -1762,104 +1774,132 @@ async def agent_stream(
                             _opt_charts, "spending_trends_post"
                         )(trends_body, auth.get("user_id"), db)
 
-                        # Filter to months that have actual data (non-zero spend or income)
-                        available_series = [
-                            point
-                            for point in trends_result.series
-                            if point.inflow > 0 or point.outflow > 0
+                        # Count months with data
+                        months_with_data = [
+                            p.month
+                            for p in trends_result.series
+                            if p.inflow > 0 or p.outflow > 0
                         ]
 
-                        if not available_series:
-                            # Double-check: does the user have ANY transactions at all?
-                            from app.services.insights_expanded import load_month
+                        logger.info(
+                            f"[analytics_trends] month={month} txn_count_month={txn_count_month} "
+                            f"txn_count_all={txn_count_all} months_with_data={len(months_with_data)}"
+                        )
 
-                            check_insights = load_month(db, auth.get("user_id"), None)
-                            txn_count = check_insights.get("transaction_count", 0)
-
-                            if txn_count == 0:
-                                # Truly no data - show onboarding message
-                                deterministic_response = (
-                                    "I don't see any transactions in your account yet. "
-                                    "You can upload a CSV file or click **Use sample data** to explore LedgerMind's insights."
-                                )
-                            else:
-                                # Has transactions but all are zero-amount
-                                # Try to get ANY available months without strict filtering
-                                fallback_series = [
-                                    p for p in trends_result.series if p.month
-                                ]
-                                if fallback_series:
-                                    # Use fallback and continue to build response
-                                    available_series = fallback_series
-                                else:
-                                    # Still nothing - show softer message
-                                    deterministic_response = (
-                                        f"I found {txn_count} transactions in your account, but not enough history for this view. "
-                                        "Try uploading more recent data or using **Use sample data** to preview full trends."
-                                    )
-
-                        # Build response if we have available_series and no deterministic_response set yet
-                        if available_series and not deterministic_response:
-                            # Build response from available months
-                            start_month = available_series[0].month
-                            end_month = available_series[-1].month
-
-                            # Calculate average spend
-                            avg_spend = sum(p.outflow for p in available_series) / len(
-                                available_series
+                        # CASE 1: Hard "no data" - truly no transactions for selected month
+                        if txn_count_month == 0:
+                            month_display = month or "the current month"
+                            deterministic_response = (
+                                f"I don't have any transaction data for {month_display}, so I can't calculate spending trends for that month.\n\n"
+                                "Once you have some transactions in {month_display}, I'll be able to show trends and category breakdowns."
                             )
 
-                            # Find highest and lowest spend months
-                            max_spend_point = max(
-                                available_series, key=lambda p: p.outflow
-                            )
-                            min_spend_point = min(
-                                available_series, key=lambda p: p.outflow
-                            )
+                        # CASE 2: Soft fallback - has transactions but not enough history for trends
+                        elif len(months_with_data) < 2:
+                            month_display = month or "this month"
 
-                            # Check if spend is trending up or down
-                            if len(available_series) >= 2:
-                                recent_avg = sum(
-                                    p.outflow for p in available_series[-3:]
-                                ) / min(3, len(available_series[-3:]))
-                                earlier_avg = sum(
-                                    p.outflow for p in available_series[:3]
-                                ) / min(3, len(available_series[:3]))
-                                trend = (
-                                    "increasing"
-                                    if recent_avg > earlier_avg * 1.1
-                                    else (
-                                        "decreasing"
-                                        if recent_avg < earlier_avg * 0.9
-                                        else "stable"
-                                    )
-                                )
-                            else:
-                                trend = "stable"
-
-                            trends_parts = [
-                                f"Spending trends from {start_month} to {end_month}",
-                                f"\n\n📊 **Overall pattern**: Your spending has been {trend}.",
-                                f"\n\n💰 **Average monthly spend**: ${avg_spend:,.2f}",
-                                f"\n\n📈 **Highest spend**: {max_spend_point.month} (${max_spend_point.outflow:,.2f})",
-                                f"\n📉 **Lowest spend**: {min_spend_point.month} (${min_spend_point.outflow:,.2f})",
+                            # Get single-month summary data
+                            spend = abs(month_insights.get("spend", 0))
+                            income = month_insights.get("income", 0)
+                            net = month_insights.get("net", 0)
+                            top_categories = month_insights.get("top_categories", [])[
+                                :3
                             ]
 
-                            # Note if we're showing partial data
-                            if len(available_series) < 6:
-                                trends_parts.append(
-                                    f"\n\n_Note: Showing {len(available_series)} months with transaction data._"
-                                )
+                            summary_parts = [
+                                f'I only have limited history to compute true "trends", but here\'s what I see for {month_display}:\n'
+                            ]
 
-                            trends_parts.append(
-                                "\n\nAsk me to zoom into a specific month if you'd like more detail."
+                            summary_parts.append(f"\n💰 **Total spent**: ${spend:,.2f}")
+                            summary_parts.append(f"\n📈 **Income**: ${income:,.2f}")
+                            summary_parts.append(f"\n📊 **Net**: ${net:+,.2f}")
+
+                            if top_categories:
+                                summary_parts.append("\n\n**Top spending categories**:")
+                                for cat in top_categories:
+                                    cat_name = cat.get("category", "Unknown")
+                                    cat_spend = abs(cat.get("spend", 0))
+                                    summary_parts.append(
+                                        f"\n• {cat_name}: ${cat_spend:,.2f}"
+                                    )
+
+                            summary_parts.append(
+                                "\n\nIf you add more months of data, I'll be able to highlight how your spending is changing over time."
                             )
 
-                            deterministic_response = "".join(trends_parts)
+                            deterministic_response = "".join(summary_parts)
+
+                        # CASE 3: Normal trend path - sufficient history
+                        else:
+                            # Use months with data for trend analysis
+                            available_series = [
+                                point
+                                for point in trends_result.series
+                                if point.inflow > 0 or point.outflow > 0
+                            ]
+
+                            if available_series:
+                                # Build response from available months
+                                start_month = available_series[0].month
+                                end_month = available_series[-1].month
+
+                                # Calculate average spend
+                                avg_spend = sum(
+                                    p.outflow for p in available_series
+                                ) / len(available_series)
+
+                                # Find highest and lowest spend months
+                                max_spend_point = max(
+                                    available_series, key=lambda p: p.outflow
+                                )
+                                min_spend_point = min(
+                                    available_series, key=lambda p: p.outflow
+                                )
+
+                                # Check if spend is trending up or down
+                                if len(available_series) >= 2:
+                                    recent_avg = sum(
+                                        p.outflow for p in available_series[-3:]
+                                    ) / min(3, len(available_series[-3:]))
+                                    earlier_avg = sum(
+                                        p.outflow for p in available_series[:3]
+                                    ) / min(3, len(available_series[:3]))
+                                    trend = (
+                                        "increasing"
+                                        if recent_avg > earlier_avg * 1.1
+                                        else (
+                                            "decreasing"
+                                            if recent_avg < earlier_avg * 0.9
+                                            else "stable"
+                                        )
+                                    )
+                                else:
+                                    trend = "stable"
+
+                                trends_parts = [
+                                    f"Spending trends from {start_month} to {end_month}",
+                                    f"\n\n📊 **Overall pattern**: Your spending has been {trend}.",
+                                    f"\n\n💰 **Average monthly spend**: ${avg_spend:,.2f}",
+                                    f"\n\n📈 **Highest spend**: {max_spend_point.month} (${max_spend_point.outflow:,.2f})",
+                                    f"\n📉 **Lowest spend**: {min_spend_point.month} (${min_spend_point.outflow:,.2f})",
+                                ]
+
+                                # Note if we're showing partial data
+                                if len(available_series) < 6:
+                                    trends_parts.append(
+                                        f"\n\n_Note: Showing {len(available_series)} months with transaction data._"
+                                    )
+
+                                trends_parts.append(
+                                    "\n\nAsk me to zoom into a specific month if you'd like more detail."
+                                )
+
+                                deterministic_response = "".join(trends_parts)
 
                 except Exception as det_err:
                     logger.warning(
-                        f"[agent_stream] Deterministic trends failed: {det_err}"
+                        f"[agent_stream] Deterministic trends failed: {det_err}",
+                        exc_info=True,
                     )
                     # Fall through to LLM
 
@@ -1870,35 +1910,60 @@ async def agent_stream(
                     from app.services.analytics_alerts import compute_alerts_for_month
 
                     alerts_result = compute_alerts_for_month(db=db, month=month)
-                    
-                    alerts_list = alerts_result.alerts if hasattr(alerts_result, 'alerts') else []
+
+                    alerts_list = (
+                        alerts_result.alerts if hasattr(alerts_result, "alerts") else []
+                    )
                     month_str = month or "current month"
-                    
+
                     if not alerts_list:
                         deterministic_response = f"Good news! I didn't find any alerts for {month_str}. Your finances look healthy."
                     else:
-                        alerts_parts = [f"I found {len(alerts_list)} alert(s) for {month_str}:\n\n"]
+                        alerts_parts = [
+                            f"I found {len(alerts_list)} alert(s) for {month_str}:\n\n"
+                        ]
                         for idx, alert in enumerate(alerts_list[:10], 1):  # Limit to 10
                             # Format alert nicely
-                            title = alert.title if hasattr(alert, 'title') else "Alert"
-                            desc = alert.description if hasattr(alert, 'description') else str(alert)
-                            severity_str = alert.severity.value if hasattr(alert.severity, 'value') else str(alert.severity)
-                            
+                            title = alert.title if hasattr(alert, "title") else "Alert"
+                            desc = (
+                                alert.description
+                                if hasattr(alert, "description")
+                                else str(alert)
+                            )
+                            severity_str = (
+                                alert.severity.value
+                                if hasattr(alert.severity, "value")
+                                else str(alert.severity)
+                            )
+
                             # Icons by severity
-                            icon = "⚠️" if severity_str == "warning" else "🔴" if severity_str == "critical" else "ℹ️"
-                            
+                            icon = (
+                                "⚠️"
+                                if severity_str == "warning"
+                                else "🔴" if severity_str == "critical" else "ℹ️"
+                            )
+
                             # Format with title and description
-                            alerts_parts.append(f"{idx}. {icon} **{title}**\n   {desc}\n")
-                        
+                            alerts_parts.append(
+                                f"{idx}. {icon} **{title}**\n   {desc}\n"
+                            )
+
                         if len(alerts_list) > 10:
-                            alerts_parts.append(f"\n_...and {len(alerts_list) - 10} more._")
-                        
+                            alerts_parts.append(
+                                f"\n_...and {len(alerts_list) - 10} more._"
+                            )
+
                         deterministic_response = "".join(alerts_parts)
                 except Exception as det_err:
-                    logger.warning(f"[agent_stream] Deterministic alerts failed: {det_err}")
+                    logger.warning(
+                        f"[agent_stream] Deterministic alerts failed: {det_err}"
+                    )
                     # Fall through to LLM
 
-            elif detected_mode in ("analytics_subscriptions_all", "analytics_recurring_all"):
+            elif detected_mode in (
+                "analytics_subscriptions_all",
+                "analytics_recurring_all",
+            ):
                 # Build deterministic recurring/subscriptions response
                 # Note: subscriptions endpoint may not exist yet, so provide simple fallback
                 try:
@@ -1909,16 +1974,22 @@ async def agent_stream(
                         "Common subscriptions include streaming services, gym memberships, and software tools."
                     )
                 except Exception as det_err:
-                    logger.warning(f"[agent_stream] Deterministic subscriptions failed: {det_err}")
+                    logger.warning(
+                        f"[agent_stream] Deterministic subscriptions failed: {det_err}"
+                    )
                     # Fall through to LLM
 
             # If we have a deterministic response, stream it and skip LLM
             if deterministic_response:
+                logger.info(
+                    f"[agent_stream] Using deterministic response (len={len(deterministic_response)})"
+                )
                 # Stream the deterministic response token by token
                 for char in deterministic_response:
                     yield json.dumps({"type": "token", "data": {"text": char}}) + "\n"
                     await asyncio.sleep(0.005)
             else:
+                logger.info("[agent_stream] No deterministic response, calling LLM")
                 # Build context string for LLM
                 ctx_str = json.dumps(ctx, default=str)
                 if len(ctx_str) > 10000:
@@ -1954,13 +2025,15 @@ async def agent_stream(
                         f"[agent_stream] All LLM providers failed: {stream_err}"
                     )
                     # Emit error event instead of streaming fallback message as assistant reply
-                    yield json.dumps({
-                        "type": "error",
-                        "data": {
-                            "message": "Unable to generate response - language model unavailable",
-                            "code": "MODEL_UNAVAILABLE"
+                    yield json.dumps(
+                        {
+                            "type": "error",
+                            "data": {
+                                "message": "Unable to generate response - language model unavailable",
+                                "code": "MODEL_UNAVAILABLE",
+                            },
                         }
-                    }) + "\n"
+                    ) + "\n"
 
             # Send done event
             yield json.dumps({"type": "done", "data": {}}) + "\n"
