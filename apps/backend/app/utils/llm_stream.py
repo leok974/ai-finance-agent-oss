@@ -120,9 +120,12 @@ async def _stream_from_local(
     }
 
     headers = {
-        "Authorization": f"Bearer {key}",
         "Content-Type": "application/json",
     }
+    
+    # Only add Authorization header if we have a real key (not the 'ollama' placeholder)
+    if key and key != "ollama":
+        headers["Authorization"] = f"Bearer {key}"
 
     rid = get_request_id() or "-"
     _log.info("llm_stream.local start rid=%s base=%s model=%s url=%s", rid, base, model, url)
