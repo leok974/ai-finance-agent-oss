@@ -1672,7 +1672,23 @@ export default function ChatDock() {
     }
   }, [busy, month, agentStream]);
 
-  // Search transactions now uses streaming mode
+  // Search transactions: NL → search_transactions mode
+  const runSearchTransactions = React.useCallback(
+    async (query: string) => {
+      const text = query.trim();
+      if (!text) return;
+
+      try {
+        await agentStream.sendMessage(text, {
+          month,
+          mode: 'search_transactions',
+        });
+      } catch (err) {
+        console.error('[ChatDock] Search transactions stream error:', err);
+      }
+    },
+    [busy, month, agentStream],
+  );
 
   // Insights now uses streaming mode
 
@@ -2391,13 +2407,58 @@ export default function ChatDock() {
                 variant="pill-outline"
                 size="sm"
                 className="lm-chat-tool"
-                onClick={() => { void handleTransactionsNL(); }}
+                onClick={() => runSearchTransactions(
+                  "Explain what kinds of transaction searches I can run on my data and give 3 concrete examples."
+                )}
                 disabled={busy}
-                title="Search transactions (NL) — Try: 'Starbucks this month', 'Delta in Aug 2025', 'transactions > $50 last 90 days'. Pro tips: MTD, YTD, last N days/weeks/months, since YYYY-MM-DD."
+                title="Search transactions using natural language — ask for any merchant, category, amount range, or time period."
               >
                 <Search className="lm-chat-tool-icon" />
                 <span>Search transactions</span>
               </Button>
+            </div>
+            {/* Quick search examples */}
+            <div className="mt-4 flex flex-wrap gap-2">
+              <button
+                type="button"
+                className="rounded-full border border-white/10 px-3 py-1 text-xs font-medium hover:bg-white/5 transition disabled:opacity-50"
+                onClick={() => runSearchTransactions(
+                  "Show all Starbucks transactions for the selected month, including dates, amounts, and categories."
+                )}
+                disabled={busy}
+              >
+                Starbucks this month
+              </button>
+              <button
+                type="button"
+                className="rounded-full border border-white/10 px-3 py-1 text-xs font-medium hover:bg-white/5 transition disabled:opacity-50"
+                onClick={() => runSearchTransactions(
+                  "Show all Delta transactions in August 2025, including fares and fees."
+                )}
+                disabled={busy}
+              >
+                Delta in Aug 2025
+              </button>
+              <button
+                type="button"
+                className="rounded-full border border-white/10 px-3 py-1 text-xs font-medium hover:bg-white/5 transition disabled:opacity-50"
+                onClick={() => runSearchTransactions(
+                  "Find all transactions over $50 in the last 90 days and group them by merchant."
+                )}
+                disabled={busy}
+              >
+                Transactions &gt; $50 last 90 days
+              </button>
+              <button
+                type="button"
+                className="rounded-full border border-white/10 px-3 py-1 text-xs font-medium hover:bg-white/5 transition disabled:opacity-50"
+                onClick={() => runSearchTransactions(
+                  "List all refund or credit transactions from last month."
+                )}
+                disabled={busy}
+              >
+                Refunds last month
+              </button>
             </div>
           </section>
             </>
