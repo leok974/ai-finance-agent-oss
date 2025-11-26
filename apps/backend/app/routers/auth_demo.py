@@ -116,12 +116,26 @@ async def demo_bootstrap(
 
     Idempotent - only seeds data if user has no existing transactions.
     Returns whether data was created.
+    
+    Uses the same CSV-based demo data as /demo/seed for consistency.
     """
-    from app.scripts.seed_demo_data import seed_demo_data_for_user
+    from app.orm_models import Transaction
+    from app.routers.demo_seed import seed_demo_data_for_user
 
-    created = seed_demo_data_for_user(db, user_id=current_user.id)
-
+    # Check if user already has any transactions
+    txn_count = db.query(Transaction).filter(Transaction.user_id == current_user.id).count()
+    
+    if txn_count > 0:
+        return {
+            "created": False,
+            "message": "User already has transactions",
+        }
+    
+    # Seed using CSV-based demo data (same as /demo/seed and auto-seed)
+    added_count = seed_demo_data_for_user(current_user.id, db)
+    
     return {
-        "created": created,
-        "message": "Demo data seeded" if created else "User already has transactions",
+        "created": added_count > 0,
+        "transactions_added": added_count,
+        "message": f"Demo data seeded: {added_count} transactions" if added_count > 0 else "Failed to seed data",
     }
