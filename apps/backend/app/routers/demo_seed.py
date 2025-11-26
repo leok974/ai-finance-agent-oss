@@ -161,7 +161,9 @@ async def get_demo_sample_data() -> list[DemoSampleTransaction]:
                 merchant=row["merchant"],
                 description=row["description"],
                 amount=float(row["amount"]),
-                category=row["category"],
+                category=row[
+                    "raw_category"
+                ],  # Use raw_category since normalize_category() can return None
             )
             for row in demo_rows
         ]
