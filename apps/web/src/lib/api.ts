@@ -1805,6 +1805,20 @@ export async function deleteAllTransactions(): Promise<void> {
   await fetchJSON('ingest/dashboard/reset', { method: 'POST' });
 }
 
+// Reset demo data (clear all demo transactions)
+export async function resetDemoData(): Promise<{
+  ok: boolean;
+  transactions_cleared: number;
+  message: string;
+}> {
+  const res = await fetchJSON('demo/reset', { method: 'POST' });
+  return res as {
+    ok: boolean;
+    transactions_cleared: number;
+    message: string;
+  };
+}
+
 // Seed demo data (idempotent - clears existing demo data and reseeds)
 export async function seedDemoData(): Promise<{
   ok: boolean;

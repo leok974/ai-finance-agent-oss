@@ -180,6 +180,52 @@ async def get_demo_sample_data() -> list[DemoSampleTransaction]:
         )
 
 
+@router.post("/demo/reset")
+async def reset_demo_data(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Clear all demo data for the current user.
+
+    Deletes:
+    - All transactions where is_demo=True
+
+    Note: This codebase has NO persistent aggregate tables.
+    All analytics (month summaries, insights, charts) are computed on-the-fly
+    from the Transaction table via app.services.insights_expanded.load_month().
+
+    Returns:
+        Simple success response with count of cleared transactions.
+    """
+    try:
+        # Clear demo transactions for this user
+        delete_stmt = delete(Transaction).where(
+            Transaction.user_id == current_user.id,
+            Transaction.is_demo == True,  # noqa: E712
+        )
+        result = db.execute(delete_stmt)
+        cleared_count = result.rowcount  # type: ignore
+        db.commit()
+
+        logger.info(
+            f"Reset complete: Cleared {cleared_count} demo transactions for user {current_user.id}"
+        )
+
+        return {
+            "ok": True,
+            "transactions_cleared": cleared_count,
+            "message": f"Demo data cleared successfully. Removed {cleared_count} transactions.",
+        }
+    except Exception as e:
+        logger.exception("Unexpected error during demo reset")
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to reset demo data: {str(e)}",
+        )
+
+
 @router.post("/demo/seed", response_model=DemoSeedResponse)
 async def seed_demo_data(
     db: Session = Depends(get_db),
