@@ -103,8 +103,8 @@ date,merchant,description,amount,category
 2025-09-22,STEAM FALL SALE,Video games,-60.00,entertainment.games
 2025-09-23,LYFT RIDE,Transportation,-24.75,transportation.rideshare
 2025-09-24,UNKNOWN MERCHANT DEF,Suspicious charge,-312.00,unknown
-2025-09-25,DUPLICATE AUTH HOLD,Duplicate transaction,-95.00,unknown
-2025-09-25,DUPLICATE AUTH HOLD,Duplicate transaction,-95.00,unknown
+2025-09-25,DUPLICATE AUTH HOLD,Duplicate transaction (pending),-95.00,unknown
+2025-09-25,DUPLICATE AUTH HOLD,Duplicate transaction (posted),-95.00,unknown
 2025-09-26,WIRE TRANSFER FEE,Large transfer fee,-65.00,fees.wire
 2025-09-29,SAFEWAY STORE 1892,Weekend groceries,-125.78,groceries
 2025-09-29,HOME DEPOT #8901,Hardware supplies,-156.34,shopping.retail
@@ -165,7 +165,7 @@ date,merchant,description,amount,category
 2025-11-26,ATM CASH WITHDRAW 03:42AM,Late night ATM,-300.00,cash.withdrawal
 2025-11-27,LAS VEGAS NV CASINO,Unusual location,-250.00,unknown
 2025-11-27,FOREIGN TRANSACTION FEE,International charge fee,-45.00,fees.foreign
-2025-11-28,DUPLICATE CHARGE ALERT,Possible duplicate,-150.00,unknown
-2025-11-28,DUPLICATE CHARGE ALERT,Possible duplicate,-150.00,unknown
+2025-11-28,DUPLICATE CHARGE ALERT,Possible duplicate (auth hold),-150.00,unknown
+2025-11-28,DUPLICATE CHARGE ALERT,Possible duplicate (settled),-150.00,unknown
 2025-11-29,SAFEWAY STORE 1892,Weekend groceries,-89.45,groceries
 2025-11-09,AMZN Mktp US*7K3PQ1RT,Thanksgiving prep,-195.99,shopping.online
