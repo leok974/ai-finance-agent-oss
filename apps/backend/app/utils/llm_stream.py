@@ -125,43 +125,69 @@ async def _stream_from_local(
     }
 
     rid = get_request_id() or "-"
-    _log.info("llm_stream.local start rid=%s base=%s model=%s", rid, base, model)
+    _log.info("llm_stream.local start rid=%s base=%s model=%s url=%s", rid, base, model, url)
 
-    async with httpx.AsyncClient(timeout=httpx.Timeout(10.0, read=60.0)) as client:
-        async with client.stream("POST", url, json=payload, headers=headers) as res:
-            res.raise_for_status()
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(10.0, read=60.0)) as client:
+            async with client.stream("POST", url, json=payload, headers=headers) as res:
+                res.raise_for_status()
 
-            async for line in res.aiter_lines():
-                if not line:
-                    continue
-
-                # Skip SSE comments
-                if line.startswith(":"):
-                    continue
-
-                # Parse data: prefix
-                if line.startswith("data: "):
-                    data_str = line[6:]
-
-                    # [DONE] marker
-                    if data_str.strip() == "[DONE]":
-                        break
-
-                    try:
-                        chunk = json.loads(data_str)
-                        delta = chunk.get("choices", [{}])[0].get("delta", {})
-                        content = delta.get("content")
-
-                        if content:
-                            yield {
-                                "type": "token",
-                                "data": {"text": content},
-                            }
-
-                    except json.JSONDecodeError:
+                async for line in res.aiter_lines():
+                    if not line:
                         continue
 
-    _log.info("llm_stream.local success rid=%s", rid)
+                    # Skip SSE comments
+                    if line.startswith(":"):
+                        continue
+
+                    # Parse data: prefix
+                    if line.startswith("data: "):
+                        data_str = line[6:]
+
+                        # [DONE] marker
+                        if data_str.strip() == "[DONE]":
+                            break
+
+                        try:
+                            chunk = json.loads(data_str)
+                            delta = chunk.get("choices", [{}])[0].get("delta", {})
+                            content = delta.get("content")
+
+                            if content:
+                                yield {
+                                    "type": "token",
+                                    "data": {"text": content},
+                                }
+
+                        except json.JSONDecodeError:
+                            continue
+
+        _log.info("llm_stream.local success rid=%s", rid)
+    except httpx.HTTPStatusError as http_err:
+        _log.error(
+            "llm_stream.local HTTP error rid=%s status=%s url=%s error=%s",
+            rid,
+            http_err.response.status_code,
+            url,
+            str(http_err)
+        )
+        raise
+    except httpx.ConnectError as conn_err:
+        _log.error(
+            "llm_stream.local connection refused rid=%s url=%s error=%s",
+            rid,
+            url,
+            str(conn_err)
+        )
+        raise
+    except Exception as exc:
+        _log.error(
+            "llm_stream.local unexpected error rid=%s url=%s error=%s",
+            rid,
+            url,
+            str(exc)
+        )
+        raise
 
 
 async def _stream_from_openai(

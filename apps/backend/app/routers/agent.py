@@ -1879,10 +1879,16 @@ async def agent_stream(
                     else:
                         alerts_parts = [f"I found {len(alerts_list)} alert(s) for {month_str}:\n\n"]
                         for idx, alert in enumerate(alerts_list[:10], 1):  # Limit to 10
-                            alert_text = alert.message if hasattr(alert, 'message') else str(alert)
-                            severity = alert.severity if hasattr(alert, 'severity') else "info"
-                            icon = "⚠️" if severity == "warning" else "🔴" if severity == "critical" else "ℹ️"
-                            alerts_parts.append(f"{idx}. {icon} {alert_text}\n")
+                            # Format alert nicely
+                            title = alert.title if hasattr(alert, 'title') else "Alert"
+                            desc = alert.description if hasattr(alert, 'description') else str(alert)
+                            severity_str = alert.severity.value if hasattr(alert.severity, 'value') else str(alert.severity)
+                            
+                            # Icons by severity
+                            icon = "⚠️" if severity_str == "warning" else "🔴" if severity_str == "critical" else "ℹ️"
+                            
+                            # Format with title and description
+                            alerts_parts.append(f"{idx}. {icon} **{title}**\n   {desc}\n")
                         
                         if len(alerts_list) > 10:
                             alerts_parts.append(f"\n_...and {len(alerts_list) - 10} more._")
