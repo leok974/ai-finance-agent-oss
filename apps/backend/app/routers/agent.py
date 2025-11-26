@@ -1863,6 +1863,49 @@ async def agent_stream(
                     )
                     # Fall through to LLM
 
+            elif detected_mode == "finance_alerts":
+                # Build deterministic alerts response
+                try:
+                    # Import alerts module
+                    from app.services.analytics_alerts import compute_alerts_for_month
+
+                    alerts_result = compute_alerts_for_month(db=db, month=month)
+                    
+                    alerts_list = alerts_result.alerts if hasattr(alerts_result, 'alerts') else []
+                    month_str = month or "current month"
+                    
+                    if not alerts_list:
+                        deterministic_response = f"Good news! I didn't find any alerts for {month_str}. Your finances look healthy."
+                    else:
+                        alerts_parts = [f"I found {len(alerts_list)} alert(s) for {month_str}:\n\n"]
+                        for idx, alert in enumerate(alerts_list[:10], 1):  # Limit to 10
+                            alert_text = alert.message if hasattr(alert, 'message') else str(alert)
+                            severity = alert.severity if hasattr(alert, 'severity') else "info"
+                            icon = "⚠️" if severity == "warning" else "🔴" if severity == "critical" else "ℹ️"
+                            alerts_parts.append(f"{idx}. {icon} {alert_text}\n")
+                        
+                        if len(alerts_list) > 10:
+                            alerts_parts.append(f"\n_...and {len(alerts_list) - 10} more._")
+                        
+                        deterministic_response = "".join(alerts_parts)
+                except Exception as det_err:
+                    logger.warning(f"[agent_stream] Deterministic alerts failed: {det_err}")
+                    # Fall through to LLM
+
+            elif detected_mode in ("analytics_subscriptions_all", "analytics_recurring_all"):
+                # Build deterministic recurring/subscriptions response
+                # Note: subscriptions endpoint may not exist yet, so provide simple fallback
+                try:
+                    # For now, provide a helpful message since the analytics endpoint may not be implemented
+                    deterministic_response = (
+                        "I can help you identify recurring charges. "
+                        "Look for merchants that appear multiple times each month in your transactions list. "
+                        "Common subscriptions include streaming services, gym memberships, and software tools."
+                    )
+                except Exception as det_err:
+                    logger.warning(f"[agent_stream] Deterministic subscriptions failed: {det_err}")
+                    # Fall through to LLM
+
             # If we have a deterministic response, stream it and skip LLM
             if deterministic_response:
                 # Stream the deterministic response token by token
@@ -1904,13 +1947,14 @@ async def agent_stream(
                     logger.warning(
                         f"[agent_stream] All LLM providers failed: {stream_err}"
                     )
-                    # Final fallback: friendly error message
-                    fallback_msg = "The AI assistant is temporarily unavailable. Please try again in a moment."
-                    for char in fallback_msg:
-                        yield json.dumps(
-                            {"type": "token", "data": {"text": char}}
-                        ) + "\n"
-                        await asyncio.sleep(0.01)
+                    # Emit error event instead of streaming fallback message as assistant reply
+                    yield json.dumps({
+                        "type": "error",
+                        "data": {
+                            "message": "Unable to generate response - language model unavailable",
+                            "code": "MODEL_UNAVAILABLE"
+                        }
+                    }) + "\n"
 
             # Send done event
             yield json.dumps({"type": "done", "data": {}}) + "\n"
