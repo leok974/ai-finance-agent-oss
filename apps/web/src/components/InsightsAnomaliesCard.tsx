@@ -170,7 +170,10 @@ export default function InsightsAnomaliesCard() {
 
         {hasAlerts && (
           <ul className="space-y-1.5 text-xs">
-            {alerts.alerts.slice(0, 3).map((alert) => {
+            {alerts.alerts
+              .filter((alert) => alert.code !== primaryAlert?.code) // Skip primary alert
+              .slice(0, 3)
+              .map((alert) => {
               const icon =
                 alert.severity === 'critical' ? '🔴' :
                 alert.severity === 'warning' ? '⚠️' : 'ℹ️';
@@ -193,9 +196,9 @@ export default function InsightsAnomaliesCard() {
                 </li>
               );
             })}
-            {alerts.alerts.length > 3 && (
+            {alerts.alerts.length > 4 && (
               <li className="text-white/40">
-                +{alerts.alerts.length - 3} more (open Alerts in ChatDock for details)
+                +{alerts.alerts.length - 4} more (open Alerts in ChatDock for details)
               </li>
             )}
           </ul>
