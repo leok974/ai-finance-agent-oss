@@ -25,6 +25,62 @@ logger = logging.getLogger("demo.seed")
 router = APIRouter(tags=["demo"])
 
 
+def seed_demo_data_for_user(user_id: int, db: Session) -> int:
+    """
+    Seed demo data for a specific user (used for new user auto-seeding).
+
+    Args:
+        user_id: The user ID to seed data for
+        db: Database session
+
+    Returns:
+        Number of transactions added
+
+    Raises:
+        Exception: If seeding fails
+    """
+    try:
+        # Clear any existing demo transactions first
+        delete_stmt = delete(Transaction).where(
+            Transaction.user_id == user_id,
+            Transaction.is_demo == True,  # noqa: E712
+        )
+        db.execute(delete_stmt)
+
+        # Load demo CSV
+        demo_rows = load_demo_csv()
+
+        # Insert new demo transactions
+        added_count = 0
+        for row in demo_rows:
+            txn = Transaction(
+                user_id=user_id,
+                date=row["date"],
+                month=row["month"],
+                merchant=row["merchant"],
+                merchant_canonical=row["merchant_canonical"],
+                description=row["description"],
+                amount=row["amount"],
+                category=row["category"],
+                raw_category=row["raw_category"],
+                pending=row["pending"],
+                is_demo=True,
+            )
+            db.add(txn)
+            added_count += 1
+
+        db.commit()
+        logger.info(
+            f"Auto-seeded {added_count} demo transactions for new user {user_id}"
+        )
+        return added_count
+    except Exception as e:
+        logger.error(f"Failed to auto-seed demo data for user {user_id}: {e}")
+        db.rollback()
+        # Don't raise - let user continue even if demo seed fails
+        return 0
+
+
 class DemoSeedResponse(BaseModel):
     """Response from demo seed endpoint."""
 

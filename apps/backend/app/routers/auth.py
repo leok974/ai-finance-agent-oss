@@ -19,6 +19,7 @@ from app.utils.auth import (
 )
 from app.utils.csrf import issue_csrf_cookie, csrf_protect
 from sqlalchemy.exc import OperationalError
+from app.routers.demo_seed import seed_demo_data_for_user
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -92,6 +93,14 @@ def register(body: RegisterBody, resp: Response, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(u)
     _ensure_roles(db, u, body.roles)
+
+    # Auto-seed demo data for new users
+    try:
+        seed_demo_data_for_user(u.id, db)
+    except Exception as e:
+        # Log but don't fail registration if demo seed fails
+        print(f"Warning: Failed to auto-seed demo data for new user {u.id}: {e}")
+
     roles = body.roles
     pair = create_tokens(u.email, roles)
     set_auth_cookies(resp, pair)

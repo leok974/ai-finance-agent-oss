@@ -9,6 +9,7 @@ from app.utils.auth import create_tokens, hash_password, _ensure_roles, set_auth
 from app.utils.csrf import issue_csrf_cookie
 from app.utils.oauth import oauth, absolute_url
 from app.utils.env import get_env
+from app.routers.demo_seed import seed_demo_data_for_user
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -67,6 +68,7 @@ async def _finalize(
         user = db.get(User, link.user_id)
     else:
         user = db.query(User).filter(User.email == email).first() if email else None
+        is_new_user = user is None
         if not user:
             user = User(
                 email=email or f"{provider_user_id}@{provider}.oauth",
@@ -76,6 +78,17 @@ async def _finalize(
             db.commit()
             db.refresh(user)
             _ensure_roles(db, user, ["user"])
+
+            # Auto-seed demo data for new users
+            if is_new_user:
+                try:
+                    seed_demo_data_for_user(user.id, db)
+                except Exception as e:
+                    # Log but don't fail login if demo seed fails
+                    print(
+                        f"Warning: Failed to auto-seed demo data for new user {user.id}: {e}"
+                    )
+
         link = OAuthAccount(
             user_id=user.id,
             provider=provider,
