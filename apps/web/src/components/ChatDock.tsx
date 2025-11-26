@@ -1601,10 +1601,14 @@ export default function ChatDock() {
     }
   }, [busy, month, agentStream]);
 
-  // ---------- Analytics quick buttons ----------
+  // ---------- Hidden/removed analytics tools (KPIs, Forecast, Anomalies) ----------
+  // These were removed because they're not backed by deterministic data on the backend.
+  // If you want to re-enable them, ensure the backend has proper tool→LLM pattern support.
+  // Keeping the handler stubs commented out for reference:
+
+  /*
   const runAnalyticsKpis = React.useCallback(async (_ev?: React.MouseEvent) => {
     if (busy) return;
-    // Use streaming via sendMessage with analytics_kpis mode
     try {
       await agentStream.sendMessage('Show KPIs for this month.', {
         month: month || '',
@@ -1617,7 +1621,6 @@ export default function ChatDock() {
 
   const runAnalyticsForecast = React.useCallback(async (_ev?: React.MouseEvent) => {
     if (busy) return;
-    // Use streaming via sendMessage with analytics_forecast mode
     try {
       await agentStream.sendMessage('Forecast my next 3 months cashflow.', {
         month: month || '',
@@ -1630,7 +1633,6 @@ export default function ChatDock() {
 
   const runAnalyticsAnomalies = React.useCallback(async (_ev?: React.MouseEvent) => {
     if (busy) return;
-    // Use streaming via sendMessage with analytics_anomalies mode
     try {
       await agentStream.sendMessage('Find anomalies this month.', {
         month: month || '',
@@ -1640,6 +1642,9 @@ export default function ChatDock() {
       console.error('[ChatDock] Anomalies stream error:', err);
     }
   }, [busy, month, agentStream]);
+  */
+
+  // ---------- Core tools (kept) ----------
 
   const runAnalyticsRecurring = React.useCallback(async (_ev?: React.MouseEvent) => {
     if (busy) return;
@@ -2264,6 +2269,26 @@ export default function ChatDock() {
         <CardContent className="lm-chat-body">
           {showTools && (
             <>
+              {/* Quick tools section - intentionally curated */}
+              {/*
+                ChatDock tools are intentionally limited to the "core seven" + a couple search shortcuts.
+                If you add new tools, make sure they:
+                - Use agentStream.sendMessage with a real backend mode
+                - Are backed by deterministic data + LLM on the backend
+                - Provide clearly distinct value from the existing chips
+
+                Core tools:
+                1. Month summary (finance_quick_recap)
+                2. Spending trends (analytics_trends)
+                3. Alerts (finance_alerts)
+                4. Monthly insights (insights_summary)
+                5. Subscriptions (analytics_subscriptions_all)
+                6. Recurring charges (analytics_recurring_all)
+                7. Budget suggest (analytics_budget_suggest)
+
+                Plus 1-2 search shortcuts for common queries.
+              */}
+
               {/* INSIGHTS */}
               <section className="lm-chat-section" data-testid="lm-chat-section-insights">
             <div className="lm-chat-section-header">
@@ -2335,10 +2360,10 @@ export default function ChatDock() {
             </div>
           </section>
 
-          {/* SEARCH & PLANNING */}
+          {/* PLANNING & SEARCH */}
           <section className="lm-chat-section" data-testid="lm-chat-section-search">
             <div className="lm-chat-section-header">
-              <span className="lm-chat-section-label">SEARCH & PLANNING</span>
+              <span className="lm-chat-section-label">PLANNING & SEARCH</span>
             </div>
             <div className="lm-chat-tools-grid">
               <Button
@@ -2350,7 +2375,7 @@ export default function ChatDock() {
                 data-testid="agent-tool-insights-compact"
               >
                 <MessageCircle className="lm-chat-tool-icon" />
-                <span>Insights (Q)</span>
+                <span>Monthly insights</span>
               </Button>
               <Button
                 variant="pill-outline"
@@ -2368,10 +2393,10 @@ export default function ChatDock() {
                 className="lm-chat-tool"
                 onClick={() => { void handleTransactionsNL(); }}
                 disabled={busy}
-                title="Search transactions (NL) ΓÇö Try: 'Starbucks this month', 'Delta in Aug 2025', 'transactions > $50 last 90 days'. Pro tips: MTD, YTD, last N days/weeks/months, since YYYY-MM-DD."
+                title="Search transactions (NL) — Try: 'Starbucks this month', 'Delta in Aug 2025', 'transactions > $50 last 90 days'. Pro tips: MTD, YTD, last N days/weeks/months, since YYYY-MM-DD."
               >
                 <Search className="lm-chat-tool-icon" />
-                <span>Search transactions (NL)</span>
+                <span>Search transactions</span>
               </Button>
             </div>
           </section>
