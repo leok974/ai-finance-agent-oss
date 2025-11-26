@@ -2586,25 +2586,115 @@ async def agent_stream(
                     )
 
             elif detected_mode == "search_transactions":
-                # Provide simple message - full NL search should use dedicated endpoint
-                deterministic_payload = {
-                    "mode": "search_transactions",
-                    "status": "info",
-                    "examples": [
-                        "Starbucks this month",
-                        "Delta in Aug 2025",
-                        "transactions > $50 last 90 days",
-                        "refunds last month",
-                    ],
-                }
-                deterministic_text = (
-                    "To search transactions, use the search box above and try queries like:\n\n"
-                    "• 'Starbucks this month'\n"
-                    "• 'Delta in Aug 2025'\n"
-                    "• 'transactions > $50 last 90 days'\n"
-                    "• 'refunds last month'\n\n"
-                    "The search understands natural language and can filter by merchant, amount, date, and category."
-                )
+                # Execute NL transaction search
+                try:
+                    from app.services.txns_nl_query import parse_nl_query, run_txn_query
+
+                    # Parse the natural language query
+                    nlq = parse_nl_query(q)
+
+                    # Run the query
+                    search_result = run_txn_query(db=db, nlq=nlq)
+
+                    intent = search_result.get("intent", "list")
+                    result = search_result.get("result", [])
+                    filters_applied = search_result.get("filters", {})
+
+                    # Build structured payload based on intent
+                    if intent == "list":
+                        transactions = result if isinstance(result, list) else []
+                        deterministic_payload = {
+                            "mode": "search_transactions",
+                            "status": "success",
+                            "query": q,
+                            "intent": intent,
+                            "count": len(transactions),
+                            "filters_applied": filters_applied,
+                            "transactions": transactions[
+                                :20
+                            ],  # Limit to 20 for LLM context
+                            "truncated": len(transactions) > 20,
+                        }
+
+                        # Build fallback text
+                        if not transactions:
+                            deterministic_text = (
+                                f"No transactions found matching '{q}'.\n\n"
+                                "Try adjusting your search criteria or date range."
+                            )
+                        else:
+                            total_amount = sum(
+                                abs(float(t.get("amount", 0))) for t in transactions
+                            )
+                            deterministic_text = (
+                                f"Found {len(transactions)} transaction(s) matching '{q}':\n\n"
+                                f"Total: ${total_amount:,.2f}\n\n"
+                                f"First {min(20, len(transactions))} transactions:\n"
+                            )
+                            for idx, txn in enumerate(transactions[:20], 1):
+                                date_str = txn.get("date", "")
+                                merchant = txn.get("merchant", "Unknown")
+                                amount = abs(float(txn.get("amount", 0)))
+                                category = txn.get("category") or "Uncategorized"
+                                deterministic_text += f"{idx}. {date_str} | {merchant} | ${amount:,.2f} | {category}\n"
+                            if len(transactions) > 20:
+                                deterministic_text += (
+                                    f"\n...and {len(transactions) - 20} more."
+                                )
+
+                    elif intent == "sum":
+                        total = float(result.get("total_abs", 0))
+                        deterministic_payload = {
+                            "mode": "search_transactions",
+                            "status": "success",
+                            "query": q,
+                            "intent": intent,
+                            "total": total,
+                            "filters_applied": filters_applied,
+                        }
+                        deterministic_text = f"Total for '{q}': ${total:,.2f}"
+
+                    elif intent == "count":
+                        count = result.get("count", 0)
+                        deterministic_payload = {
+                            "mode": "search_transactions",
+                            "status": "success",
+                            "query": q,
+                            "intent": intent,
+                            "count": count,
+                            "filters_applied": filters_applied,
+                        }
+                        deterministic_text = (
+                            f"Found {count} transaction(s) matching '{q}'."
+                        )
+
+                    else:
+                        # top_merchants, top_categories, etc.
+                        deterministic_payload = {
+                            "mode": "search_transactions",
+                            "status": "success",
+                            "query": q,
+                            "intent": intent,
+                            "result": result,
+                            "filters_applied": filters_applied,
+                        }
+                        deterministic_text = (
+                            f"Search results for '{q}' (intent: {intent})."
+                        )
+
+                except Exception as search_err:
+                    logger.warning(
+                        f"[agent_stream] Search transactions failed: {search_err}"
+                    )
+                    deterministic_payload = {
+                        "mode": "search_transactions",
+                        "status": "error",
+                        "message": "Unable to search transactions. Please try again.",
+                    }
+                    deterministic_text = (
+                        "I encountered an error searching your transactions. "
+                        "Please try rephrasing your query or try again later."
+                    )
 
             # If we have a deterministic payload (analytics_trends), call LLM with it as context
             if deterministic_payload:
