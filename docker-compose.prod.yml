@@ -66,7 +66,7 @@ services:
 
   backend:
     container_name: ai-finance-backend
-    image: ledgermind-backend:main-936ffa28
+    image: ledgermind-backend:main-f729714f
     pull_policy: never
     restart: unless-stopped
     env_file:
