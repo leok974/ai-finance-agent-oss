@@ -1764,8 +1764,16 @@ async def agent_stream(
                     all_insights = load_month(db, auth.get("user_id"), None)
                     txn_count_all = all_insights.get("transaction_count", 0)
 
+                    # CASE 1: Hard "no data" - truly no transactions for selected month
+                    if txn_count_month == 0:
+                        month_display = month or "the current month"
+                        deterministic_response = (
+                            f"I don't have any transaction data for {month_display}, so I can't calculate spending trends for that month.\n\n"
+                            f"Once you have some transactions in {month_display}, I'll be able to show trends and category breakdowns."
+                        )
+
                     # Fetch spending trends from the same endpoint that powers the dashboard card
-                    if _opt_charts:
+                    elif _opt_charts:
                         # Request last 6 months of data
                         trends_body = getattr(_opt_charts, "TrendsBody")(
                             months=None, window=6, order="asc"
@@ -1895,6 +1903,21 @@ async def agent_stream(
                                 )
 
                                 deterministic_response = "".join(trends_parts)
+
+                    else:
+                        # Charts module not available - provide simple fallback
+                        month_display = month or "this month"
+                        spend = abs(month_insights.get("spend", 0))
+                        income = month_insights.get("income", 0)
+                        net = month_insights.get("net", 0)
+
+                        deterministic_response = (
+                            f"I have transaction data for {month_display}, but the trends analysis module is unavailable.\n\n"
+                            f"💸 **Spend**: ${spend:,.2f}\n"
+                            f"💰 **Income**: ${income:,.2f}\n"
+                            f"📊 **Net**: ${net:+,.2f}\n\n"
+                            "Add more months of data to see spending trends over time."
+                        )
 
                 except Exception as det_err:
                     logger.warning(
