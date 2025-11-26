@@ -64,6 +64,8 @@ CATEGORY_LABEL_TO_SLUG = {
     "hotels": "travel.hotels",
     "income": "income",
     "salary": "income",
+    # Uncategorized / Unknown - map to None for proper handling
+    "unknown": None,  # Demo CSV uses "unknown" for uncategorized transactions
     # Legacy mappings (if your old CSVs use these)
     "Groceries": "groceries",
     "Restaurants": "restaurants",
