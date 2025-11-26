@@ -2417,47 +2417,71 @@ export default function ChatDock() {
                 <span>Search transactions</span>
               </Button>
             </div>
-            {/* Quick search examples */}
+            {/* Universal search shortcuts - work with any dataset */}
             <div className="mt-4 flex flex-wrap gap-2">
               <button
                 type="button"
                 className="rounded-full border border-white/10 px-3 py-1 text-xs font-medium hover:bg-white/5 transition disabled:opacity-50"
-                onClick={() => runSearchTransactions(
-                  "Show all Starbucks transactions for the selected month, including dates, amounts, and categories."
-                )}
+                onClick={() => runSearchTransactions("transactions this month")}
                 disabled={busy}
               >
-                Starbucks this month
+                Transactions this month
               </button>
               <button
                 type="button"
                 className="rounded-full border border-white/10 px-3 py-1 text-xs font-medium hover:bg-white/5 transition disabled:opacity-50"
-                onClick={() => runSearchTransactions(
-                  "Show all Delta transactions in August 2025, including fares and fees."
-                )}
+                onClick={() => runSearchTransactions("spending last 30 days")}
                 disabled={busy}
               >
-                Delta in Aug 2025
+                Spending last 30 days
               </button>
               <button
                 type="button"
                 className="rounded-full border border-white/10 px-3 py-1 text-xs font-medium hover:bg-white/5 transition disabled:opacity-50"
-                onClick={() => runSearchTransactions(
-                  "Find all transactions over $50 in the last 90 days and group them by merchant."
-                )}
+                onClick={() => runSearchTransactions("income this year")}
                 disabled={busy}
               >
-                Transactions &gt; $50 last 90 days
+                Income this year
               </button>
               <button
                 type="button"
                 className="rounded-full border border-white/10 px-3 py-1 text-xs font-medium hover:bg-white/5 transition disabled:opacity-50"
-                onClick={() => runSearchTransactions(
-                  "List all refund or credit transactions from last month."
-                )}
+                onClick={() => runSearchTransactions("largest transactions this month")}
                 disabled={busy}
               >
-                Refunds last month
+                Largest transactions this month
+              </button>
+              <button
+                type="button"
+                className="rounded-full border border-white/10 px-3 py-1 text-xs font-medium hover:bg-white/5 transition disabled:opacity-50"
+                onClick={() => runSearchTransactions("transactions over 100 dollars")}
+                disabled={busy}
+              >
+                Transactions &gt; $100
+              </button>
+              <button
+                type="button"
+                className="rounded-full border border-white/10 px-3 py-1 text-xs font-medium hover:bg-white/5 transition disabled:opacity-50"
+                onClick={() => runSearchTransactions("refunds last 90 days")}
+                disabled={busy}
+              >
+                Refunds last 90 days
+              </button>
+              <button
+                type="button"
+                className="rounded-full border border-white/10 px-3 py-1 text-xs font-medium hover:bg-white/5 transition disabled:opacity-50"
+                onClick={() => runSearchTransactions("subscriptions this month")}
+                disabled={busy}
+              >
+                Subscriptions this month
+              </button>
+              <button
+                type="button"
+                className="rounded-full border border-white/10 px-3 py-1 text-xs font-medium hover:bg-white/5 transition disabled:opacity-50"
+                onClick={() => runSearchTransactions("top merchants last month")}
+                disabled={busy}
+              >
+                Top merchants last month
               </button>
             </div>
           </section>
