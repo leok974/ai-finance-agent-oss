@@ -1680,27 +1680,34 @@ async def agent_stream(
     from fastapi.responses import StreamingResponse
     import asyncio
 
+    # Capture outer scope variables for nested async function
+    _mode = mode
+    _month = month
+    _q = q
+    _db = db
+    _auth = auth
+
     async def event_generator():
         session_id = str(uuid.uuid4())[:8]
 
         try:
             # Send start event
             yield json.dumps(
-                {"type": "start", "data": {"session_id": session_id, "query": q}}
+                {"type": "start", "data": {"session_id": session_id, "query": _q}}
             ) + "\n"
 
             # Build request similar to /chat
-            messages = [{"role": "user", "content": q}]
+            messages = [{"role": "user", "content": _q}]
 
             # Enrich context
             ctx = _enrich_context(
-                db=db, ctx={"month": month} if month else None, txn_id=None
+                db=_db, ctx={"month": _month} if _month else None, txn_id=None
             )
 
             # Determine mode/intent
-            user_text = q.lower()
-            detected_mode = mode or _detect_mode(user_text, ctx)  # noqa: F823
-            logger.info(f"[agent_stream] detected_mode={detected_mode} q={q[:50]}")
+            user_text = _q.lower()
+            detected_mode = _mode or _detect_mode(user_text, ctx)
+            logger.info(f"[agent_stream] detected_mode={detected_mode} q={_q[:50]}")
 
             # Send planner event with detected mode and tools
             tools_for_mode = _get_tools_for_mode(detected_mode)
@@ -1757,7 +1764,7 @@ async def agent_stream(
                         )
                     else:
                         # Load month data using the same function as analytics_trends
-                        month_agg = load_month(db, target_month)
+                        month_agg = load_month(_db, target_month)
                         txn_count = month_agg.transaction_count
 
                         if txn_count == 0:
@@ -1859,7 +1866,7 @@ async def agent_stream(
                     )
 
                     # Get target month (use latest if not specified)
-                    target_month = month or latest_month_from_data(db)
+                    target_month = _month or latest_month_from_data(_db)
 
                     if not target_month:
                         # No data at all in database
@@ -1875,19 +1882,19 @@ async def agent_stream(
                         )
                         logger.info(
                             "[agent_stream] analytics_trends: user=%s mode=%s",
-                            auth.get("user_id"),
+                            _auth.get("user_id"),
                             deterministic_mode,
                         )
                     else:
                         # Load data for selected month
-                        month_insights = load_month(db, target_month)
+                        month_insights = load_month(_db, target_month)
                         txn_count_month = month_insights.transaction_count
 
                         # Get all transactions to determine months with data
                         from app.models import Transaction
 
-                        all_txns_query = db.query(Transaction).filter(
-                            Transaction.user_id == auth.get("user_id")
+                        all_txns_query = _db.query(Transaction).filter(
+                            Transaction.user_id == _auth.get("user_id")
                         )
                         all_txns = all_txns_query.all()
                         txn_count_all = len(all_txns)
@@ -1897,7 +1904,7 @@ async def agent_stream(
 
                         logger.info(
                             "[agent_stream] analytics_trends: user=%s month=%s txn_count_month=%s txn_count_all=%s months_with_data=%s",
-                            auth.get("user_id"),
+                            _auth.get("user_id"),
                             target_month,
                             txn_count_month,
                             txn_count_all,
@@ -1970,7 +1977,7 @@ async def agent_stream(
                                 )
                                 trends_result = await getattr(
                                     _opt_charts, "spending_trends_post"
-                                )(trends_body, auth.get("user_id"), db)
+                                )(trends_body, _auth.get("user_id"), _db)
 
                                 # Use months with data for trend analysis
                                 available_series = [
@@ -2195,21 +2202,23 @@ async def agent_stream(
                     from app.orm_models import User
 
                     # Get user_id by looking up email (client_id) in database
-                    client_email = auth.get("client_id")
+                    client_email = _auth.get("client_id")
                     user_id = None
                     if client_email:
-                        user = db.query(User).filter(User.email == client_email).first()
+                        user = (
+                            _db.query(User).filter(User.email == client_email).first()
+                        )
                         if user:
                             user_id = user.id
 
                     alerts_result = compute_alerts_for_month(
-                        db=db, month=month, user_id=user_id
+                        db=_db, month=_month, user_id=user_id
                     )
 
                     alerts_list = (
                         alerts_result.alerts if hasattr(alerts_result, "alerts") else []
                     )
-                    month_str = month or "current month"
+                    month_str = _month or "current month"
 
                     # Build structured alerts data
                     alerts_data = []
@@ -2297,9 +2306,9 @@ async def agent_stream(
                     )
 
                     # Normalize month parameter
-                    target_month = _parse_target_month(month) or latest_month_from_data(
-                        db
-                    )
+                    target_month = _parse_target_month(
+                        _month
+                    ) or latest_month_from_data(_db)
 
                     if not target_month:
                         deterministic_payload = {
@@ -2314,7 +2323,7 @@ async def agent_stream(
                         )
                     else:
                         # Get transaction data for selected month using MonthAgg dataclass
-                        month_agg = load_month(db, target_month)
+                        month_agg = load_month(_db, target_month)
                         txn_count = month_agg.transaction_count
 
                         if txn_count == 0:
@@ -2396,9 +2405,9 @@ async def agent_stream(
                     )
 
                     # Normalize month parameter
-                    target_month = _parse_target_month(month) or latest_month_from_data(
-                        db
-                    )
+                    target_month = _parse_target_month(
+                        _month
+                    ) or latest_month_from_data(_db)
 
                     if not target_month:
                         deterministic_payload = {
@@ -2550,9 +2559,9 @@ async def agent_stream(
                     )
 
                     # Normalize month parameter
-                    target_month = _parse_target_month(month) or latest_month_from_data(
-                        db
-                    )
+                    target_month = _parse_target_month(
+                        _month
+                    ) or latest_month_from_data(_db)
 
                     if not target_month:
                         deterministic_payload = {
@@ -2669,7 +2678,7 @@ async def agent_stream(
                 try:
                     # Simple classifier: check if user is asking for capabilities explanation
                     explain_only = False
-                    text_lower = (q or "").lower()
+                    text_lower = (_q or "").lower()
                     if (
                         "what kinds of transaction searches" in text_lower
                         or "explain what kinds of" in text_lower
@@ -2710,10 +2719,10 @@ async def agent_stream(
                         )
 
                         # Parse the natural language query
-                        nlq = parse_nl_query(q)
+                        nlq = parse_nl_query(_q)
 
                         # Run the query
-                        search_result = run_txn_query(db=db, nlq=nlq)
+                        search_result = run_txn_query(db=_db, nlq=nlq)
 
                         intent = search_result.get("intent", "list")
                         result = search_result.get("result", [])
@@ -2726,7 +2735,7 @@ async def agent_stream(
                             deterministic_payload = {
                                 "mode": "search_transactions",
                                 "status": status,
-                                "query": q,
+                                "query": _q,
                                 "intent": intent,
                                 "count": len(transactions),
                                 "filters_applied": filters_applied,
@@ -2743,7 +2752,7 @@ async def agent_stream(
                             # Build fallback text
                             if not transactions:
                                 deterministic_text = (
-                                    f"No transactions found matching '{q}'.\n\n"
+                                    f"No transactions found matching '{_q}'.\n\n"
                                     "Try adjusting your search criteria or date range."
                                 )
                             else:
@@ -2751,7 +2760,7 @@ async def agent_stream(
                                     abs(float(t.get("amount", 0))) for t in transactions
                                 )
                                 deterministic_text = (
-                                    f"Found {len(transactions)} transaction(s) matching '{q}':\n\n"
+                                    f"Found {len(transactions)} transaction(s) matching '{_q}':\n\n"
                                     f"Total: ${total_amount:,.2f}\n\n"
                                     f"First {min(20, len(transactions))} transactions:\n"
                                 )
@@ -2771,25 +2780,25 @@ async def agent_stream(
                             deterministic_payload = {
                                 "mode": "search_transactions",
                                 "status": "ok",
-                                "query": q,
+                                "query": _q,
                                 "intent": intent,
                                 "total": total,
                                 "filters_applied": filters_applied,
                             }
-                            deterministic_text = f"Total for '{q}': ${total:,.2f}"
+                            deterministic_text = f"Total for '{_q}': ${total:,.2f}"
 
                         elif intent == "count":
                             count = result.get("count", 0)
                             deterministic_payload = {
                                 "mode": "search_transactions",
                                 "status": "ok",
-                                "query": q,
+                                "query": _q,
                                 "intent": intent,
                                 "count": count,
                                 "filters_applied": filters_applied,
                             }
                             deterministic_text = (
-                                f"Found {count} transaction(s) matching '{q}'."
+                                f"Found {count} transaction(s) matching '{_q}'."
                             )
 
                         else:
@@ -2797,13 +2806,13 @@ async def agent_stream(
                             deterministic_payload = {
                                 "mode": "search_transactions",
                                 "status": "ok",
-                                "query": q,
+                                "query": _q,
                                 "intent": intent,
                                 "result": result,
                                 "filters_applied": filters_applied,
                             }
                             deterministic_text = (
-                                f"Search results for '{q}' (intent: {intent})."
+                                f"Search results for '{_q}' (intent: {intent})."
                             )
 
                 except Exception as search_err:
@@ -2887,7 +2896,7 @@ async def agent_stream(
                 }
 
                 # User query
-                user_msg = {"role": "user", "content": q}
+                user_msg = {"role": "user", "content": _q}
 
                 # Build final message list
                 final_messages = [grounding_system_msg, tool_context_msg, user_msg]
