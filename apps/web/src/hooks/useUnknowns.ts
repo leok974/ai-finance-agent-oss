@@ -52,5 +52,13 @@ export function useUnknowns(month?: string, limit = 25) {
     return () => ac.abort();
   }, [month, limit, nonce]);
 
-  return { items, totalCount, loading, error, currentMonth, refresh: () => setNonce((n) => n + 1) };
+  return {
+    items,
+    totalCount,        // Total transaction count for the month (from backend total_count)
+    unknownCount: items.length,  // Number of uncategorized transactions
+    loading,
+    error,
+    currentMonth,
+    refresh: () => setNonce((n) => n + 1)
+  };
 }

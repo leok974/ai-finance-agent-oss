@@ -32,7 +32,7 @@ export default function UnknownsPanel({ month, onSeedRule: _onSeedRule, onChange
   onChanged?: () => void
   refreshKey?: number
 }) {
-  const { items, totalCount, loading, error, currentMonth, refresh } = useUnknowns(month)
+  const { items, totalCount, unknownCount, loading, error, currentMonth, refresh } = useUnknowns(month)
   const ok = emitToastSuccess; const err = emitToastError;
   const [learned, setLearned] = useState<Record<number, boolean>>({})
   const [explainOpen, setExplainOpen] = useState(false)
@@ -174,17 +174,33 @@ export default function UnknownsPanel({ month, onSeedRule: _onSeedRule, onChange
       )}
       {!loading && error && <div className="text-sm text-rose-300">{error}</div>}
       {!loading && !error && visibleUnknowns.length === 0 && (
-        totalCount > 0 ? (
-          <EmptyState
-            title={t('ui.empty.unknowns_all_categorized_title')}
-            note={t('ui.empty.unknowns_all_categorized_note')}
-          />
-        ) : (
+        // State A: No transactions at all for this month
+        totalCount === 0 ? (
           <EmptyState
             title={t('ui.empty.unknowns_no_data_title')}
             note={t('ui.empty.unknowns_no_data_note')}
           />
+        ) : (
+          // State C: All transactions are categorized
+          <EmptyState
+            title={t('ui.empty.unknowns_all_categorized_title')}
+            note={t('ui.empty.unknowns_all_categorized_note')}
+          />
         )
+      )}
+      {/* State B: Show count summary when there are uncategorized transactions */}
+      {!loading && !error && visibleUnknowns.length > 0 && (
+        <div className="mb-3 p-3 rounded-md bg-amber-500/10 border border-amber-500/20">
+          <p className="text-sm">
+            You have <strong className="text-amber-400">{unknownCount}</strong> uncategorized transaction{unknownCount !== 1 ? 's' : ''} this month.
+            {totalCount > unknownCount && (
+              <span className="opacity-70"> ({totalCount - unknownCount} already categorized)</span>
+            )}
+          </p>
+          <p className="text-xs opacity-70 mt-1">
+            Review them below to improve your analytics and alerts.
+          </p>
+        </div>
       )}
       <div className="flex items-center justify-between mb-2 text-sm font-medium">
         <div className="flex items-center gap-2">
