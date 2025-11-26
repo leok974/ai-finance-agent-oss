@@ -153,7 +153,11 @@ async def get_demo_sample_data() -> list[DemoSampleTransaction]:
         # Convert to frontend-friendly format
         return [
             DemoSampleTransaction(
-                date=row["date"].isoformat(),
+                date=(
+                    row["date"].isoformat()
+                    if hasattr(row["date"], "isoformat")
+                    else str(row["date"])
+                ),
                 merchant=row["merchant"],
                 description=row["description"],
                 amount=float(row["amount"]),
