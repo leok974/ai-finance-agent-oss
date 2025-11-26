@@ -1699,7 +1699,7 @@ async def agent_stream(
 
             # Determine mode/intent
             user_text = q.lower()
-            detected_mode = mode or _detect_mode(user_text, ctx)
+            detected_mode = mode or _detect_mode(user_text, ctx)  # noqa: F823
             logger.info(f"[agent_stream] detected_mode={detected_mode} q={q[:50]}")
 
             # Send planner event with detected mode and tools
@@ -2388,74 +2388,149 @@ async def agent_stream(
                     )
 
             elif detected_mode == "insights_summary":
-                # Build compact insights summary
+                # Build compact insights summary using MonthAgg
                 try:
-                    from app.services.insights_expanded import load_month
+                    from app.services.insights_expanded import (
+                        load_month,
+                        latest_month_from_data,
+                    )
 
-                    insights = load_month(db, auth.get("user_id"), month)
-                    txn_count = insights.get("transaction_count", 0)
-                    month_display = month or "this month"
+                    # Normalize month parameter
+                    target_month = _parse_target_month(month) or latest_month_from_data(
+                        db
+                    )
 
-                    if txn_count == 0:
+                    if not target_month:
                         deterministic_payload = {
                             "mode": "insights_summary",
-                            "month": month_display,
+                            "target_month": None,
                             "status": "no_data",
+                            "reason": "no_txns",
                         }
                         deterministic_text = (
-                            f"No transaction data available for {month_display}. "
-                            "Upload transactions to see insights."
+                            "I don't have any transactions in the system yet. "
+                            "Once you upload data, I'll summarize the key patterns."
                         )
                     else:
-                        spend = abs(insights.get("spend", 0))
-                        income = insights.get("income", 0)
-                        net = insights.get("net", 0)
-                        unknowns = insights.get("unknowns_count", 0)
+                        # Load month data using MonthAgg dataclass
+                        month_agg = load_month(db, target_month)
+                        txn_count = month_agg.transaction_count
 
-                        top_categories = [
-                            {
-                                "category": cat.get("category", "Unknown"),
-                                "spend": float(abs(cat.get("spend", 0))),
+                        if txn_count == 0:
+                            deterministic_payload = {
+                                "mode": "insights_summary",
+                                "target_month": target_month,
+                                "status": "no_data",
+                                "reason": "no_txns",
                             }
-                            for cat in insights.get("top_categories", [])[:3]
-                        ]
-
-                        deterministic_payload = {
-                            "mode": "insights_summary",
-                            "month": month_display,
-                            "status": "has_data",
-                            "transaction_count": txn_count,
-                            "summary": {
-                                "spend": float(spend),
-                                "income": float(income),
-                                "net": float(net),
-                                "uncategorized_count": unknowns,
-                            },
-                            "top_categories": top_categories,
-                        }
-
-                        # Build fallback text
-                        summary_parts = [
-                            f"**Quick insights for {month_display}**\n\n",
-                            f"💸 **Spend**: ${spend:,.2f}\n",
-                            f"💰 **Income**: ${income:,.2f}\n",
-                            f"📊 **Net**: ${net:+,.2f}\n",
-                        ]
-                        if unknowns > 0:
-                            summary_parts.append(
-                                f"⚠️ **Uncategorized**: {unknowns} transaction(s)\n"
+                            deterministic_text = (
+                                f"I don't have any transactions for {target_month}, "
+                                "so I can't generate monthly insights yet. "
+                                "Once you upload data for this month, I'll summarize the key patterns."
                             )
-                        if top_categories:
-                            summary_parts.append("\n**Top spending categories**:\n")
-                            for cat_dict in top_categories:
-                                summary_parts.append(
-                                    f"• {cat_dict['category']}: ${cat_dict['spend']:,.2f}\n"
+                        else:
+                            # Base numbers
+                            total_spend = float(month_agg.spend or 0)
+                            total_income = float(month_agg.income or 0)
+                            net = float(month_agg.net or 0)
+
+                            # Categories
+                            by_cat = month_agg.by_category or {}
+                            sorted_cats = sorted(
+                                [
+                                    {
+                                        "name": name,
+                                        "spend": float(val or 0),
+                                        "count": 1,  # MonthAgg doesn't track count per category
+                                    }
+                                    for name, val in by_cat.items()
+                                ],
+                                key=lambda c: abs(c["spend"]),
+                                reverse=True,
+                            )
+                            top_categories = sorted_cats[:5]
+
+                            unknown = next(
+                                (
+                                    c
+                                    for c in sorted_cats
+                                    if c["name"].lower().startswith("unknown")
+                                ),
+                                None,
+                            )
+
+                            # Merchants
+                            by_merchant = month_agg.by_merchant or {}
+                            sorted_merchants = sorted(
+                                [
+                                    {
+                                        "name": name,
+                                        "spend": float(val or 0),
+                                        "count": 1,  # MonthAgg doesn't track count per merchant
+                                    }
+                                    for name, val in by_merchant.items()
+                                ],
+                                key=lambda m: abs(m["spend"]),
+                                reverse=True,
+                            )
+                            top_merchants = sorted_merchants[:5]
+
+                            deterministic_payload = {
+                                "mode": "insights_summary",
+                                "status": "ok",
+                                "target_month": target_month,
+                                "summary": {
+                                    "total_spend": total_spend,
+                                    "total_income": total_income,
+                                    "net": net,
+                                    "txn_count": txn_count,
+                                    "unknown_spend": (
+                                        float(unknown["spend"]) if unknown else 0.0
+                                    ),
+                                    "unknown_txns": (
+                                        int(unknown["count"]) if unknown else 0
+                                    ),
+                                },
+                                "top_categories": top_categories,
+                                "top_merchants": top_merchants,
+                            }
+
+                            # Human fallback text – short but data-rich
+                            deterministic_text = (
+                                f"For {target_month}, you had {txn_count} transactions: "
+                                f"about ${total_spend:,.0f} in spend, ${total_income:,.0f} in income, "
+                                f"for net ${net:,.0f}. "
+                            )
+                            if unknown:
+                                deterministic_text += (
+                                    f"Roughly ${unknown['spend']:,.0f} is uncategorized as '{unknown['name']}', "
+                                    "which might be worth cleaning up. "
                                 )
-                        deterministic_text = "".join(summary_parts)
+                            if top_categories:
+                                top_cat_names = ", ".join(
+                                    str(c["name"]) for c in top_categories[:3]
+                                )
+                                deterministic_text += (
+                                    f"Top categories: {top_cat_names}."
+                                )
+
+                        logger.info(
+                            "agent_stream insights_summary month=%s txn_count=%s status=%s",
+                            target_month,
+                            (
+                                deterministic_payload.get("summary", {}).get(
+                                    "txn_count", 0
+                                )
+                                if deterministic_payload.get("summary")
+                                else 0
+                            ),
+                            deterministic_payload["status"],
+                        )
 
                 except Exception as det_err:
                     logger.warning(
-                        f"[agent_stream] Deterministic insights summary failed: {det_err}"
+                        f"[agent_stream] Deterministic insights summary failed: {det_err}",
+                        exc_info=True,
                     )
                     deterministic_payload = {
                         "mode": "insights_summary",
@@ -2590,101 +2665,146 @@ async def agent_stream(
                     )
 
             elif detected_mode == "search_transactions":
-                # Execute NL transaction search
+                # Execute NL transaction search or explain capabilities
                 try:
-                    from app.services.txns_nl_query import parse_nl_query, run_txn_query
+                    # Simple classifier: check if user is asking for capabilities explanation
+                    explain_only = False
+                    text_lower = (q or "").lower()
+                    if (
+                        "what kinds of transaction searches" in text_lower
+                        or "explain what kinds of" in text_lower
+                    ):
+                        explain_only = True
 
-                    # Parse the natural language query
-                    nlq = parse_nl_query(q)
-
-                    # Run the query
-                    search_result = run_txn_query(db=db, nlq=nlq)
-
-                    intent = search_result.get("intent", "list")
-                    result = search_result.get("result", [])
-                    filters_applied = search_result.get("filters", {})
-
-                    # Build structured payload based on intent
-                    if intent == "list":
-                        transactions = result if isinstance(result, list) else []
+                    if explain_only:
+                        # Don't run query - just explain capabilities
                         deterministic_payload = {
                             "mode": "search_transactions",
-                            "status": "success",
-                            "query": q,
-                            "intent": intent,
-                            "count": len(transactions),
-                            "filters_applied": filters_applied,
-                            "transactions": transactions[
-                                :20
-                            ],  # Limit to 20 for LLM context
-                            "truncated": len(transactions) > 20,
+                            "status": "explain_only",
+                            "capabilities": {
+                                "filters": [
+                                    "merchant",
+                                    "category",
+                                    "date_range",
+                                    "amount_range",
+                                    "intent (list / sum / count / top_merchants / top_categories)",
+                                ],
+                                "examples": [
+                                    "Starbucks this month",
+                                    "Groceries last 90 days",
+                                    "Transactions > $50 last month",
+                                ],
+                            },
                         }
+                        deterministic_text = (
+                            "You can search your transactions by merchant, category, date range, "
+                            "amount range, or ask for a summary/count (e.g. "
+                            '"Starbucks this month", "groceries last 90 days", '
+                            '"transactions > $50 last month").'
+                        )
+                    else:
+                        # Normal path: parse and run query
+                        from app.services.txns_nl_query import (
+                            parse_nl_query,
+                            run_txn_query,
+                        )
 
-                        # Build fallback text
-                        if not transactions:
-                            deterministic_text = (
-                                f"No transactions found matching '{q}'.\n\n"
-                                "Try adjusting your search criteria or date range."
-                            )
-                        else:
-                            total_amount = sum(
-                                abs(float(t.get("amount", 0))) for t in transactions
-                            )
-                            deterministic_text = (
-                                f"Found {len(transactions)} transaction(s) matching '{q}':\n\n"
-                                f"Total: ${total_amount:,.2f}\n\n"
-                                f"First {min(20, len(transactions))} transactions:\n"
-                            )
-                            for idx, txn in enumerate(transactions[:20], 1):
-                                date_str = txn.get("date", "")
-                                merchant = txn.get("merchant", "Unknown")
-                                amount = abs(float(txn.get("amount", 0)))
-                                category = txn.get("category") or "Uncategorized"
-                                deterministic_text += f"{idx}. {date_str} | {merchant} | ${amount:,.2f} | {category}\n"
-                            if len(transactions) > 20:
-                                deterministic_text += (
-                                    f"\n...and {len(transactions) - 20} more."
+                        # Parse the natural language query
+                        nlq = parse_nl_query(q)
+
+                        # Run the query
+                        search_result = run_txn_query(db=db, nlq=nlq)
+
+                        intent = search_result.get("intent", "list")
+                        result = search_result.get("result", [])
+                        filters_applied = search_result.get("filters", {})
+
+                        # Build structured payload based on intent
+                        if intent == "list":
+                            transactions = result if isinstance(result, list) else []
+                            status = "ok" if transactions else "no_results"
+                            deterministic_payload = {
+                                "mode": "search_transactions",
+                                "status": status,
+                                "query": q,
+                                "intent": intent,
+                                "count": len(transactions),
+                                "filters_applied": filters_applied,
+                                "transactions": transactions[
+                                    :20
+                                ],  # Limit to 20 for LLM context
+                                "truncated": len(transactions) > 20,
+                            }
+                            if not transactions:
+                                deterministic_payload["reason"] = (
+                                    "query_parsed_but_no_matches"
                                 )
 
-                    elif intent == "sum":
-                        total = float(result.get("total_abs", 0))
-                        deterministic_payload = {
-                            "mode": "search_transactions",
-                            "status": "success",
-                            "query": q,
-                            "intent": intent,
-                            "total": total,
-                            "filters_applied": filters_applied,
-                        }
-                        deterministic_text = f"Total for '{q}': ${total:,.2f}"
+                            # Build fallback text
+                            if not transactions:
+                                deterministic_text = (
+                                    f"No transactions found matching '{q}'.\n\n"
+                                    "Try adjusting your search criteria or date range."
+                                )
+                            else:
+                                total_amount = sum(
+                                    abs(float(t.get("amount", 0))) for t in transactions
+                                )
+                                deterministic_text = (
+                                    f"Found {len(transactions)} transaction(s) matching '{q}':\n\n"
+                                    f"Total: ${total_amount:,.2f}\n\n"
+                                    f"First {min(20, len(transactions))} transactions:\n"
+                                )
+                                for idx, txn in enumerate(transactions[:20], 1):
+                                    date_str = txn.get("date", "")
+                                    merchant = txn.get("merchant", "Unknown")
+                                    amount = abs(float(txn.get("amount", 0)))
+                                    category = txn.get("category") or "Uncategorized"
+                                    deterministic_text += f"{idx}. {date_str} | {merchant} | ${amount:,.2f} | {category}\n"
+                                if len(transactions) > 20:
+                                    deterministic_text += (
+                                        f"\n...and {len(transactions) - 20} more."
+                                    )
 
-                    elif intent == "count":
-                        count = result.get("count", 0)
-                        deterministic_payload = {
-                            "mode": "search_transactions",
-                            "status": "success",
-                            "query": q,
-                            "intent": intent,
-                            "count": count,
-                            "filters_applied": filters_applied,
-                        }
-                        deterministic_text = (
-                            f"Found {count} transaction(s) matching '{q}'."
-                        )
+                        elif intent == "sum":
+                            total = float(result.get("total_abs", 0))
+                            deterministic_payload = {
+                                "mode": "search_transactions",
+                                "status": "ok",
+                                "query": q,
+                                "intent": intent,
+                                "total": total,
+                                "filters_applied": filters_applied,
+                            }
+                            deterministic_text = f"Total for '{q}': ${total:,.2f}"
 
-                    else:
-                        # top_merchants, top_categories, etc.
-                        deterministic_payload = {
-                            "mode": "search_transactions",
-                            "status": "success",
-                            "query": q,
-                            "intent": intent,
-                            "result": result,
-                            "filters_applied": filters_applied,
-                        }
-                        deterministic_text = (
-                            f"Search results for '{q}' (intent: {intent})."
-                        )
+                        elif intent == "count":
+                            count = result.get("count", 0)
+                            deterministic_payload = {
+                                "mode": "search_transactions",
+                                "status": "ok",
+                                "query": q,
+                                "intent": intent,
+                                "count": count,
+                                "filters_applied": filters_applied,
+                            }
+                            deterministic_text = (
+                                f"Found {count} transaction(s) matching '{q}'."
+                            )
+
+                        else:
+                            # top_merchants, top_categories, etc.
+                            deterministic_payload = {
+                                "mode": "search_transactions",
+                                "status": "ok",
+                                "query": q,
+                                "intent": intent,
+                                "result": result,
+                                "filters_applied": filters_applied,
+                            }
+                            deterministic_text = (
+                                f"Search results for '{q}' (intent: {intent})."
+                            )
 
                 except Exception as search_err:
                     logger.warning(
@@ -2707,9 +2827,44 @@ async def agent_stream(
                 )
 
                 # Build grounding system message
-                grounding_system_msg = {
-                    "role": "system",
-                    "content": (
+                status = deterministic_payload.get("status")
+                mode = deterministic_payload.get("mode")
+
+                # Customize grounding based on mode and status
+                if mode == "search_transactions":
+                    if status == "explain_only":
+                        grounding_content = (
+                            "You are LedgerMind's finance assistant.\n"
+                            "CRITICAL RULES:\n"
+                            "1. The user is asking what kinds of searches are possible - DO NOT say 'the search returned no transactions'.\n"
+                            "2. Explain the search capabilities using the examples in the data.\n"
+                            "3. Be concise, specific, and conversational.\n"
+                            "4. Show 2-3 natural language examples they can try.\n"
+                            "5. Use emojis sparingly and naturally (💰 📊 🔍)."
+                        )
+                    elif status == "no_results":
+                        grounding_content = (
+                            "You are LedgerMind's finance assistant.\n"
+                            "CRITICAL RULES:\n"
+                            "1. The query was parsed correctly but returned no matching transactions.\n"
+                            "2. It's OK to say 'that query returned no transactions'.\n"
+                            "3. Suggest a broader query or different search criteria.\n"
+                            "4. Be concise, specific, and conversational.\n"
+                            "5. Use emojis sparingly and naturally (💰 📊 🔍)."
+                        )
+                    else:
+                        grounding_content = (
+                            "You are LedgerMind's finance assistant.\n"
+                            "CRITICAL RULES:\n"
+                            "1. ALWAYS base your answer ONLY on the structured data provided in the tool_context message.\n"
+                            "2. Summarize the actual rows/aggregates in the payload.\n"
+                            "3. Be concise, specific, and conversational.\n"
+                            "4. Use the actual numbers from the data - do not invent or estimate values.\n"
+                            "5. Highlight insights and patterns you see in the data.\n"
+                            "6. Use emojis sparingly and naturally (💰 📊 🔍)."
+                        )
+                else:
+                    grounding_content = (
                         "You are LedgerMind's finance assistant.\n"
                         "CRITICAL RULES:\n"
                         "1. ALWAYS base your answer ONLY on the structured data provided in the tool_context message.\n"
@@ -2718,7 +2873,11 @@ async def agent_stream(
                         "4. Use the actual numbers from the data - do not invent or estimate values.\n"
                         "5. Highlight insights and patterns you see in the data.\n"
                         "6. Use emojis sparingly and naturally (💰 📊 📈 📉 ⚠️)."
-                    ),
+                    )
+
+                grounding_system_msg = {
+                    "role": "system",
+                    "content": grounding_content,
                 }
 
                 # Tool context with deterministic data

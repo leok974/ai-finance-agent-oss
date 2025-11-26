@@ -2435,7 +2435,7 @@ export default function ChatDock() {
                 size="sm"
                 className="lm-chat-tool"
                 onClick={() => runSearchTransactions(
-                  "Explain what kinds of transaction searches I can run on my data and give 3 concrete examples."
+                  "transactions this month"
                 )}
                 disabled={busy}
                 title="Search transactions using natural language — ask for any merchant, category, amount range, or time period."
