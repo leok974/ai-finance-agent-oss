@@ -1965,19 +1965,175 @@ async def agent_stream(
                 "analytics_recurring_all",
             ):
                 # Build deterministic recurring/subscriptions response
-                # Note: subscriptions endpoint may not exist yet, so provide simple fallback
                 try:
-                    # For now, provide a helpful message since the analytics endpoint may not be implemented
-                    deterministic_response = (
-                        "I can help you identify recurring charges. "
-                        "Look for merchants that appear multiple times each month in your transactions list. "
-                        "Common subscriptions include streaming services, gym memberships, and software tools."
-                    )
+                    from app.services.insights_expanded import load_month
+
+                    # Get transaction data for selected month
+                    month_insights = load_month(db, auth.get("user_id"), month)
+                    txn_count = month_insights.get("transaction_count", 0)
+
+                    if txn_count == 0:
+                        month_display = month or "the current month"
+                        deterministic_response = (
+                            f"I don't have any transaction data for {month_display}. "
+                            "Once you have transactions, I'll be able to identify recurring charges."
+                        )
+                    else:
+                        # Get merchants that appear multiple times (simple heuristic for recurring)
+                        top_merchants = month_insights.get("top_merchants", [])[:10]
+
+                        recurring_parts = [
+                            f"Looking at your transactions for {month or 'this month'}, here are merchants that appear frequently:\n\n"
+                        ]
+
+                        if top_merchants:
+                            for merch in top_merchants:
+                                merchant_name = merch.get("merchant", "Unknown")
+                                count = merch.get("transaction_count", 0)
+                                total = abs(merch.get("spend", 0))
+                                recurring_parts.append(
+                                    f"• **{merchant_name}**: {count} transaction(s), ${total:,.2f}\n"
+                                )
+                        else:
+                            recurring_parts.append(
+                                "I couldn't find obvious recurring merchants yet. "
+                                "Add more months of data for better pattern detection.\n"
+                            )
+
+                        recurring_parts.append(
+                            "\nℹ️ Subscriptions are merchants that charge you regularly (monthly, yearly, etc.). "
+                            "Review this list for any you might want to cancel or reduce."
+                        )
+
+                        deterministic_response = "".join(recurring_parts)
+
                 except Exception as det_err:
                     logger.warning(
                         f"[agent_stream] Deterministic subscriptions failed: {det_err}"
                     )
                     # Fall through to LLM
+
+            elif detected_mode == "insights_summary":
+                # Build compact insights summary
+                try:
+                    from app.services.insights_expanded import load_month
+
+                    insights = load_month(db, auth.get("user_id"), month)
+                    txn_count = insights.get("transaction_count", 0)
+
+                    if txn_count == 0:
+                        month_display = month or "the current month"
+                        deterministic_response = (
+                            f"No transaction data available for {month_display}. "
+                            "Upload transactions to see insights."
+                        )
+                    else:
+                        month_str = month or "this month"
+                        spend = abs(insights.get("spend", 0))
+                        income = insights.get("income", 0)
+                        net = insights.get("net", 0)
+                        unknowns = insights.get("unknowns_count", 0)
+
+                        summary_parts = [
+                            f"**Quick insights for {month_str}**\n\n",
+                            f"💸 **Spend**: ${spend:,.2f}\n",
+                            f"💰 **Income**: ${income:,.2f}\n",
+                            f"📊 **Net**: ${net:+,.2f}\n",
+                        ]
+
+                        if unknowns > 0:
+                            summary_parts.append(
+                                f"⚠️ **Uncategorized**: {unknowns} transaction(s)\n"
+                            )
+
+                        top_categories = insights.get("top_categories", [])[:3]
+                        if top_categories:
+                            summary_parts.append("\n**Top spending categories**:\n")
+                            for cat in top_categories:
+                                cat_name = cat.get("category", "Unknown")
+                                cat_spend = abs(cat.get("spend", 0))
+                                summary_parts.append(
+                                    f"• {cat_name}: ${cat_spend:,.2f}\n"
+                                )
+
+                        deterministic_response = "".join(summary_parts)
+
+                except Exception as det_err:
+                    logger.warning(
+                        f"[agent_stream] Deterministic insights summary failed: {det_err}"
+                    )
+                    # Fall through to LLM
+
+            elif detected_mode == "analytics_budget_suggest":
+                # Build budget suggestion
+                try:
+                    from app.services.insights_expanded import load_month
+
+                    insights = load_month(db, auth.get("user_id"), month)
+                    txn_count = insights.get("transaction_count", 0)
+
+                    if txn_count == 0:
+                        month_display = month or "the current month"
+                        deterministic_response = (
+                            f"I need transaction data for {month_display} to suggest a budget. "
+                            "Upload transactions first."
+                        )
+                    else:
+                        month_str = month or "this month"
+                        spend = abs(insights.get("spend", 0))
+                        income = insights.get("income", 0)
+
+                        # Simple 50/30/20 rule: 50% needs, 30% wants, 20% savings
+                        if income > 0:
+                            needs_budget = income * 0.50
+                            wants_budget = income * 0.30
+                            savings_budget = income * 0.20
+                        else:
+                            # Fallback to spend if no income data
+                            needs_budget = spend * 0.50
+                            wants_budget = spend * 0.30
+                            savings_budget = spend * 0.20
+
+                        budget_parts = [
+                            f"**Budget suggestion for {month_str}**\n\n",
+                            f"Based on your {'income' if income > 0 else 'spending'} of ${income if income > 0 else spend:,.2f}, "
+                            f"here's a suggested budget using the 50/30/20 rule:\n\n",
+                            f"🏠 **Needs** (50%): ${needs_budget:,.2f}\n",
+                            "   _Housing, groceries, utilities, insurance_\n\n",
+                            f"🎭 **Wants** (30%): ${wants_budget:,.2f}\n",
+                            "   _Dining, entertainment, hobbies_\n\n",
+                            f"💰 **Savings** (20%): ${savings_budget:,.2f}\n",
+                            "   _Emergency fund, investments, debt payoff_\n\n",
+                            f"Current spending: ${spend:,.2f}\n",
+                        ]
+
+                        if spend > (needs_budget + wants_budget):
+                            budget_parts.append(
+                                f"\n⚠️ You're spending ${spend - (needs_budget + wants_budget):,.2f} more than the suggested budget."
+                            )
+                        else:
+                            budget_parts.append(
+                                f"\n✅ You're within budget! Consider allocating ${(needs_budget + wants_budget) - spend:,.2f} to savings."
+                            )
+
+                        deterministic_response = "".join(budget_parts)
+
+                except Exception as det_err:
+                    logger.warning(
+                        f"[agent_stream] Deterministic budget suggest failed: {det_err}"
+                    )
+                    # Fall through to LLM
+
+            elif detected_mode == "search_transactions":
+                # Provide simple message - full NL search should use dedicated endpoint
+                deterministic_response = (
+                    "To search transactions, use the search box above and try queries like:\n\n"
+                    "• 'Starbucks this month'\n"
+                    "• 'Delta in Aug 2025'\n"
+                    "• 'transactions > $50 last 90 days'\n"
+                    "• 'refunds last month'\n\n"
+                    "The search understands natural language and can filter by merchant, amount, date, and category."
+                )
 
             # If we have a deterministic response, stream it and skip LLM
             if deterministic_response:
