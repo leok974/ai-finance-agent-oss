@@ -46,7 +46,7 @@ async def auth_demo_login(db: Session = Depends(get_db)):
     if not user.is_active:
         raise HTTPException(status_code=403, detail="Demo account is disabled")
 
-    # Auto-seed demo data for new demo users
+    # Auto-seed demo data for new demo users OR existing demo users with no transactions
     if is_new_demo_user:
         try:
             from app.routers.demo_seed import seed_demo_data_for_user
@@ -58,6 +58,25 @@ async def auth_demo_login(db: Session = Depends(get_db)):
             logger.warning(
                 f"Failed to auto-seed demo data for demo user {user.id}: {e}"
             )
+    else:
+        # Check if existing demo user has no transactions and seed if empty
+        from app.orm_models import Transaction
+
+        txn_count = (
+            db.query(Transaction).filter(Transaction.user_id == user.id).count()
+        )
+        if txn_count == 0:
+            try:
+                from app.routers.demo_seed import seed_demo_data_for_user
+
+                seed_demo_data_for_user(user.id, db)
+                logger.info(
+                    f"Auto-seeded demo data for existing demo user {user.id} (was empty)"
+                )
+            except Exception as e:
+                logger.warning(
+                    f"Failed to auto-seed demo data for existing demo user {user.id}: {e}"
+                )
 
     # Extract user roles for token generation
     roles = [ur.role.name for ur in user.roles] if user.roles else []
