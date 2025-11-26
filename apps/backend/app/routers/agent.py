@@ -1701,8 +1701,11 @@ async def agent_stream(
                     {"type": "tool_end", "data": {"name": tool_name, "ok": True}}
                 ) + "\n"
 
-            # Check if we can handle this mode deterministically (without LLM)
+            # Check if we can handle this mode deterministically
             deterministic_response = None
+            deterministic_payload = None  # New: for "tool → LLM" pattern
+            deterministic_text = None  # New: fallback text if LLM fails
+
             if detected_mode == "finance_quick_recap":
                 # Build deterministic quick recap from backend data
                 try:
@@ -1751,8 +1754,10 @@ async def agent_stream(
                     # Fall through to LLM
 
             elif detected_mode == "analytics_trends":
-                # Build deterministic spending trends response from charts data
+                # Build deterministic payload and always call LLM with it as context
                 deterministic_mode: Optional[str] = None
+                deterministic_payload: Optional[dict] = None
+                deterministic_text: Optional[str] = None
 
                 try:
                     # Import required functions
@@ -1767,7 +1772,12 @@ async def agent_stream(
                     if not target_month:
                         # No data at all in database
                         deterministic_mode = "no_data_anywhere"
-                        deterministic_response = (
+                        deterministic_payload = {
+                            "mode": "analytics_trends",
+                            "status": "no_data",
+                            "message": "No transaction data in system",
+                        }
+                        deterministic_text = (
                             "I don't have any transaction data in the system yet. "
                             "Upload a CSV or connect your bank account to get started."
                         )
@@ -1805,9 +1815,15 @@ async def agent_stream(
                         # CASE 1: Hard "no data" - truly no transactions for selected month
                         if txn_count_month == 0:
                             deterministic_mode = "no_data"
-                            month_display = target_month
-                            deterministic_response = (
-                                f"I don't have any transaction data for {month_display}, "
+                            deterministic_payload = {
+                                "mode": "analytics_trends",
+                                "target_month": target_month,
+                                "status": "no_data",
+                                "txns_in_month": 0,
+                                "message": f"No transaction data for {target_month}",
+                            }
+                            deterministic_text = (
+                                f"I don't have any transaction data for {target_month}, "
                                 "so I can't calculate or display spending trends for this month.\n\n"
                                 "Try switching to a month that has transactions, or upload a CSV for this period."
                             )
@@ -1819,7 +1835,32 @@ async def agent_stream(
                             total_income = month_insights.income
                             net = month_insights.net
 
-                            deterministic_response = (
+                            # Extract top categories
+                            top_categories = [
+                                {"name": cat, "spend": float(amt)}
+                                for cat, amt in sorted(
+                                    month_insights.by_category.items(),
+                                    key=lambda x: x[1],
+                                    reverse=True,
+                                )[:5]
+                            ]
+
+                            deterministic_payload = {
+                                "mode": "analytics_trends",
+                                "target_month": target_month,
+                                "status": "single_month",
+                                "txns_in_month": txn_count_month,
+                                "summary": {
+                                    "total_spend": float(abs(total_spend)),
+                                    "total_income": float(total_income),
+                                    "net": float(net),
+                                },
+                                "top_categories": top_categories,
+                                "months_with_data": months_with_data,
+                                "message": "Only one month of data available - cannot compute trends",
+                            }
+
+                            deterministic_text = (
                                 f"For {target_month}, here's your single-month summary:\n\n"
                                 f"- Total spend: ${abs(total_spend):,.0f}\n"
                                 f"- Total income: ${total_income:,.0f}\n"
@@ -1847,16 +1888,24 @@ async def agent_stream(
                                 ]
 
                                 if available_series:
-                                    # Build response from available months
+                                    # Build structured series data for LLM
+                                    series_by_month = [
+                                        {
+                                            "month": p.month,
+                                            "spend": float(p.outflow),
+                                            "income": float(p.inflow),
+                                            "net": float(p.inflow - p.outflow),
+                                        }
+                                        for p in available_series
+                                    ]
+
+                                    # Calculate trend metrics
                                     start_month = available_series[0].month
                                     end_month = available_series[-1].month
-
-                                    # Calculate average spend
                                     avg_spend = sum(
                                         p.outflow for p in available_series
                                     ) / len(available_series)
 
-                                    # Find highest and lowest spend months
                                     max_spend_point = max(
                                         available_series, key=lambda p: p.outflow
                                     )
@@ -1864,7 +1913,7 @@ async def agent_stream(
                                         available_series, key=lambda p: p.outflow
                                     )
 
-                                    # Check if spend is trending up or down
+                                    # Determine spending trend direction
                                     if len(available_series) >= 2:
                                         recent_avg = sum(
                                             p.outflow for p in available_series[-3:]
@@ -1872,44 +1921,77 @@ async def agent_stream(
                                         earlier_avg = sum(
                                             p.outflow for p in available_series[:3]
                                         ) / min(3, len(available_series[:3]))
-                                        trend = (
-                                            "increasing"
-                                            if recent_avg > earlier_avg * 1.1
-                                            else (
-                                                "decreasing"
-                                                if recent_avg < earlier_avg * 0.9
-                                                else "stable"
-                                            )
-                                        )
+                                        if recent_avg > earlier_avg * 1.1:
+                                            trend_direction = "increasing"
+                                        elif recent_avg < earlier_avg * 0.9:
+                                            trend_direction = "decreasing"
+                                        else:
+                                            trend_direction = "stable"
                                     else:
-                                        trend = "stable"
+                                        trend_direction = "stable"
 
-                                    trends_parts = [
-                                        f"Spending trends from {start_month} to {end_month}",
-                                        f"\n\n📊 **Overall pattern**: Your spending has been {trend}.",
-                                        f"\n\n💰 **Average monthly spend**: ${avg_spend:,.2f}",
-                                        f"\n\n📈 **Highest spend**: {max_spend_point.month} (${max_spend_point.outflow:,.2f})",
-                                        f"\n📉 **Lowest spend**: {min_spend_point.month} (${min_spend_point.outflow:,.2f})",
-                                    ]
+                                    deterministic_payload = {
+                                        "mode": "analytics_trends",
+                                        "target_month": target_month,
+                                        "status": "multi_month",
+                                        "txns_in_month": txn_count_month,
+                                        "period": {
+                                            "start_month": start_month,
+                                            "end_month": end_month,
+                                            "months_count": len(available_series),
+                                        },
+                                        "summary": {
+                                            "avg_monthly_spend": float(avg_spend),
+                                            "highest_spend_month": max_spend_point.month,
+                                            "highest_spend_amount": float(
+                                                max_spend_point.outflow
+                                            ),
+                                            "lowest_spend_month": min_spend_point.month,
+                                            "lowest_spend_amount": float(
+                                                min_spend_point.outflow
+                                            ),
+                                            "trend_direction": trend_direction,
+                                        },
+                                        "series_by_month": series_by_month,
+                                    }
 
-                                    # Note if we're showing partial data
-                                    if len(available_series) < 6:
-                                        trends_parts.append(
-                                            f"\n\n_Note: Showing {len(available_series)} months with transaction data._"
-                                        )
-
-                                    trends_parts.append(
-                                        "\n\nAsk me to zoom into a specific month if you'd like more detail."
+                                    deterministic_text = (
+                                        f"Spending trends from {start_month} to {end_month}\n\n"
+                                        f"📊 **Overall pattern**: Your spending has been {trend_direction}.\n\n"
+                                        f"💰 **Average monthly spend**: ${avg_spend:,.2f}\n\n"
+                                        f"📈 **Highest spend**: {max_spend_point.month} (${max_spend_point.outflow:,.2f})\n"
+                                        f"📉 **Lowest spend**: {min_spend_point.month} (${min_spend_point.outflow:,.2f})"
                                     )
-
-                                    deterministic_response = "".join(trends_parts)
                                 else:
                                     # No available series - fallback to single month
                                     deterministic_mode = "fallback_single_month"
                                     total_spend = month_insights.spend
                                     total_income = month_insights.income
                                     net = month_insights.net
-                                    deterministic_response = (
+
+                                    top_categories = [
+                                        {"name": cat, "spend": float(amt)}
+                                        for cat, amt in sorted(
+                                            month_insights.by_category.items(),
+                                            key=lambda x: x[1],
+                                            reverse=True,
+                                        )[:5]
+                                    ]
+
+                                    deterministic_payload = {
+                                        "mode": "analytics_trends",
+                                        "target_month": target_month,
+                                        "status": "fallback_single_month",
+                                        "txns_in_month": txn_count_month,
+                                        "summary": {
+                                            "total_spend": float(abs(total_spend)),
+                                            "total_income": float(total_income),
+                                            "net": float(net),
+                                        },
+                                        "top_categories": top_categories,
+                                    }
+
+                                    deterministic_text = (
                                         f"For {target_month}, I have your data but couldn't compute full trends.\n\n"
                                         f"- Total spend: ${abs(total_spend):,.0f}\n"
                                         f"- Total income: ${total_income:,.0f}\n"
@@ -1924,7 +2006,30 @@ async def agent_stream(
                                 total_spend = month_insights.spend
                                 total_income = month_insights.income
                                 net = month_insights.net
-                                deterministic_response = (
+
+                                top_categories = [
+                                    {"name": cat, "spend": float(amt)}
+                                    for cat, amt in sorted(
+                                        month_insights.by_category.items(),
+                                        key=lambda x: x[1],
+                                        reverse=True,
+                                    )[:5]
+                                ]
+
+                                deterministic_payload = {
+                                    "mode": "analytics_trends",
+                                    "target_month": target_month,
+                                    "status": "error_fallback",
+                                    "txns_in_month": txn_count_month,
+                                    "summary": {
+                                        "total_spend": float(abs(total_spend)),
+                                        "total_income": float(total_income),
+                                        "net": float(net),
+                                    },
+                                    "top_categories": top_categories,
+                                }
+
+                                deterministic_text = (
                                     f"For {target_month}, I have your data but couldn't compute full trends.\n\n"
                                     f"- Total spend: ${abs(total_spend):,.0f}\n"
                                     f"- Total income: ${total_income:,.0f}\n"
@@ -1938,7 +2043,30 @@ async def agent_stream(
                             total_spend = month_insights.spend
                             total_income = month_insights.income
                             net = month_insights.net
-                            deterministic_response = (
+
+                            top_categories = [
+                                {"name": cat, "spend": float(amt)}
+                                for cat, amt in sorted(
+                                    month_insights.by_category.items(),
+                                    key=lambda x: x[1],
+                                    reverse=True,
+                                )[:5]
+                            ]
+
+                            deterministic_payload = {
+                                "mode": "analytics_trends",
+                                "target_month": target_month,
+                                "status": "no_charts_module",
+                                "txns_in_month": txn_count_month,
+                                "summary": {
+                                    "total_spend": float(abs(total_spend)),
+                                    "total_income": float(total_income),
+                                    "net": float(net),
+                                },
+                                "top_categories": top_categories,
+                            }
+
+                            deterministic_text = (
                                 f"I have transaction data for {target_month}, but the trends analysis module is unavailable.\n\n"
                                 f"💸 **Spend**: ${abs(total_spend):,.2f}\n"
                                 f"💰 **Income**: ${total_income:,.2f}\n"
@@ -1956,7 +2084,16 @@ async def agent_stream(
                         f"[agent_stream] Deterministic trends failed: {det_err}",
                         exc_info=True,
                     )
-                    # Fall through to LLM
+                    # Set fallback payload
+                    deterministic_payload = {
+                        "mode": "analytics_trends",
+                        "status": "error",
+                        "message": str(det_err),
+                    }
+                    deterministic_text = (
+                        "I encountered an error analyzing your spending trends. "
+                        "Please try again or contact support if the issue persists."
+                    )
 
             elif detected_mode == "finance_alerts":
                 # Build deterministic alerts response
@@ -2190,8 +2327,79 @@ async def agent_stream(
                     "The search understands natural language and can filter by merchant, amount, date, and category."
                 )
 
-            # If we have a deterministic response, stream it and skip LLM
-            if deterministic_response:
+            # If we have a deterministic payload (analytics_trends), call LLM with it as context
+            if deterministic_payload:
+                logger.info(
+                    f"[agent_stream] Using deterministic payload for mode={detected_mode} status={deterministic_payload.get('status')}"
+                )
+
+                # Build grounding system message
+                grounding_system_msg = {
+                    "role": "system",
+                    "content": (
+                        "You are LedgerMind's finance assistant.\n"
+                        "CRITICAL RULES:\n"
+                        "1. ALWAYS base your answer ONLY on the structured data provided in the tool_context message.\n"
+                        "2. If something is not in the data, explicitly say you don't have that information.\n"
+                        "3. Be concise, specific, and conversational.\n"
+                        "4. Use the actual numbers from the data - do not invent or estimate values.\n"
+                        "5. Highlight insights and patterns you see in the data.\n"
+                        "6. Use emojis sparingly and naturally (💰 📊 📈 📉 ⚠️)."
+                    ),
+                }
+
+                # Tool context with deterministic data
+                tool_context_msg = {
+                    "role": "system",
+                    "content": f"## TOOL CONTEXT\n{json.dumps({'tool': detected_mode, 'data': deterministic_payload}, indent=2)}",
+                }
+
+                # User query
+                user_msg = {"role": "user", "content": q}
+
+                # Build final message list
+                final_messages = [grounding_system_msg, tool_context_msg, user_msg]
+
+                # Try to call LLM with the deterministic payload
+                try:
+                    from app.utils.llm_stream import stream_llm_tokens_with_fallback
+
+                    model = settings.DEFAULT_LLM_MODEL
+
+                    async for token_event in stream_llm_tokens_with_fallback(
+                        messages=final_messages,
+                        model=model,
+                        temperature=0.3,
+                        top_p=0.9,
+                    ):
+                        # token_event already has { "type": "token", "data": { "text": "..." } }
+                        yield json.dumps(token_event) + "\n"
+
+                except Exception as llm_err:
+                    logger.warning(
+                        f"[agent_stream] LLM unavailable for {detected_mode}, falling back to deterministic text: {llm_err}"
+                    )
+                    # Emit error event
+                    yield json.dumps(
+                        {
+                            "type": "error",
+                            "data": {
+                                "message": "Language model temporarily unavailable - showing data summary",
+                                "code": "MODEL_UNAVAILABLE",
+                            },
+                        }
+                    ) + "\n"
+
+                    # Fall back to deterministic text if available
+                    if deterministic_text:
+                        for char in deterministic_text:
+                            yield json.dumps(
+                                {"type": "token", "data": {"text": char}}
+                            ) + "\n"
+                            await asyncio.sleep(0.005)
+
+            # Legacy: If we have a deterministic response (old modes), stream it and skip LLM
+            elif deterministic_response:
                 logger.info(
                     f"[agent_stream] Using deterministic response (len={len(deterministic_response)}) for mode={detected_mode}"
                 )
