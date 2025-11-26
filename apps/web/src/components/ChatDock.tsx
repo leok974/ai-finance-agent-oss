@@ -20,7 +20,8 @@ import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent, CardFooter } from "@/components/ui/card";
-import { agentTools, type AgentChatResponse, type TxnQueryResult, explainTxnForChat, agentRephrase, analytics, txnsQueryCsv, txnsQuery, agentStatus, type AgentStatusResponse } from "../lib/api";
+import { agentTools, type AgentChatResponse, type TxnQueryResult, explainTxnForChat, agentRephrase, analytics, txnsQueryCsv, txnsQuery, agentStatus, type AgentStatusResponse, getMonthMerchants, getMonthCategories } from "../lib/api";
+import { useRecentSearchChips } from "@/chat/useRecentSearchChips";
 import { fmtMonthSummary, fmtTopMerchants, fmtCashflow, fmtTrends } from "../lib/formatters";
 import { renderQuick, renderDeep, type MonthSummary as FinanceMonthSummary } from "../lib/formatters/finance";
 import { adaptChartsSummaryToMonthSummary, adaptInsightsExpandedToMonthSummary } from "../lib/formatters/financeAdapters";
@@ -373,6 +374,12 @@ export default function ChatDock() {
     }
   }, [llmStatus]);
 
+  // Recent search chips
+  const { recentQueries, recordQuery } = useRecentSearchChips(4);
+  // Dynamic chips from real data
+  const [topMerchants, setTopMerchants] = useState<Array<{ label: string; total: number }>>([]);
+  const [topCategories, setTopCategories] = useState<Array<{ name: string; amount: number }>>([]);
+
   // Track last what-if scenario text for rule saving
   const lastWhatIfScenarioRef = useRef<string>("");
   // Save Rule modal state (new component)
@@ -416,6 +423,24 @@ export default function ChatDock() {
       iframe.dataset.toolsOpen = showTools ? 'true' : 'false';
     }
   }, [showTools]);
+
+  // Fetch merchants and categories for dynamic chips
+  useEffect(() => {
+    if (!month) return;
+    const fetchDynamicChipData = async () => {
+      try {
+        const [merchants, categories] = await Promise.all([
+          getMonthMerchants(month).catch(() => []),
+          getMonthCategories(month).catch(() => []),
+        ]);
+        setTopMerchants(merchants.slice(0, 3));
+        setTopCategories(categories.slice(0, 2));
+      } catch (err) {
+        console.warn('[ChatDock] Failed to fetch dynamic chip data:', err);
+      }
+    };
+    fetchDynamicChipData();
+  }, [month]);
 
   // ML selftest UI removed
   // Undo snackbar (animated) for destructive actions like Clear
@@ -1678,6 +1703,8 @@ export default function ChatDock() {
       const text = query.trim();
       if (!text) return;
 
+      recordQuery(text);
+
       try {
         await agentStream.sendMessage(text, {
           month,
@@ -1687,7 +1714,7 @@ export default function ChatDock() {
         console.error('[ChatDock] Search transactions stream error:', err);
       }
     },
-    [busy, month, agentStream],
+    [busy, month, agentStream, recordQuery],
   );
 
   // Insights now uses streaming mode
@@ -2417,8 +2444,64 @@ export default function ChatDock() {
                 <span>Search transactions</span>
               </Button>
             </div>
-            {/* Universal search shortcuts - work with any dataset */}
-            <div className="mt-4 flex flex-wrap gap-2">
+
+            {/* RECENT SEARCHES - rotating from localStorage */}
+            {recentQueries.length > 0 && (
+              <>
+                <div className="mt-4 text-xs uppercase tracking-wide text-slate-400">
+                  Recent searches
+                </div>
+                <div className="flex flex-wrap gap-2 mt-2">
+                  {recentQueries.map((q) => (
+                    <button
+                      key={q}
+                      type="button"
+                      className="rounded-full border border-white/10 px-3 py-1 text-xs font-medium hover:bg-white/5 transition disabled:opacity-50"
+                      onClick={() => runSearchTransactions(q)}
+                      disabled={busy}
+                    >
+                      {q}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+
+            {/* FROM YOUR DATA - dynamic top merchants/categories */}
+            {(topMerchants.length > 0 || topCategories.length > 0) && (
+              <>
+                <div className="mt-4 text-xs uppercase tracking-wide text-slate-400">
+                  From your data
+                </div>
+                <div className="flex flex-wrap gap-2 mt-2">
+                  {topMerchants.map((m) => (
+                    <button
+                      key={`merchant-${m.label}`}
+                      type="button"
+                      className="rounded-full border border-white/10 px-3 py-1 text-xs font-medium hover:bg-white/5 transition disabled:opacity-50"
+                      onClick={() => runSearchTransactions(`${m.label} this month`)}
+                      disabled={busy}
+                    >
+                      {m.label} this month
+                    </button>
+                  ))}
+                  {topCategories.map((c) => (
+                    <button
+                      key={`category-${c.name}`}
+                      type="button"
+                      className="rounded-full border border-white/10 px-3 py-1 text-xs font-medium hover:bg-white/5 transition disabled:opacity-50"
+                      onClick={() => runSearchTransactions(`${c.name} this month`)}
+                      disabled={busy}
+                    >
+                      {c.name} this month
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+
+            {/* CORE SEARCH SHORTCUTS - safe on any dataset */}
+            <div className="flex flex-wrap gap-2 mt-4">
               <button
                 type="button"
                 className="rounded-full border border-white/10 px-3 py-1 text-xs font-medium hover:bg-white/5 transition disabled:opacity-50"
@@ -2446,18 +2529,22 @@ export default function ChatDock() {
               <button
                 type="button"
                 className="rounded-full border border-white/10 px-3 py-1 text-xs font-medium hover:bg-white/5 transition disabled:opacity-50"
-                onClick={() => runSearchTransactions("largest transactions this month")}
-                disabled={busy}
-              >
-                Largest transactions this month
-              </button>
-              <button
-                type="button"
-                className="rounded-full border border-white/10 px-3 py-1 text-xs font-medium hover:bg-white/5 transition disabled:opacity-50"
                 onClick={() => runSearchTransactions("transactions over 100 dollars")}
                 disabled={busy}
               >
                 Transactions &gt; $100
+              </button>
+            </div>
+
+            {/* ADVANCED SEARCH SHORTCUTS - slightly more analytical */}
+            <div className="flex flex-wrap gap-2 mt-2">
+              <button
+                type="button"
+                className="rounded-full border border-white/10 px-3 py-1 text-xs font-medium hover:bg-white/5 transition disabled:opacity-50"
+                onClick={() => runSearchTransactions("largest transactions this month")}
+                disabled={busy}
+              >
+                Largest transactions this month
               </button>
               <button
                 type="button"
