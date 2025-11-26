@@ -1794,16 +1794,8 @@ async def agent_stream(
                             f"txn_count_all={txn_count_all} months_with_data={len(months_with_data)}"
                         )
 
-                        # CASE 1: Hard "no data" - truly no transactions for selected month
-                        if txn_count_month == 0:
-                            month_display = month or "the current month"
-                            deterministic_response = (
-                                f"I don't have any transaction data for {month_display}, so I can't calculate spending trends for that month.\n\n"
-                                "Once you have some transactions in {month_display}, I'll be able to show trends and category breakdowns."
-                            )
-
                         # CASE 2: Soft fallback - has transactions but not enough history for trends
-                        elif len(months_with_data) < 2:
+                        if len(months_with_data) < 2:
                             month_display = month or "this month"
 
                             # Get single-month summary data
