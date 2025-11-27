@@ -42,6 +42,7 @@ def month_of(date_str: str) -> str:
 @router.get("/unknowns")
 def get_unknowns(
     month: Optional[str] = None,
+    demo: bool = Query(False, description="Use demo user data instead of current user"),
     db: Session = Depends(get_db),
     user_id: int = Depends(get_current_user_id),
 ) -> Dict[str, Any]:
@@ -50,18 +51,21 @@ def get_unknowns(
     If `month` is omitted, try to default from DB; fall back to in-memory state.
     Response shape matches the web client: {"month": "...", "unknowns": [Txn, ...], "total_count": int}.
     """
+    from app.core.demo import resolve_user_for_mode
+
+    effective_user_id, include_demo = resolve_user_for_mode(user_id, demo)
     # Prefer DB-backed unknowns to ensure real ids
     try:
         if not month:
             # try to derive latest month from DB (user-scoped)
-            m = latest_month_from_data(db, user_id=user_id)
+            m = latest_month_from_data(db, user_id=effective_user_id)
             if m:
                 month = m
         if month:
             # Get total transaction count for this month (for empty-state logic)
             total_count = (
                 db.query(Transaction)
-                .filter(Transaction.user_id == user_id)
+                .filter(Transaction.user_id == effective_user_id)
                 .filter(Transaction.month == month)
                 .count()
             )
@@ -74,7 +78,7 @@ def get_unknowns(
             )
             rows = (
                 db.query(Transaction)
-                .filter(Transaction.user_id == user_id)
+                .filter(Transaction.user_id == effective_user_id)
                 .filter(Transaction.month == month)
                 .filter(unlabeled)
                 .order_by(desc(Transaction.date), desc(Transaction.id))

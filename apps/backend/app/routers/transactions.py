@@ -31,10 +31,14 @@ def list_transactions(
     limit: int = Query(50, ge=1, le=500),
     offset: int = Query(0, ge=0),
     status: TransactionStatusFilter = Query(TransactionStatusFilter.all),
+    demo: bool = Query(False, description="Use demo user data instead of current user"),
     db: Session = Depends(get_db),
 ):
+    from app.core.demo import resolve_user_for_mode
+
+    effective_user_id, include_demo = resolve_user_for_mode(user_id, demo)
     query = db.query(Transaction).filter(
-        Transaction.user_id == user_id
+        Transaction.user_id == effective_user_id
     )  # ✅ Scope by user
 
     # Apply status filter
@@ -70,13 +74,17 @@ def list_transactions(
 def get_transaction(
     txn_id: int,
     user_id: int = Depends(get_current_user_id),
+    demo: bool = Query(False, description="Use demo user data instead of current user"),
     db: Session = Depends(get_db),
 ):
+    from app.core.demo import resolve_user_for_mode
+
+    effective_user_id, include_demo = resolve_user_for_mode(user_id, demo)
     r = (
         db.query(Transaction)
         .filter(
             Transaction.id == txn_id,
-            Transaction.user_id == user_id,  # ✅ Verify ownership
+            Transaction.user_id == effective_user_id,  # ✅ Verify ownership
         )
         .first()
     )

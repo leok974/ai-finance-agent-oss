@@ -117,33 +117,45 @@ def month_merchants(
     user_id: int = Depends(get_current_user_id),
     month: str | None = Query(None, pattern=r"^\d{4}-\d{2}$"),
     limit: int = Query(10, ge=1, le=500),
+    demo: bool = Query(False, description="Use demo user data instead of current user"),
     db: Session = Depends(get_db),
 ):
-    m = month or latest_month_str(db, user_id)
+    from app.core.demo import resolve_user_for_mode
+
+    effective_user_id, include_demo = resolve_user_for_mode(user_id, demo)
+    m = month or latest_month_str(db, effective_user_id)
     if not m:
         return {"month": None, "merchants": []}
-    return srv_get_month_merchants(db, user_id, m, limit=limit)
+    return srv_get_month_merchants(db, effective_user_id, m, limit=limit)
 
 
 @router.get("/month_flows")
 def month_flows(
     user_id: int = Depends(get_current_user_id),
     month: str | None = Query(None, pattern=r"^\d{4}-\d{2}$"),
+    demo: bool = Query(False, description="Use demo user data instead of current user"),
     db: Session = Depends(get_db),
 ):
-    m = month or latest_month_str(db, user_id)
+    from app.core.demo import resolve_user_for_mode
+
+    effective_user_id, include_demo = resolve_user_for_mode(user_id, demo)
+    m = month or latest_month_str(db, effective_user_id)
     if not m:
         return {"month": None, "series": []}
-    return srv_get_month_flows(db, user_id, m)
+    return srv_get_month_flows(db, effective_user_id, m)
 
 
 @router.get("/spending_trends")
 def spending_trends(
     user_id: int = Depends(get_current_user_id),
     months: int = Query(6, ge=1, le=24),
+    demo: bool = Query(False, description="Use demo user data instead of current user"),
     db: Session = Depends(get_db),
 ):
-    return srv_get_spending_trends(db, user_id, months)
+    from app.core.demo import resolve_user_for_mode
+
+    effective_user_id, include_demo = resolve_user_for_mode(user_id, demo)
+    return srv_get_spending_trends(db, effective_user_id, months)
 
 
 class CategoryPoint(BaseModel):
@@ -193,12 +205,18 @@ def chart_category(
     user_id: int = Depends(get_current_user_id),
     category: str = Query(..., min_length=1, description="Category to chart"),
     months: int = Query(6, ge=1, le=36, description="Months of history to include"),
+    demo: bool = Query(False, description="Use demo user data instead of current user"),
     db: Session = Depends(get_db),
 ):
     """
     Sums **expense magnitudes** (amount < 0 → abs) per month. Income & transfers excluded.
     """
-    data = get_category_timeseries(db, user_id, category=category, months=months)
+    from app.core.demo import resolve_user_for_mode
+
+    effective_user_id, include_demo = resolve_user_for_mode(user_id, demo)
+    data = get_category_timeseries(
+        db, effective_user_id, category=category, months=months
+    )
     if data is None:
         raise HTTPException(status_code=404, detail="Category not found or no data")
     return {"category": category, "months": months, "series": data}

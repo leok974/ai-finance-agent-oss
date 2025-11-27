@@ -20,10 +20,16 @@ router = APIRouter(prefix="/insights", tags=["insights"])
 def insights(
     user_id: int = Depends(get_current_user_id),
     month: str | None = Query(None),
+    demo: bool = Query(False, description="Use demo user data instead of current user"),
     db: Session = Depends(get_db),
 ):
+    from app.core.demo import resolve_user_for_mode
+
+    effective_user_id, include_demo = resolve_user_for_mode(user_id, demo)
     # Total net amount (income positive, spend negative)
-    q_total = select(func.sum(Transaction.amount)).where(Transaction.user_id == user_id)
+    q_total = select(func.sum(Transaction.amount)).where(
+        Transaction.user_id == effective_user_id
+    )
     if month:
         q_total = q_total.where(Transaction.month == month)
 
@@ -33,7 +39,7 @@ def insights(
     q_merch = select(
         Transaction.merchant,
         func.sum(Transaction.amount).label("sum"),
-    ).where(Transaction.user_id == user_id)
+    ).where(Transaction.user_id == effective_user_id)
     if month:
         q_merch = q_merch.where(Transaction.month == month)
     q_merch = (
@@ -98,12 +104,16 @@ def get_anomalies(
     ),
     max_results: int = Query(8, ge=1, le=50, description="Return top-N by deviation"),
     month: str | None = Query(None, description="Override anchor month YYYY-MM"),
+    demo: bool = Query(False, description="Use demo user data instead of current user"),
     db: Session = Depends(get_db),
 ):
+    from app.core.demo import resolve_user_for_mode
+
+    effective_user_id, include_demo = resolve_user_for_mode(user_id, demo)
     ignores = ai_list(db)
     return compute_anomalies(
         db,
-        user_id,
+        effective_user_id,
         months=months,
         min_spend_current=min_spend_current,
         threshold_pct=threshold_pct,
