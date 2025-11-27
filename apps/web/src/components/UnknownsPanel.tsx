@@ -26,13 +26,13 @@ import { toast } from 'sonner'
 // Session-level dismissal tracking (survives component remounts and re-fetches)
 const dismissedTxnIdsForSession = new Set<number>()
 
-export default function UnknownsPanel({ month, onSeedRule: _onSeedRule, onChanged, refreshKey: _refreshKey }: {
+export default function UnknownsPanel({ month, onSeedRule: _onSeedRule, onChanged, refreshKey }: {
   month?: string
   onSeedRule?: (seed: { id: number; merchant?: string; description?: string }) => void
   onChanged?: () => void
   refreshKey?: number
 }) {
-  const { items, totalCount, unknownCount, loading, error, currentMonth, refresh } = useUnknowns(month)
+  const { items, totalCount, unknownCount, loading, error, currentMonth, refresh } = useUnknowns(month, 25, refreshKey)
   const ok = emitToastSuccess; const err = emitToastError;
   const [learned, setLearned] = useState<Record<number, boolean>>({})
   const [explainOpen, setExplainOpen] = useState(false)

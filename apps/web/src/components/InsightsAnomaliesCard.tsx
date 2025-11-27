@@ -5,7 +5,11 @@ import { useMonth } from "@/context/MonthContext";
 import CardHelpTooltip from "./CardHelpTooltip";
 import { getHelpBaseText } from '@/lib/helpBaseText';
 
-export default function InsightsAnomaliesCard() {
+interface Props {
+  refreshKey?: number;
+}
+
+export default function InsightsAnomaliesCard({ refreshKey = 0 }: Props) {
   const [loading, setLoading] = React.useState(false);
   const [data, setData] = React.useState<Anomaly[]>([]);
   const [month, setMonth] = React.useState<string | null>(null);
@@ -31,7 +35,7 @@ export default function InsightsAnomaliesCard() {
       }
     })();
     return () => { cancelled = true };
-  }, [selectedMonth]);
+  }, [selectedMonth, refreshKey]);
 
   // Load alerts separately
   React.useEffect(() => {
@@ -54,7 +58,7 @@ export default function InsightsAnomaliesCard() {
     })();
 
     return () => { cancelled = true };
-  }, [selectedMonth]);
+  }, [selectedMonth, refreshKey]);
 
   // Derived flags for "has anything unusual"
   const hasCategoryAnomalies = data.length > 0;

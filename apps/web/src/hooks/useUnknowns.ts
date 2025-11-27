@@ -10,7 +10,7 @@ export type UnknownTxn = {
   category?: string | null;
 };
 
-export function useUnknowns(month?: string, limit = 25) {
+export function useUnknowns(month?: string, limit = 25, refreshKey = 0) {
   const [items, setItems] = useState<UnknownTxn[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -19,6 +19,7 @@ export function useUnknowns(month?: string, limit = 25) {
   const [nonce, setNonce] = useState(0);
 
   useEffect(() => {
+    console.log('[useUnknowns] Data fetch triggered - month:', month, 'refreshKey:', refreshKey);
     if (!month) {
       // Guard: don't fetch until we know the month
       setItems([]);
@@ -50,7 +51,7 @@ export function useUnknowns(month?: string, limit = 25) {
     })();
 
     return () => ac.abort();
-  }, [month, limit, nonce]);
+  }, [month, limit, nonce, refreshKey]);
 
   return {
     items,

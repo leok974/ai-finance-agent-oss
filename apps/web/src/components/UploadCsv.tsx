@@ -229,35 +229,45 @@ const UploadCsv: React.FC<UploadCsvProps> = ({ onUploaded, defaultReplace = true
     if (e.type === "dragleave") setDragOver(false);
   }, []);
 
+  // Shared helper: trigger dashboard refresh with consistent delay
+  const triggerRefresh = useCallback(() => {
+    // Small delay to ensure backend commits changes before triggering refresh
+    setTimeout(() => {
+      onUploaded?.();
+    }, 300);
+  }, [onUploaded]);
+
   const reset = useCallback(async () => {
+    console.log('[UploadCsv] Reset starting - demoMode:', demoMode);
     try {
       setBusy(true);
 
       // Exit demo mode first if active (prevents confusion about what's being reset)
       if (demoMode) {
+        console.log('[UploadCsv] Exiting demo mode before reset');
         disableDemo();
         // Small delay to ensure localStorage is updated
         await new Promise(resolve => setTimeout(resolve, 100));
       }
 
       // Use new dedicated dashboard reset endpoint
+      console.log('[UploadCsv] Calling reset endpoint');
       await fetchJSON('ingest/dashboard/reset', { method: 'POST' });
+      console.log('[UploadCsv] Reset successful, triggering refresh');
       // Clear UI state
       setFile(null);
       setResult(null);
       if (inputRef.current) inputRef.current.value = "";
       emitToastSuccess(t('ui.toast.data_cleared_title'), { description: t('ui.toast.data_cleared_description') });
-      // Small delay to ensure backend commits deletion before triggering refresh
-      await new Promise(resolve => setTimeout(resolve, 300));
       // Trigger parent refresh (e.g., dashboard)
-      onUploaded?.();
+      triggerRefresh();
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
       emitToastError(t('ui.toast.reset_failed_title'), { description: msg });
     } finally {
       setBusy(false);
     }
-  }, [onUploaded, demoMode, disableDemo]);
+  }, [demoMode, disableDemo, triggerRefresh]);
 
   // After a successful upload, snap to latest month and refetch key dashboards
   const handleUploadSuccess = useCallback(async (uploadData?: Record<string, unknown>) => {
@@ -411,11 +421,14 @@ const UploadCsv: React.FC<UploadCsvProps> = ({ onUploaded, defaultReplace = true
   }, [file, replace, onUploaded, handleUploadSuccess]);
 
   const handleUseSampleData = useCallback(async () => {
+    console.log('[UploadCsv] Demo seed starting');
     setBusy(true);
     setResult(null);
     try {
       // Use dedicated demo seed endpoint (idempotent - clears and reseeds)
+      console.log('[UploadCsv] Calling demo seed endpoint');
       const data = await seedDemoData();
+      console.log('[UploadCsv] Demo seed response:', data);
 
       if (!data.ok) {
         const errorMsg = data.message || "Failed to load demo data.";
@@ -449,9 +462,8 @@ const UploadCsv: React.FC<UploadCsvProps> = ({ onUploaded, defaultReplace = true
       // Enable demo mode to view the seeded data
       enableDemo();
 
-      // Small delay to ensure backend commits before triggering refresh
-      await new Promise(resolve => setTimeout(resolve, 300));
-      onUploaded?.(r);
+      // Trigger parent refresh (e.g., dashboard)
+      triggerRefresh();
     } catch (err) {
       console.error(err);
 
@@ -485,7 +497,7 @@ const UploadCsv: React.FC<UploadCsvProps> = ({ onUploaded, defaultReplace = true
     } finally {
       setBusy(false);
     }
-  }, [onUploaded, handleUploadSuccess]);
+  }, [enableDemo, triggerRefresh]);
 
   const disabled = busy || !file;
 

@@ -302,7 +302,10 @@ const App: React.FC = () => {
   })() }, [authReady, authOk, ready, month, refreshKey])
 
   const onCsvUploaded = useCallback(() => {
-    setRefreshKey((k) => k + 1);
+    setRefreshKey((k) => {
+      console.log('[App] refreshKey increment:', k, '->', k + 1);
+      return k + 1;
+    });
   emitToastSuccess(t('ui.toast.csv_ingested_title'), { description: t('ui.toast.csv_ingested_description') });
   }, []);
 
@@ -422,7 +425,7 @@ const App: React.FC = () => {
           </div>
           {insights && <AgentResultRenderer tool="insights.expanded" data={insights} />}
           {/* Anomalies quick card */}
-          <InsightsAnomaliesCard />
+          <InsightsAnomaliesCard refreshKey={refreshKey} />
         </div>
   {/* Agent chat box (legacy) — disabled; use ChatDock instead */}
   {/* <AgentChat /> */}
