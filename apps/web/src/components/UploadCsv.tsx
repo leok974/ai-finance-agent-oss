@@ -242,24 +242,27 @@ const UploadCsv: React.FC<UploadCsvProps> = ({ onUploaded, defaultReplace = true
     try {
       setBusy(true);
 
-      // Exit demo mode first if active (prevents confusion about what's being reset)
-      const wasDemoMode = demoMode;
-      if (demoMode) {
-        console.log('[UploadCsv] Exiting demo mode before reset');
-        disableDemo();
-        // Small delay to ensure localStorage is updated
-        await new Promise(resolve => setTimeout(resolve, 100));
+      // ALWAYS clear demo data first (in case it exists from previous demo seed)
+      // This prevents demo data from reappearing after reset
+      console.log('[UploadCsv] Clearing demo data first');
+      try {
+        await fetchJSON('demo/reset', { method: 'POST' });
+      } catch (e) {
+        console.warn('[UploadCsv] Demo reset failed (may not exist):', e);
       }
 
-      // Clear both current user's data AND demo data
+      // Exit demo mode before clearing current user data
+      // This ensures subsequent API calls don't have ?demo=1 or demo:true in body
+      if (demoMode) {
+        console.log('[UploadCsv] Exiting demo mode');
+        disableDemo();
+        // Wait for localStorage and state to update
+        await new Promise(resolve => setTimeout(resolve, 150));
+      }
+
+      // Clear current user's data
       console.log('[UploadCsv] Calling reset endpoint (current user)');
       await fetchJSON('ingest/dashboard/reset', { method: 'POST' });
-
-      if (wasDemoMode) {
-        // Also clear demo user's data so it doesn't reappear
-        console.log('[UploadCsv] Clearing demo data');
-        await fetchJSON('demo/reset', { method: 'POST' });
-      }
 
       console.log('[UploadCsv] Reset successful, triggering refresh');
       // Clear UI state
@@ -311,6 +314,15 @@ const UploadCsv: React.FC<UploadCsvProps> = ({ onUploaded, defaultReplace = true
 
   const doUpload = useCallback(async () => {
     if (!file) return;
+
+    // Prevent upload while in demo mode - exit demo mode first
+    if (demoMode) {
+      console.log('[UploadCsv] Exiting demo mode before CSV upload');
+      disableDemo();
+      // Small delay to ensure state updates
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+
     setBusy(true);
     setResult(null);
     try {
@@ -426,7 +438,7 @@ const UploadCsv: React.FC<UploadCsvProps> = ({ onUploaded, defaultReplace = true
     } finally {
       setBusy(false);
     }
-  }, [file, replace, onUploaded, handleUploadSuccess]);
+  }, [file, replace, onUploaded, handleUploadSuccess, demoMode, disableDemo]);
 
   const handleUseSampleData = useCallback(async () => {
     console.log('[UploadCsv] Demo seed starting');
