@@ -1,10 +1,38 @@
 # LedgerMind
 
-> AI-powered personal finance dashboard with automatic categorization and an LLM-powered chat assistant
+> AI-powered personal finance dashboard with intelligent categorization and natural language assistant
 
 [![Coverage](docs/badges/coverage.svg)](https://github.com/leok974/ai-finance-agent-oss)
 
-**Live Demo:** [https://app.ledger-mind.org](https://app.ledger-mind.org)
+**Live Demo:** [https://app.ledger-mind.org](https://app.ledger-mind.org) · **No signup required** - try Demo Mode
+
+---
+
+## Overview
+
+LedgerMind is a production-ready personal finance application that combines traditional transaction tracking with modern AI capabilities. Upload bank statements, get ML-powered categorization suggestions, and ask natural language questions about your spending patterns.
+
+### Key Features
+
+- **Smart Import** - CSV/Excel upload with multi-format detection
+- **AI Categorization** - ML model suggests categories with confidence scores
+- **Bulk Operations** - Categorize by merchant/description with undo safety
+- **Rich Analytics** - Spending trends, forecasts, top categories, merchant analysis
+- **Chat Assistant** - Natural language queries powered by LLM + RAG (pgvector)
+- **Demo Mode** - Instant access with pre-loaded sample data
+
+### For Recruiters & Hiring Managers
+
+This project demonstrates:
+- **Full-stack development**: React/TypeScript frontend + FastAPI backend
+- **Modern infrastructure**: Docker, Nginx, PostgreSQL, Redis, Cloudflare Tunnel
+- **AI/ML integration**: LLM agents (streaming chat), RAG with pgvector, ML categorization
+- **Production practices**: OAuth authentication, KMS encryption, CSRF/CSP hardening, E2E testing
+- **DevOps**: Docker Compose workflows, hermetic testing, monitoring/observability
+- **Scale considerations**: Multi-tenancy, caching strategies, background jobs
+
+**Architecture**: See [docs/OVERVIEW.md](docs/OVERVIEW.md)
+**Infrastructure**: See [docs/INFRASTRUCTURE.md](docs/INFRASTRUCTURE.md)
 
 ---
 
@@ -91,7 +119,7 @@ pnpm install
 pnpm dev  # http://localhost:5173
 ```
 
-**Full dev setup:** See [`docs/setup/DEV_SETUP.md`](docs/setup/DEV_SETUP.md)
+**Full infrastructure guide:** See [docs/INFRASTRUCTURE.md](docs/INFRASTRUCTURE.md)
 
 ---
 
@@ -115,7 +143,7 @@ pnpm -C apps/web vitest run
 pnpm -C apps/web exec playwright test
 ```
 
-**Testing guide:** See [`docs/testing/TESTING_GUIDE.md`](docs/testing/TESTING_GUIDE.md)
+**Testing & debugging:** See [docs/DEBUGGING_GUIDE.md](docs/DEBUGGING_GUIDE.md)
 
 ---
 
@@ -130,7 +158,7 @@ pnpm -C apps/web exec playwright test
 3. Deploy to production host
 4. Verify health endpoints
 
-**Full guide:** See [`docs/setup/PRODUCTION_SETUP.md`](docs/setup/PRODUCTION_SETUP.md)
+**Full guide:** See [docs/INFRASTRUCTURE.md](docs/INFRASTRUCTURE.md)
 
 ### Current Production Images
 
@@ -141,23 +169,15 @@ pnpm -C apps/web exec playwright test
 
 ## Documentation
 
-### Setup & Getting Started
-- [Development Setup](docs/setup/DEV_SETUP.md)
-- [Production Deployment](docs/setup/PRODUCTION_SETUP.md)
+- **[Architecture & System Design](docs/OVERVIEW.md)** - High-level architecture, core concepts, data flow
+- **[Infrastructure & Deployment](docs/INFRASTRUCTURE.md)** - Docker setup, services, environment variables
+- **[Debugging & Troubleshooting](docs/DEBUGGING_GUIDE.md)** - Common issues, health checks, runbooks
+- **[Release Notes](docs/RELEASE_NOTES.md)** - Major milestones and feature releases
 
-### Architecture & Design
-- [Architecture Overview](docs/architecture/OVERVIEW.md)
-- [Database & Migrations](docs/architecture/DATABASE.md)
-- [Security (KMS, CSP, Auth)](docs/architecture/SECURITY.md)
-
-### Testing
-- [Testing Guide](docs/testing/TESTING_GUIDE.md)
-- [E2E Testing](docs/testing/E2E_TESTS.md)
-
-### Operations
-- [Monitoring & Metrics](docs/operations/MONITORING.md)
-- [Troubleshooting](docs/operations/TROUBLESHOOTING.md)
-- [Runbooks & Playbooks](docs/operations/RUNBOOKS.md)
+### Additional Resources
+- [Agent System](AGENTS.md) - Specialist agent documentation
+- [Archived Docs](docs/archive/) - Legacy phase docs and deployment records
+- [Archived Docs](docs/archive/) - Historical implementation notes & deployment records
 
 ---
 
@@ -214,13 +234,13 @@ This repo uses **specialist agents** for development tasks:
 - **Auth:** Session cookies with httpOnly + sameSite
 - **SSRF:** URL allowlist for LLM/agent endpoints
 
-**Full security documentation:** [`docs/architecture/SECURITY.md`](docs/architecture/SECURITY.md)
+**Security overview:** See [docs/OVERVIEW.md](docs/OVERVIEW.md#multi-tenancy--security)
 
 ---
 
 ## Contributing
 
-Contributions are welcome! Please see [`docs/CONTRIBUTING.md`](docs/CONTRIBUTING.md) for:
+Contributions are welcome! Please see [docs/OVERVIEW.md](docs/OVERVIEW.md) for architecture and:
 
 - Code style guidelines
 - Commit message conventions
@@ -249,7 +269,7 @@ See [`CHANGELOG.md`](CHANGELOG.md) for release notes and version history.
 - **502 via edge** - Check Cloudflare Tunnel ingress points to `http://nginx:80`
 - **LLM fallback to stub** - Ensure Ollama model is pulled or `OPENAI_API_KEY` is set
 
-**Full guide:** [`docs/operations/TROUBLESHOOTING.md`](docs/operations/TROUBLESHOOTING.md)
+**Full guide:** [docs/DEBUGGING_GUIDE.md](docs/DEBUGGING_GUIDE.md)
 
 ---
 
