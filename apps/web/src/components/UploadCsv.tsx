@@ -237,6 +237,8 @@ const UploadCsv: React.FC<UploadCsvProps> = ({ onUploaded, defaultReplace = true
       setResult(null);
       if (inputRef.current) inputRef.current.value = "";
       emitToastSuccess(t('ui.toast.data_cleared_title'), { description: t('ui.toast.data_cleared_description') });
+      // Small delay to ensure backend commits deletion before triggering refresh
+      await new Promise(resolve => setTimeout(resolve, 300));
       // Trigger parent refresh (e.g., dashboard)
       onUploaded?.();
     } catch (e: unknown) {
