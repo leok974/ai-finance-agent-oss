@@ -18,13 +18,13 @@ WORKDIR /w
 
 RUN apt-get update && apt-get install -y --no-install-recommends build-essential gcc git && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt ./
+COPY apps/backend/requirements.txt ./
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
 
 # Copy only application source (avoid copying local venvs etc.)
-COPY . /w/src
+COPY apps/backend /w/src
 
 # Build stamp
 RUN printf '{"branch":"%s","commit":"%s","build_time":"%s"}' "$GIT_BRANCH" "$GIT_COMMIT" "$BUILD_TIME" > /w/src/build-stamp.json
