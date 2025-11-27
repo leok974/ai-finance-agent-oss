@@ -178,7 +178,7 @@ const prettyBytes = (n: number) => {
 
 const UploadCsv: React.FC<UploadCsvProps> = ({ onUploaded, defaultReplace = true, className }) => {
   const { month, setMonth } = useMonth();
-  const { enableDemo } = useDemoMode();
+  const { enableDemo, disableDemo, demoMode } = useDemoMode();
   const [file, setFile] = useState<File | null>(null);
   const [replace, setReplace] = useState<boolean>(defaultReplace);
   const [dragOver, setDragOver] = useState(false);
@@ -232,6 +232,14 @@ const UploadCsv: React.FC<UploadCsvProps> = ({ onUploaded, defaultReplace = true
   const reset = useCallback(async () => {
     try {
       setBusy(true);
+
+      // Exit demo mode first if active (prevents confusion about what's being reset)
+      if (demoMode) {
+        disableDemo();
+        // Small delay to ensure localStorage is updated
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+
       // Use new dedicated dashboard reset endpoint
       await fetchJSON('ingest/dashboard/reset', { method: 'POST' });
       // Clear UI state
@@ -249,7 +257,7 @@ const UploadCsv: React.FC<UploadCsvProps> = ({ onUploaded, defaultReplace = true
     } finally {
       setBusy(false);
     }
-  }, [onUploaded]);
+  }, [onUploaded, demoMode, disableDemo]);
 
   // After a successful upload, snap to latest month and refetch key dashboards
   const handleUploadSuccess = useCallback(async (uploadData?: Record<string, unknown>) => {
