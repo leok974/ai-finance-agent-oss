@@ -68,7 +68,7 @@ Services:
 | `useAuth` | User session, OAuth flow | httpOnly cookies |
 | `useDashboard` | Charts, budgets, insights | TanStack Query cache |
 
-### ChatDock v2 Architecture
+### ChatDock Architecture
 
 The finance assistant renders as a **floating card** at bottom-center with fixed launcher bubble in bottom-right.
 
@@ -258,3 +258,4 @@ LedgerMind uses **domain-focused agents** instead of a single generalist:
 - [Debugging & Troubleshooting](DEBUGGING_GUIDE.md)
 - [Release Notes](RELEASE_NOTES.md)
 - [Agent System](../AGENTS.md)
+- [Full Changelog](../CHANGELOG.md)

@@ -1,8 +1,8 @@
 # LedgerMind
 
-> AI-powered personal finance dashboard with intelligent categorization and natural language assistant
+> **LedgerMind** - AI-powered personal finance dashboard with intelligent categorization and natural language assistant
 
-[![Coverage](docs/badges/coverage.svg)](https://github.com/leok974/ai-finance-agent-oss)
+[![Coverage](docs/badges/coverage.svg)](https://github.com/leok974/LedgerMind)
 
 **Live Demo:** [https://app.ledger-mind.org](https://app.ledger-mind.org) · **No signup required** - try Demo Mode
 
@@ -62,8 +62,8 @@ This project demonstrates:
 ## Quick Start (Docker)
 
 ```bash
-git clone https://github.com/leok974/ai-finance-agent-oss.git
-cd ai-finance-agent-oss
+git clone https://github.com/leok974/LedgerMind.git
+cd LedgerMind
 
 # Configure environment
 cp .env.example .env
@@ -162,8 +162,7 @@ pnpm -C apps/web exec playwright test
 
 ### Current Production Images
 
-- **Backend:** `ledgermind-backend:main-511fee34`
-- **Frontend:** `ledgermind-web:main-f1848e14`
+See `docker-compose.prod.yml` for current image tags.
 
 ---
 
@@ -177,7 +176,6 @@ pnpm -C apps/web exec playwright test
 ### Additional Resources
 - [Agent System](AGENTS.md) - Specialist agent documentation
 - [Archived Docs](docs/archive/) - Legacy phase docs and deployment records
-- [Archived Docs](docs/archive/) - Historical implementation notes & deployment records
 
 ---
 
