@@ -190,6 +190,9 @@ class Settings(BaseSettings):
 
 settings = Settings()
 
+# Dedicated demo user ID (from migration 20251126)
+DEMO_USER_ID = int(os.getenv("DEMO_USER_ID", "1"))
+
 if settings.ENV == "prod":
     # New policy: default ON in prod unless explicitly disabled with 0
     _env_val = os.getenv("HELP_REPHRASE_DEFAULT")

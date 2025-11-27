@@ -56,6 +56,7 @@ import PrivacyPage from "@/pages/legal/PrivacyPage";
 import TermsPage from "@/pages/legal/TermsPage";
 import SecurityPage from "@/pages/legal/SecurityPage";
 import { RuleSeedProvider } from "@/hooks/useRuleSeed";
+import { DemoModeProvider } from "@/context/DemoModeContext";
 
 // Lazy-load admin panels (only load when accessed)
 const AdminRulesPanel = React.lazy(() => import("@/components/admin/AdminRulesPanel"));
@@ -112,6 +113,29 @@ const App: React.FC = () => {
   const [month, setMonth] = useState<string>("");
   const [ready, setReady] = useState<boolean>(false);
   const [refreshKey, setRefreshKey] = useState<number>(0);
+
+  // Demo mode state: view demo user's data instead of own data
+  const [demoMode, setDemoMode] = useState<boolean>(false);
+
+  // Hydrate demoMode from localStorage after mount
+  useEffect(() => {
+    const stored = localStorage.getItem('lm:demoMode');
+    if (stored === '1') {
+      setDemoMode(true);
+    }
+  }, []);
+
+  // Demo mode controls
+  const enableDemo = useCallback(() => {
+    setDemoMode(true);
+    localStorage.setItem('lm:demoMode', '1');
+  }, []);
+
+  const disableDemo = useCallback(() => {
+    setDemoMode(false);
+    localStorage.removeItem('lm:demoMode');
+  }, []);
+
   // Legacy report removed: using expanded insights and charts exclusively
   const [insights, setInsights] = useState<any>(null)
   const [_alerts, setAlerts] = useState<any>(null)
@@ -301,6 +325,7 @@ const App: React.FC = () => {
   if (!authOk) return <LandingHero />;
 
   return (
+  <DemoModeProvider value={{ demoMode, enableDemo, disableDemo }}>
   <MonthContext.Provider value={{ month, setMonth }}>
       <ChatDockProvider>
         <RuleSeedProvider>
@@ -344,7 +369,7 @@ const App: React.FC = () => {
   {devUI && <RuleTesterPanel />}
 
         {/* Demo mode banner */}
-        {user?.is_demo && (
+        {demoMode && (
           <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 flex items-center gap-3" data-testid="demo-banner">
             <div className="flex items-center gap-2 text-amber-200">
               <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
@@ -353,8 +378,19 @@ const App: React.FC = () => {
               <span className="text-sm font-medium">Demo Mode</span>
             </div>
             <p className="text-sm text-amber-100/90 flex-1">
-              You're viewing sample data. Sign in with Google to connect your real accounts.
+              You're viewing sample data. Your personal uploads are not affected.
             </p>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                disableDemo();
+                setRefreshKey(prev => prev + 1); // Trigger data refresh
+              }}
+              className="text-amber-200 hover:text-amber-100 hover:bg-amber-500/20"
+            >
+              Exit Demo Mode
+            </Button>
           </div>
         )}
 
@@ -464,6 +500,7 @@ const App: React.FC = () => {
         </RuleSeedProvider>
   </ChatDockProvider>
     </MonthContext.Provider>
+  </DemoModeProvider>
   );
 };
 

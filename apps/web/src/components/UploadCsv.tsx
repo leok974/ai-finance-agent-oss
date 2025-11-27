@@ -14,6 +14,7 @@ import { fetchJSON } from "@/lib/http";
 import { emitToastSuccess, emitToastError } from "@/lib/toast-helpers";
 import { t } from '@/lib/i18n';
 import { useMonth } from "../context/MonthContext";
+import { useDemoMode } from "@/context/DemoModeContext";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
@@ -177,6 +178,7 @@ const prettyBytes = (n: number) => {
 
 const UploadCsv: React.FC<UploadCsvProps> = ({ onUploaded, defaultReplace = true, className }) => {
   const { month, setMonth } = useMonth();
+  const { enableDemo } = useDemoMode();
   const [file, setFile] = useState<File | null>(null);
   const [replace, setReplace] = useState<boolean>(defaultReplace);
   const [dragOver, setDragOver] = useState(false);
@@ -435,6 +437,9 @@ const UploadCsv: React.FC<UploadCsvProps> = ({ onUploaded, defaultReplace = true
       toast.success("Demo data loaded successfully", {
         description: "Dashboard refreshed with sample transactions."
       });
+
+      // Enable demo mode to view the seeded data
+      enableDemo();
 
       // Small delay to ensure backend commits before triggering refresh
       await new Promise(resolve => setTimeout(resolve, 300));

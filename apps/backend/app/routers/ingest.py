@@ -424,6 +424,15 @@ async def ingest_csv(
 
     # Wrap main handler in try-catch for comprehensive error logging
     try:
+        # SECURITY: CSV uploads should NEVER run for the dedicated demo user
+        # Demo data is seeded only via /demo/seed endpoint
+        from app.config import DEMO_USER_ID
+
+        assert user_id != DEMO_USER_ID, (
+            "CSV ingest should never run for demo user. "
+            "Demo data must be seeded via /demo/seed endpoint only."
+        )
+
         # Regular CSV uploads are always real data (is_demo=False)
         # Only /demo/seed endpoint creates demo data (is_demo=True)
         is_demo_upload = False
@@ -726,6 +735,7 @@ async def _ingest_csv_impl(
                 category=normalized_cat,
                 pending=pending,
                 is_demo=is_demo,  # Mark as demo if this is sample data
+                source="upload",  # All CSV uploads are source='upload'
             )
         )
 

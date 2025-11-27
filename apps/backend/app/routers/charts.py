@@ -20,10 +20,15 @@ router = APIRouter(prefix="/charts", tags=["charts"])
 def month_summary(
     user_id: int = Depends(get_current_user_id),
     month: str | None = Query(None, pattern=r"^\d{4}-\d{2}$"),
+    demo: bool = Query(False, description="Use demo user data instead of current user"),
     db: Session = Depends(get_db),
     request: Request = None,  # type: ignore[assignment]
 ):
     """Month financial summary.
+
+    Args:
+        demo: If True, fetch data for demo user (DEMO_USER_ID) instead of current user.
+              Frontend sets this when in demo mode to show sample data.
 
     Behavior matrix:
     - Explicit ?month=YYYY-MM  -> always DB-backed summary for that month (raises if not found upstream).
@@ -32,8 +37,12 @@ def month_summary(
          * If DB has any txn months -> fallback to DB latest summary
          * Else -> return null/zero payload for onboarding UI.
     """
+    from app.core.demo import resolve_user_for_mode
+
+    effective_user_id, include_demo = resolve_user_for_mode(user_id, demo)
+
     if month:
-        return srv_get_month_summary(db, user_id, month)
+        return srv_get_month_summary(db, effective_user_id, month)
 
     # No explicit month: inspect in-memory first
     latest_mem: str | None = None

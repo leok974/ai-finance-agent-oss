@@ -291,25 +291,24 @@ async def seed_demo_data(
     x_lm_demo_seed: str | None = Header(default=None, alias="X-LM-Demo-Seed"),
 ):
     """
-    Idempotently seed demo data for the current user.
+    Idempotently seed demo data into the dedicated DEMO USER account.
 
     SECURITY: Requires X-LM-Demo-Seed: 1 header to prevent accidental/automatic seeding.
     Only the explicit "Use sample data" button should call this endpoint.
 
-    SAFE MODE: Will REFUSE to run if user has any real (non-demo) transactions.
-    This prevents accidental data loss when clicking "Use sample data" after
-    uploading real CSV files.
+    IMPORTANT: This endpoint seeds data into the dedicated demo user (DEMO_USER_ID),
+    NOT the current user's account. The frontend should switch to demo mode after
+    calling this to view the seeded data.
 
     Steps:
     1. Verify X-LM-Demo-Seed header is present (403 if missing)
-    2. Check if user has real data (is_demo=False) - return 409 if yes
-    3. Delete existing demo transactions (is_demo=True only)
-    4. Load demo-sample.csv from backend
-    5. Insert transactions with is_demo=True
+    2. Delete existing demo transactions for DEMO_USER_ID
+    3. Load demo-sample.csv from backend
+    4. Insert transactions with user_id=DEMO_USER_ID, is_demo=True, source='demo'
 
     This ensures:
     - No automatic demo seeding on page load or background processes
-    - Users cannot accidentally delete uploaded CSV data
+    - Demo data never pollutes real user accounts
     - Demo data is isolated from ML training (is_demo=True excluded)
     - Always provides fresh, consistent demo experience
     - Idempotent: can be called multiple times safely
@@ -319,8 +318,9 @@ async def seed_demo_data(
 
     Raises:
         HTTPException 403: Missing X-LM-Demo-Seed header
-        HTTPException 409: User has real transactions - must Reset first
     """
+    from app.config import DEMO_USER_ID
+
     # SECURITY GATE: Require explicit header to prevent accidental seeding
     if x_lm_demo_seed != "1":
         logger.warning(
@@ -339,29 +339,9 @@ async def seed_demo_data(
         )
 
     try:
-        # SAFETY CHECK: Refuse to seed if user has any real (non-demo) data
-        real_txn_count = (
-            db.query(Transaction)
-            .filter(
-                Transaction.user_id == current_user.id,
-                Transaction.is_demo == False,  # noqa: E712
-            )
-            .count()
-        )
-
-        if real_txn_count > 0:
-            logger.warning(
-                f"[demo/seed] user_id={current_user.id} BLOCKED: has {real_txn_count} real transactions"
-            )
-            raise HTTPException(
-                status_code=409,
-                detail=f"Cannot seed demo data: you have {real_txn_count} real transaction(s). "
-                "Please use Reset to clear all data first, then try again.",
-            )
-
-        # Step 1: Clear existing DEMO transactions only (safe - won't touch real data)
+        # Step 1: Clear existing DEMO transactions for the demo user only
         delete_stmt = delete(Transaction).where(
-            Transaction.user_id == current_user.id,
+            Transaction.user_id == DEMO_USER_ID,
             Transaction.is_demo == True,  # noqa: E712
         )
         result = db.execute(delete_stmt)
@@ -369,17 +349,17 @@ async def seed_demo_data(
         db.commit()
 
         logger.info(
-            f"[demo/seed] user_id={current_user.id} cleared_count={cleared_count} (demo only, safe)"
+            f"[demo/seed] DEMO_USER_ID={DEMO_USER_ID} cleared_count={cleared_count}"
         )
 
         # Step 2: Load demo CSV
         demo_rows = load_demo_csv()
 
-        # Step 3: Insert new demo transactions
+        # Step 3: Insert new demo transactions for DEMO_USER_ID
         added_count = 0
         for row in demo_rows:
             txn = Transaction(
-                user_id=current_user.id,
+                user_id=DEMO_USER_ID,  # Always use dedicated demo user
                 date=row["date"],
                 month=row["month"],
                 merchant=row["merchant"],
@@ -390,6 +370,7 @@ async def seed_demo_data(
                 raw_category=row["raw_category"],
                 pending=row["pending"],
                 is_demo=True,  # Mark as demo data (excluded from ML training)
+                source="demo",  # Explicitly mark source as 'demo'
             )
             db.add(txn)
             added_count += 1
@@ -397,7 +378,7 @@ async def seed_demo_data(
         db.commit()
 
         logger.info(
-            f"[demo/seed] user_id={current_user.id} added_count={added_count} months_count={len(set(row['month'] for row in demo_rows))}"
+            f"[demo/seed] DEMO_USER_ID={DEMO_USER_ID} added_count={added_count} months_count={len(set(row['month'] for row in demo_rows))}"
         )
 
         # Get unique months from seeded data
@@ -409,25 +390,27 @@ async def seed_demo_data(
             transactions_added=added_count,
             months_seeded=months_seeded,
             txns_count=added_count,
-            message=f"Demo data reset successfully. Cleared {cleared_count} old transactions, added {added_count} new ones across {len(months_seeded)} months.",
+            message=f"Demo data seeded successfully for demo user. Cleared {cleared_count} old transactions, added {added_count} new ones across {len(months_seeded)} months. Switch to demo mode to view.",
         )
 
     except FileNotFoundError as e:
         logger.error(
-            f"[demo/seed] user_id={current_user.id} error=FileNotFoundError: {e}"
+            f"[demo/seed] DEMO_USER_ID={DEMO_USER_ID} error=FileNotFoundError: {e}"
         )
         raise HTTPException(
             status_code=500,
             detail="Demo sample data file is missing. Please contact support.",
         )
     except ValueError as e:
-        logger.error(f"[demo/seed] user_id={current_user.id} error=ValueError: {e}")
+        logger.error(f"[demo/seed] DEMO_USER_ID={DEMO_USER_ID} error=ValueError: {e}")
         raise HTTPException(
             status_code=500,
             detail=f"Demo sample data is malformed: {e}",
         )
     except Exception as e:
-        logger.exception(f"[demo/seed] user_id={current_user.id} error=UnexpectedError")
+        logger.exception(
+            f"[demo/seed] DEMO_USER_ID={DEMO_USER_ID} error=UnexpectedError"
+        )
         db.rollback()
         raise HTTPException(
             status_code=500,

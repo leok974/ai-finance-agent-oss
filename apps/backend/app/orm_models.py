@@ -67,6 +67,8 @@ class Transaction(Base):
     is_demo: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default=sa_false(), index=True
     )
+    # NEW: Source tracking - 'upload', 'demo', 'import', etc.
+    source: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
@@ -610,6 +612,10 @@ class User(Base):
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="1")
     is_demo: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="0", index=True
+    )
+    # NEW: Flag for dedicated demo user account
+    is_demo_user: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default="0", index=True
     )
     name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
