@@ -424,9 +424,9 @@ async def ingest_csv(
 
     # Wrap main handler in try-catch for comprehensive error logging
     try:
-        # Detect if this is demo/sample data based on filename
-        # Frontend sets filename to "ledgermind-demo.csv" for sample data
-        is_demo_upload = file.filename and "demo" in file.filename.lower()
+        # Regular CSV uploads are always real data (is_demo=False)
+        # Only /demo/seed endpoint creates demo data (is_demo=True)
+        is_demo_upload = False
 
         result = await _ingest_csv_impl(
             user_id=user_id,
