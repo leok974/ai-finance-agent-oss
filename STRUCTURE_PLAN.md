@@ -6,6 +6,47 @@
 
 ---
 
+## Repo Layout — Canonical (Post-Cleanup 2025-11-27)
+
+This structure is **canonical**. Do NOT re-flatten the repo or move things out of these roots.
+
+Top-level rules:
+- Root is minimal: `README.md`, `LICENSE`, `.gitignore`, `docker-compose.*.yml`, `package.json`, `STRUCTURE_PLAN.md`.
+- Application code lives only in:
+  - `apps/backend`  (FastAPI, DB, migrations)
+  - `apps/web`      (Vite/React frontend)
+- Infra lives in `infra/`:
+  - `infra/deploy`      ← Dockerfiles, deploy configs (nginx, etc.)
+  - `infra/cloudflared` ← Cloudflare Tunnel config
+  - `infra/nginx`       ← nginx configs + entrypoint scripts
+  - `infra/monitoring`  ← Prometheus/Grafana config
+- Docs live in `docs/`:
+  - `docs/architecture`  ← system & chat architecture (CHAT_* docs)
+  - `docs/ops`           ← runbooks, SLOs, deployment guides
+  - `docs/development`   ← AGENTS.md, structure plan, dev guides
+  - `docs/archive`       ← old/legacy docs kept for reference
+- Scripts live in `scripts/`:
+  - `scripts/infra`      ← deploy/prod scripts
+  - `scripts/dev`        ← local dev helpers
+  - `scripts/testing`    ← smoke/e2e/test helpers
+  - `scripts/backend`    ← backend maintenance/migration helpers
+  - `scripts/web`        ← frontend/build helpers
+- Tests live in `tests/`:
+  - `tests/e2e`, `tests/integration`, `tests/fixtures`, etc.
+- Config lives in `config/`:
+  - `config/env-templates`  ← example env files only (no real secrets)
+  - `config/precommit`, `config/linting`, `config/testing`, `config/security`
+- Assets live in `assets/`:
+  - `assets/sample-data`     ← demo CSVs and fixtures
+  - `assets/grafana-panels`  ← saved dashboards/panels
+
+Branch policy:
+- `main` is the **only long-lived branch**.
+- Feature branches must be short-lived, PR'd into `main`, and deleted after merge.
+- Historical state is preserved via tags like `archive/pre-branch-cleanup-20251127`.
+
+---
+
 ## Execution Summary
 
 ### Part 1: File Organization ✅
