@@ -39,9 +39,145 @@
 - [x] OAuth accounts are created in `oauth_accounts` table
 - [x] Google OAuth callback never returns `DEMO_USER_ID`
 - [x] Demo mode isolation verified (no cross-contamination)
-- [ ] Frontend displays correct email for authenticated users (verify after next login)
-- [ ] `/demo/seed` and `/demo/reset` only touch demo user data
-- [ ] Login/logout/demo reset flows work correctly
+- [x] Frontend displays correct email for authenticated users (verified: fetches from `/api/auth/me`)
+- [ ] `/demo/seed` and `/demo/reset` only touch demo user data (manual verification needed)
+- [ ] Login/logout/demo reset flows work correctly (manual verification needed)
+
+---
+
+## Verification
+
+### Database State Check
+
+To verify the current database state, run:
+
+```sql
+-- Check users and their OAuth accounts
+SELECT
+    u.id,
+    u.email,
+    u.is_demo,
+    u.is_demo_user,
+    oa.provider,
+    oa.provider_user_id,
+    oa.email as oauth_email
+FROM users u
+LEFT JOIN oauth_accounts oa ON u.id = oa.user_id
+ORDER BY u.id;
+```
+
+Expected results:
+- **User ID 1** (demo): `email = 'demo@ledger-mind.local'`, `is_demo = true`, `is_demo_user = true`, **NO** OAuth account
+- **User ID 3** (leoklemet.pa@gmail.com): Real user, `is_demo = false`, OAuth account with `provider = 'google'`
+- **User ID 5** (conalminer@gmail.com): Real user, `is_demo = false`, OAuth account with `provider = 'google'`
+
+### Manual Verification Steps
+
+#### 1. Verify Google Login - leoklemet.pa@gmail.com
+
+1. Log out completely
+2. Click "Sign in with Google"
+3. Select leoklemet.pa@gmail.com account
+4. After redirect, check:
+   - ✅ UI header shows **leoklemet.pa@gmail.com** (not demo@ledger-mind.local or dev@local)
+   - ✅ User avatar/menu displays Gmail address
+   - ✅ Browser DevTools → Network → `/api/auth/me` response contains correct email
+
+#### 2. Verify Google Login - conalminer@gmail.com
+
+1. Log out completely
+2. Click "Sign in with Google"
+3. Select conalminer@gmail.com account
+4. After redirect, check:
+   - ✅ UI header shows **conalminer@gmail.com** (not demo@ledger-mind.local or dev@local)
+   - ✅ User avatar/menu displays Gmail address
+   - ✅ Browser DevTools → Network → `/api/auth/me` response contains correct email
+
+#### 3. Verify Demo User Isolation
+
+1. Navigate to `/demo` page
+2. Enable "Use sample data"
+3. Verify:
+   - ✅ Demo mode is active
+   - ✅ If email is shown anywhere, it should be `demo@ledger-mind.local`
+   - ✅ Clicking "Try Demo" should NOT show real user email
+   - ✅ Real user data is NOT visible in demo mode
+
+#### 4. Verify OAuth Account Creation
+
+After logging in with Google (both accounts):
+
+```sql
+-- Should see 2+ OAuth accounts
+SELECT
+    id,
+    user_id,
+    provider,
+    provider_user_id,
+    email
+FROM oauth_accounts
+WHERE provider = 'google';
+```
+
+Expected:
+- At least 2 rows (one for leoklemet.pa@gmail.com, one for conalminer@gmail.com)
+- `provider_user_id` should be Google's unique `sub` claim (starts with numbers)
+- `email` matches the user's Gmail
+
+#### 5. Verify Demo User Cannot Be Linked to OAuth
+
+Attempt to log in with Google using email `demo@ledger-mind.local` (if you have access):
+
+- ✅ Should receive error: "This email is reserved for demo purposes. Please use a different email address."
+- ✅ NO OAuth account should be created for user ID 1
+
+---
+
+## Backend Test Coverage
+
+Comprehensive tests have been added in `apps/backend/app/tests/test_auth_google_oauth.py`:
+
+### Test Cases
+
+1. **Existing OAuthAccount Reuse**
+   - ✅ When OAuth account exists, reuse linked user
+   - ✅ No new users or OAuth accounts created
+   - ✅ User profile updated if Google data changes (name, picture, email)
+
+2. **OAuth Linking to Existing User**
+   - ✅ When user exists but no OAuth account, create OAuth link
+   - ✅ Existing user is reused (by email match)
+   - ✅ OAuthAccount created with correct `provider` and `provider_user_id`
+
+3. **New User Creation**
+   - ✅ When no user or OAuth account exists, create both
+   - ✅ New user has correct email from Google
+   - ✅ New user is NOT a demo user (`is_demo = false`)
+   - ✅ User assigned default "user" role
+   - ✅ OAuth account linked to new user
+
+4. **Demo User Protection**
+   - ✅ Cannot link OAuth to user with `is_demo = true`
+   - ✅ Cannot link OAuth to user with `is_demo_user = true`
+   - ✅ Returns HTTP 400 with clear error message
+   - ✅ No OAuth account created for demo users
+
+5. **Security & Edge Cases**
+   - ✅ State mismatch rejected (CSRF protection)
+   - ✅ Missing PKCE verifier rejected
+   - ✅ Missing email in userinfo rejected
+   - ✅ Missing `sub` (Google user ID) rejected
+
+### Running Tests
+
+```bash
+# Run OAuth tests only
+cd apps/backend
+pytest app/tests/test_auth_google_oauth.py -v
+
+# Run all tests
+pytest -v
+```
 
 ---
 
