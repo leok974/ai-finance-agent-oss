@@ -281,7 +281,6 @@ export function useAgentStream(): UseAgentStreamResult {
 
         // Event handler extracted for reuse
         const handleEvent = (event: any) => {
-          console.log('[useAgentStream] event', event.type, event);
           switch (event.type) {
                   case 'start':
                     // Session started - reset soft error state

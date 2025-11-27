@@ -80,7 +80,6 @@ const ChartsPanel: React.FC<Props> = ({ month, refreshKey = 0 }) => {
   const resolvedMonth = summary?.month ?? month;
 
   useEffect(() => {
-    console.log('[ChartsPanel] Data fetch triggered - month:', month, 'refreshKey:', refreshKey);
     let alive = true;
     async function run() {
       setLoading(true);

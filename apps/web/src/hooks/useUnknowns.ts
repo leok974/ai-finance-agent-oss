@@ -19,7 +19,6 @@ export function useUnknowns(month?: string, limit = 25, refreshKey = 0) {
   const [nonce, setNonce] = useState(0);
 
   useEffect(() => {
-    console.log('[useUnknowns] Data fetch triggered - month:', month, 'refreshKey:', refreshKey);
     if (!month) {
       // Guard: don't fetch until we know the month
       setItems([]);
