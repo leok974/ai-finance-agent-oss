@@ -288,34 +288,62 @@ async def seed_demo_data(
     current_user: User = Depends(get_current_user),
 ):
     """
-    Idempotently reset demo data for the current user.
+    Idempotently seed demo data for the current user.
+
+    SAFE MODE: Will REFUSE to run if user has any real (non-demo) transactions.
+    This prevents accidental data loss when clicking "Use sample data" after
+    uploading real CSV files.
 
     Steps:
-    1. Delete ALL existing transactions for this user (not just is_demo=True)
-    2. Load demo-sample.csv from backend
-    3. Insert transactions with is_demo=True
+    1. Check if user has real data (is_demo=False) - return 409 if yes
+    2. Delete existing demo transactions (is_demo=True only)
+    3. Load demo-sample.csv from backend
+    4. Insert transactions with is_demo=True
 
     This ensures:
-    - No duplicate transaction errors or constraint violations from mixing real + demo data
+    - Users cannot accidentally delete uploaded CSV data
     - Demo data is isolated from ML training (is_demo=True excluded)
     - Always provides fresh, consistent demo experience
-    - Matches behavior of /ingest/dashboard/reset endpoint
+    - Idempotent: can be called multiple times safely
 
     Returns:
         DemoSeedResponse with counts and status message.
+
+    Raises:
+        HTTPException 409: User has real transactions - must Reset first
     """
     try:
-        # Step 1: Clear ALL existing transactions for this user
-        # (Changed from is_demo=True filter to match Reset endpoint behavior)
+        # SAFETY CHECK: Refuse to seed if user has any real (non-demo) data
+        real_txn_count = (
+            db.query(Transaction)
+            .filter(
+                Transaction.user_id == current_user.id,
+                Transaction.is_demo == False,  # noqa: E712
+            )
+            .count()
+        )
+
+        if real_txn_count > 0:
+            logger.warning(
+                f"[demo/seed] user_id={current_user.id} BLOCKED: has {real_txn_count} real transactions"
+            )
+            raise HTTPException(
+                status_code=409,
+                detail=f"Cannot seed demo data: you have {real_txn_count} real transaction(s). "
+                "Please use Reset to clear all data first, then try again.",
+            )
+
+        # Step 1: Clear existing DEMO transactions only (safe - won't touch real data)
         delete_stmt = delete(Transaction).where(
             Transaction.user_id == current_user.id,
+            Transaction.is_demo == True,  # noqa: E712
         )
         result = db.execute(delete_stmt)
         cleared_count = result.rowcount  # type: ignore
         db.commit()
 
         logger.info(
-            f"[demo/seed] user_id={current_user.id} cleared_count={cleared_count}"
+            f"[demo/seed] user_id={current_user.id} cleared_count={cleared_count} (demo only, safe)"
         )
 
         # Step 2: Load demo CSV
