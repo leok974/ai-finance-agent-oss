@@ -4,283 +4,324 @@
 
 # LedgerMind
 
-> **LedgerMind** - AI-powered personal finance dashboard with intelligent categorization and natural language assistant
+**AI-powered personal finance dashboard with intelligent categorization, analytics, and natural-language assistance**
 
-[![Coverage](docs/badges/coverage.svg)](https://github.com/leok974/LedgerMind)
+**Live Demo:** [https://app.ledger-mind.org](https://app.ledger-mind.org)
 
-**Live Demo:** [https://app.ledger-mind.org](https://app.ledger-mind.org) · **No signup required** - try Demo Mode
-
----
-
-## Project Documentation
-
-- **[Architecture Overview](docs/architecture/ARCHITECTURE.md)** - System design, components, application flows
-- **[AI Agents & Copilot Guide](docs/development/AGENTS.md)** - Guidelines for AI assistants working in this repo
-- **[Repository Structure Plan](STRUCTURE_PLAN.md)** - Historical record of 2025-11-27 cleanup
-- **[Infrastructure & Deployment](docs/INFRASTRUCTURE.md)** - Docker setup, services, environment
-- **[System Overview](docs/OVERVIEW.md)** - High-level architecture and core concepts
+✔ No signup required — Demo Mode available
+✔ Google OAuth supported (secure + fully isolated from demo users)
 
 ---
 
-## Overview
+## 🚀 Overview
 
-LedgerMind is a production-ready personal finance application that combines traditional transaction tracking with modern AI capabilities. Upload bank statements, get ML-powered categorization suggestions, and ask natural language questions about your spending patterns.
+LedgerMind is a **production-ready** personal finance platform combining:
 
-### Key Features
+- **Transaction ingestion** (CSV/Excel, multi-bank formats)
+- **AI categorization** (ML model + merchant priors + heuristics)
+- **Rich financial analytics** (top categories, merchants, trends, forecasts)
+- **Chat assistant** powered by LLMs + RAG (pgvector)
+- **Secure multi-tenancy** with Google OAuth, session auth, KMS encryption
+- **Demo Mode** so users can try the product instantly
 
-- **Smart Import** - CSV/Excel upload with multi-format detection
-- **AI Categorization** - ML model suggests categories with confidence scores
-- **Bulk Operations** - Categorize by merchant/description with undo safety
-- **Rich Analytics** - Spending trends, forecasts, top categories, merchant analysis
-- **Chat Assistant** - Natural language queries powered by LLM + RAG (pgvector)
-- **Demo Mode** - Instant access with pre-loaded sample data
-
-### For Recruiters & Hiring Managers
-
-This project demonstrates:
-- **Full-stack development**: React/TypeScript frontend + FastAPI backend
-- **Modern infrastructure**: Docker, Nginx, PostgreSQL, Redis, Cloudflare Tunnel
-- **AI/ML integration**: LLM agents (streaming chat), RAG with pgvector, ML categorization
-- **Production practices**: OAuth authentication, KMS encryption, CSRF/CSP hardening, E2E testing
-- **DevOps**: Docker Compose workflows, hermetic testing, monitoring/observability
-- **Scale considerations**: Multi-tenancy, caching strategies, background jobs
-
-**Architecture**: See [docs/OVERVIEW.md](docs/OVERVIEW.md)
-**Infrastructure**: See [docs/INFRASTRUCTURE.md](docs/INFRASTRUCTURE.md)
+Perfect for showcasing full-stack engineering, AI/ML integration, and DevOps expertise.
 
 ---
 
-## Features
+## ⭐ Key Features
 
-- **CSV Transaction Import** - Upload bank statements from multiple formats
-- **Automatic Categorization** - ML-powered suggestions with confidence scoring
-- **Manual Categorization** - Bulk categorize with undo safety (just this, same merchant, same description)
-- **Unknowns Panel** - Safe bulk categorization with localStorage-based undo
-- **Rich Charts** - Top categories, merchants, daily flows, spending trends, forecast
-- **ChatDock** - Natural language questions about your spending with streaming responses
-- **Demo Mode** - Try sample data without signup at [app.ledger-mind.org](https://app.ledger-mind.org)
+### Transaction Import
+- CSV/Excel ingest (auto-detect columns)
+- Multi-bank normalization
+- Duplicate detection & cleanup
+
+### AI-Enhanced Categorization
+- ML suggestions w/ confidence scores
+- Merchant-based rules
+- Suggestion feedback loop (accept/reject)
+- Undo support (per transaction + bulk)
+
+### Analytics Dashboard
+- Top categories & merchants
+- Daily/Monthly spend flows
+- Forecasting & anomaly detection
+- Rich charts (React + Recharts)
+
+### Natural-Language Assistant (ChatDock)
+Ask questions like:
+- *"How much did I spend on food last month?"*
+- *"Summarize my biggest trends this quarter."*
+
+Streaming LLM with retrieval via **pgvector**
+
+### Demo Mode
+- Try LedgerMind instantly
+- Fully isolated `DEMO_USER_ID=1`
+- Cannot leak into real user data
+- Resettable with one click
 
 ---
 
-## Tech Stack
+## 🔐 Security & Authentication
 
-- **Frontend:** Vite + React + shadcn/ui
-- **Backend:** FastAPI (Python 3.11+)
-- **Database:** PostgreSQL (prod), SQLite (tests)
-- **LLM:** Ollama / OpenAI-compatible (local or remote)
-- **Infrastructure:** Docker Compose, Nginx, Cloudflare Tunnel
-- **Security:** KMS-backed encryption, CSP hardening, CSRF protection
+### Google OAuth (Production-Ready)
+- OAuth accounts linked by `provider` + `sub` claim
+- Email + profile sync
+- No duplicate users
+- CSRF (`state`) + PKCE enforced
+- **Demo user is protected** — OAuth cannot link to demo accounts
+
+### Application Security
+- **KMS envelope encryption** for sensitive fields
+- **CSP hash-based runtime policy**
+- **CSRF protection** on all mutations
+- **SSRF allowlist** for agent tools
+- **Role-based access** (future expansion)
 
 ---
 
-## Quick Start (Docker)
+## 🏗 Architecture
 
-```bash
-git clone https://github.com/leok974/LedgerMind.git
-cd LedgerMind
+Documentation is available at:
 
-# Configure environment
-cp .env.example .env
-# Edit .env with your LLM settings (OPENAI_BASE_URL, MODEL, etc.)
+- [`docs/architecture/OVERVIEW.md`](docs/architecture/OVERVIEW.md)
+- [`docs/architecture/SYSTEM_DESIGN.md`](docs/architecture/SYSTEM_DESIGN.md)
+- [`docs/ops/INFRASTRUCTURE.md`](docs/ops/INFRASTRUCTURE.md)
+- [`docs/ops/DEBUGGING_GUIDE.md`](docs/ops/DEBUGGING_GUIDE.md)
 
-# Start stack
-docker compose up -d
+### Tech Stack
 
-# Access the app
-open http://localhost:8083
+**Frontend**
+- React + TypeScript (Vite)
+- shadcn/ui + Tailwind
+- Playwright E2E + Vitest unit tests
+
+**Backend**
+- FastAPI (Python 3.11+)
+- SQLAlchemy + Alembic
+- pgvector for semantic search
+- Redis for caching (planned)
+- Pytest suite (OAuth + ingest + agents)
+
+**Infrastructure**
+- Docker Compose (prod & dev)
+- Nginx reverse proxy
+- Cloudflare Tunnel (QUIC)
+- Watchtower auto-deployment
+- Prometheus/Grafana (metrics dashboards)
+
+---
+
+## 📂 Repository Structure
+
+*(Finalized 2025-11-27)*
+
+```
+apps/
+  backend/
+  web/
+
+docs/
+  architecture/
+  ops/
+  development/agents/
+  archive/
+
+scripts/
+  infra/
+  dev/
+  testing/
+  backend/
+  web/
+  monitoring/
+  tools/
+
+infra/
+  deploy/
+  nginx/
+  cloudflared/
+  monitoring/
+  k8s/
+
+config/
+  env-templates/
+  precommit/
+  linting/
+  testing/
+  security/
+
+assets/
+  sample-data/
+  grafana-panels/
+
+tests/
+  e2e/
+  integration/
+  fixtures/
 ```
 
-**Default ports:**
-- **8083** - Nginx (production-like setup)
-- **8000** - Backend API (direct access)
-- **5173** - Vite dev server (development only)
+**Full explanation:** [`STRUCTURE_PLAN.md`](STRUCTURE_PLAN.md)
 
 ---
 
-## Development Setup
+## 🧪 Testing
 
-### Prerequisites
-
-- **Python 3.11+**
-- **Node 20+** (pnpm recommended)
-- **Docker Desktop** or Docker Engine
-- **Local LLM** (optional):
-  - Ollama: `ollama run gpt-oss:20b`
-  - vLLM: `python -m vllm.entrypoints.openai.api_server --model <model-path>`
-
-### Backend
-
-```bash
-cd apps/backend
-python -m venv .venv && .venv\Scripts\activate  # Windows
-# source .venv/bin/activate  # Linux/Mac
-
-pip install -U pip
-pip install -e .
-
-# Run migrations
-alembic upgrade head
-
-# Start dev server
-uvicorn app.main:app --reload --port 8000
-```
-
-### Frontend
-
-```bash
-cd apps/web
-pnpm install
-pnpm dev  # http://localhost:5173
-```
-
-**Full infrastructure guide:** See [docs/INFRASTRUCTURE.md](docs/INFRASTRUCTURE.md)
-
----
-
-## Testing
-
-### Backend Tests
-
+### Backend (Pytest)
 ```bash
 pnpm -C apps/backend pytest -q
 ```
 
-### Frontend Unit Tests
+### Frontend
 
+**Unit tests:**
 ```bash
 pnpm -C apps/web vitest run
 ```
 
-### Frontend E2E Tests
-
+**E2E tests:**
 ```bash
 pnpm -C apps/web exec playwright test
 ```
 
-**Testing & debugging:** See [docs/DEBUGGING_GUIDE.md](docs/DEBUGGING_GUIDE.md)
+Includes:
+- OAuth end-to-end
+- Demo mode reset
+- Ingest → Charts refresh
+- Chat assistant streaming tests
 
 ---
 
-## Production Deployment
+## 🔧 Development Setup
 
-**Live instance:** [https://app.ledger-mind.org](https://app.ledger-mind.org)
-
-### Deployment Overview
-
-1. Build Docker images with commit-hash tags
-2. Update `docker-compose.prod.yml` with new image references
-3. Deploy to production host
-4. Verify health endpoints
-
-**Full guide:** See [docs/INFRASTRUCTURE.md](docs/INFRASTRUCTURE.md)
-
-### Current Production Images
-
-See `docker-compose.prod.yml` for current image tags.
-
----
-
-## Documentation
-
-- **[Architecture & System Design](docs/OVERVIEW.md)** - High-level architecture, core concepts, data flow
-- **[Infrastructure & Deployment](docs/INFRASTRUCTURE.md)** - Docker setup, services, environment variables
-- **[Debugging & Troubleshooting](docs/DEBUGGING_GUIDE.md)** - Common issues, health checks, runbooks
-- **[Release Notes](docs/RELEASE_NOTES.md)** - Major milestones and feature releases
-
-### Additional Resources
-- [Agent System](AGENTS.md) - Specialist agent documentation
-- [Archived Docs](docs/archive/) - Legacy phase docs and deployment records
-
----
-
-## Key Endpoints
-
-### Frontend
-- `/` - Dashboard with charts and insights
-- `/app` - Main application (aliased to `/`)
-- `/chat` - Standalone ChatDock interface
+### Prerequisites
+- Python 3.11+
+- Node 20+
+- pnpm
+- Docker Desktop
+- **Optional:** Local LLM (Ollama / vLLM)
 
 ### Backend
-- `GET /api/ready` - Health check (db, migrations, crypto, llm)
-- `GET /api/healthz` - Detailed health status
-- `POST /agent/stream` - Streaming chat with LLM
-- `POST /ingest` - CSV upload endpoint
-- `GET /charts/<chart-type>` - Chart data endpoints
+```bash
+cd apps/backend
+python -m venv .venv
+. .venv/bin/activate   # Windows: .venv\Scripts\activate
+
+pip install -e .
+alembic upgrade head
+uvicorn app.main:app --reload --port 8000
+```
+
+### Frontend
+```bash
+cd apps/web
+pnpm install
+pnpm dev
+```
+
+**Dev URL:** `http://localhost:5173`
 
 ---
 
-## Environment Variables (Core)
+## 🚢 Production Deployment
 
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `ENCRYPTION_ENABLED` | Yes (prod) | Enable envelope encryption with KMS |
-| `GCP_KMS_KEY` | Yes (KMS) | Full GCP KMS key resource path |
-| `MODEL` | Yes | Primary LLM model (e.g., `gpt-oss:20b`) |
-| `OPENAI_BASE_URL` | Optional | Ollama/vLLM endpoint |
-| `OPENAI_API_KEY` | Optional | Fallback LLM API key |
-| `DATABASE_URL` | Yes | PostgreSQL connection string |
+**Live deployment:** [https://app.ledger-mind.org](https://app.ledger-mind.org)
 
-**See** [`.env.example`](.env.example) for complete list.
+### High-level steps
 
----
+1. Build backend + frontend Docker images (tag with commit SHA)
+2. Update `docker-compose.prod.yml`
+3. Deploy to production server
+4. Restart stack via:
+   ```bash
+   docker compose -f docker-compose.prod.yml up -d
+   ```
+5. Verify:
+   - `/api/ready`
+   - `/api/healthz`
+   - `/charts/...`
 
-## Agents & Workflows
-
-This repo uses **specialist agents** for development tasks:
-
-- **api-agent** - Backend API, DB, ML, RAG
-- **test-agent** - Vitest, Playwright, Pytest
-- **docs-agent** - Documentation & runbooks
-- **dev-deploy-agent** - Docker, local stacks
-- **security-agent** - Auth, SSRF, secrets
-
-**See** [`AGENTS.md`](AGENTS.md) for agent system overview.
+### Cloudflare Tunnel
+- QUIC connectors (`cfd-a`, `cfd-b`)
+- No port 80/443 exposure
+- Routes:
+  - `app.ledger-mind.org` → Nginx
+  - `ai-finance-api.int` → Backend API (internal)
 
 ---
 
-## Security
+## 🔁 Demo Mode
 
-- **Encryption:** KMS-backed envelope encryption for sensitive fields
-- **CSP:** Runtime hash-based Content Security Policy
-- **CSRF:** Token-based protection on all mutations
-- **Auth:** Session cookies with httpOnly + sameSite
-- **SSRF:** URL allowlist for LLM/agent endpoints
+Demo behavior is fully isolated:
 
-**Security overview:** See [docs/OVERVIEW.md](docs/OVERVIEW.md#multi-tenancy--security)
+- `DEMO_USER_ID = 1`
+- Demo account has email `demo@ledger-mind.local`
+- `is_demo = true`, `is_demo_user = true`
+- **OAuth linking blocked** for demo users
 
----
-
-## Contributing
-
-Contributions are welcome! Please see [docs/OVERVIEW.md](docs/OVERVIEW.md) for architecture and:
-
-- Code style guidelines
-- Commit message conventions
-- Testing requirements
-- PR review process
+### Reset flow:
+1. Clear demo data
+2. Exit demo mode
+3. Reset real user data (if applicable)
+4. Refresh UI state
 
 ---
 
-## License
+## 🤖 Agents & Copilot Workflows
 
-[License information to be added]
+**See** [`docs/development/AGENTS.md`](docs/development/AGENTS.md)
+
+Agents include:
+- **api-agent**: Backend & DB
+- **test-agent**: Pytest, Vitest, Playwright
+- **docs-agent**: Doc writing & architecture
+- **security-agent**: OAuth, auth, CSRF, SSRF
+- **dev-deploy-agent**: Docker & infra
+
+Agents enforce:
+- No demo → OAuth linking
+- Zero duplicate users
+- Repo structure consistency
+- Proper migration hygiene
+- Complete test coverage
 
 ---
 
-## Changelog
+## 🛡 Security Overview
 
-See [`CHANGELOG.md`](CHANGELOG.md) for release notes and version history.
+- **AES-GCM envelope encryption** (GCP KMS)
+- **CSRF tokens** + SameSite cookies
+- **SSRF allowlist** for agent tools
+- **OAuth + session hybrid auth**
+- **CSP runtime hashing** (Nginx)
+- **Isolated demo tenant**
+
+**More:** [`docs/architecture/SECURITY.md`](docs/architecture/SECURITY.md)
 
 ---
 
-## Troubleshooting
+## ❗ Troubleshooting
 
-**Common issues:**
+### Common Issues
 
-- **OAuth login fails** - Check `OAUTH_GOOGLE_CLIENT_ID` and `OAUTH_GOOGLE_CLIENT_SECRET` in environment
-- **Demo user shows wrong email** - Verify user ID 1 has `email='demo@ledger-mind.local'` and `is_demo=true`
-- **502 errors** - Check Docker containers are running: `docker ps` (backend, nginx)
-- **Database migration errors** - Run `alembic upgrade head` in backend container
-- **CSRF token errors** - Clear browser cookies and refresh
+| Issue | Fix |
+|-------|-----|
+| OAuth login fails | Check Google `CLIENT_ID`/`SECRET` in `.env` |
+| Demo user shows wrong email | Ensure user id 1 = `demo@ledger-mind.local` |
+| Reset doesn't clear dashboard | Demo mode may be active — exit & retry |
+| 502 errors | Verify backend/nginx are running (`docker ps`) |
+| Migrations failing | Run: `alembic upgrade head` |
+| CSRF errors | Clear cookies & refresh |
 
-**Full guide:** [docs/DEBUGGING_GUIDE.md](docs/DEBUGGING_GUIDE.md)
+**Full runbook:** [`docs/ops/DEBUGGING_GUIDE.md`](docs/ops/DEBUGGING_GUIDE.md)
+
+---
+
+## 📜 License
+
+To be added
+
+---
+
+## 📝 Changelog
+
+See [`CHANGELOG.md`](CHANGELOG.md)
