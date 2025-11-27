@@ -2,6 +2,50 @@
 
 These rules are authoritative for code generation in this repository (frontend focus). Follow them unless a file-local comment explicitly overrides for a narrow scope.
 
+---
+
+## 🔒 CRITICAL: OAuth & Demo User Separation (LOCKED)
+
+**Status:** IMMUTABLE - These rules MUST be preserved in all future development
+
+### OAuth Resolution Order (DO NOT MODIFY)
+
+1. ✅ Look up `OAuthAccount` by (`provider`, `provider_user_id`) FIRST
+2. ✅ If exists → use linked user (update profile if changed)
+3. ✅ If not exists → match existing **non-demo** user by email
+4. ✅ If matched → create `OAuthAccount` for existing user
+5. ✅ If not matched → create new user (NOT demo) + `OAuthAccount`
+
+### Demo User Isolation (MANDATORY)
+
+- ❌ NEVER create `OAuthAccount` for `is_demo=True` users
+- ❌ NEVER create `OAuthAccount` for `is_demo_user=True` users
+- ❌ NEVER create `OAuthAccount` for `DEMO_USER_ID` (ID=1)
+- ✅ ALWAYS check `user.is_demo` and `user.is_demo_user` before OAuth linking
+- ✅ ALWAYS raise HTTPException 400 if attempting to link OAuth to demo user
+
+### Database Identity (FIXED)
+
+- **User ID 1:** `demo@ledger-mind.local`, `is_demo=true`, NO OAuth accounts
+- **Real users:** Have `OAuthAccount` records with `provider='google'`
+- **Constraint:** `UniqueConstraint("provider", "provider_user_id")` on `oauth_accounts` table
+
+### Testing (REQUIRED)
+
+- ✅ All 9 OAuth tests in `apps/backend/app/tests/test_auth_google_oauth.py` MUST pass
+- ✅ Any OAuth changes MUST extend tests, never remove them
+- ✅ Test coverage: OAuth reuse, linking, new users, demo protection, security
+
+### Frontend Email Display
+
+- ✅ ONLY use email from `/api/auth/me` endpoint
+- ❌ NEVER hardcode emails in UI
+- ✅ Show Gmail for OAuth users, `demo@ledger-mind.local` for demo mode
+
+**Full constraints:** See [docs/architecture/OAUTH_CONSTRAINTS.md](../docs/architecture/OAUTH_CONSTRAINTS.md)
+
+---
+
 ## API Path Rules
 1. Do **NOT** hardcode `/api/` in new code except for `/api/auth/*` endpoints (auth only).
 2. All non‑auth API calls use relative paths like `rules`, `rules/{id}`, `charts/month-flows`.

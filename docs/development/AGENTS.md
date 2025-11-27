@@ -56,6 +56,46 @@ Top-level:
 
 ---
 
+## 🔒 CRITICAL: Immutable Architecture Constraints
+
+**These rules are LOCKED and must NEVER be violated:**
+
+### OAuth & Demo User Separation
+
+See **[docs/architecture/OAUTH_CONSTRAINTS.md](../architecture/OAUTH_CONSTRAINTS.md)** for complete constraints.
+
+**Summary of Non-Negotiable Rules:**
+
+1. **Demo users NEVER link to OAuth**
+   - User ID 1 (`demo@ledger-mind.local`) has `is_demo=true`, `is_demo_user=true`
+   - NO `OAuthAccount` records allowed for demo users
+   - Any attempt to link OAuth to demo user MUST raise HTTPException 400
+
+2. **OAuth resolution order is FIXED:**
+   - Step 1: Lookup by (`provider`, `provider_user_id`)
+   - Step 2: Match existing **non-demo** user by email
+   - Step 3: Create new user (never demo) + OAuthAccount
+   - This order CANNOT be changed
+
+3. **Database constraints MUST be maintained:**
+   - `UniqueConstraint("provider", "provider_user_id")` on `oauth_accounts`
+   - Migration `20251127_fix_demo_user.py` preserves demo user identity
+   - User ID 1 stays demo forever, never gets OAuth
+
+4. **All 9 OAuth tests MUST pass:**
+   - File: `apps/backend/app/tests/test_auth_google_oauth.py`
+   - No OAuth changes allowed without extending tests
+   - Coverage: reuse, linking, new users, demo protection, security
+
+5. **Frontend email display rules:**
+   - ONLY use email from `/api/auth/me`
+   - NEVER hardcode emails
+   - Gmail for OAuth users, `demo@ledger-mind.local` for demo
+
+**Before ANY OAuth changes, read OAUTH_CONSTRAINTS.md in full.**
+
+---
+
 ## 2. What Agents *Can* Do
 
 Agents are welcome to:
