@@ -64,7 +64,7 @@ jobs:
       - name: Build nginx
         run: |
           docker build \
-            -f deploy/Dockerfile.nginx \
+            -f infra/deploy/Dockerfile.nginx \
             -t ${{ steps.meta.outputs.nginx_image }} \
             .
 
@@ -98,7 +98,7 @@ jobs:
           COMMIT=${GITHUB_SHA::8}
           BUILD_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)
           docker build --build-arg GIT_BRANCH=$BRANCH --build-arg GIT_COMMIT=$COMMIT --build-arg BUILD_TIME=$BUILD_TIME -t backend-ci:${COMMIT} apps/backend
-          docker build -f deploy/Dockerfile.nginx -t nginx-ci:${COMMIT} .
+          docker build -f infra/deploy/Dockerfile.nginx -t nginx-ci:${COMMIT} .
       - name: Get short SHA
         id: sha
         run: echo "short=$(echo ${{ github.sha }} | cut -c1-8)" >> $GITHUB_OUTPUT

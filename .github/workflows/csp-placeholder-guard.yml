@@ -34,7 +34,7 @@ jobs:
       - name: Fail if placeholder remains in rendered
         shell: bash
         run: |
-          if grep -R "__INLINE_SCRIPT_HASHES__" deploy/nginx.conf.rendered; then
+          if grep -R "__INLINE_SCRIPT_HASHES__" infra/deploy/nginx.conf.rendered; then
             echo "CSP placeholder still present after render." >&2
             exit 1
           fi

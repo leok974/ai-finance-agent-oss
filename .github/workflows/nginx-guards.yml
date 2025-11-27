@@ -4,12 +4,12 @@ on:
   push:
     branches: [main]
     paths:
-      - 'deploy/nginx.conf'
-      - 'nginx/**'
+      - 'infra/deploy/nginx.conf'
+      - 'infra/nginx/**'
   pull_request:
     paths:
-      - 'deploy/nginx.conf'
-      - 'nginx/**'
+      - 'infra/deploy/nginx.conf'
+      - 'infra/nginx/**'
 
 jobs:
   lint:
@@ -20,7 +20,7 @@ jobs:
 
       - name: Assert oauth and legacy auth locations coexist without collisions
         run: |
-          file="deploy/nginx.conf"
+          file="infra/deploy/nginx.conf"
 
           echo "✅ Checking for Google OAuth prefix location..."
           grep -qE 'location \^~ /api/auth/google/' "$file"
@@ -44,7 +44,7 @@ jobs:
 
       - name: Verify X-NGX-Loc headers for runtime debugging
         run: |
-          file="deploy/nginx.conf"
+          file="infra/deploy/nginx.conf"
 
           echo "✅ Checking for X-NGX-Loc headers in auth locations..."
 
@@ -61,7 +61,7 @@ jobs:
 
       - name: Check for dangerous patterns
         run: |
-          file="deploy/nginx.conf"
+          file="infra/deploy/nginx.conf"
 
           echo "🔍 Checking for dangerous nginx patterns..."
 

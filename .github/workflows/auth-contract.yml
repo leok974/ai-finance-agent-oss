@@ -12,7 +12,7 @@ on:
   push:
     branches: [main]
     paths:
-      - 'deploy/nginx.conf'
+      - 'infra/deploy/nginx.conf'
       - 'apps/backend/app/auth/**'
       - '.github/workflows/auth-contract.yml'
 
