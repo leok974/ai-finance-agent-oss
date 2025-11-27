@@ -243,6 +243,7 @@ const UploadCsv: React.FC<UploadCsvProps> = ({ onUploaded, defaultReplace = true
       setBusy(true);
 
       // Exit demo mode first if active (prevents confusion about what's being reset)
+      const wasDemoMode = demoMode;
       if (demoMode) {
         console.log('[UploadCsv] Exiting demo mode before reset');
         disableDemo();
@@ -250,9 +251,16 @@ const UploadCsv: React.FC<UploadCsvProps> = ({ onUploaded, defaultReplace = true
         await new Promise(resolve => setTimeout(resolve, 100));
       }
 
-      // Use new dedicated dashboard reset endpoint
-      console.log('[UploadCsv] Calling reset endpoint');
+      // Clear both current user's data AND demo data
+      console.log('[UploadCsv] Calling reset endpoint (current user)');
       await fetchJSON('ingest/dashboard/reset', { method: 'POST' });
+
+      if (wasDemoMode) {
+        // Also clear demo user's data so it doesn't reappear
+        console.log('[UploadCsv] Clearing demo data');
+        await fetchJSON('demo/reset', { method: 'POST' });
+      }
+
       console.log('[UploadCsv] Reset successful, triggering refresh');
       // Clear UI state
       setFile(null);

@@ -243,10 +243,13 @@ async def reset_demo_data(
     current_user: User = Depends(get_current_user),
 ):
     """
-    Clear all demo data for the current user.
+    Clear all demo data from the dedicated DEMO_USER_ID account.
+
+    This endpoint clears transactions from the shared demo user account (DEMO_USER_ID),
+    which is used when users enable demo mode to view sample data.
 
     Deletes:
-    - All transactions where is_demo=True
+    - All transactions where user_id=DEMO_USER_ID and is_demo=True
 
     Note: This codebase has NO persistent aggregate tables.
     All analytics (month summaries, insights, charts) are computed on-the-fly
@@ -255,10 +258,13 @@ async def reset_demo_data(
     Returns:
         Simple success response with count of cleared transactions.
     """
+    from app.config import DEMO_USER_ID
+
     try:
-        # Clear demo transactions for this user
+        # Clear demo transactions from the dedicated DEMO_USER_ID account
+        # (matches the account that /demo/seed populates)
         delete_stmt = delete(Transaction).where(
-            Transaction.user_id == current_user.id,
+            Transaction.user_id == DEMO_USER_ID,
             Transaction.is_demo == True,  # noqa: E712
         )
         result = db.execute(delete_stmt)
@@ -266,7 +272,7 @@ async def reset_demo_data(
         db.commit()
 
         logger.info(
-            f"Reset complete: Cleared {cleared_count} demo transactions for user {current_user.id}"
+            f"[demo/reset] Cleared {cleared_count} demo transactions from DEMO_USER_ID={DEMO_USER_ID}"
         )
 
         return {
