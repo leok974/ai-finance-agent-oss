@@ -37,6 +37,16 @@ function withQuery(url: string, qs?: Record<string, string | number | boolean>) 
   return u.pathname + (u.search || "");
 }
 
+// Check if demo mode is active from localStorage
+function isDemoModeActive(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    return localStorage.getItem('lm:demoMode') === '1';
+  } catch {
+    return false;
+  }
+}
+
 // Extract CSRF token from cookie (matches backend cookie name: csrf_token)
 function getCsrfTokenFromCookie(): string | null {
   if (typeof document === 'undefined') return null;
@@ -50,7 +60,18 @@ export async function fetchJSON<T>(path: string, opts: FetchOpts = {}): Promise<
   // Normalize to absolute
   const normalized = path.startsWith('/') ? path : `/${path}`;
   const baseApplied = shouldBypassPrefix(normalized) ? normalized : join(BASE, normalized);
-  const url = withQuery(baseApplied, opts.query);
+
+  // 🎭 Demo Mode: Automatically append ?demo=1 for data-fetching endpoints
+  // Only apply to GET requests and specific data endpoints (charts, insights, transactions, unknowns)
+  const method = (opts.method ?? 'GET').toUpperCase();
+  const isDataEndpoint = /\/(charts|insights|transactions|unknowns|unknown)\b/.test(normalized);
+  const shouldAddDemo = method === 'GET' && isDataEndpoint && isDemoModeActive();
+
+  const query = shouldAddDemo
+    ? { ...opts.query, demo: true }
+    : opts.query;
+
+  const url = withQuery(baseApplied, query);
 
   // Build headers: default to JSON, but DO NOT force Content-Type for FormData or non-JSON bodies
   const hdrs = new Headers(opts.headers || {});
@@ -59,7 +80,6 @@ export async function fetchJSON<T>(path: string, opts: FetchOpts = {}): Promise<
 
   // 🔐 CSRF: Always include X-CSRF-Token header for mutating requests (POST/PUT/PATCH/DELETE)
   // Backend validates this against the csrf_token cookie for CSRF protection
-  const method = (opts.method ?? 'GET').toUpperCase();
   if (method !== 'GET' && method !== 'HEAD') {
     if (!hdrs.has("X-CSRF-Token")) {
       const csrf = getCsrfTokenFromCookie();
