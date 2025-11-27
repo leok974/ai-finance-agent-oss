@@ -8,6 +8,16 @@
 
 ---
 
+## Project Documentation
+
+- **[Architecture Overview](docs/architecture/ARCHITECTURE.md)** - System design, components, application flows
+- **[AI Agents & Copilot Guide](docs/development/AGENTS.md)** - Guidelines for AI assistants working in this repo
+- **[Repository Structure Plan](STRUCTURE_PLAN.md)** - Historical record of 2025-11-27 cleanup
+- **[Infrastructure & Deployment](docs/INFRASTRUCTURE.md)** - Docker setup, services, environment
+- **[System Overview](docs/OVERVIEW.md)** - High-level architecture and core concepts
+
+---
+
 ## Overview
 
 LedgerMind is a production-ready personal finance application that combines traditional transaction tracking with modern AI capabilities. Upload bank statements, get ML-powered categorization suggestions, and ask natural language questions about your spending patterns.
