@@ -291,30 +291,31 @@ async def seed_demo_data(
     Idempotently reset demo data for the current user.
 
     Steps:
-    1. Delete all existing transactions where is_demo=True for this user
+    1. Delete ALL existing transactions for this user (not just is_demo=True)
     2. Load demo-sample.csv from backend
     3. Insert transactions with is_demo=True
 
     This ensures:
-    - No duplicate transaction errors
+    - No duplicate transaction errors or constraint violations from mixing real + demo data
     - Demo data is isolated from ML training (is_demo=True excluded)
     - Always provides fresh, consistent demo experience
+    - Matches behavior of /ingest/dashboard/reset endpoint
 
     Returns:
         DemoSeedResponse with counts and status message.
     """
     try:
-        # Step 1: Clear existing demo transactions for this user
+        # Step 1: Clear ALL existing transactions for this user
+        # (Changed from is_demo=True filter to match Reset endpoint behavior)
         delete_stmt = delete(Transaction).where(
             Transaction.user_id == current_user.id,
-            Transaction.is_demo == True,  # noqa: E712
         )
         result = db.execute(delete_stmt)
         cleared_count = result.rowcount  # type: ignore
         db.commit()
 
         logger.info(
-            f"Cleared {cleared_count} existing demo transactions for user {current_user.id}"
+            f"[demo/seed] user_id={current_user.id} cleared_count={cleared_count}"
         )
 
         # Step 2: Load demo CSV
@@ -341,7 +342,9 @@ async def seed_demo_data(
 
         db.commit()
 
-        logger.info(f"Added {added_count} demo transactions for user {current_user.id}")
+        logger.info(
+            f"[demo/seed] user_id={current_user.id} added_count={added_count} months_count={len(set(row['month'] for row in demo_rows))}"
+        )
 
         # Get unique months from seeded data
         months_seeded = sorted(list(set(row["month"] for row in demo_rows)))
@@ -356,19 +359,21 @@ async def seed_demo_data(
         )
 
     except FileNotFoundError as e:
-        logger.error(f"Demo CSV not found: {e}")
+        logger.error(
+            f"[demo/seed] user_id={current_user.id} error=FileNotFoundError: {e}"
+        )
         raise HTTPException(
             status_code=500,
             detail="Demo sample data file is missing. Please contact support.",
         )
     except ValueError as e:
-        logger.error(f"Demo CSV parsing error: {e}")
+        logger.error(f"[demo/seed] user_id={current_user.id} error=ValueError: {e}")
         raise HTTPException(
             status_code=500,
             detail=f"Demo sample data is malformed: {e}",
         )
     except Exception as e:
-        logger.exception("Unexpected error during demo seed")
+        logger.exception(f"[demo/seed] user_id={current_user.id} error=UnexpectedError")
         db.rollback()
         raise HTTPException(
             status_code=500,
