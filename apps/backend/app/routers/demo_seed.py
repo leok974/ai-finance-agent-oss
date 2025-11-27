@@ -245,6 +245,26 @@ async def reset_demo_data(
     """
     Clear all demo data from the dedicated DEMO_USER_ID account.
 
+    CRITICAL ARCHITECTURE NOTES:
+
+    1. Data isolation:
+       - Demo data lives under DEMO_USER_ID (constant in app.config)
+       - This endpoint clears ONLY that account's transactions
+       - Real user data (current_user.id) is NEVER affected
+
+    2. Frontend flow:
+       - Frontend calls this BEFORE /ingest/dashboard/reset
+       - This ensures both demo and real user data are cleared
+       - Order matters! See apps/web/src/components/UploadCsv.tsx reset()
+
+    3. Why dedicated demo account:
+       - Prevents demo data mixing with real user uploads
+       - Frontend toggles lm:demoMode to view different user_id
+       - No data migration needed - just switch which user_id to query
+
+    See: tests/test_demo_seed_reset.py for regression coverage
+         tests/test_ingest_reset.py for user data isolation tests
+
     This endpoint clears transactions from the shared demo user account (DEMO_USER_ID),
     which is used when users enable demo mode to view sample data.
 

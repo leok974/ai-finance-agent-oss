@@ -237,12 +237,25 @@ const UploadCsv: React.FC<UploadCsvProps> = ({ onUploaded, defaultReplace = true
     }, 300);
   }, [onUploaded]);
 
+  // CRITICAL RESET FLOW - DO NOT SIMPLIFY WITHOUT REGRESSION TESTS
+  //
+  // Demo mode rules:
+  // - Demo data lives in DEMO_USER_ID (separate from real users)
+  // - When lm:demoMode==="1", http.ts adds ?demo=1 (GET) or demo:true (POST body)
+  // - This makes backend return DEMO_USER_ID data instead of current user
+  //
+  // Reset must:
+  // 1. Clear demo data FIRST (even if not in demo mode - prevents stale data)
+  // 2. Exit demo mode BEFORE clearing current user (prevents ?demo=1 on reset call)
+  // 3. Wait 150ms for localStorage + React state to propagate (race condition fix)
+  //
+  // Order matters! See tests/UploadCsv.reset.test.tsx for regression coverage.
   const reset = useCallback(async () => {
     console.log('[UploadCsv] Reset starting - demoMode:', demoMode);
     try {
       setBusy(true);
 
-      // ALWAYS clear demo data first (in case it exists from previous demo seed)
+      // Step 1: ALWAYS clear demo data first (in case it exists from previous demo seed)
       // This prevents demo data from reappearing after reset
       console.log('[UploadCsv] Clearing demo data first');
       try {
@@ -251,16 +264,17 @@ const UploadCsv: React.FC<UploadCsvProps> = ({ onUploaded, defaultReplace = true
         console.warn('[UploadCsv] Demo reset failed (may not exist):', e);
       }
 
-      // Exit demo mode before clearing current user data
+      // Step 2: Exit demo mode before clearing current user data
       // This ensures subsequent API calls don't have ?demo=1 or demo:true in body
       if (demoMode) {
         console.log('[UploadCsv] Exiting demo mode');
         disableDemo();
-        // Wait for localStorage and state to update
+        // IMPORTANT: Wait for localStorage and state to update before next API call
+        // Without this delay, http.ts may still append ?demo=1 causing wrong user data query
         await new Promise(resolve => setTimeout(resolve, 150));
       }
 
-      // Clear current user's data
+      // Step 3: Clear current user's data
       console.log('[UploadCsv] Calling reset endpoint (current user)');
       await fetchJSON('ingest/dashboard/reset', { method: 'POST' });
 
@@ -315,11 +329,13 @@ const UploadCsv: React.FC<UploadCsvProps> = ({ onUploaded, defaultReplace = true
   const doUpload = useCallback(async () => {
     if (!file) return;
 
-    // Prevent upload while in demo mode - exit demo mode first
+    // CRITICAL: Prevent CSV upload while in demo mode - exit demo mode first
+    // This ensures uploaded data goes to current user, not DEMO_USER_ID
+    // Without this, http.ts would add demo:true to the upload request body
     if (demoMode) {
       console.log('[UploadCsv] Exiting demo mode before CSV upload');
       disableDemo();
-      // Small delay to ensure state updates
+      // Small delay to ensure localStorage + state updates before upload
       await new Promise(resolve => setTimeout(resolve, 100));
     }
 

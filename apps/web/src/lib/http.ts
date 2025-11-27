@@ -61,7 +61,22 @@ export async function fetchJSON<T>(path: string, opts: FetchOpts = {}): Promise<
   const normalized = path.startsWith('/') ? path : `/${path}`;
   const baseApplied = shouldBypassPrefix(normalized) ? normalized : join(BASE, normalized);
 
-  // 🎭 Demo Mode: Automatically append ?demo=1 for GET data endpoints OR inject into POST body for agent tools
+  // 🎭 DEMO MODE INJECTION - CRITICAL FOR DATA ISOLATION
+  //
+  // When demo mode is active (localStorage lm:demoMode === "1"):
+  // - GET requests to data endpoints: Append ?demo=1 query parameter
+  // - POST requests to /agent/tools/*: Inject demo:true into request body
+  //
+  // This tells the backend to query DEMO_USER_ID instead of current user.
+  // Demo data lives in separate DB rows (user_id=DEMO_USER_ID, is_demo=true).
+  //
+  // RACE CONDITION WARNING:
+  // After disableDemo() is called, there's a brief window (~150ms) where
+  // localStorage may still read "1" while React state updates. Always wait
+  // before making API calls after toggling demo mode.
+  //
+  // See: DemoModeContext.tsx for architecture notes
+  //      UploadCsv.tsx reset() for timing-sensitive flow
   const method = (opts.method ?? 'GET').toUpperCase();
   const isDataEndpoint = /\/(charts|insights|transactions|unknowns|unknown)\b/.test(normalized);
   const isAgentTool = /\/agent\/tools\//.test(normalized);
