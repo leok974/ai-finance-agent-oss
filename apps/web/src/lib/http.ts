@@ -76,13 +76,43 @@ export async function fetchJSON<T>(path: string, opts: FetchOpts = {}): Promise<
     hdrs.set('x-test-mode', 'stub');
   }
 
-  const r = await fetch(url, {
+  let r = await fetch(url, {
     credentials: 'include', // Match api.ts: ensure cookies are sent
     headers: hdrs,
     method: opts.method ?? 'GET',
     body: opts.body,
     cache: 'no-store',
   });
+
+  // 🔄 Auto-refresh on 401: Try refresh token once, then retry original request
+  if (r.status === 401 && !url.includes('/auth/')) {
+    console.warn(`[http] 401 on ${url}, attempting session refresh...`);
+    try {
+      const refreshResp = await fetch('/api/auth/refresh', {
+        method: 'POST',
+        credentials: 'include',
+        headers: {'Content-Type': 'application/json'},
+      });
+
+      if (refreshResp.ok) {
+        console.log('[http] Session refreshed, retrying original request');
+        // Retry original request with fresh session
+        r = await fetch(url, {
+          credentials: 'include',
+          headers: hdrs,
+          method: opts.method ?? 'GET',
+          body: opts.body,
+          cache: 'no-store',
+        });
+      } else {
+        console.warn('[http] Session refresh failed, redirect to login may be needed');
+      }
+    } catch (refreshErr) {
+      console.error('[http] Refresh attempt failed:', refreshErr);
+      // Fall through to original error handling
+    }
+  }
+
   if (!r.ok) {
     // Try to extract error message from response body
     let errorMsg = `HTTP ${r.status} ${url}`;
