@@ -49,6 +49,7 @@ import DevMenu from "@/features/dev/DevMenu";
 import logoPng from "@/assets/ledgermind-lockup-1024.png";
 import { useLlmStore } from '@/state/llmStore';
 import { Switch } from "@/components/ui/switch";
+import { Button } from "@/components/ui/button";
 import { SettingsDrawer } from "@/components/SettingsDrawer";
 import { Label } from "@/components/ui/label";
 import LandingHero from "@/components/LandingHero";
@@ -381,7 +382,7 @@ const App: React.FC = () => {
               You're viewing sample data. Your personal uploads are not affected.
             </p>
             <Button
-              variant="ghost"
+              variant="pill-ghost"
               size="sm"
               onClick={() => {
                 disableDemo();
