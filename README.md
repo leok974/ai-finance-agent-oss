@@ -1,3 +1,7 @@
+<div align="center">
+  <img src="apps/web/src/assets/ledgermind-lockup-512.png" alt="LedgerMind Logo" width="400">
+</div>
+
 # LedgerMind
 
 > **LedgerMind** - AI-powered personal finance dashboard with intelligent categorization and natural language assistant
