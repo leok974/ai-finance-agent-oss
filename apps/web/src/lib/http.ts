@@ -116,15 +116,27 @@ export async function fetchJSON<T>(path: string, opts: FetchOpts = {}): Promise<
   if (!r.ok) {
     // Try to extract error message from response body
     let errorMsg = `HTTP ${r.status} ${url}`;
+    let errorDetail = null;
     try {
       const errorData = await r.json();
-      if (errorData && typeof errorData === 'object' && 'message' in errorData) {
-        errorMsg = String(errorData.message);
+      if (errorData && typeof errorData === 'object') {
+        if ('detail' in errorData) {
+          // FastAPI error format: { detail: "..." }
+          errorMsg = String(errorData.detail);
+        } else if ('message' in errorData) {
+          // Alternative format: { message: "..." }
+          errorMsg = String(errorData.message);
+        }
+        // Preserve full error data for specialized handling (e.g., 409 conflicts)
+        errorDetail = errorData;
       }
     } catch {
       // If JSON parsing fails, use default error message
     }
-    throw new Error(errorMsg);
+    const error = new Error(errorMsg) as Error & { status?: number; detail?: any };
+    error.status = r.status;
+    error.detail = errorDetail;
+    throw error;
   }
   return (await r.json()) as T;
 }

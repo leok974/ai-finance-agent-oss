@@ -439,6 +439,25 @@ const UploadCsv: React.FC<UploadCsvProps> = ({ onUploaded, defaultReplace = true
       });
     } catch (err) {
       console.error(err);
+
+      // Handle 409 Conflict: Demo seed blocked by real data
+      if (err instanceof Error && (err as any).status === 409) {
+        const errorMsg = err.message || "Cannot load demo data: you have uploaded transactions. Use Reset to clear all data first.";
+        toast.error("Demo Data Blocked", {
+          description: errorMsg,
+          duration: 8000, // Longer duration for important message
+        });
+        const errorData: IngestResult = {
+          ok: false,
+          added: 0,
+          count: 0,
+          message: errorMsg,
+        };
+        setResult({ ok: false, data: errorData, message: errorMsg });
+        return;
+      }
+
+      // Generic error handling
       const errorMsg = err instanceof Error ? err.message : "Could not load demo data. Please try again.";
       toast.error("Failed to load demo data", { description: errorMsg });
       const errorData: IngestResult = {
