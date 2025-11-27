@@ -10,7 +10,7 @@ from authlib.integrations.starlette_client import OAuth
 from starlette.responses import RedirectResponse
 from sqlalchemy.orm import Session
 from app.db import get_db
-from app.orm_models import User, UserRole, Role
+from app.orm_models import User, UserRole, Role, OAuthAccount
 from app.utils.auth import create_tokens, set_auth_cookies
 from app.utils.csrf import issue_csrf_cookie
 
@@ -202,41 +202,48 @@ async def callback(request: Request, db: Session = Depends(get_db)):
             logger.error("No email in OAuth userinfo: %s", userinfo)
             raise HTTPException(status_code=400, detail="No email from OAuth provider")
 
-        print(f"[OAUTH DEBUG] Got email: {email}", flush=True)
+        # Extract Google's unique user ID (sub claim)
+        google_sub = userinfo.get("sub")
+        if not google_sub:
+            logger.error("No sub (user ID) in OAuth userinfo: %s", userinfo)
+            raise HTTPException(
+                status_code=400, detail="No user ID from OAuth provider"
+            )
+
+        print(f"[OAUTH DEBUG] Got email: {email}, sub: {google_sub}", flush=True)
 
         # Extract name and picture from userinfo
         name = userinfo.get("name")
         picture = userinfo.get("picture")
 
-        print("[OAUTH DEBUG] Creating/updating user in database...", flush=True)
-        # 4) Get or create user in database
-        user = db.query(User).filter(User.email == email).first()
-        if not user:
-            # Create new user
-            user = User(
-                email=email,
-                password_hash="",  # OAuth users don't have passwords
-                is_active=True,
-                name=name,
-                picture=picture,
+        print(
+            "[OAUTH DEBUG] Creating/updating user and OAuth account in database...",
+            flush=True,
+        )
+
+        # 4) Check for existing OAuth account first (primary key: provider + provider_user_id)
+        oauth_account = (
+            db.query(OAuthAccount)
+            .filter(
+                OAuthAccount.provider == "google",
+                OAuthAccount.provider_user_id == google_sub,
             )
-            db.add(user)
-            db.flush()  # Get user.id
+            .first()
+        )
 
-            # Assign default "user" role
-            user_role = db.query(Role).filter(Role.name == "user").first()
-            if not user_role:
-                user_role = Role(name="user")
-                db.add(user_role)
-                db.flush()
+        if oauth_account:
+            # OAuth account exists - get the linked user
+            user = db.query(User).filter(User.id == oauth_account.user_id).first()
+            if not user:
+                logger.error(
+                    "OAuth account exists but linked user not found: %s",
+                    oauth_account.user_id,
+                )
+                raise HTTPException(
+                    status_code=400, detail="Account configuration error"
+                )
 
-            user_role_link = UserRole(user_id=user.id, role_id=user_role.id)
-            db.add(user_role_link)
-            db.commit()
-            db.refresh(user)
-            logger.info("Created new user: %s", email)
-        else:
-            # Update existing user's name and picture if they changed
+            # Update user profile if changed
             updated = False
             if name and user.name != name:
                 user.name = name
@@ -244,10 +251,84 @@ async def callback(request: Request, db: Session = Depends(get_db)):
             if picture and user.picture != picture:
                 user.picture = picture
                 updated = True
+            if email and user.email != email:
+                # Email changed in Google account
+                user.email = email
+                oauth_account.email = email
+                updated = True
+
             if updated:
                 db.commit()
                 db.refresh(user)
-                logger.info("Updated user profile: %s", email)
+                logger.info("Updated user profile via OAuth: %s", email)
+        else:
+            # No OAuth account - check if user exists by email
+            user = db.query(User).filter(User.email == email).first()
+
+            # Safety check: Never link OAuth to demo user accounts
+            if user and (user.is_demo or user.is_demo_user):
+                logger.error(
+                    "Attempted to link OAuth to demo user account: %s (is_demo=%s, is_demo_user=%s)",
+                    email,
+                    user.is_demo,
+                    user.is_demo_user,
+                )
+                raise HTTPException(
+                    status_code=400,
+                    detail="This email is reserved for demo purposes. Please use a different email address.",
+                )
+
+            if not user:
+                # Create new user
+                user = User(
+                    email=email,
+                    password_hash="",  # OAuth users don't have passwords
+                    is_active=True,
+                    name=name,
+                    picture=picture,
+                    is_demo=False,  # Real users are never demo
+                )
+                db.add(user)
+                db.flush()  # Get user.id
+
+                # Assign default "user" role
+                user_role = db.query(Role).filter(Role.name == "user").first()
+                if not user_role:
+                    user_role = Role(name="user")
+                    db.add(user_role)
+                    db.flush()
+
+                user_role_link = UserRole(user_id=user.id, role_id=user_role.id)
+                db.add(user_role_link)
+                logger.info("Created new user via OAuth: %s", email)
+            else:
+                # User exists - update profile
+                updated = False
+                if name and user.name != name:
+                    user.name = name
+                    updated = True
+                if picture and user.picture != picture:
+                    user.picture = picture
+                    updated = True
+                if updated:
+                    logger.info("Updated existing user profile via OAuth: %s", email)
+
+            # Create OAuth account link
+            oauth_account = OAuthAccount(
+                user_id=user.id,
+                provider="google",
+                provider_user_id=google_sub,
+                email=email,
+            )
+            db.add(oauth_account)
+            logger.info(
+                "Created OAuth account link for user: %s (provider=google, sub=%s)",
+                email,
+                google_sub,
+            )
+
+            db.commit()
+            db.refresh(user)
 
         # 5) Get user roles
         roles = [ur.role.name for ur in user.roles]
