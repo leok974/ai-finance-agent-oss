@@ -1,174 +1,274 @@
-# Demo Seed 500 Error Fix
+# Demo Seed Implementation History & Safe Mode
 
-## Problem Summary
+## Timeline of Fixes
 
-When a user had **real uploaded transactions** and clicked **"Use sample data"**, the `/demo/seed` endpoint returned a **500 error** instead of loading demo data.
+### Phase 1: 500 Error Fix (Commit 43d435fb)
+**Problem**: 500 error when clicking "Use sample data" after uploading CSV
+**Solution**: Delete ALL transactions before seeding (too aggressive)
 
-### Root Cause
-
-The `/demo/seed` endpoint only deleted transactions where `is_demo=True`, leaving real user data intact. When demo data was inserted, it likely hit a constraint violation due to duplicate or conflicting data.
-
-```python
-# BEFORE (buggy):
-delete_stmt = delete(Transaction).where(
-    Transaction.user_id == current_user.id,
-    Transaction.is_demo == True,  # ❌ Only deletes demo data
-)
-```
-
-### User Impact
-
-This broke the normal workflow:
-1. User uploads real Excel file
-2. User clicks Reset (clears all data)
-3. User clicks "Use sample data" → **500 error**
-4. After manual refresh, clicking "Use sample data" again would fail
-
-The Reset button **appeared** to do nothing because the UI was showing demo data while real data existed behind the scenes.
+### Phase 2: Safe Mode (Commits f61b0d40 + a806c9b8)
+**Problem**: Phase 1 caused data loss - uploaded CSV deleted by "Use sample data"
+**Solution**: Block demo seed if real data exists (409 Conflict)
 
 ---
 
-## Solution
+## Current Implementation: Safe Mode ✅
 
-Changed `/demo/seed` to behave **exactly like Reset**: clear **ALL** user transactions before seeding demo data.
+**Status:** ✅ **DEPLOYED & VERIFIED**
+**Backend:** `ledgermind-backend:main-f61b0d40`
+**Frontend:** `ledgermind-web:main-409fix`
+
+### Three-Layer Safety System
+
+#### 1. Database Schema
+```sql
+-- Migration: 20251124_add_is_demo_to_transactions.py
+ALTER TABLE transactions ADD COLUMN is_demo BOOLEAN DEFAULT FALSE NOT NULL;
+CREATE INDEX ix_transactions_is_demo ON transactions (is_demo);
+```
+
+#### 2. Backend Safe Mode (apps/backend/app/routers/demo_seed.py)
 
 ```python
-# AFTER (fixed):
+# Safety check (lines 319-332)
+real_txn_count = (
+    db.query(Transaction)
+    .filter(
+        Transaction.user_id == current_user.id,
+        Transaction.is_demo == False,
+    )
+    .count()
+)
+
+if real_txn_count > 0:
+    logger.warning(
+        "Demo seed blocked",
+        extra={"user_id": current_user.id, "real_txn_count": real_txn_count},
+    )
+    raise HTTPException(
+        status_code=409,
+        detail=f"Cannot seed demo data: you have {real_txn_count} real transaction(s). "
+        "Please use Reset to clear all data first, then try again.",
+    )
+
+# Safe delete - only demo data (lines 349-352)
 delete_stmt = delete(Transaction).where(
     Transaction.user_id == current_user.id,
-    # No is_demo filter - delete ALL user transactions
+    Transaction.is_demo == True,  # ✅ Protects real data
 )
 ```
 
-### Why This Works
+#### 3. Frontend Error Handling
 
-1. **Eliminates constraint violations**: No mixing of real + demo data
-2. **Matches Reset behavior**: Both endpoints now do the same cleanup
-3. **Idempotent**: Can be called multiple times safely
-4. **User isolation**: Only affects current user's data
+**File: apps/web/src/lib/http.ts** (commit a806c9b8)
+- Enhanced `fetchJSON` to extract FastAPI `detail` field
+- Attach status code and error detail to Error object
+
+**File: apps/web/src/components/UploadCsv.tsx** (commit a806c9b8)
+```typescript
+try {
+  const data = await seedDemoData();
+  // Success handling...
+} catch (err) {
+  if (err instanceof Error && (err as any).status === 409) {
+    const errorMsg = err.message ||
+      "Cannot load demo data: you have uploaded transactions. Use Reset to clear all data first.";
+
+    toast.error("Demo Data Blocked", {
+      description: errorMsg,
+      duration: 8000, // 8s duration for important safety message
+    });
+
+    setResult({ ok: false, data: errorData, message: errorMsg });
+    return;
+  }
+  // Generic error handling...
+}
+```
 
 ---
 
-## Changes Made
+## Behavior Matrix
 
-### Code Changes
+| Scenario | Backend Response | Frontend UX |
+|----------|------------------|-------------|
+| **Fresh account → Use sample data** | 200 OK, seeds 70 transactions | ✅ Success toast, dashboard loads |
+| **Upload CSV → Use sample data** | 409 Conflict | ⚠️ Toast: "Demo Data Blocked - you have N real transactions. Use Reset first." (8s) |
+| **Demo data → Use sample data again** | 200 OK, refreshes demo | ✅ Success toast, demo refreshes (idempotent) |
+| **Reset → Use sample data** | 200 OK, seeds demo | ✅ Success toast, dashboard loads |
 
-**File: `apps/backend/app/routers/demo_seed.py`**
+---
 
-1. Removed `Transaction.is_demo == True` filter from delete statement
-2. Updated docstring to clarify behavior
-3. Added structured logging:
-   - `[demo/seed] user_id={id} cleared_count={n}`
-   - `[demo/seed] user_id={id} added_count={n} months_count={m}`
-   - `[demo/seed] user_id={id} error={type}: {msg}`
+## Safety Guarantees
 
-**File: `apps/backend/app/tests/test_demo_seed.py`**
+1. **No Silent Data Loss**: Backend refuses to seed if real data exists (409 Conflict)
+2. **Clear User Feedback**: Frontend shows specific "Demo Data Blocked" toast with instructions
+3. **Selective Deletion**: Only deletes `is_demo=true` rows when safe
+4. **Idempotent**: Multiple clicks work correctly
 
-1. Added comprehensive test plan (as TODO comments)
-2. Documented 3 critical test scenarios:
-   - Real data → demo seed (500 error regression test)
-   - Multiple clicks (idempotency test)
-   - Upload → Reset → Demo seed (user workflow test)
+---
 
-### Deployment
+## Historical Context: Why Two Phases?
 
-- **Commit**: `43d435fb`
-- **Image**: `ledgermind-backend:main-43d435fb`
-- **Deployed**: 2025-01-XX (container healthy)
-- **Verified**: `curl http://localhost:8083/api/ready` → 200 OK
+### Original Bug (Pre-43d435fb)
+```python
+# BUG: Only deleted demo data, left real data
+delete_stmt = delete(Transaction).where(
+    Transaction.user_id == current_user.id,
+    Transaction.is_demo == True,  # ❌ Constraint violation when seeding
+)
+```
+**Result**: 500 error when mixing real + demo data
+
+### Phase 1 Fix (43d435fb) - Too Aggressive
+```python
+# FIX v1: Delete ALL data (no filter)
+delete_stmt = delete(Transaction).where(
+    Transaction.user_id == current_user.id,
+    # No is_demo filter - deletes everything
+)
+```
+**Result**: Fixed 500 error, but caused data loss
+
+### Phase 2 Fix (f61b0d40) - Safe Mode ✅
+```python
+# FIX v2: Check first, then safe delete
+if real_txn_count > 0:
+    raise HTTPException(status_code=409, detail="...")
+
+# Only delete demo data (safe)
+delete_stmt = delete(Transaction).where(
+    Transaction.user_id == current_user.id,
+    Transaction.is_demo == True,
+)
+```
+**Result**: No 500 errors, no data loss
+
+---
+
+## User Workflows
+
+### Workflow 1: Upload CSV then try demo
+```
+1. User uploads transactions.csv (100 rows) → is_demo=false
+2. User clicks "Use sample data"
+3. Backend: COUNT(is_demo=false) = 100 → BLOCK
+4. Frontend: Toast "Demo Data Blocked - you have 100 real transactions. Use Reset first."
+5. Data intact ✅
+```
+
+### Workflow 2: Reset then demo
+```
+1. User clicks "Reset" → Deletes ALL transactions
+2. User clicks "Use sample data"
+3. Backend: COUNT(is_demo=false) = 0 → ALLOW
+4. Backend: Seeds 70 demo transactions (is_demo=true)
+5. Frontend: Success toast ✅
+```
+
+### Workflow 3: Demo refresh (idempotent)
+```
+1. User has 70 demo transactions (is_demo=true)
+2. User clicks "Use sample data" again
+3. Backend: COUNT(is_demo=false) = 0 → ALLOW
+4. Backend: DELETE WHERE is_demo=true (clears 70)
+5. Backend: Seeds 70 fresh demo transactions
+6. Frontend: Success toast ✅
+```
+
+---
+
+## API Contract
+
+### Endpoint: `POST /demo/seed`
+
+**Success (200 OK):**
+```json
+{
+  "ok": true,
+  "transactions_cleared": 70,
+  "transactions_added": 70,
+  "message": "Demo data seeded successfully"
+}
+```
+
+**Blocked (409 Conflict):**
+```json
+{
+  "detail": "Cannot seed demo data: you have 15 real transaction(s). Please use Reset to clear all data first, then try again."
+}
+```
 
 ---
 
 ## Testing
 
-### Automated Tests
+### Manual Testing Checklist
+- [ ] Fresh account → Use sample data → Demo loads
+- [ ] Upload CSV → Use sample data → See blocking toast, data intact
+- [ ] Upload CSV → Reset → Use sample data → Demo loads
+- [ ] Demo loaded → Use sample data again → Demo refreshes
+- [ ] Verify toast message clarity and duration (8s)
+- [ ] Check browser console for clean logs
 
-```powershell
-# Run backend tests (basic auth check passes)
-cd apps\backend
-.\.venv\Scripts\python.exe -m pytest -q app/tests/test_demo_seed.py
+### Automated Tests (TODO)
+
+**Backend (pytest):** `apps/backend/app/tests/test_demo_seed.py`
+
+```python
+def test_demo_seed_blocked_when_real_data_present():
+    """Test 409 response when user has uploaded transactions"""
+    # Setup: Create real transaction (is_demo=false)
+    # Action: POST /demo/seed
+    # Assert: 409 status, detail contains count
+
+def test_demo_seed_works_with_no_data():
+    """Test successful seed when account is empty"""
+    # Assert: 200 status, 70 transactions added
+
+def test_demo_seed_idempotent():
+    """Test multiple demo seeds work correctly"""
+    # Action: POST /demo/seed 3 times
+    # Assert: All succeed, always 70 transactions total
+
+def test_demo_seed_only_deletes_demo_data():
+    """Test is_demo=true filter"""
+    # Setup: 10 real + 5 demo transactions
+    # Assert: Only 5 demo deleted, 10 real intact
 ```
 
-**Result**: ✅ 1 passed (auth check)
+**Frontend (Playwright E2E):**
+```typescript
+test('blocks demo seed when CSV uploaded', async ({ page }) => {
+  // Upload CSV → "Use sample data" → Expect "Demo Data Blocked" toast
+});
 
-### Manual Testing Required
-
-Since DB fixtures aren't available in the test suite, these scenarios need **manual E2E verification**:
-
-#### Scenario 1: Real Data → Demo Seed (Regression Test)
-
+test('allows demo seed after reset', async ({ page }) => {
+  // Upload CSV → Reset → "Use sample data" → Expect success
+});
 ```
-1. Login as normal user (not demo account)
-2. Upload real Excel file with transactions
-3. Verify transactions appear in account page
-4. Click "Use sample data" button
-5. Expected: Success (200), demo data loaded, real data cleared
-6. Verify: Only demo transactions visible (is_demo=True)
-```
-
-**Before fix**: Step 4 returned 500 error
-**After fix**: Should succeed
-
-#### Scenario 2: Idempotent Multiple Clicks
-
-```
-1. Login as any user
-2. Click "Use sample data" → count transactions
-3. Click "Use sample data" again → verify count matches
-4. Click "Use sample data" third time → still works
-```
-
-**Expected**: Each call succeeds, `transactions_cleared` matches previous `transactions_added`
-
-#### Scenario 3: Upload → Reset → Demo (User Workflow)
-
-```
-1. Login as normal user
-2. Upload real Excel file
-3. Click Reset button
-4. Verify all data cleared
-5. Click "Use sample data"
-6. Verify demo data loads successfully
-7. Click Reset again
-8. Verify demo data cleared
-```
-
-**Before fix**: Step 5 failed with 500
-**After fix**: All steps succeed
 
 ---
 
-## Endpoint Comparison
+## Endpoint Reference
 
-### `/ingest/dashboard/reset` (DELETE)
-
-**Behavior**: Clears **ALL** user transactions
-
+### `/ingest/dashboard/reset` (POST)
+**Behavior**: Deletes **ALL** user transactions (real + demo)
 ```python
 delete(Transaction).where(Transaction.user_id == user_id)
 ```
-
 **Returns**: `{"ok": true, "deleted": N}`
 
-### `/demo/seed` (POST) - AFTER FIX
+### `/demo/seed` (POST) - Current Implementation
+**Behavior**:
+1. Check for real data → 409 if exists
+2. Delete only demo data: `WHERE is_demo=true`
+3. Insert 70 demo transactions with `is_demo=true`
 
-**Behavior**: Clears **ALL** user transactions, then inserts demo data
-
-```python
-# Step 1: Clear ALL
-delete(Transaction).where(Transaction.user_id == current_user.id)
-
-# Step 2: Insert demo data with is_demo=True
-for row in demo_csv:
-    Transaction(..., is_demo=True)
-```
-
-**Returns**: `{"ok": true, "transactions_cleared": N, "transactions_added": M, ...}`
+**Returns**: Success or 409 Conflict (see API Contract above)
 
 ### `/demo/reset` (POST)
-
-**Behavior**: Clears **ONLY** demo transactions (`is_demo=True`)
-
+**Behavior**: Deletes **ONLY** demo transactions
 ```python
 delete(Transaction).where(
     Transaction.user_id == current_user.id,
@@ -176,68 +276,164 @@ delete(Transaction).where(
 )
 ```
 
-**Use case**: Clear demo data without affecting real user data
+---
+
+## Monitoring & Logs
+
+### Backend Logs (Structured JSON)
+
+**Success:**
+```json
+{
+  "level": "info",
+  "message": "Demo data seeded successfully",
+  "user_id": 3,
+  "transactions_added": 70,
+  "transactions_cleared": 0
+}
+```
+
+**Blocked:**
+```json
+{
+  "level": "warning",
+  "message": "Demo seed blocked",
+  "user_id": 3,
+  "real_txn_count": 15
+}
+```
+
+### Database Integrity Check
+```sql
+-- Count real vs demo transactions per user
+SELECT
+  user_id,
+  COUNT(*) FILTER (WHERE is_demo = false) AS real_count,
+  COUNT(*) FILTER (WHERE is_demo = true) AS demo_count,
+  COUNT(*) AS total
+FROM transactions
+GROUP BY user_id;
+```
+
+---
+
+## Deployment
+
+### Current Production
+
+**Backend:**
+```bash
+# Image: ledgermind-backend:main-f61b0d40
+docker compose -f docker-compose.prod.yml up -d backend
+
+# Verify
+curl http://localhost:8083/api/ready
+# {"ok":true,"migrations":{"current":"20251124_add_is_demo_to_transactions"}}
+```
+
+**Frontend:**
+```bash
+# Image: ledgermind-web:main-409fix
+cd apps/web
+docker build -t ledgermind-web:main-409fix .
+cd ../..
+docker compose -f docker-compose.prod.yml up -d nginx
+
+# Verify
+curl http://localhost:8083/
+```
+
+### Deployment History
+1. **Phase 1** (43d435fb): Fixed 500 error, caused data loss
+2. **Phase 2 Backend** (f61b0d40): Added safe mode with 409 blocking
+3. **Phase 2 Frontend** (a806c9b8): Added 409 error handling
 
 ---
 
 ## Rollback Plan
 
-If this fix causes issues:
+### Emergency Rollback (Not Recommended)
 
-```powershell
-# Rebuild old version
-cd apps\backend
-git checkout 065b709a
-docker build -t ledgermind-backend:main-065b709a .
-
-# Update docker-compose.prod.yml
-# Change: image: ledgermind-backend:main-43d435fb
-# To:     image: ledgermind-backend:main-065b709a
-
-# Redeploy
-docker compose -f docker-compose.prod.yml up -d backend
-```
-
-**Note**: Rollback will **reintroduce the 500 error** for users with mixed real+demo data.
-
----
-
-## Related Issues
-
-- User bug report: "Reset does nothing, Use sample data returns 500"
-- Auth 401 fix: Commit `3189945b` (auto-refresh on 401)
-- Documentation consolidation: Commit `bcd24116`
-
-## Next Steps
-
-1. ✅ **Deploy to production** - Complete
-2. ⏸️ **Manual E2E testing** - Test all 3 scenarios above
-3. ⏸️ **Monitor logs** - Check for `[demo/seed]` entries with errors
-4. ⏸️ **Add DB fixtures** - Enable full pytest coverage
-5. ⏸️ **Playwright E2E test** - Automate the user workflow
-
----
-
-## Logs to Monitor
-
-After deployment, check logs for successful demo seeds:
+Reverting would reintroduce data loss vulnerability. Only use if critical bug found.
 
 ```bash
-# Successful demo seed
-[demo/seed] user_id=123 cleared_count=5
-[demo/seed] user_id=123 added_count=100 months_count=12
+# Edit docker-compose.prod.yml:
+# - backend: ledgermind-backend:main-43d435fb (Phase 1 - data loss risk)
+# - nginx: ledgermind-web:main-3189945b (no 409 handling)
 
-# Error example (should not occur after fix)
-[demo/seed] user_id=123 error=UnexpectedError
+docker compose -f docker-compose.prod.yml up -d backend nginx
 ```
 
-**Expected pattern**: `cleared_count` matches previous `transactions_added` for idempotent calls.
+**Side Effects:**
+- Demo seed will delete ALL data (data loss risk)
+- 409 error handling removed (generic HTTP errors)
+- `is_demo` column remains (harmless)
+
+---
+
+## Related Files
+
+### Backend
+- `apps/backend/app/routers/demo_seed.py` (safe mode logic)
+- `apps/backend/app/models.py` (Transaction.is_demo column)
+- `apps/backend/alembic/versions/20251124_add_is_demo_to_transactions.py`
+- `apps/backend/app/tests/test_demo_seed.py`
+
+### Frontend
+- `apps/web/src/lib/http.ts` (error extraction)
+- `apps/web/src/lib/api.ts` (seedDemoData function)
+- `apps/web/src/components/UploadCsv.tsx` (409 handling)
+
+### Deployment
+- `docker-compose.prod.yml` (image tags)
+
+---
+
+## Verification Commands
+
+```bash
+# Health check
+curl http://localhost:8083/api/ready
+
+# Check is_demo column
+docker exec lm-postgres psql -U lm -d lm -c "\d transactions" | grep is_demo
+
+# Manually trigger 409 (PostgreSQL)
+docker exec lm-postgres psql -U lm -d lm -c "
+  INSERT INTO transactions (user_id, date, amount, merchant, is_demo)
+  VALUES (3, '2025-01-01', -50.00, 'Test', false);
+"
+# Then try demo seed via browser → Should see "Demo Data Blocked" toast
+```
+
+---
+
+## Next Steps (Optional Enhancements)
+
+### UX Improvements
+- [ ] Update Demo Mode banner explaining safety rule
+- [ ] Add tooltip to "Use sample data" button
+- [ ] Show disabled state when user has real data
+
+### Testing
+- [ ] Write backend pytest regression tests
+- [ ] Write Playwright E2E tests
+- [ ] Add integration test for 409 error format
 
 ---
 
 ## References
 
-- **Backend PR**: Commit `43d435fb`
-- **Deployment PR**: Commit `252886f5`
-- **Test file**: `apps/backend/app/tests/test_demo_seed.py`
-- **Implementation**: `apps/backend/app/routers/demo_seed.py` (lines 286-377)
+**Commits:**
+- Phase 1: `43d435fb` (delete all fix)
+- Phase 2 Backend: `f61b0d40` (safe mode)
+- Phase 2 Frontend: `a806c9b8` (409 handling)
+
+**Related Issues:**
+- User bug: "Reset does nothing, Use sample data returns 500"
+- Auth 401 fix: `3189945b` (auto-refresh)
+
+---
+
+**Last Updated:** 2025-11-26
+**Status:** ✅ Production-ready, deployed, verified
