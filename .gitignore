@@ -4,6 +4,9 @@ _probe.csv
 segment_before.txt
 docker-compose.prod.yml.bak
 test.ps1
+backend_full.log
+test_app.sqlite
+*.code-workspace
 
 ### Cloudflare tunnel credentials & directory
 cloudflared/*.json
@@ -63,6 +66,9 @@ ops/letsencrypt/
 secrets/
 active-dek.json
 *.dek.json
+active-dek*.raw
+active-dek*.json
+encryption_keys_snapshot.csv
 secrets/gcp-sa.json
 secrets/*.gcp-sa.json
 *.gcp-sa.json

@@ -35,7 +35,7 @@ repos:
         name: Validate Grafana ML dashboard ($prom + required queries)
         language: python
         additional_dependencies: []
-        entry: python scripts/validate_grafana_dashboard.py
+        entry: python scripts/monitoring/validate_grafana_dashboard.py
         files: ^(ops/grafana/|.*ml_suggestions_dashboard\.json$)
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
@@ -48,14 +48,14 @@ repos:
     rev: v8.29.0
     hooks:
       - id: gitleaks
-        args: ["detect", "--no-banner", "--verbose", "--redact", "--config=.gitleaks.toml"]
+        args: ["detect", "--no-banner", "--verbose", "--redact", "--config=config/security/.gitleaks.toml"]
         pass_filenames: false
   # detect-secrets for additional secret detection
   - repo: https://github.com/Yelp/detect-secrets
     rev: v1.5.0
     hooks:
       - id: detect-secrets
-        args: ["--baseline", ".secrets.baseline"]
+        args: ["--baseline", "config/security/.secrets.baseline"]
         additional_dependencies: ["pyyaml"]
 
 # Skip heavy or generated files for faster commits
