@@ -4,7 +4,7 @@ import io
 from fastapi.testclient import TestClient
 
 try:
-    from openpyxl import load_workbook
+    from openpyxl import load_workbook  # type: ignore[import-untyped]
 
     OPENPYXL_AVAILABLE = True
 except ImportError:

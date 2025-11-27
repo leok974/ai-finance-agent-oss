@@ -79,7 +79,7 @@ async def login(request: Request):
         extra["prompt"] = prompt
         logger.info("OAuth login: prompt=%s", prompt)
 
-    return await oauth.google.authorize_redirect(
+    return await oauth.google.authorize_redirect(  # type: ignore[union-attr]
         request,
         redirect_uri=REDIRECT_URI,
         state=state,

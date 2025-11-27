@@ -4,7 +4,7 @@ import io
 from fastapi.testclient import TestClient
 
 try:
-    from PyPDF2 import PdfReader
+    from PyPDF2 import PdfReader  # type: ignore[import-untyped]
 
     PYPDF2_AVAILABLE = True
 except ImportError:
