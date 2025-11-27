@@ -277,12 +277,10 @@ See [`CHANGELOG.md`](CHANGELOG.md) for release notes and version history.
 
 **Common issues:**
 
-- **`crypto_ready: false`** - Verify GCP service account mounted at `/secrets/gcp-sa.json`
-- **502 via edge** - Check Cloudflare Tunnel ingress points to `http://nginx:80`
-- **LLM fallback to stub** - Ensure Ollama model is pulled or `OPENAI_API_KEY` is set
+- **OAuth login fails** - Check `OAUTH_GOOGLE_CLIENT_ID` and `OAUTH_GOOGLE_CLIENT_SECRET` in environment
+- **Demo user shows wrong email** - Verify user ID 1 has `email='demo@ledger-mind.local'` and `is_demo=true`
+- **502 errors** - Check Docker containers are running: `docker ps` (backend, nginx)
+- **Database migration errors** - Run `alembic upgrade head` in backend container
+- **CSRF token errors** - Clear browser cookies and refresh
 
 **Full guide:** [docs/DEBUGGING_GUIDE.md](docs/DEBUGGING_GUIDE.md)
-
----
-
-**Built with ❤️ for the Open Models Hackathon**
