@@ -1820,13 +1820,19 @@ export async function resetDemoData(): Promise<{
 }
 
 // Seed demo data (idempotent - clears existing demo data and reseeds)
+// SECURITY: Requires X-LM-Demo-Seed header to prevent accidental/automatic seeding
 export async function seedDemoData(): Promise<{
   ok: boolean;
   transactions_cleared: number;
   transactions_added: number;
   message: string;
 }> {
-  const res = await fetchJSON('demo/seed', { method: 'POST' });
+  const res = await fetchJSON('demo/seed', {
+    method: 'POST',
+    headers: {
+      'X-LM-Demo-Seed': '1',
+    },
+  });
   return res as {
     ok: boolean;
     transactions_cleared: number;

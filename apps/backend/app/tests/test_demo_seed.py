@@ -6,7 +6,8 @@ Verifies:
 2. is_demo flag is set correctly
 3. Idempotent behavior
 4. Authentication requirements
-5. SAFE MODE: Refuses to run if user has real (non-demo) transactions
+5. Header gate: X-LM-Demo-Seed required to prevent accidental seeding
+6. SAFE MODE: Refuses to run if user has real (non-demo) transactions
 
 Note: These tests are integration tests and will be skipped in hermetic mode.
 Full regression testing requires manual verification or E2E tests.
@@ -22,6 +23,27 @@ def test_demo_seed_requires_authentication(client: TestClient):
     """Test that demo seed requires authentication."""
     response = client.post("/demo/seed")
     assert response.status_code in [401, 403]
+
+
+def test_demo_seed_requires_header(client: TestClient, auth_headers: dict):
+    """Test that demo seed requires X-LM-Demo-Seed header."""
+    # Call without header should be blocked with 403
+    response = client.post("/demo/seed", headers=auth_headers)
+    assert response.status_code == 403
+    data = response.json()
+    assert data["reason"] == "missing_demo_seed_header"
+    assert "demo controls" in data["message"].lower()
+
+
+def test_demo_seed_with_header_succeeds_when_no_real_data(
+    client: TestClient, auth_headers: dict
+):
+    """Test that demo seed works when header is present and no real data exists."""
+    # Add the required header
+    headers = {**auth_headers, "X-LM-Demo-Seed": "1"}
+    response = client.post("/demo/seed", headers=headers)
+    # Should succeed (200) or return 409 if real data exists (depends on test DB state)
+    assert response.status_code in [200, 409]
 
 
 # TODO: Add integration tests for demo seed behavior once DB fixture is available

@@ -11,7 +11,8 @@ from pathlib import Path
 from datetime import datetime
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Header, Request
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy import delete
 from sqlalchemy.orm import Session
@@ -284,23 +285,30 @@ async def reset_demo_data(
 
 @router.post("/demo/seed", response_model=DemoSeedResponse)
 async def seed_demo_data(
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    x_lm_demo_seed: str | None = Header(default=None, alias="X-LM-Demo-Seed"),
 ):
     """
     Idempotently seed demo data for the current user.
+
+    SECURITY: Requires X-LM-Demo-Seed: 1 header to prevent accidental/automatic seeding.
+    Only the explicit "Use sample data" button should call this endpoint.
 
     SAFE MODE: Will REFUSE to run if user has any real (non-demo) transactions.
     This prevents accidental data loss when clicking "Use sample data" after
     uploading real CSV files.
 
     Steps:
-    1. Check if user has real data (is_demo=False) - return 409 if yes
-    2. Delete existing demo transactions (is_demo=True only)
-    3. Load demo-sample.csv from backend
-    4. Insert transactions with is_demo=True
+    1. Verify X-LM-Demo-Seed header is present (403 if missing)
+    2. Check if user has real data (is_demo=False) - return 409 if yes
+    3. Delete existing demo transactions (is_demo=True only)
+    4. Load demo-sample.csv from backend
+    5. Insert transactions with is_demo=True
 
     This ensures:
+    - No automatic demo seeding on page load or background processes
     - Users cannot accidentally delete uploaded CSV data
     - Demo data is isolated from ML training (is_demo=True excluded)
     - Always provides fresh, consistent demo experience
@@ -310,8 +318,26 @@ async def seed_demo_data(
         DemoSeedResponse with counts and status message.
 
     Raises:
+        HTTPException 403: Missing X-LM-Demo-Seed header
         HTTPException 409: User has real transactions - must Reset first
     """
+    # SECURITY GATE: Require explicit header to prevent accidental seeding
+    if x_lm_demo_seed != "1":
+        logger.warning(
+            "Blocked demo_seed call without header: user=%s path=%s referer=%s",
+            current_user.id,
+            request.url.path,
+            request.headers.get("referer"),
+        )
+        return JSONResponse(
+            status_code=403,
+            content={
+                "status": "forbidden",
+                "reason": "missing_demo_seed_header",
+                "message": "Demo seeding is only allowed via the demo controls.",
+            },
+        )
+
     try:
         # SAFETY CHECK: Refuse to seed if user has any real (non-demo) data
         real_txn_count = (
