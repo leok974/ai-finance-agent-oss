@@ -1,139 +1,249 @@
-# AI Agent Guardrails & Guidelines
+# AI Agents & Copilot Guide
 
-This document provides canonical instructions for AI assistants (Copilot, ChatGPT, etc.) working in this repository.
+_Last updated: 2025-11-27_
 
----
+This document tells AI tools (GitHub Copilot, ChatGPT, etc.) **how to behave in this repo**:
 
-## Repository Structure — DO NOT MODIFY
+- Where code and docs live
+- What they are allowed to change
+- What they should **never** move or delete
+- How to propose bigger refactors safely
 
-> **Copilot: When touching repo structure, do NOT move files out of `apps/`, `infra/`, `docs/`, `scripts/`, `tests/`, `config/`, or `assets/` unless explicitly asked. Assume this layout is intentional and permanent.**
-
-### Canonical Layout (Post-Cleanup 2025-11-27)
-
-This structure is **canonical**. Do NOT re-flatten the repo or move things out of these roots.
-
-**Top-level rules:**
-- Root is minimal: `README.md`, `LICENSE`, `.gitignore`, `docker-compose.*.yml`, `package.json`, `STRUCTURE_PLAN.md`.
-- Application code lives only in:
-  - `apps/backend`  (FastAPI, DB, migrations)
-  - `apps/web`      (Vite/React frontend)
-
-**Infrastructure** lives in `infra/`:
-- `infra/deploy`      ← Dockerfiles, deploy configs (nginx, etc.)
-- `infra/cloudflared` ← Cloudflare Tunnel config
-- `infra/nginx`       ← nginx configs + entrypoint scripts
-- `infra/monitoring`  ← Prometheus/Grafana config
-
-**Documentation** lives in `docs/`:
-- `docs/architecture`  ← system & chat architecture (CHAT_* docs)
-- `docs/ops`           ← runbooks, SLOs, deployment guides
-- `docs/development`   ← AGENTS.md, structure plan, dev guides
-- `docs/archive`       ← old/legacy docs kept for reference
-
-**Scripts** live in `scripts/`:
-- `scripts/infra`      ← deploy/prod scripts
-- `scripts/dev`        ← local dev helpers
-- `scripts/testing`    ← smoke/e2e/test helpers
-- `scripts/backend`    ← backend maintenance/migration helpers
-- `scripts/web`        ← frontend/build helpers
-
-**Tests** live in `tests/`:
-- `tests/e2e`, `tests/integration`, `tests/fixtures`, etc.
-
-**Config** lives in `config/`:
-- `config/env-templates`  ← example env files only (no real secrets)
-- `config/precommit`, `config/linting`, `config/testing`, `config/security`
-
-**Assets** live in `assets/`:
-- `assets/sample-data`     ← demo CSVs and fixtures
-- `assets/grafana-panels`  ← saved dashboards/panels
-
-**Branch policy:**
-- `main` is the **only long-lived branch**.
-- Feature branches must be short-lived, PR'd into `main`, and deleted after merge.
-- Historical state is preserved via tags like `archive/pre-branch-cleanup-20251127`.
+Think of this as the "house rules" for assistants.
 
 ---
 
-## Docker Build Context Rules
+## 1. Repo Layout (Canonical)
 
-**Backend:**
-- Dockerfile: `apps/backend/Dockerfile`
-- Build context: Repository root (`.`)
-- Paths must be prefixed: `COPY apps/backend/requirements.txt ./`
+The current structure is **intentional** and should be treated as **canonical**.
 
-**Web:**
-- Dockerfile: `infra/deploy/Dockerfile.nginx`
-- Build context: Repository root (`.`)
-- Paths must be prefixed: `COPY ./infra/deploy/nginx.conf`, `COPY apps/web/src ./src`
+Top-level:
+
+- `apps/` – application code
+  - `apps/backend` – FastAPI backend, DB models, Alembic, ML glue
+  - `apps/web` – Vite/React frontend + ChatDock
+- `infra/` – deployment & infrastructure
+  - `infra/deploy` – Dockerfiles, container entrypoints
+  - `infra/nginx` – Nginx configs and security headers
+  - `infra/cloudflared` – Cloudflare Tunnel config
+  - `infra/monitoring` – Prometheus/Grafana config
+- `docs/`
+  - `docs/architecture` – system design, build/deploy docs, ARCHITECTURE.md
+  - `docs/ops` – runbooks, SLOs, deployment + debugging
+  - `docs/development` – this file, STRUCTURE_PLAN, dev notes
+  - `docs/archive` – legacy docs kept for reference
+- `scripts/`
+  - `scripts/infra` – deploy/prod scripts
+  - `scripts/dev` – local dev helpers
+  - `scripts/testing` – smoke/e2e/test helpers
+  - `scripts/backend` – backend utilities
+  - `scripts/web` – frontend utilities
+  - `scripts/monitoring`, `scripts/tools` – misc helpers
+- `tests/` – e2e / integration / extra test harnesses
+- `config/`
+  - `config/env-templates` – example env files (no real secrets)
+  - `config/{precommit,linting,testing,security}` – tool configs
+- `assets/`
+  - `assets/sample-data` – demo CSVs and fixtures
+  - `assets/grafana-panels` – Grafana panel JSON
+- Root –
+  - `README.md`, `LICENSE`, `.gitignore`
+  - `docker-compose.*.yml`
+  - `STRUCTURE_PLAN.md` (historical record of cleanup)
+
+> **Rule for agents:**
+> Do **not** create new top-level directories or scatter files at root. Use the existing buckets above.
 
 ---
 
-## API Path Rules (Frontend)
+## 2. What Agents *Can* Do
 
-See `.github/copilot-instructions.md` for detailed API path conventions. Key points:
+Agents are welcome to:
 
-1. **DO NOT** hardcode `/api/` in new code except for `/api/auth/*` endpoints.
-2. All non-auth API calls use relative paths: `rules`, `charts/month-flows`, etc.
-3. Use the shared helper `fetchJSON` from `src/lib/http.ts` for all network calls.
-4. Respect `VITE_API_BASE` (defaults to `/`).
-5. Chart endpoints use dash slugs: `charts/month-flows` (not `month_flows`).
+- **Backend**
+  - Add / modify FastAPI endpoints in `apps/backend/app/routers/*`
+  - Add services, models, schemas under `apps/backend/app`
+  - Add migrations in `apps/backend/alembic/versions`
+  - Add backend tests in `tests/backend` (or equivalent)
+
+- **Frontend**
+  - Add React components under `apps/web/src`
+  - Add hooks, utilities, and context providers within `apps/web/src`
+  - Add/update tests (unit/Vitest) adjacent to components or under `tests/web`
+
+- **Infra**
+  - Update Nginx config under `infra/nginx` to add routes, tighten security, or wire new endpoints
+  - Adjust Dockerfiles under `infra/deploy`
+  - Update Cloudflare Tunnel config under `infra/cloudflared` (but not secrets)
+
+- **Docs**
+  - Add new architecture notes under `docs/architecture`
+  - Add new runbooks under `docs/ops`
+  - Add dev notes/checklists under `docs/development`
+
+- **Scripts / Tools**
+  - Add helper scripts under `scripts/*`
+  - Add small internal tools under `tools/*`
 
 ---
 
-## Agent-Specific Guidelines
+## 3. What Agents **Must Not** Do (without explicit request)
 
-Detailed agent instructions are in `docs/development/agents/`:
-- `api-agent.md` — Backend API development guidelines
-- `dev-deploy-agent.md` — Deployment and infrastructure tasks
-- `docs-agent.md` — Documentation standards
-- `security-agent.md` — Security best practices
-- `test-agent.md` — Testing conventions
+**Do NOT:**
+
+1. **Restructure the repo** again
+   - Don't move directories like `apps/`, `infra/`, `docs/`, `scripts/`, `tests/`, `config/`, `assets/`.
+   - Don't create "alternative" layouts (e.g., moving everything into `/src`).
+
+2. **Delete or rename core infra**:
+   - `docker-compose.*.yml`
+   - `infra/deploy/*` Dockerfiles
+   - `infra/nginx/*` configs
+   - `infra/cloudflared/*` tunnel configs
+
+3. **Touch secrets**
+   - Never create or commit real `.env` files.
+   - Only manage templates in `config/env-templates`.
+   - Never hard-code tokens, keys, or passwords.
+
+4. **Change branch policy**
+   - Repo is single-branch: `main` only (short-lived feature branches OK, deleted after merge).
+   - Do not reintroduce long-lived side branches by default.
+
+5. **Break build / CI / tests on purpose**
+   - Any larger change should keep `docker-compose.prod.yml` working.
+   - Tests and typecheck are expected to pass, or failures must be clearly documented with a plan.
+
+If a change would violate these rules, the assistant should **propose it in a doc** (e.g., new ADR in `docs/architecture`) instead of applying it directly.
 
 ---
 
-## Pre-Commit Hooks
+## 4. Patterns & Preferences
 
-Always run before commits. Config: `config/precommit/.pre-commit-config.yaml`
+### 4.1 Backend (FastAPI)
 
-Install from new location:
-```powershell
-pre-commit install --config config/precommit/.pre-commit-config.yaml
+- Use **FastAPI routers** with dependency injection for DB and auth.
+- Keep endpoints typed (Pydantic models or dataclasses).
+- New features should:
+  - Add router endpoints,
+  - Add tests (pytest),
+  - Update/run migrations if DB schema changes.
+
+### 4.2 Frontend (React/Vite)
+
+- Functional components, hooks, and small composable pieces.
+- Prefer:
+  - Feature-oriented organization: group related components/hooks.
+  - Co-locate tests with components or under `tests/web`.
+
+### 4.3 Scripts & Automation
+
+- Use `scripts/infra` for any deploy-related new script.
+- Use `scripts/dev` for local workflows (setup, seed, smoke).
+- All new scripts should:
+  - Be idempotent when possible,
+  - Have comments explaining purpose and usage.
+
+---
+
+## 5. Bigger Changes: How to Propose Safely
+
+If you want to introduce a **bigger change** (new service, major refactor, new ML flow):
+
+1. **Write a short design doc** under `docs/architecture/`:
+   - Name it `ADR-XXXX-something.md` or `PHASE-XX-feature-name.md`.
+   - Include: problem, proposal, risks, rollout plan.
+
+2. **Add a brief checklist** in the doc:
+   - Code changes
+   - Tests
+   - Docs
+   - Infra / deploy updates
+
+3. Only after that, make code changes referencing that doc.
+
+---
+
+## 6. Minimal Context for External Agents
+
+When using external LLMs / agents (e.g., Copilot Agents, ChatGPT with repo context), you can give them this minimal JSON context:
+
+```json
+{
+  "project": "LedgerMind",
+  "branch_model": "single-main",
+  "layout": {
+    "backend": "apps/backend",
+    "frontend": "apps/web",
+    "infra": "infra",
+    "docs": "docs",
+    "scripts": "scripts",
+    "tests": "tests",
+    "config": "config",
+    "assets": "assets"
+  },
+  "rules": {
+    "no_repo_restructure": true,
+    "no_secret_files": true,
+    "respect_infra_paths": true,
+    "add_docs_for_big_changes": true
+  }
+}
+```
+
+This tells the agent:
+
+- Where things live
+- That it must respect the current structure
+- That big changes need docs
+
+---
+
+## 7. How to Ask This Repo for Help (Template Prompts)
+
+Some example prompts you can paste into Copilot / ChatGPT:
+
+**Add a new backend endpoint:**
+
+```
+Add a FastAPI endpoint under apps/backend/app/routers to expose the X feature.
+Follow existing patterns for auth and DB deps.
+Add tests under tests/backend.
+Update any relevant docs under docs/architecture or docs/ops.
+```
+
+**Add a new dashboard card:**
+
+```
+In apps/web, add a new dashboard card that shows X.
+Integrate with existing API calls (re-use Http client).
+Add state + hooks next to similar components.
+Add a basic unit test.
+Do not change the project structure.
+```
+
+**Update infra safely:**
+
+```
+Update the Nginx config under infra/nginx to support route X.
+Make sure existing routes keep working.
+If docker-compose paths change, update docker-compose.prod.yml accordingly.
+Don't move infra directories.
 ```
 
 ---
 
-## Production Deployment
+## Additional References
 
-See `DEPLOY_PROD.md` for full instructions. Quick reference:
-
-1. Build images with commit hash:
-   ```powershell
-   $sha = git rev-parse --short=8 HEAD
-   docker build -f apps/backend/Dockerfile -t ledgermind-backend:main-$sha .
-   docker build -f infra/deploy/Dockerfile.nginx -t ledgermind-web:main-$sha .
-   ```
-
-2. Update `docker-compose.prod.yml` image tags (set `pull_policy: never`)
-
-3. Deploy:
-   ```powershell
-   docker compose -f docker-compose.prod.yml up -d backend nginx
-   ```
-
-4. Verify:
-   ```powershell
-   curl http://localhost:8083/api/ready
-   ```
+- **API Path Rules:** See `.github/copilot-instructions.md` for frontend API conventions
+- **Docker Build Context:**
+  - Backend: `apps/backend/Dockerfile` (build context: repo root)
+  - Web: `infra/deploy/Dockerfile.nginx` (build context: repo root)
+- **Pre-Commit Hooks:** `config/precommit/.pre-commit-config.yaml`
+- **Production Deployment:** See `DEPLOY_PROD.md` for full instructions
+- **Architecture:** See `docs/architecture/ARCHITECTURE.md` for system design
 
 ---
 
-## Rollback Instructions
-
-If structure changes cause issues, rollback to pre-cleanup state:
-
-```powershell
-git checkout archive/pre-branch-cleanup-20251127
-```
-
-This tag preserves the repository state before the 2025-11-27 cleanup.
+**This file is meant to be a stable contract.**
+**When you change the repo layout or policies, update AGENTS.md too so tools stay in sync.**
