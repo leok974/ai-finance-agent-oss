@@ -23,6 +23,7 @@ class MonthParam(BaseModel):
 
 class SummaryBody(MonthParam):
     include_daily: bool = True
+    demo: bool = Field(False, description="Use demo user data instead of current user")
 
 
 class SummaryPoint(BaseModel):
@@ -43,6 +44,7 @@ class SummaryResp(BaseModel):
 
 class MerchantsBody(MonthParam):
     top_n: conint(ge=1, le=50) = 10
+    demo: bool = Field(False, description="Use demo user data instead of current user")
 
 
 class MerchantItem(BaseModel):
@@ -62,6 +64,7 @@ class MerchantsResp(BaseModel):
 class FlowsBody(MonthParam):
     top_merchants: conint(ge=1, le=50) = 10
     top_categories: conint(ge=1, le=50) = 10
+    demo: bool = Field(False, description="Use demo user data instead of current user")
 
 
 class FlowEdge(BaseModel):
@@ -81,6 +84,7 @@ class TrendsBody(BaseModel):
     )
     window: conint(ge=1, le=24) = 6
     order: Literal["asc", "desc"] = "asc"  # chronological order
+    demo: bool = Field(False, description="Use demo user data instead of current user")
 
 
 class TrendPoint(BaseModel):
@@ -127,6 +131,10 @@ def charts_summary(
     user_id: int = Depends(get_current_user_id),
     db: Session = Depends(get_db),
 ) -> SummaryResp:
+    from app.core.demo import resolve_user_for_mode
+
+    effective_user_id, _ = resolve_user_for_mode(user_id, body.demo)
+
     # Totals for the month
     totals = (
         db.query(
@@ -134,7 +142,9 @@ def charts_summary(
             _abs_outflow_sum().label("outflow"),
             func.sum(Transaction.amount).label("net_raw"),
         )
-        .filter(Transaction.user_id == user_id, Transaction.month == body.month)
+        .filter(
+            Transaction.user_id == effective_user_id, Transaction.month == body.month
+        )
         .one()
     )
     total_in = float(totals.inflow or 0.0)
@@ -150,7 +160,10 @@ def charts_summary(
                 _abs_outflow_sum().label("outflow"),
                 func.sum(Transaction.amount).label("net_raw"),
             )
-            .filter(Transaction.user_id == user_id, Transaction.month == body.month)
+            .filter(
+                Transaction.user_id == effective_user_id,
+                Transaction.month == body.month,
+            )
             .group_by(Transaction.date)
             .order_by(asc(Transaction.date))
             .all()
@@ -188,14 +201,16 @@ def charts_merchants(
     from app.services.charts_data import canonical_and_label
     from app.redis_client import redis
     from app.services.merchant_cache import learn_merchant
+    from app.core.demo import resolve_user_for_mode
 
+    effective_user_id, _ = resolve_user_for_mode(user_id, body.demo)
     redis_client = redis()
 
     # Fetch all expense transactions for the month (with description for learning)
     txns = (
         db.query(Transaction.merchant, Transaction.amount, Transaction.description)
         .filter(
-            Transaction.user_id == user_id,
+            Transaction.user_id == effective_user_id,
             Transaction.month == body.month,
             Transaction.amount < 0,
             ~Transaction.pending,
@@ -266,6 +281,10 @@ def charts_flows(
       Category -> Merchant with 'amount' = spend for that pair in the month.
     This is agent-friendly and deterministic.
     """
+    from app.core.demo import resolve_user_for_mode
+
+    effective_user_id, _ = resolve_user_for_mode(user_id, body.demo)
+
     rows = (
         db.query(
             func.coalesce(func.nullif(Transaction.category, ""), "Unknown").label(
@@ -276,7 +295,9 @@ def charts_flows(
             ),
             _abs_outflow_sum().label("spend"),
         )
-        .filter(Transaction.user_id == user_id, Transaction.month == body.month)
+        .filter(
+            Transaction.user_id == effective_user_id, Transaction.month == body.month
+        )
         .group_by("category", "merchant")
         .order_by(desc("spend"))
         .all()
@@ -324,6 +345,10 @@ async def spending_trends_post(
     user_id: int = Depends(get_current_user_id),
     db: Session = Depends(get_db),
 ) -> TrendsResp:
+    from app.core.demo import resolve_user_for_mode
+
+    effective_user_id, _ = resolve_user_for_mode(user_id, body.demo)
+
     # Determine which months to include
     months: List[str]
     if body.months:
@@ -331,7 +356,7 @@ async def spending_trends_post(
     else:
         rows = (
             db.query(Transaction.month)
-            .filter(Transaction.user_id == user_id)
+            .filter(Transaction.user_id == effective_user_id)
             .group_by(Transaction.month)
             .order_by(desc(Transaction.month))
             .limit(body.window)
@@ -348,7 +373,7 @@ async def spending_trends_post(
             _abs_outflow_sum().label("outflow"),
             func.sum(Transaction.amount).label("net_raw"),
         )
-        .filter(Transaction.user_id == user_id, Transaction.month.in_(months))
+        .filter(Transaction.user_id == effective_user_id, Transaction.month.in_(months))
         .group_by(Transaction.month)
         .all()
     )
@@ -376,14 +401,16 @@ async def spending_trends_get_compat(
     months: Optional[str] = None,
     window: int = 6,
     order: Literal["asc", "desc"] = "asc",
+    user_id: int = Depends(get_current_user_id),
     db: Session = Depends(get_db),
 ) -> TrendsResp:
     body = TrendsBody(
         months=[m for m in (months or "").split(",") if m] or None,
         window=window,
         order=order,
+        demo=False,
     )
-    return await spending_trends_post(body, db)
+    return await spending_trends_post(body, user_id, db)
 
 
 # ---------- Demo Finance Tool ----------

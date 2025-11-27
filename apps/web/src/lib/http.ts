@@ -61,15 +61,31 @@ export async function fetchJSON<T>(path: string, opts: FetchOpts = {}): Promise<
   const normalized = path.startsWith('/') ? path : `/${path}`;
   const baseApplied = shouldBypassPrefix(normalized) ? normalized : join(BASE, normalized);
 
-  // 🎭 Demo Mode: Automatically append ?demo=1 for data-fetching endpoints
-  // Only apply to GET requests and specific data endpoints (charts, insights, transactions, unknowns)
+  // 🎭 Demo Mode: Automatically append ?demo=1 for GET data endpoints OR inject into POST body for agent tools
   const method = (opts.method ?? 'GET').toUpperCase();
   const isDataEndpoint = /\/(charts|insights|transactions|unknowns|unknown)\b/.test(normalized);
-  const shouldAddDemo = method === 'GET' && isDataEndpoint && isDemoModeActive();
+  const isAgentTool = /\/agent\/tools\//.test(normalized);
+  const demoActive = isDemoModeActive();
 
-  const query = shouldAddDemo
+  // For GET requests to data endpoints, add ?demo=1 query param
+  const shouldAddDemoQuery = method === 'GET' && isDataEndpoint && demoActive;
+  const query = shouldAddDemoQuery
     ? { ...opts.query, demo: true }
     : opts.query;
+
+  // For POST requests to agent tools, inject demo into body
+  let body = opts.body;
+  if (method === 'POST' && isAgentTool && demoActive && body) {
+    try {
+      const parsed = typeof body === 'string' ? JSON.parse(body) : body;
+      if (typeof parsed === 'object' && parsed !== null) {
+        parsed.demo = true;
+        body = JSON.stringify(parsed);
+      }
+    } catch {
+      // If body parsing fails, leave it unchanged
+    }
+  }
 
   const url = withQuery(baseApplied, query);
 
@@ -100,7 +116,7 @@ export async function fetchJSON<T>(path: string, opts: FetchOpts = {}): Promise<
     credentials: 'include', // Match api.ts: ensure cookies are sent
     headers: hdrs,
     method: opts.method ?? 'GET',
-    body: opts.body,
+    body: body,
     cache: 'no-store',
   });
 
@@ -121,7 +137,7 @@ export async function fetchJSON<T>(path: string, opts: FetchOpts = {}): Promise<
           credentials: 'include',
           headers: hdrs,
           method: opts.method ?? 'GET',
-          body: opts.body,
+          body: body,
           cache: 'no-store',
         });
       } else {
