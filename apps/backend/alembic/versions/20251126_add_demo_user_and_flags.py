@@ -69,7 +69,7 @@ def upgrade() -> None:
                 sa.text(
                     """
                     INSERT INTO users (email, name, password_hash, is_demo_user, is_active, is_demo, created_at)
-                    VALUES ('demo@ledger-mind.local', 'LedgerMind Demo', 'DEMO_NO_PASSWORD', 1, 1, 1, :created_at)
+                    VALUES ('demo@ledger-mind.local', 'LedgerMind Demo', 'DEMO_NO_PASSWORD', TRUE, TRUE, TRUE, :created_at)
                     """
                 ),
                 {"created_at": now_utc},
@@ -80,20 +80,20 @@ def upgrade() -> None:
                 sa.text(
                     """
                     INSERT INTO users (id, email, name, password_hash, is_demo_user, is_active, is_demo, created_at)
-                    VALUES (1, 'demo@ledger-mind.local', 'LedgerMind Demo', 'DEMO_NO_PASSWORD', 1, 1, 1, :created_at)
+                    VALUES (1, 'demo@ledger-mind.local', 'LedgerMind Demo', 'DEMO_NO_PASSWORD', TRUE, TRUE, TRUE, :created_at)
                     """
                 ),
                 {"created_at": now_utc},
             )
 
     # 4. Backfill existing demo transactions
-    # Mark all transactions with is_demo=1 as source='demo'
+    # Mark all transactions with is_demo=TRUE as source='demo'
     conn.execute(
         sa.text(
             """
             UPDATE transactions
             SET source = 'demo'
-            WHERE is_demo = 1 AND (source IS NULL OR source != 'demo')
+            WHERE is_demo = TRUE AND (source IS NULL OR source != 'demo')
             """
         )
     )
@@ -104,7 +104,7 @@ def upgrade() -> None:
             """
             UPDATE transactions
             SET source = 'upload'
-            WHERE is_demo = 0 AND source IS NULL
+            WHERE is_demo = FALSE AND source IS NULL
             """
         )
     )
