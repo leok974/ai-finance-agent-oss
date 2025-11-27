@@ -117,6 +117,7 @@ const App: React.FC = () => {
 
   // Demo mode state: view demo user's data instead of own data
   const [demoMode, setDemoMode] = useState<boolean>(false);
+  const pendingDisableResolve = useRef<(() => void) | null>(null);
 
   // Hydrate demoMode from localStorage after mount
   useEffect(() => {
@@ -125,6 +126,14 @@ const App: React.FC = () => {
       setDemoMode(true);
     }
   }, []);
+
+  // When demoMode flips to false, resolve any pending async disable promise
+  useEffect(() => {
+    if (!demoMode && pendingDisableResolve.current) {
+      pendingDisableResolve.current();
+      pendingDisableResolve.current = null;
+    }
+  }, [demoMode]);
 
   // Demo mode controls
   const enableDemo = useCallback(() => {
@@ -136,6 +145,21 @@ const App: React.FC = () => {
     setDemoMode(false);
     localStorage.removeItem('lm:demoMode');
   }, []);
+
+  // Async demo disable: returns Promise that resolves when state fully updates
+  // This eliminates race conditions - no more setTimeout hacks!
+  const disableDemoAsync = useCallback(() => {
+    return new Promise<void>((resolve) => {
+      // If already disabled, resolve immediately
+      if (!demoMode) {
+        resolve();
+        return;
+      }
+      // Store resolve callback to be called when useEffect detects demoMode=false
+      pendingDisableResolve.current = resolve;
+      disableDemo();
+    });
+  }, [demoMode, disableDemo]);
 
   // Legacy report removed: using expanded insights and charts exclusively
   const [insights, setInsights] = useState<any>(null)
@@ -329,7 +353,7 @@ const App: React.FC = () => {
   if (!authOk) return <LandingHero />;
 
   return (
-  <DemoModeProvider value={{ demoMode, enableDemo, disableDemo }}>
+  <DemoModeProvider value={{ demoMode, enableDemo, disableDemo, disableDemoAsync }}>
   <MonthContext.Provider value={{ month, setMonth }}>
       <ChatDockProvider>
         <RuleSeedProvider>

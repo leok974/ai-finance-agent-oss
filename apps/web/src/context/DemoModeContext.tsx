@@ -19,8 +19,8 @@ import React, { createContext, useContext } from 'react';
  *    - enableDemo()/disableDemo() update BOTH localStorage AND React state
  *    - Components using this context re-render on changes
  *    - http.ts reads localStorage directly (isDemoModeActive())
- *    - RACE CONDITION: After disableDemo(), wait ~150ms before API calls
- *      to ensure both localStorage and context have propagated
+ *    - NEW: disableDemoAsync() returns a Promise that resolves when state fully updates
+ *      This eliminates race conditions - no more setTimeout hacks!
  *
  * 4. Data flow rules:
  *    - CSV upload: Auto-exit demo mode first (doUpload)
@@ -34,6 +34,7 @@ interface DemoModeContextValue {
   demoMode: boolean;
   enableDemo: () => void;
   disableDemo: () => void;
+  disableDemoAsync: () => Promise<void>;
 }
 
 const DemoModeContext = createContext<DemoModeContextValue | undefined>(undefined);

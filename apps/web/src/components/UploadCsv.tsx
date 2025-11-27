@@ -178,7 +178,7 @@ const prettyBytes = (n: number) => {
 
 const UploadCsv: React.FC<UploadCsvProps> = ({ onUploaded, defaultReplace = true, className }) => {
   const { month, setMonth } = useMonth();
-  const { enableDemo, disableDemo, demoMode } = useDemoMode();
+  const { enableDemo, disableDemo, disableDemoAsync, demoMode } = useDemoMode();
   const [file, setFile] = useState<File | null>(null);
   const [replace, setReplace] = useState<boolean>(defaultReplace);
   const [dragOver, setDragOver] = useState(false);
@@ -246,10 +246,14 @@ const UploadCsv: React.FC<UploadCsvProps> = ({ onUploaded, defaultReplace = true
   //
   // Reset must:
   // 1. Clear demo data FIRST (even if not in demo mode - prevents stale data)
-  // 2. Exit demo mode BEFORE clearing current user (prevents ?demo=1 on reset call)
-  // 3. Wait 150ms for localStorage + React state to propagate (race condition fix)
+  // 2. Exit demo mode using disableDemoAsync() (waits for state to fully update)
+  // 3. Clear current user data (now guaranteed http.ts won't append ?demo=1)
   //
-  // Order matters! See tests/UploadCsv.reset.test.tsx for regression coverage.
+  // We no longer use setTimeout - disableDemoAsync() returns a Promise that resolves
+  // when demoMode state and localStorage are fully synchronized. This eliminates
+  // race conditions where http.ts might still think we're in demo mode.
+  //
+  // See tests/UploadCsv.reset.test.tsx for regression coverage.
   const reset = useCallback(async () => {
     console.log('[UploadCsv] Reset starting - demoMode:', demoMode);
     try {
@@ -264,17 +268,19 @@ const UploadCsv: React.FC<UploadCsvProps> = ({ onUploaded, defaultReplace = true
         console.warn('[UploadCsv] Demo reset failed (may not exist):', e);
       }
 
-      // Step 2: Exit demo mode before clearing current user data
-      // This ensures subsequent API calls don't have ?demo=1 or demo:true in body
+      // Step 2: Exit demo mode and wait for state to fully update
+      // disableDemoAsync() returns a Promise that resolves when:
+      // - React state (demoMode) is false
+      // - localStorage (lm:demoMode) is removed
+      // This ensures http.ts will NOT append ?demo=1 to the next API call
       if (demoMode) {
-        console.log('[UploadCsv] Exiting demo mode');
-        disableDemo();
-        // IMPORTANT: Wait for localStorage and state to update before next API call
-        // Without this delay, http.ts may still append ?demo=1 causing wrong user data query
-        await new Promise(resolve => setTimeout(resolve, 150));
+        console.log('[UploadCsv] Exiting demo mode (async)');
+        await disableDemoAsync();
+        console.log('[UploadCsv] Demo mode fully disabled');
       }
 
       // Step 3: Clear current user's data
+      // Now guaranteed to query current user, not DEMO_USER_ID
       console.log('[UploadCsv] Calling reset endpoint (current user)');
       await fetchJSON('ingest/dashboard/reset', { method: 'POST' });
 
@@ -292,7 +298,7 @@ const UploadCsv: React.FC<UploadCsvProps> = ({ onUploaded, defaultReplace = true
     } finally {
       setBusy(false);
     }
-  }, [demoMode, disableDemo, triggerRefresh]);
+  }, [demoMode, disableDemoAsync, triggerRefresh]);
 
   // After a successful upload, snap to latest month and refetch key dashboards
   const handleUploadSuccess = useCallback(async (uploadData?: Record<string, unknown>) => {
@@ -334,9 +340,8 @@ const UploadCsv: React.FC<UploadCsvProps> = ({ onUploaded, defaultReplace = true
     // Without this, http.ts would add demo:true to the upload request body
     if (demoMode) {
       console.log('[UploadCsv] Exiting demo mode before CSV upload');
-      disableDemo();
-      // Small delay to ensure localStorage + state updates before upload
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await disableDemoAsync();
+      console.log('[UploadCsv] Demo mode fully disabled, proceeding with upload');
     }
 
     setBusy(true);
@@ -454,7 +459,7 @@ const UploadCsv: React.FC<UploadCsvProps> = ({ onUploaded, defaultReplace = true
     } finally {
       setBusy(false);
     }
-  }, [file, replace, onUploaded, handleUploadSuccess, demoMode, disableDemo]);
+  }, [file, replace, onUploaded, handleUploadSuccess, demoMode, disableDemoAsync]);
 
   const handleUseSampleData = useCallback(async () => {
     console.log('[UploadCsv] Demo seed starting');
