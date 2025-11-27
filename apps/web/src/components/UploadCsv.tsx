@@ -429,14 +429,14 @@ const UploadCsv: React.FC<UploadCsvProps> = ({ onUploaded, defaultReplace = true
       };
       const r: UploadResult = { ok: true, data: successData, message: successMsg };
       setResult(r);
-      onUploaded?.(r);
-
-      // Trigger full dashboard refresh via parent callback
-      onUploaded?.(r);
 
       toast.success("Demo data loaded successfully", {
         description: "Dashboard refreshed with sample transactions."
       });
+
+      // Small delay to ensure backend commits before triggering refresh
+      await new Promise(resolve => setTimeout(resolve, 300));
+      onUploaded?.(r);
     } catch (err) {
       console.error(err);
 
