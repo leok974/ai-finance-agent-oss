@@ -1,6 +1,6 @@
 from typing import List, Dict, Optional, Literal
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel, Field, conint
+from pydantic import BaseModel, Field, conint  # type: ignore[attr-defined]
 from sqlalchemy import func, case, desc, asc
 from sqlalchemy.orm import Session
 

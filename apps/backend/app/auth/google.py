@@ -32,8 +32,8 @@ try:
     METRICS_ENABLED = True
 except ImportError:
     METRICS_ENABLED = False
-    auth_callback_total = None
-    oauth_token_exchange_seconds = None
+    auth_callback_total = None  # type: ignore[assignment]
+    oauth_token_exchange_seconds = None  # type: ignore[assignment]
 
 GOOGLE_DISCOVERY = "https://accounts.google.com/.well-known/openid-configuration"
 CLIENT_ID = os.getenv("OAUTH_GOOGLE_CLIENT_ID", "")
@@ -49,7 +49,7 @@ oauth.register(
     client_secret=CLIENT_SECRET,
     server_metadata_url=GOOGLE_DISCOVERY,
     client_kwargs={"scope": "openid email profile"},
-)
+)  # type: ignore[attr-defined]
 
 
 def _pkce_pair():
@@ -111,7 +111,7 @@ async def callback(request: Request, db: Session = Depends(get_db)):
 
         if not state_qs or not state_sess or state_qs != state_sess:
             if METRICS_ENABLED:
-                auth_callback_total.labels(result="state_mismatch").inc()
+                auth_callback_total.labels(result="state_mismatch").inc()  # type: ignore[union-attr]
             logger.error(
                 "OAuth callback: state mismatch: qs=%s session=%s", state_qs, state_sess
             )
@@ -130,18 +130,18 @@ async def callback(request: Request, db: Session = Depends(get_db)):
         print("[OAUTH DEBUG] Starting token exchange...", flush=True)
         try:
             if METRICS_ENABLED and oauth_token_exchange_seconds:
-                with oauth_token_exchange_seconds.time():
-                    token = await oauth.google.authorize_access_token(
+                with oauth_token_exchange_seconds.time():  # type: ignore[union-attr]
+                    token = await oauth.google.authorize_access_token(  # type: ignore[union-attr]
                         request, code_verifier=verifier
                     )
             else:
-                token = await oauth.google.authorize_access_token(
+                token = await oauth.google.authorize_access_token(  # type: ignore[union-attr]
                     request, code_verifier=verifier
                 )
             print("[OAUTH DEBUG] Token exchange SUCCESS!", flush=True)
         except Exception as e:
             if METRICS_ENABLED:
-                auth_callback_total.labels(result="token_exchange_failed").inc()
+                auth_callback_total.labels(result="token_exchange_failed").inc()  # type: ignore[union-attr]
             # Capture Google's exact error response
             resp = getattr(e, "response", None)
             status = getattr(resp, "status_code", None)
@@ -354,7 +354,7 @@ async def callback(request: Request, db: Session = Depends(get_db)):
 
         # Track successful OAuth callback
         if METRICS_ENABLED:
-            auth_callback_total.labels(result="ok").inc()
+            auth_callback_total.labels(result="ok").inc()  # type: ignore[union-attr]
             if start_time:
                 duration = time.time() - start_time
                 logger.info(f"OAuth callback completed in {duration:.2f}s")

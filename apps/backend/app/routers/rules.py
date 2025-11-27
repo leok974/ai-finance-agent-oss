@@ -524,8 +524,8 @@ def test_rule(
                 merchant=getattr(t, "merchant", None),
                 description=getattr(t, "description", None),
                 date=(
-                    getattr(t, "date", None).isoformat()
-                    if getattr(t, "date", None)
+                    t.date.isoformat()  # type: ignore[union-attr]
+                    if hasattr(t, "date") and t.date
                     else None
                 ),
             )

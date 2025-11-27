@@ -165,7 +165,8 @@ def run_train(limit: int | None = None) -> Dict[str, Any]:
     # Per-class F1 scores for acceptance gate
     f1_per_class_arr = f1_score(y_va, yhat, average=None, labels=classes)
     f1_per_class_dict = {
-        cls: float(f1_per_class_arr[i]) for i, cls in enumerate(classes)
+        cls: float(f1_per_class_arr[i])  # type: ignore[call-overload]
+        for i, cls in enumerate(classes)
     }
     min_f1 = float(np.min(f1_per_class_arr))
 
@@ -304,7 +305,10 @@ def run_p2p_training(
 
     # Per-class F1 for detailed metrics
     f1_per_class_arr = f1_score(y_va, yhat, average=None, labels=classes)
-    f1_per_class = {cls: float(f1_per_class_arr[i]) for i, cls in enumerate(classes)}
+    f1_per_class = {
+        cls: float(f1_per_class_arr[i])  # type: ignore[call-overload]
+        for i, cls in enumerate(classes)
+    }
 
     # Compute feature dimensionality (after preprocessing)
     X_tr_transformed = pipe.named_steps["prep"].transform(X_tr)
