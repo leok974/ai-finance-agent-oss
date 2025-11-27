@@ -310,7 +310,7 @@ def get_current_user(
         if not u:
             u = User(
                 email=fake_email,
-                password_hash=hash_password("fake-password-for-testing")
+                password_hash=hash_password("fake-password-for-testing"),
             )
             db.add(u)
             db.commit()
@@ -320,7 +320,7 @@ def get_current_user(
             # Ensure roles are present even if user already exists
             _ensure_roles(db, u, ["user", "admin"])
         return u
-    
+
     # Optional local dev bypass for fast e2e when explicitly enabled
     if is_dev() and os.getenv("E2E_FAST_AUTH") == "1":
         # Minimal user shape: ensure a user exists matching the token/email below if queried later
@@ -340,6 +340,10 @@ def get_current_user(
     # Dev bypass (restricted): only allow if environment explicitly opts-in AND not in test mode unless forced
     _raw_bypass = os.getenv("DEV_ALLOW_NO_AUTH", "0")
     _app_env = os.getenv("APP_ENV", "")
+    # PRODUCTION SAFETY: Never allow dev bypass in production, regardless of DEV_ALLOW_NO_AUTH
+    if _app_env == "prod" or os.getenv("ENV", "") == "prod":
+        _raw_bypass = "0"  # Force disable in production
+
     # Allow explicit bypass even in test when fixtures/environment set it.
     if _raw_bypass in ("1", "true", "True"):
         # Special-case: for endpoints explicitly exercising auth failure paths (tests without credentials)
@@ -392,11 +396,7 @@ def get_current_user(
     u: Optional[User] = None
     for _ in range(3):
         try:
-            u = (
-                db.query(User)
-                .filter(User.email == email, User.is_active == True)
-                .first()
-            )  # noqa: E712
+            u = db.query(User).filter(User.email == email, User.is_active).first()
             break
         except (OperationalError, InterfaceError) as e:
             last_exc = e
