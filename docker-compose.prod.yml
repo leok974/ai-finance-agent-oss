@@ -17,7 +17,7 @@
 #    - If you change networks, you MUST update cloudflared/config.yml accordingly.
 #
 # 3) WHEN CHANGING PORTS OR NETWORKS:
-#    - Update: deploy/nginx.conf, cloudflared/config.yml, and E2E tests together.
+#    - Update: infra/deploy/nginx.conf, infra/cloudflared/config.yml, and E2E tests together.
 #    - Then run the prod verification commands (see nginx.conf header).
 #
 # 4) NEVER EXPOSE INTERNAL BACKEND PORTS DIRECTLY TO THE INTERNET BY ACCIDENT.
@@ -188,7 +188,7 @@ services:
     # Changing this name will break the tunnel until configs + E2E are updated.
     build:
       context: .
-      dockerfile: deploy/Dockerfile.nginx
+      dockerfile: infra/deploy/Dockerfile.nginx
       args:
         EDGE_GIT_COMMIT: ${GIT_COMMIT:-unknown}
         EDGE_BUILD_TIME: ${BUILD_TIME:-unknown}
@@ -220,8 +220,8 @@ services:
       agui:
         condition: service_healthy
     volumes:
-      - ./deploy/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./deploy/docker-entrypoint.d:/docker-entrypoint.d:ro
+      - ./infra/deploy/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./infra/deploy/docker-entrypoint.d:/docker-entrypoint.d:ro
       - certbot_www:/var/www/certbot
       - letsencrypt:/etc/letsencrypt:ro
     # Ports disabled for tunnel-based setup - Cloudflare tunnel connects directly to nginx:80 internally

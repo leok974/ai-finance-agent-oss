@@ -33,11 +33,11 @@ jobs:
 
       - name: Run smoke-lite
         run: |
-          python scripts/smoke-lite.py --base http://127.0.0.1
+          python scripts/testing/smoke-lite.py --base http://127.0.0.1
 
       - name: KMS Crypto Health Check
         run: |
-          python scripts/smoke-crypto-kms.py --base-url http://127.0.0.1 --verbose
+          python scripts/testing/smoke-crypto-kms.py --base-url http://127.0.0.1 --verbose
         continue-on-error: true
         id: kms_check
 
